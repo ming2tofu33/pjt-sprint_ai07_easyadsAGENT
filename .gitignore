@@ -1,0 +1,12 @@
+﻿.env
+__pycache__/
+*.pyc
+.pytest_cache/
+outputs/
+data/
+models/
+*.safetensors
+*.ckpt
+*.pt
+*.env
+docs/api_key.env
