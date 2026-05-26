@@ -1,0 +1,8 @@
+﻿diffusers==0.32.2
+transformers==4.46.3
+accelerate
+safetensors==0.7.0
+huggingface_hub
+sentencepiece
+protobuf
+openai

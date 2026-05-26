@@ -25,10 +25,16 @@ def _load_dotenv(path: Path) -> dict[str, str]:
 
 
 def _get_env(name: str, default: str = "") -> str:
-    """Read OS env first, then local .env, then default."""
+    """Read OS env first, then local .env, then ignored docs/api_key.env, then default."""
     if name in os.environ:
         return os.environ[name]
-    return _load_dotenv(PROJECT_ROOT / ".env").get(name, default)
+    local_env = _load_dotenv(PROJECT_ROOT / ".env")
+    if name in local_env:
+        return local_env[name]
+    local_key_env = _load_dotenv(PROJECT_ROOT / "docs" / "api_key.env")
+    if name in local_key_env:
+        return local_key_env[name]
+    return default
 
 
 def _get_bool(name: str, default: bool) -> bool:
