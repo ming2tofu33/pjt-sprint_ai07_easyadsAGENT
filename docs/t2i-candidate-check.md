@@ -8,6 +8,39 @@ This check validates whether the current machine can run the Week 2 text-to-imag
 - `sd35_large`: local SD3.5 Large self-hosted lane.
 - `flux`: local FLUX lane, intended for lazy/on-demand loading because it is heavy.
 
+## Local RTX 3090 Setup
+
+Recommended install order for the current local development machine:
+
+```powershell
+python -m pip install -r requirements.txt
+python scripts/check_t2i_candidates.py
+```
+
+The current machine already has CUDA-enabled torch working, so this project does not pin or reinstall torch in `requirements.txt`. Reinstalling torch can easily replace the CUDA build with an incompatible CPU or wrong-CUDA build. Keep the existing CUDA torch unless a separate, explicit GPU environment task is planned.
+
+Local T2I import dependencies are listed in `requirements.txt`:
+
+- `diffusers==0.32.2`
+- `transformers==4.46.3`
+- `accelerate`
+- `safetensors==0.7.0`
+- `huggingface_hub`
+- `sentencepiece`
+- `protobuf`
+- `openai`
+
+## Environment Keys
+
+Set `HF_TOKEN` and `OPENAI_API_KEY` in a local ignored environment file or process environment. Do not commit actual keys. This repository supports an ignored local key file at `docs/api_key.env` for development machines.
+
+Example key names only:
+
+```text
+HF_TOKEN=
+OPENAI_API_KEY=
+```
+
 ## Default Dry Run
 
 Run:
@@ -19,11 +52,12 @@ python scripts/check_t2i_candidates.py
 Default behavior:
 
 - GPT-image-2 checks `OPENAI_API_KEY` presence and OpenAI SDK import only.
-- SD3.5 checks Python package imports, CUDA status, device name, VRAM, `HF_TOKEN`, and `StableDiffusion3Pipeline` import only.
-- FLUX checks Python package imports, CUDA status, device name, VRAM, `HF_TOKEN`, and `FluxPipeline` import only.
+- SD3.5 checks Python/package versions, CUDA status, device name, VRAM, `HF_TOKEN`, and `StableDiffusion3Pipeline` import only.
+- FLUX checks Python/package versions, CUDA status, device name, VRAM, `HF_TOKEN`, and `FluxPipeline` import only.
 - No OpenAI API call is made.
 - No Hugging Face model is downloaded.
 - No local model is loaded.
+- No image is generated.
 
 Reports are written to:
 
@@ -35,8 +69,6 @@ Generated images, when explicitly enabled, are written under:
 - `data/outputs/candidate_check/{timestamp}/`
 
 ## GPT-image-2
-
-Set `OPENAI_API_KEY` in a local ignored environment file or process environment. Do not commit actual keys. This repository also supports an ignored local key file at `docs/api_key.env` for development machines.
 
 Actual GPT-image-2 smoke generation is opt-in only:
 
@@ -86,6 +118,7 @@ python scripts/check_t2i_candidates.py --load-local --generate-local --engines f
 - Router support for `gpt_image_2` engine lookup and health.
 - Dry-run candidate check script for GPT-image-2, SD3.5 Large, and FLUX.
 - JSON and Markdown candidate reports.
+- Local T2I dependency list for import-level readiness.
 - Tests for missing API key behavior and dry-run candidate checks.
 
 ## Not Implemented In This Step
@@ -95,3 +128,4 @@ python scripts/check_t2i_candidates.py --load-local --generate-local --engines f
 - Default GPT-image-2 API invocation.
 - Default SD3.5/FLUX download, load, or generation.
 - Vision pipeline, inpainting, rembg/SAM, ControlNet, LoRA, or benchmark runs.
+

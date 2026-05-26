@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import importlib.util
 import json
+import platform
 import sys
 import time
 from datetime import datetime
@@ -28,6 +30,7 @@ SMOKE_PROMPT = (
 
 
 DEFAULT_ENGINES = ["gpt_image_2", "sd35_large", "flux"]
+VERSION_PACKAGES = ["diffusers", "transformers", "accelerate", "safetensors", "huggingface_hub", "sentencepiece", "protobuf", "openai"]
 
 
 def run_candidate_check(
@@ -48,16 +51,17 @@ def run_candidate_check(
     log_dir.mkdir(parents=True, exist_ok=True)
     image_output_dir.mkdir(parents=True, exist_ok=True)
 
+    environment = inspect_environment()
     results: list[dict[str, Any]] = []
     for engine in selected:
         if engine == "gpt_image_2":
-            results.append(check_gpt_image_2(image_output_dir, include_api=include_api))
+            results.append(check_gpt_image_2(image_output_dir, include_api=include_api, environment=environment))
         elif engine == "sd35_large":
-            results.append(check_sd35_large(load_local=load_local, generate_local=generate_local, output_dir=image_output_dir))
+            results.append(check_sd35_large(load_local=load_local, generate_local=generate_local, output_dir=image_output_dir, environment=environment))
         elif engine == "flux":
-            results.append(check_flux(load_local=load_local, generate_local=generate_local, output_dir=image_output_dir))
+            results.append(check_flux(load_local=load_local, generate_local=generate_local, output_dir=image_output_dir, environment=environment))
         else:
-            results.append(_base_result(engine=engine, error="unknown engine"))
+            results.append(_base_result(engine=engine, error="unknown engine", environment=environment))
 
     report = {
         "created_at": datetime.now().isoformat(),
@@ -65,6 +69,7 @@ def run_candidate_check(
         "load_local": load_local,
         "generate_local": generate_local,
         "output_dir": str(image_output_dir),
+        "environment": environment,
         "results": results,
     }
     json_path = log_dir / "t2i_candidate_check.json"
@@ -76,17 +81,18 @@ def run_candidate_check(
     return report
 
 
-def check_gpt_image_2(output_dir: Path, include_api: bool = False) -> dict[str, Any]:
+def check_gpt_image_2(output_dir: Path, include_api: bool = False, environment: dict[str, Any] | None = None) -> dict[str, Any]:
     """Check OpenAI image API readiness without calling it unless requested."""
     started = time.perf_counter()
     settings = get_t2i_settings()
-    sdk_available = _package_available("openai")
+    environment = environment or inspect_environment()
     result = _base_result(
         engine="gpt_image_2",
         model=settings.gpt_image_model,
         required_env="OPENAI_API_KEY",
         env_present=bool(settings.openai_api_key),
-        package_available=sdk_available,
+        package_available=environment["openai_sdk_available"],
+        environment=environment,
         notes="Default check does not call the API. Use --include-api for one paid smoke generation.",
     )
     if not include_api:
@@ -117,7 +123,12 @@ def check_gpt_image_2(output_dir: Path, include_api: bool = False) -> dict[str, 
     return result
 
 
-def check_sd35_large(load_local: bool = False, generate_local: bool = False, output_dir: Path | None = None) -> dict[str, Any]:
+def check_sd35_large(
+    load_local: bool = False,
+    generate_local: bool = False,
+    output_dir: Path | None = None,
+    environment: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Check SD3.5 Large local readiness without downloading by default."""
     settings = get_t2i_settings()
     result = check_local_diffusion_candidate(
@@ -127,12 +138,18 @@ def check_sd35_large(load_local: bool = False, generate_local: bool = False, out
         load_local=load_local,
         generate_local=generate_local,
         output_dir=output_dir,
+        environment=environment,
     )
     result["notes"] = "Default check avoids from_pretrained. RTX 3090 local validation is preferred before GCP L4."
     return result
 
 
-def check_flux(load_local: bool = False, generate_local: bool = False, output_dir: Path | None = None) -> dict[str, Any]:
+def check_flux(
+    load_local: bool = False,
+    generate_local: bool = False,
+    output_dir: Path | None = None,
+    environment: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Check FLUX local readiness without downloading by default."""
     settings = get_t2i_settings()
     result = check_local_diffusion_candidate(
@@ -142,6 +159,7 @@ def check_flux(load_local: bool = False, generate_local: bool = False, output_di
         load_local=load_local,
         generate_local=generate_local,
         output_dir=output_dir,
+        environment=environment,
     )
     result["notes"] = "FLUX is heavy; keep lazy/on-demand loading and avoid resident startup loading."
     return result
@@ -154,11 +172,12 @@ def check_local_diffusion_candidate(
     load_local: bool,
     generate_local: bool,
     output_dir: Path | None,
+    environment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     settings = get_t2i_settings()
-    torch_info = inspect_torch()
-    diffusers_available = _package_available("diffusers")
+    environment = environment or inspect_environment()
+    diffusers_available = environment["diffusers_available"]
     can_import_pipeline = False
     import_error = None
     if diffusers_available:
@@ -177,12 +196,9 @@ def check_local_diffusion_candidate(
         required_env="HF_TOKEN",
         env_present=bool(settings.hf_token),
         package_available=diffusers_available,
-        torch_available=torch_info["torch_available"],
-        cuda_available=torch_info["cuda_available"],
-        cuda_device_name=torch_info["cuda_device_name"],
-        cuda_memory_gb=torch_info["cuda_memory_gb"],
         can_import_pipeline=can_import_pipeline,
         error=import_error,
+        environment=environment,
     )
     if generate_local and not load_local:
         result.update({"can_load_model": False, "can_generate": False, "error": "--generate-local requires --load-local"})
@@ -213,13 +229,34 @@ def check_local_diffusion_candidate(
     return result
 
 
+def inspect_environment() -> dict[str, Any]:
+    settings = get_t2i_settings()
+    torch_info = inspect_torch()
+    versions = {f"{name}_version": _package_version(name) for name in VERSION_PACKAGES}
+    return {
+        "python_version": platform.python_version(),
+        **versions,
+        "torch_version": torch_info.get("torch_version"),
+        "diffusers_available": _package_available("diffusers"),
+        "transformers_available": _package_available("transformers"),
+        "accelerate_available": _package_available("accelerate"),
+        "hf_token_present": bool(settings.hf_token),
+        "openai_sdk_available": _package_available("openai"),
+        "cuda_available": torch_info["cuda_available"],
+        "cuda_device_name": torch_info["cuda_device_name"],
+        "cuda_memory_gb": torch_info["cuda_memory_gb"],
+        "torch_available": torch_info["torch_available"],
+    }
+
+
 def inspect_torch() -> dict[str, Any]:
-    info = {"torch_available": _package_available("torch"), "cuda_available": False, "cuda_device_name": None, "cuda_memory_gb": None}
+    info = {"torch_available": _package_available("torch"), "torch_version": _package_version("torch"), "cuda_available": False, "cuda_device_name": None, "cuda_memory_gb": None}
     if not info["torch_available"]:
         return info
     try:
         import torch
 
+        info["torch_version"] = str(torch.__version__)
         info["cuda_available"] = bool(torch.cuda.is_available())
         if info["cuda_available"]:
             index = torch.cuda.current_device()
@@ -232,7 +269,26 @@ def inspect_torch() -> dict[str, Any]:
 
 
 def render_markdown_report(report: dict[str, Any]) -> str:
-    lines = ["# T2I Candidate Check", "", f"Created: {report['created_at']}", f"Output dir: `{report['output_dir']}`", ""]
+    environment = report.get("environment", {})
+    lines = [
+        "# T2I Candidate Check",
+        "",
+        f"Created: {report['created_at']}",
+        f"Output dir: `{report['output_dir']}`",
+        "",
+        "## Environment",
+        f"- python_version: `{environment.get('python_version')}`",
+        f"- torch_version: `{environment.get('torch_version')}`",
+        f"- diffusers_version: `{environment.get('diffusers_version')}`",
+        f"- transformers_version: `{environment.get('transformers_version')}`",
+        f"- accelerate_version: `{environment.get('accelerate_version')}`",
+        f"- cuda_available: `{environment.get('cuda_available')}`",
+        f"- cuda_device_name: `{environment.get('cuda_device_name')}`",
+        f"- cuda_memory_gb: `{environment.get('cuda_memory_gb')}`",
+        f"- hf_token_present: `{environment.get('hf_token_present')}`",
+        f"- openai_sdk_available: `{environment.get('openai_sdk_available')}`",
+        "",
+    ]
     for item in report["results"]:
         lines.extend(
             [
@@ -242,7 +298,10 @@ def render_markdown_report(report: dict[str, Any]) -> str:
                 f"- env_present: `{item.get('env_present')}`",
                 f"- package_available: `{item.get('package_available')}`",
                 f"- torch_available: `{item.get('torch_available')}`",
+                f"- torch_version: `{item.get('torch_version')}`",
                 f"- cuda_available: `{item.get('cuda_available')}`",
+                f"- cuda_device_name: `{item.get('cuda_device_name')}`",
+                f"- cuda_memory_gb: `{item.get('cuda_memory_gb')}`",
                 f"- can_import_pipeline: `{item.get('can_import_pipeline')}`",
                 f"- can_load_model: `{item.get('can_load_model')}`",
                 f"- can_generate: `{item.get('can_generate')}`",
@@ -255,17 +314,25 @@ def render_markdown_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _base_result(**kwargs: Any) -> dict[str, Any]:
+def _base_result(environment: dict[str, Any] | None = None, **kwargs: Any) -> dict[str, Any]:
+    environment = environment or {}
     result = {
         "engine": None,
         "model": None,
         "required_env": None,
         "env_present": False,
         "package_available": False,
-        "torch_available": None,
-        "cuda_available": None,
-        "cuda_device_name": None,
-        "cuda_memory_gb": None,
+        "python_version": environment.get("python_version"),
+        "torch_available": environment.get("torch_available"),
+        "torch_version": environment.get("torch_version"),
+        "diffusers_version": environment.get("diffusers_version"),
+        "transformers_version": environment.get("transformers_version"),
+        "accelerate_version": environment.get("accelerate_version"),
+        "cuda_available": environment.get("cuda_available"),
+        "cuda_device_name": environment.get("cuda_device_name"),
+        "cuda_memory_gb": environment.get("cuda_memory_gb"),
+        "hf_token_present": environment.get("hf_token_present"),
+        "openai_sdk_available": environment.get("openai_sdk_available"),
         "can_import_pipeline": None,
         "can_load_model": None,
         "can_generate": None,
@@ -280,6 +347,13 @@ def _base_result(**kwargs: Any) -> dict[str, Any]:
 
 def _package_available(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
+
+
+def _package_version(name: str) -> str | None:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
 
 
 def _elapsed_ms(started: float) -> int:
