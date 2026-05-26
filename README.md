@@ -1,6 +1,6 @@
 ﻿# pjt-sprint_ai07_easyadsAGENT
 
-EasyAds / 사장님 배너공장 프로젝트입니다.
+EasyAds / 개떡찰떡 프로젝트입니다.
 
 현재 브랜치의 범위는 T2I-first MVP를 위한 공통 데이터 계약과 monorepo 기본 구조 정리입니다.
 
