@@ -1,4 +1,4 @@
-﻿"""LLM/LangGraph marketing schemas for EasyAds v1."""
+"""LLM/LangGraph marketing schemas for EasyAds v1."""
 
 from __future__ import annotations
 
@@ -23,6 +23,27 @@ GenerationRoute = Literal[
 GenerationEngine = Literal["mock", "sd35_large", "flux", "gpt_image_2"]
 
 RenderProfile = Literal["fast", "balanced", "premium_local", "premium_api", "benchmark"]
+
+AdFormat = Literal[
+    "instagram_feed",
+    "instagram_story",
+    "poster",
+    "flyer",
+    "product_detail",
+    "banner",
+]
+
+Platform = Literal[
+    "instagram",
+    "offline",
+    "web",
+    "naver_smartstore",
+    "naver_place",
+    "danggeun",
+    "etc",
+]
+
+AspectRatio = Literal["1:1", "4:5", "9:16", "16:9", "A4_vertical", "custom"]
 
 JobStatus = Literal[
     "created",
@@ -122,9 +143,9 @@ class ProgressState(BaseModel):
 
 
 class AdFormatSpec(BaseModel):
-    ad_format: str
-    platform: str
-    aspect_ratio: str
+    ad_format: AdFormat
+    platform: Platform
+    aspect_ratio: AspectRatio
     width: int = Field(..., ge=1)
     height: int = Field(..., ge=1)
     information_density: Literal["low", "medium", "high"] = "medium"
@@ -144,6 +165,23 @@ class AdFormatSpec(BaseModel):
     ]
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+
+
+class InitialMarketingRequest(BaseModel):
+    entry_mode: EntryMode = "chat_start"
+    user_input: str = Field(..., min_length=1)
+    prompt_json: dict[str, Any] | None = None
+    context: MarketingContext | None = None
+    image_input: ImageInput | None = None
+    reference_input: ReferenceInput | None = None
+    render_profile: RenderProfile = "balanced"
+    requested_ad_format: str | None = None
+    requested_platform: str | None = None
+    project_id: str | None = None
+    user_id: str | None = None
+    organization_id: str | None = None
+    job_id: str | None = None
+    thread_id: str | None = None
 
 class ValidatorOutput(BaseModel):
     context: MarketingContext
@@ -431,4 +469,3 @@ class ErrorInfo(BaseModel):
     message: str
     recoverable: bool = True
     details: dict[str, Any] = Field(default_factory=dict)
-

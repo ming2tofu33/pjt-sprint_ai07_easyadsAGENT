@@ -52,7 +52,7 @@ AD_FORMAT_PRESETS: dict[str, dict[str, object]] = {
         "output_strategy": "generate_text_free_background_then_overlay",
     },
     "product_detail": {
-        "platform": "commerce",
+        "platform": "naver_smartstore",
         "aspect_ratio": "4:5",
         "width": 1200,
         "height": 1500,
