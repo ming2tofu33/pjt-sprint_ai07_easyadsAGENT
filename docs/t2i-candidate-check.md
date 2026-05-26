@@ -129,3 +129,27 @@ python scripts/check_t2i_candidates.py --load-local --generate-local --engines f
 - Default SD3.5/FLUX download, load, or generation.
 - Vision pipeline, inpainting, rembg/SAM, ControlNet, LoRA, or benchmark runs.
 
+
+## GPT-image-2 Smoke Result - 2026-05-26
+
+Command:
+
+```powershell
+python scripts/check_t2i_candidates.py --include-api --engines gpt_image_2
+```
+
+Result summary:
+
+- `can_generate`: `true`
+- `output_path`: `data/outputs/candidate_check/20260526_152827/gpt_image_2_0.png`
+- saved_file_type: `png`
+- `latency_ms`: `46167`
+- `error`: `null`
+
+This run made one explicit GPT-image-2 API call and may have incurred API cost. The API key value was not written to logs, docs, or reports. Generated files and candidate check logs remain ignored by git.
+
+Next follow-up:
+
+- Keep this as a connectivity/cost-guard smoke result, not as final image quality evidence.
+- Use a separate benchmark step for quality comparison against SD3.5 and FLUX.
+- If future API responses return URL-only output, add URL download-to-file handling without re-calling the API.
