@@ -117,3 +117,35 @@ def test_prompt_render_output_uses_positive_prompt_and_render_profile():
 
     assert output.positive_prompt.startswith("text-free")
     assert output.render_profile == "balanced"
+
+
+def test_ad_format_spec_rejects_unknown_branch_values():
+    with pytest.raises(ValidationError):
+        schema.AdFormatSpec(
+            ad_format="random_format",
+            platform="instagram",
+            aspect_ratio="1:1",
+            width=1080,
+            height=1080,
+            output_strategy="generate_text_free_background_then_overlay",
+        )
+
+    with pytest.raises(ValidationError):
+        schema.AdFormatSpec(
+            ad_format="instagram_feed",
+            platform="unknown_platform",
+            aspect_ratio="1:1",
+            width=1080,
+            height=1080,
+            output_strategy="generate_text_free_background_then_overlay",
+        )
+
+    with pytest.raises(ValidationError):
+        schema.AdFormatSpec(
+            ad_format="instagram_feed",
+            platform="instagram",
+            aspect_ratio="3:2",
+            width=1080,
+            height=1080,
+            output_strategy="generate_text_free_background_then_overlay",
+        )
