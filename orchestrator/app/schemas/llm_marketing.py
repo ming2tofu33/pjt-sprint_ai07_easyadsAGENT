@@ -236,7 +236,20 @@ class TextZone(Zone):
 
 
 class LayoutSpec(BaseModel):
-    layout_type: Literal["single_panel", "story", "poster", "flyer", "banner", "product_detail"] = "single_panel"
+    layout_type: Literal[
+        "single_panel",
+        "story",
+        "poster",
+        "flyer",
+        "banner",
+        "product_detail",
+        "single_hero",
+        "story_vertical",
+        "top_headline_bottom_product",
+        "flyer_information",
+        "split_text_image",
+        "multi_section",
+    ] = "single_panel"
     copy_space: CopySpace = "bottom"
     safe_area: Zone | None = None
     text_zones: list[TextZone] = Field(default_factory=list)
@@ -283,6 +296,10 @@ class ImagePrompt(BaseModel):
 
 class UserReadableImageGuide(BaseModel):
     summary: str
+    subject_ko: str | None = None
+    mood_ko: str | None = None
+    composition_ko: str | None = None
+    copy_space_ko: str | None = None
     style_keywords: list[str] = Field(default_factory=list)
     copy_space: CopySpace | None = None
     warnings: list[str] = Field(default_factory=list)
