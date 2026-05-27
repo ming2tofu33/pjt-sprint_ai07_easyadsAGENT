@@ -33,6 +33,7 @@ def test_marketing_graph_runs_to_mock_t2i_when_context_is_complete():
             "user_input": "ready",
             "job_id": "marketing-e2e-mock",
             "thread_id": "marketing-e2e-mock",
+            "copy_generation_mode": "auto_pilot",
             "context": {
                 "business_type": "restaurant",
                 "item_or_service": "삼겹살",
@@ -70,7 +71,7 @@ def test_marketing_graph_resume_continues_to_mock_t2i():
     config = {"configurable": {"thread_id": "marketing-resume"}}
     interrupted = graph.invoke(
         {
-            "user_input": "우리 삼겹살집 인스타 광고",
+            "user_input": "우리 삼겹살집 인스타 광고 문구까지 알아서",
             "job_id": "marketing-resume",
             "thread_id": "marketing-resume",
         },

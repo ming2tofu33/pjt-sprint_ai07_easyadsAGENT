@@ -23,4 +23,15 @@ def route_after_validator_for_marketing(state: MarketingState) -> str:
     return "format_planner"
 
 
+def route_after_tone_binding(state: MarketingState) -> str:
+    mode = state.get("copy_generation_mode")
+    if mode == "suggest_candidates":
+        return "copy_candidate_generation"
+    if mode == "custom_input":
+        return "custom_copy_input"
+    if mode == "no_copy":
+        return "no_copy_bypass"
+    return "auto_pilot_copywriting"
+
+
 route_after_validator = route_after_validator_for_intake

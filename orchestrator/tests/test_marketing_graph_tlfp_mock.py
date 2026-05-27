@@ -10,6 +10,7 @@ def test_marketing_graph_runs_tlfp_to_mock_t2i():
             "user_input": "ready",
             "job_id": "marketing-tlfp-mock",
             "thread_id": "marketing-tlfp-mock",
+            "copy_generation_mode": "auto_pilot",
             "context": {
                 "business_type": "restaurant",
                 "item_or_service": "삼겹살",
@@ -41,6 +42,7 @@ def test_tlfp_image_prompt_spec_takes_priority_over_legacy_image_prompt():
             "user_input": "ready",
             "job_id": "marketing-tlfp-priority",
             "thread_id": "marketing-tlfp-priority",
+            "copy_generation_mode": "auto_pilot",
             "context": {
                 "business_type": "restaurant",
                 "item_or_service": "삼겹살",
