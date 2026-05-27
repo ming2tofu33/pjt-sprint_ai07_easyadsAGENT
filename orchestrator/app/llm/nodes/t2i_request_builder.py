@@ -12,6 +12,12 @@ from orchestrator.app.t2i.schemas import T2IRequest
 def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
     prompt_render_output = state.get("prompt_render_output") or {}
     context = state.get("context") or {}
+    reserved_text_areas = (
+        prompt_render_output.get("metadata", {}).get("reserved_text_areas")
+        or (state.get("image_prompt_spec") or {}).get("reserved_text_areas")
+        or (state.get("text_layout_spec") or {}).get("reserved_text_areas")
+        or []
+    )
     metadata = {
         "job_id": state.get("job_id"),
         "thread_id": state.get("thread_id"),
@@ -19,6 +25,11 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
         "generation_route": state.get("generation_route"),
         "ad_format_spec": state.get("ad_format_spec"),
         "layout_spec": state.get("layout_spec"),
+        "copy_spec": state.get("copy_spec"),
+        "text_layout_spec": state.get("text_layout_spec"),
+        "text_style_spec": state.get("text_style_spec"),
+        "image_prompt_spec": state.get("image_prompt_spec"),
+        "reserved_text_areas": reserved_text_areas,
         "business_type": context.get("business_type"),
         "item_or_service": context.get("item_or_service"),
         "engine": "mock",
@@ -26,6 +37,7 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
         "render_profile": state.get("render_profile"),
         "render_text_in_image": False,
         "text_overlay_pending": True,
+        "tlfp_enabled": bool(state.get("image_prompt_spec")),
         "source_node": "t2i_request_builder",
     }
     job_id = str(state.get("job_id") or "unknown-job")
