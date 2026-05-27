@@ -10,6 +10,13 @@ from orchestrator.app.schemas.text_layout import CopyItem, CopySpec
 
 
 def copy_spec_parser_node(state: MarketingState) -> dict[str, Any]:
+    if state.get("copy_generation_mode") == "no_copy" or state.get("copy_required") is False:
+        copy_spec = build_no_copy_spec()
+        return {
+            "copy_spec": copy_spec.model_dump(),
+            "current_brief": {**state.get("current_brief", {}), "copy_spec_ready": True},
+            "status": "bypassing_copy",
+        }
     marketing_copy = MarketingCopy(**(state.get("marketing_copy") or {}))
     context = context_to_model(state.get("context"))
     items: list[CopyItem] = [

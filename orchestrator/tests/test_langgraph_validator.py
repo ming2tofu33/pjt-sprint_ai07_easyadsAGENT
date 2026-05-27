@@ -29,6 +29,7 @@ def test_validator_creates_missing_fields_when_input_is_sparse():
 def test_validator_marks_ready_for_planning_when_required_fields_exist():
     request = InitialMarketingRequest(
         user_input="삼겹살 할인 인스타 광고",
+        copy_generation_mode="auto_pilot",
         context=MarketingContext(business_type="restaurant", item_or_service="삼겹살", promotion_goal="discount_event", extra={"ad_format": "instagram_feed"}),
     )
     state = create_initial_marketing_state(request)

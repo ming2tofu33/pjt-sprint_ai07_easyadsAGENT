@@ -18,7 +18,7 @@ from orchestrator.app.graph.state import (
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.option_registry import get_next_missing_field, get_option_question
-from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest, MarketingContext, ProgressState, UserSelectionRequest, ValidatorOutput
+from orchestrator.app.schemas.llm_marketing import CopyModeInferenceOutput, InitialMarketingRequest, MarketingContext, ProgressState, UserSelectionRequest, ValidatorOutput
 
 
 def input_node(input_value: MarketingState | InitialMarketingRequest | dict[str, Any]) -> MarketingState:
@@ -49,6 +49,11 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     context = MarketingContext(**context_data)
 
     missing_fields = calculate_missing_fields(context)
+    copy_mode, copy_mode_output = resolve_copy_generation_mode(state, text)
+    if copy_mode is None and "copy_generation_mode" not in missing_fields:
+        missing_fields.append("copy_generation_mode")
+    if copy_mode and "copy_generation_mode" in missing_fields:
+        missing_fields.remove("copy_generation_mode")
     progress_state = build_progress_state(missing_fields)
     inferred_ad_format = build_ad_format_spec(requested_ad_format) if requested_ad_format else None
     validator_output = ValidatorOutput(
@@ -62,16 +67,22 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         progress_state=progress_state,
         reasoning_summary="Rule-based v1 validator; no LLM call was made.",
     )
-    current_brief_updates = {"ready_for_planning": not bool(missing_fields)}
+    current_brief_updates = {"ready_for_planning": not bool(missing_fields), "copy_generation_mode": copy_mode}
     if requested_ad_format:
         current_brief_updates["requested_ad_format"] = requested_ad_format
     update_current_brief(state, current_brief_updates)
+    copy_required = copy_mode != "no_copy" if copy_mode else state.get("copy_required", True)
+    text_overlay_pending = copy_mode != "no_copy" if copy_mode else state.get("text_overlay_pending", True)
     return {
         "context": context.model_dump(),
         "validator_output": validator_output.model_dump(),
         "missing_fields": missing_fields,
         "progress_state": progress_state.model_dump(),
         "current_brief": state.get("current_brief", {}),
+        "copy_generation_mode": copy_mode,
+        "copy_mode_inference_output": copy_mode_output.model_dump() if copy_mode_output else None,
+        "copy_required": copy_required,
+        "text_overlay_pending": text_overlay_pending,
         "status": "validating_context",
         "option_question": None,
     }
@@ -119,7 +130,26 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
                 missing.append(field)
             return {"missing_fields": missing, "status": "updating_state"}
 
-    if field == "ad_format":
+    extra_return: dict[str, Any] = {}
+    if field == "copy_generation_mode":
+        update_current_brief(state, {"copy_generation_mode": value})
+        extra_return.update(
+            {
+                "copy_generation_mode": value,
+                "copy_required": value != "no_copy",
+                "text_overlay_pending": value != "no_copy",
+            }
+        )
+        updated = True
+    elif field == "user_custom_headline":
+        update_current_brief(state, {"user_custom_headline": value})
+        extra_return["user_custom_headline"] = value
+        updated = True
+    elif field == "user_custom_subcopy":
+        update_current_brief(state, {"user_custom_subcopy": value})
+        extra_return["user_custom_subcopy"] = value
+        updated = True
+    elif field == "ad_format":
         extra["ad_format"] = value
         context_data["extra"] = extra
         update_current_brief(state, {"requested_ad_format": value})
@@ -143,6 +173,7 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
         "revision": int(state.get("revision", 0)) + 1,
         "status": "updating_state",
         "user_selection": None,
+        **extra_return,
     }
 
 
@@ -153,6 +184,38 @@ def infer_marketing_context(text: str) -> dict[str, Any]:
         "promotion_goal": infer_promotion_goal(text),
         "ad_format": infer_ad_format(text),
     }
+
+
+def resolve_copy_generation_mode(state: MarketingState, text: str):
+    if state.get("copy_generation_mode"):
+        return state["copy_generation_mode"], CopyModeInferenceOutput(
+            copy_generation_mode=state["copy_generation_mode"],
+            confidence=1.0,
+            source="explicit_user_choice",
+            reasoning_summary="User supplied copy generation mode.",
+        )
+    mode = infer_copy_generation_mode(text)
+    if mode:
+        return mode, CopyModeInferenceOutput(
+            copy_generation_mode=mode,
+            confidence=0.8,
+            source="heuristic",
+            reasoning_summary="Copy generation mode inferred from user wording.",
+        )
+    return None, None
+
+
+def infer_copy_generation_mode(text: str) -> str | None:
+    rules = [
+        (("카피 없이", "문구 없이", "텍스트 없이", "글자 없이", "이미지만", "깔끔한 이미지만"), "no_copy"),
+        (("문구는 내가", "내가 쓴 문구", "정해둔 문구", "직접 입력", "내 문구"), "custom_input"),
+        (("알아서", "자동으로", "최적의 문구", "하나만 추천", "제일 좋은 문구"), "auto_pilot"),
+        (("여러 개", "후보", "추천해줘", "몇 개", "시안 여러 개"), "suggest_candidates"),
+    ]
+    for keywords, mode in rules:
+        if any(keyword in text for keyword in keywords):
+            return mode
+    return None
 
 
 def infer_business_type(text: str) -> str | None:
@@ -227,9 +290,10 @@ def calculate_missing_fields(context: MarketingContext) -> list[str]:
 
 
 def build_progress_state(missing_fields: list[str]) -> ProgressState:
-    total = len(REQUIRED_CONTEXT_FIELDS)
-    remaining = [field for field in missing_fields if field in REQUIRED_CONTEXT_FIELDS + OPTIONAL_CONTEXT_FIELDS]
-    current_step = max(0, total - len([field for field in REQUIRED_CONTEXT_FIELDS if field in remaining]))
+    required = REQUIRED_CONTEXT_FIELDS + ["copy_generation_mode"]
+    total = len(required)
+    remaining = [field for field in missing_fields if field in required + OPTIONAL_CONTEXT_FIELDS]
+    current_step = max(0, total - len([field for field in required if field in remaining]))
     return ProgressState(
         current_step=current_step,
         total_steps=total,

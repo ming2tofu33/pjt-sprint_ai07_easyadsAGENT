@@ -10,6 +10,7 @@ OPTION_FIELD_PRIORITY: dict[str, int] = {
     "item_or_service": 0,
     "promotion_goal": 0,
     "ad_format": 0,
+    "copy_generation_mode": 0,
     "target_persona": 1,
     "region_type": 1,
     "brand_tone": 1,
@@ -77,6 +78,55 @@ OPTION_QUESTION_REGISTRY: dict[MissingField, OptionQuestion] = {
             OptionItem(id=6, label="상품 상세 페이지", value="product_detail"),
             OptionItem(id=7, label="기타 사이즈", value="custom"),
         ],
+    ),
+    "copy_generation_mode": OptionQuestion(
+        field="copy_generation_mode",
+        question="광고에 들어갈 홍보 문구(카피)는 어떻게 준비할까요?",
+        options=[
+            OptionItem(
+                id=1,
+                label="AI에게 다양한 카피 제안 받기",
+                value="suggest_candidates",
+                description="가게 업종과 분위기에 맞춰 AI가 다채로운 홍보 문구 시안들을 생성하고, 그 중 마음에 드는 것을 사장님이 직접 선택합니다.",
+            ),
+            OptionItem(
+                id=2,
+                label="AI가 판단해서 가장 최적의 문구 하나만 자동 완성",
+                value="auto_pilot",
+                description="복잡한 선택 없이, AI가 사장님의 타겟과 상권을 종합 분석하여 포스터 레이아웃에 딱 맞는 하나의 완성형 카피를 알아서 적용합니다.",
+            ),
+            OptionItem(
+                id=3,
+                label="카피 없이 깔끔한 이미지로만 생성",
+                value="no_copy",
+                description="텍스트 문구를 넣지 않고, 인스타 감성 피드나 배경 화면으로 활용하기 좋은 깔끔한 홍보 이미지 자산만 빌딩합니다.",
+            ),
+            OptionItem(
+                id=4,
+                label="이미 정해둔 홍보 문구 직접 입력하기",
+                value="custom_input",
+                description="현재 매장에서 이벤트 중이거나 사장님이 구상해두신 고유의 카피를 포스터 레이아웃에 그대로 얹어 완성합니다.",
+            ),
+        ],
+        metadata={
+            "dependency_fields": {
+                "if_value_equals": "custom_input",
+                "show_sub_fields": [
+                    {
+                        "field": "user_custom_headline",
+                        "type": "text",
+                        "placeholder": "포스터 메인 카피를 입력해주세요 (추천: 15자 이내)",
+                        "required": True,
+                    },
+                    {
+                        "field": "user_custom_subcopy",
+                        "type": "text",
+                        "placeholder": "서브 카피 또는 이벤트 상세 내용을 입력해주세요",
+                        "required": False,
+                    },
+                ],
+            }
+        },
     ),
     "target_persona": OptionQuestion(
         field="target_persona",

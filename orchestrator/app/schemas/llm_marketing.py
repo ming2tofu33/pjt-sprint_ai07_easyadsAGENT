@@ -24,6 +24,8 @@ GenerationEngine = Literal["mock", "sd35_large", "flux", "gpt_image_2"]
 
 RenderProfile = Literal["fast", "balanced", "premium_local", "premium_api", "benchmark"]
 
+CopyGenerationMode = Literal["suggest_candidates", "auto_pilot", "no_copy", "custom_input"]
+
 AdFormat = Literal[
     "instagram_feed",
     "instagram_story",
@@ -66,6 +68,14 @@ JobStatus = Literal[
     "waiting_revision",
     "done",
     "failed",
+    "binding_tone",
+    "selecting_copy_mode",
+    "generating_copy_candidates",
+    "waiting_copy_selection",
+    "applying_selected_copy",
+    "waiting_custom_copy_input",
+    "validating_custom_copy",
+    "bypassing_copy",
 ]
 
 CopySpace = Literal[
@@ -98,6 +108,9 @@ MissingField = Literal[
     "location_text",
     "contact_or_order_method",
     "custom_request",
+    "copy_generation_mode",
+    "user_custom_headline",
+    "user_custom_subcopy",
 ]
 
 ImageRole = Literal["product_photo", "food_photo", "interior_photo", "flat_background", "unknown"]
@@ -182,6 +195,9 @@ class InitialMarketingRequest(BaseModel):
     organization_id: str | None = None
     job_id: str | None = None
     thread_id: str | None = None
+    copy_generation_mode: CopyGenerationMode | None = None
+    user_custom_headline: str | None = None
+    user_custom_subcopy: str | None = None
 
 class ValidatorOutput(BaseModel):
     context: MarketingContext
@@ -212,6 +228,7 @@ class OptionQuestion(BaseModel):
     multi_select: bool = False
     allow_custom: bool = True
     progress_state: ProgressState | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class UserSelectionRequest(BaseModel):
@@ -270,6 +287,50 @@ class MarketingCopy(BaseModel):
     period_line: str | None = None
     hashtags: list[str] = Field(default_factory=list)
     disclaimer: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CopyCandidate(BaseModel):
+    id: str
+    headline: str
+    subcopy: str | None = None
+    cta: str | None = None
+    hashtags: list[str] = Field(default_factory=list)
+    tone_label: str | None = None
+    rationale: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CopyCandidateListOutput(BaseModel):
+    candidates: list[CopyCandidate]
+    recommended_candidate_id: str | None = None
+    generation_mode: Literal["suggest_candidates"] = "suggest_candidates"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CustomCopyInput(BaseModel):
+    headline: str
+    subcopy: str | None = None
+    cta: str | None = None
+    hashtags: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToneBindingOutput(BaseModel):
+    tone_profile: str
+    copy_constraints: list[str] = Field(default_factory=list)
+    recommended_copy_mode: CopyGenerationMode | None = None
+    forbidden_claims: list[str] = Field(default_factory=list)
+    channel_copy_rules: list[str] = Field(default_factory=list)
+    typography_hint: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CopyModeInferenceOutput(BaseModel):
+    copy_generation_mode: CopyGenerationMode
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    source: Literal["explicit_user_choice", "heuristic", "default"]
+    reasoning_summary: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

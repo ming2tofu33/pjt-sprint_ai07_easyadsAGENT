@@ -56,3 +56,13 @@ def test_state_update_records_mismatch_without_crashing():
 
     assert update["status"] == "failed"
     assert "mismatch" in update["error_message"]
+
+
+def test_state_update_handles_copy_generation_mode_flags():
+    state = _state_with_selection("copy_generation_mode", "no_copy")
+
+    update = state_update_node(state)
+
+    assert update["copy_generation_mode"] == "no_copy"
+    assert update["copy_required"] is False
+    assert update["text_overlay_pending"] is False

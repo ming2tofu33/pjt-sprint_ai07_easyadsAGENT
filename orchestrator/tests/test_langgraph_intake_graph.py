@@ -43,10 +43,11 @@ def test_intake_graph_ends_ready_for_planning_when_no_missing_fields():
     config = {"configurable": {"thread_id": "thread-ready"}}
     result = graph.invoke(
         {
-            "user_input": "삼겹살 할인 인스타 광고",
-            "thread_id": "thread-ready",
-            "context": {"business_type": "restaurant", "item_or_service": "삼겹살", "promotion_goal": "discount_event", "extra": {"ad_format": "instagram_feed"}},
-        },
+                "user_input": "삼겹살 할인 인스타 광고",
+                "thread_id": "thread-ready",
+                "copy_generation_mode": "auto_pilot",
+                "context": {"business_type": "restaurant", "item_or_service": "삼겹살", "promotion_goal": "discount_event", "extra": {"ad_format": "instagram_feed"}},
+            },
         config=config,
     )
 

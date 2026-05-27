@@ -36,7 +36,7 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
         "requested_engine": prompt_render_output.get("engine"),
         "render_profile": state.get("render_profile"),
         "render_text_in_image": False,
-        "text_overlay_pending": True,
+        "text_overlay_pending": bool(state.get("text_overlay_pending", True)),
         "tlfp_enabled": bool(state.get("image_prompt_spec")),
         "source_node": "t2i_request_builder",
     }

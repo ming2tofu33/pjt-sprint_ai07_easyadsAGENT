@@ -11,6 +11,9 @@ from orchestrator.app.schemas.llm_marketing import (
     ArtifactRef,
     BackgroundValidationReport,
     ConversationMessage,
+    CopyCandidate,
+    CopyGenerationMode,
+    CopyModeInferenceOutput,
     CopywritingOutput,
     EntryMode,
     ErrorInfo,
@@ -35,6 +38,7 @@ from orchestrator.app.schemas.llm_marketing import (
     ReferenceStyleSpec,
     RenderProfile,
     TextOverlayConfig,
+    ToneBindingOutput,
     UserReadableImageGuide,
     UserSelectionRequest,
     ValidationReport,
@@ -82,6 +86,17 @@ class MarketingState(TypedDict, total=False):
     layout_spec: dict[str, Any] | LayoutSpec | None
     marketing_copy: dict[str, Any] | MarketingCopy | None
     copywriting_output: dict[str, Any] | CopywritingOutput | None
+    copy_generation_mode: CopyGenerationMode | None
+    copy_candidates: list[dict[str, Any] | CopyCandidate]
+    selected_copy_id: str | None
+    user_custom_headline: str | None
+    user_custom_subcopy: str | None
+    copy_required: bool
+    text_overlay_pending: bool
+    tone_binding_output: dict[str, Any] | ToneBindingOutput | None
+    copy_mode_inference_output: dict[str, Any] | CopyModeInferenceOutput | None
+    copy_selection: dict[str, Any] | None
+    custom_copy_input: dict[str, Any] | None
     copy_spec: dict[str, Any] | CopySpec | None
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
     text_style_spec: dict[str, Any] | TextStyleSpec | None
@@ -151,7 +166,12 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "user_input": request.user_input,
         "requested_ad_format": request.requested_ad_format,
         "requested_platform": request.requested_platform,
+        "copy_generation_mode": request.copy_generation_mode,
+        "user_custom_headline": request.user_custom_headline,
+        "user_custom_subcopy": request.user_custom_subcopy,
     }
+    copy_required = request.copy_generation_mode != "no_copy"
+    text_overlay_pending = request.copy_generation_mode != "no_copy"
     state: MarketingState = {
         "schema_version": SCHEMA_VERSION,
         "job_id": job_id,
@@ -186,6 +206,17 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "layout_spec": None,
         "marketing_copy": None,
         "copywriting_output": None,
+        "copy_generation_mode": request.copy_generation_mode,
+        "copy_candidates": [],
+        "selected_copy_id": None,
+        "user_custom_headline": request.user_custom_headline,
+        "user_custom_subcopy": request.user_custom_subcopy,
+        "copy_required": copy_required,
+        "text_overlay_pending": text_overlay_pending,
+        "tone_binding_output": None,
+        "copy_mode_inference_output": None,
+        "copy_selection": None,
+        "custom_copy_input": None,
         "copy_spec": None,
         "text_layout_spec": None,
         "text_style_spec": None,
@@ -245,4 +276,6 @@ def calculate_dirty_fields(state: MarketingState, changed_fields: list[str] | No
         dirty.update({"text_style_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"})
     if changed & {"ad_format", "layout_spec", "ad_format_spec"}:
         dirty.update({"text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"})
+    if changed & {"copy_generation_mode", "user_custom_headline", "user_custom_subcopy"}:
+        dirty.update({"marketing_copy", "copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"})
     return sorted(dirty)

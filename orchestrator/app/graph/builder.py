@@ -10,17 +10,22 @@ except ImportError:  # pragma: no cover - older langgraph fallback
     from langgraph.checkpoint.memory import MemorySaver as InMemorySaver
 
 from orchestrator.app.graph.nodes import input_node, options_node, state_update_node, validator_node
-from orchestrator.app.graph.routers import route_after_validator_for_intake, route_after_validator_for_marketing
+from orchestrator.app.graph.routers import route_after_tone_binding, route_after_validator_for_intake, route_after_validator_for_marketing
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.llm.nodes.auto_pilot_copywriting import auto_pilot_copywriting_node
+from orchestrator.app.llm.nodes.copy_candidates import copy_candidate_generation_node, copy_candidate_selection_interrupt_node, state_update_selected_copy_node
 from orchestrator.app.llm.nodes.copywriting import copywriting_node
 from orchestrator.app.llm.nodes.copy_spec_parser import copy_spec_parser_node
+from orchestrator.app.llm.nodes.custom_copy import custom_copy_input_interrupt_node, custom_copy_validation_node
 from orchestrator.app.llm.nodes.format_planner import format_planner_node
 from orchestrator.app.llm.nodes.image_prompt_planner import image_prompt_planner_node
+from orchestrator.app.llm.nodes.no_copy import no_copy_bypass_node
 from orchestrator.app.llm.nodes.prompt_renderer import prompt_renderer_node
 from orchestrator.app.llm.nodes.t2i_generation import t2i_generation_node
 from orchestrator.app.llm.nodes.t2i_request_builder import t2i_request_builder_node
 from orchestrator.app.llm.nodes.text_layout_planner import text_layout_planner_node
 from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
+from orchestrator.app.llm.nodes.tone_binding import tone_binding_node
 
 
 def build_intake_graph(checkpointer=None):
@@ -46,7 +51,14 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("options", options_node)
     graph.add_node("state_update", state_update_node)
     graph.add_node("format_planner", format_planner_node)
-    graph.add_node("copywriting", copywriting_node)
+    graph.add_node("tone_binding", tone_binding_node)
+    graph.add_node("copy_candidate_generation", copy_candidate_generation_node)
+    graph.add_node("copy_candidate_selection_interrupt", copy_candidate_selection_interrupt_node)
+    graph.add_node("state_update_selected_copy", state_update_selected_copy_node)
+    graph.add_node("auto_pilot_copywriting", auto_pilot_copywriting_node)
+    graph.add_node("custom_copy_input", custom_copy_input_interrupt_node)
+    graph.add_node("custom_copy_validation", custom_copy_validation_node)
+    graph.add_node("no_copy_bypass", no_copy_bypass_node)
     graph.add_node("copy_spec_parser", copy_spec_parser_node)
     graph.add_node("text_style_binder", text_style_binder_node)
     graph.add_node("text_layout_planner", text_layout_planner_node)
@@ -64,8 +76,24 @@ def build_marketing_graph(checkpointer=None):
     )
     graph.add_edge("options", "state_update")
     graph.add_edge("state_update", "validator")
-    graph.add_edge("format_planner", "copywriting")
-    graph.add_edge("copywriting", "copy_spec_parser")
+    graph.add_edge("format_planner", "tone_binding")
+    graph.add_conditional_edges(
+        "tone_binding",
+        route_after_tone_binding,
+        {
+            "copy_candidate_generation": "copy_candidate_generation",
+            "auto_pilot_copywriting": "auto_pilot_copywriting",
+            "custom_copy_input": "custom_copy_input",
+            "no_copy_bypass": "no_copy_bypass",
+        },
+    )
+    graph.add_edge("copy_candidate_generation", "copy_candidate_selection_interrupt")
+    graph.add_edge("copy_candidate_selection_interrupt", "state_update_selected_copy")
+    graph.add_edge("state_update_selected_copy", "copy_spec_parser")
+    graph.add_edge("auto_pilot_copywriting", "copy_spec_parser")
+    graph.add_edge("custom_copy_input", "custom_copy_validation")
+    graph.add_edge("custom_copy_validation", "copy_spec_parser")
+    graph.add_edge("no_copy_bypass", "copy_spec_parser")
     graph.add_edge("copy_spec_parser", "text_style_binder")
     graph.add_edge("text_style_binder", "text_layout_planner")
     graph.add_edge("text_layout_planner", "image_prompt_planner")
