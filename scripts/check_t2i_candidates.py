@@ -1,4 +1,4 @@
-﻿"""Dry-run candidate checks for EasyAds T2I engines."""
+"""Dry-run candidate checks for EasyAds T2I engines."""
 
 from __future__ import annotations
 
@@ -211,11 +211,15 @@ def check_local_diffusion_candidate(
         import torch
         diffusers = __import__("diffusers", fromlist=[pipeline_class])
         pipe_cls = getattr(diffusers, pipeline_class)
-        pipe = pipe_cls.from_pretrained(model_id, token=settings.hf_token or None, torch_dtype=torch.float16)
+        result["cuda_memory_before_load"] = inspect_cuda_memory()
+        pipe = pipe_cls.from_pretrained(model_id, token=settings.hf_token or None, torch_dtype=torch.float16, use_safetensors=True)
         result["can_load_model"] = True
+        result["cuda_memory_after_load"] = inspect_cuda_memory()
         if generate_local:
             pipe = pipe.to("cuda" if torch.cuda.is_available() else "cpu")
+            result["cuda_memory_before_generate"] = inspect_cuda_memory()
             image = pipe(SMOKE_PROMPT, num_inference_steps=4).images[0]
+            result["cuda_memory_after_generate"] = inspect_cuda_memory()
             output_dir = output_dir or settings.output_dir / "candidate_check"
             output_dir.mkdir(parents=True, exist_ok=True)
             output_path = output_dir / f"{engine}_0.png"
@@ -224,9 +228,36 @@ def check_local_diffusion_candidate(
         else:
             result["can_generate"] = False
     except Exception as exc:  # pragma: no cover - optional heavy path
-        result.update({"error": str(exc), "can_load_model": False, "can_generate": False})
+        error = str(exc)
+        cuda_oom = _is_cuda_oom(error)
+        result.update({"error": error, "can_load_model": False, "can_generate": False, "cuda_oom": cuda_oom, "cuda_memory_after_error": inspect_cuda_memory()})
+        if cuda_oom:
+            try:
+                import torch
+                torch.cuda.empty_cache()
+                result["notes"] = "CUDA OOM occurred; empty_cache was called. Retry with lower resolution, fewer steps, or CPU offload in a separate run."
+            except Exception:
+                pass
     result["latency_ms"] = _elapsed_ms(started)
     return result
+
+
+def inspect_cuda_memory() -> dict[str, float | None]:
+    memory = {"allocated_gb": None, "max_allocated_gb": None, "reserved_gb": None}
+    if not _package_available("torch"):
+        return memory
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return memory
+        gb = 1024**3
+        memory["allocated_gb"] = round(torch.cuda.memory_allocated() / gb, 2)
+        memory["max_allocated_gb"] = round(torch.cuda.max_memory_allocated() / gb, 2)
+        memory["reserved_gb"] = round(torch.cuda.memory_reserved() / gb, 2)
+    except Exception:
+        return memory
+    return memory
 
 
 def inspect_environment() -> dict[str, Any]:
@@ -305,6 +336,12 @@ def render_markdown_report(report: dict[str, Any]) -> str:
                 f"- can_import_pipeline: `{item.get('can_import_pipeline')}`",
                 f"- can_load_model: `{item.get('can_load_model')}`",
                 f"- can_generate: `{item.get('can_generate')}`",
+                f"- cuda_oom: `{item.get('cuda_oom')}`",
+                f"- cuda_memory_before_load: `{item.get('cuda_memory_before_load')}`",
+                f"- cuda_memory_after_load: `{item.get('cuda_memory_after_load')}`",
+                f"- cuda_memory_before_generate: `{item.get('cuda_memory_before_generate')}`",
+                f"- cuda_memory_after_generate: `{item.get('cuda_memory_after_generate')}`",
+                f"- cuda_memory_after_error: `{item.get('cuda_memory_after_error')}`",
                 f"- output_path: `{item.get('output_path')}`",
                 f"- error: `{item.get('error')}`",
                 f"- notes: {item.get('notes')}",
@@ -336,6 +373,12 @@ def _base_result(environment: dict[str, Any] | None = None, **kwargs: Any) -> di
         "can_import_pipeline": None,
         "can_load_model": None,
         "can_generate": None,
+        "cuda_oom": False,
+        "cuda_memory_before_load": None,
+        "cuda_memory_after_load": None,
+        "cuda_memory_before_generate": None,
+        "cuda_memory_after_generate": None,
+        "cuda_memory_after_error": None,
         "output_path": None,
         "latency_ms": 0,
         "error": None,
@@ -343,6 +386,11 @@ def _base_result(environment: dict[str, Any] | None = None, **kwargs: Any) -> di
     }
     result.update(kwargs)
     return result
+
+
+def _is_cuda_oom(error: str) -> bool:
+    lowered = error.lower()
+    return "cuda" in lowered and "out of memory" in lowered
 
 
 def _package_available(name: str) -> bool:
