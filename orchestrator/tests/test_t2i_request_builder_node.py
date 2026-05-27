@@ -19,6 +19,7 @@ def test_t2i_request_builder_maps_prompt_render_output_to_t2i_request():
     )
     state["ad_format_spec"] = {"ad_format": "instagram_feed", "platform": "instagram", "aspect_ratio": "1:1", "width": 1080, "height": 1080}
     state["layout_spec"] = {"layout_type": "single_hero", "copy_space": "bottom"}
+    state["image_prompt_spec"] = {"reserved_text_areas": [{"x": 0.05, "y": 0.06, "w": 0.90, "h": 0.18}]}
     state["prompt_render_output"] = {
         "engine": "mock",
         "positive_prompt": "text-free bbq background",
@@ -36,4 +37,5 @@ def test_t2i_request_builder_maps_prompt_render_output_to_t2i_request():
     assert request["metadata"]["thread_id"] == "builder-thread"
     assert request["metadata"]["render_text_in_image"] is False
     assert request["metadata"]["text_overlay_pending"] is True
+    assert request["metadata"]["reserved_text_areas"] == [{"x": 0.05, "y": 0.06, "w": 0.90, "h": 0.18}]
     assert request["metadata"]["source_node"] == "t2i_request_builder"

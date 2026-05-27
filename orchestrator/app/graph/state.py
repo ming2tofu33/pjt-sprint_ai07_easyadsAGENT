@@ -42,6 +42,7 @@ from orchestrator.app.schemas.llm_marketing import (
     T2IRequest,
     T2IResult,
 )
+from orchestrator.app.schemas.text_layout import CopySpec, ImagePromptSpec, TextLayoutSpec, TextStyleSpec
 
 SCHEMA_VERSION = "llm_marketing_v1"
 REQUIRED_CONTEXT_FIELDS: list[MissingField] = ["business_type", "item_or_service", "promotion_goal", "ad_format"]
@@ -81,6 +82,10 @@ class MarketingState(TypedDict, total=False):
     layout_spec: dict[str, Any] | LayoutSpec | None
     marketing_copy: dict[str, Any] | MarketingCopy | None
     copywriting_output: dict[str, Any] | CopywritingOutput | None
+    copy_spec: dict[str, Any] | CopySpec | None
+    text_layout_spec: dict[str, Any] | TextLayoutSpec | None
+    text_style_spec: dict[str, Any] | TextStyleSpec | None
+    image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
     image_prompt: dict[str, Any] | ImagePrompt | None
     prompt_optimization_output: dict[str, Any] | PromptOptimizationOutput | None
     user_readable_image_guide: dict[str, Any] | UserReadableImageGuide | None
@@ -181,6 +186,10 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "layout_spec": None,
         "marketing_copy": None,
         "copywriting_output": None,
+        "copy_spec": None,
+        "text_layout_spec": None,
+        "text_style_spec": None,
+        "image_prompt_spec": None,
         "image_prompt": None,
         "prompt_optimization_output": None,
         "user_readable_image_guide": None,
@@ -230,4 +239,10 @@ def calculate_dirty_fields(state: MarketingState, changed_fields: list[str] | No
         dirty.update({"image_prompt", "prompt_render_output"})
     if changed & {"ad_format"}:
         dirty.update({"ad_format_spec", "layout_spec"})
+    if changed & {"marketing_copy", "copywriting_output", "item_or_service", "promotion_goal", "price_or_discount"}:
+        dirty.update({"copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"})
+    if changed & {"brand_tone", "target_persona", "region_type", "usp"}:
+        dirty.update({"text_style_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"})
+    if changed & {"ad_format", "layout_spec", "ad_format_spec"}:
+        dirty.update({"text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"})
     return sorted(dirty)

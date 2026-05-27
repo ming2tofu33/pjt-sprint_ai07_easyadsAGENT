@@ -32,3 +32,15 @@ def test_input_node_does_not_reinitialize_existing_state():
 
     assert result["revision"] == 9
     assert result["job_id"] == state["job_id"]
+
+
+def test_calculate_dirty_fields_propagates_tlfp_specs():
+    from orchestrator.app.graph.state import calculate_dirty_fields
+
+    dirty = calculate_dirty_fields({}, ["brand_tone", "ad_format", "price_or_discount"])
+
+    assert "text_style_spec" in dirty
+    assert "text_layout_spec" in dirty
+    assert "image_prompt_spec" in dirty
+    assert "prompt_render_output" in dirty
+    assert "t2i_request" in dirty

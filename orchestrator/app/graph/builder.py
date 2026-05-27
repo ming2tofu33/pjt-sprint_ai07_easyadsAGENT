@@ -13,11 +13,14 @@ from orchestrator.app.graph.nodes import input_node, options_node, state_update_
 from orchestrator.app.graph.routers import route_after_validator_for_intake, route_after_validator_for_marketing
 from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.nodes.copywriting import copywriting_node
+from orchestrator.app.llm.nodes.copy_spec_parser import copy_spec_parser_node
 from orchestrator.app.llm.nodes.format_planner import format_planner_node
-from orchestrator.app.llm.nodes.prompt_optimization import prompt_optimization_node
+from orchestrator.app.llm.nodes.image_prompt_planner import image_prompt_planner_node
 from orchestrator.app.llm.nodes.prompt_renderer import prompt_renderer_node
 from orchestrator.app.llm.nodes.t2i_generation import t2i_generation_node
 from orchestrator.app.llm.nodes.t2i_request_builder import t2i_request_builder_node
+from orchestrator.app.llm.nodes.text_layout_planner import text_layout_planner_node
+from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
 
 
 def build_intake_graph(checkpointer=None):
@@ -44,7 +47,10 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("state_update", state_update_node)
     graph.add_node("format_planner", format_planner_node)
     graph.add_node("copywriting", copywriting_node)
-    graph.add_node("prompt_optimization", prompt_optimization_node)
+    graph.add_node("copy_spec_parser", copy_spec_parser_node)
+    graph.add_node("text_style_binder", text_style_binder_node)
+    graph.add_node("text_layout_planner", text_layout_planner_node)
+    graph.add_node("image_prompt_planner", image_prompt_planner_node)
     graph.add_node("prompt_renderer", prompt_renderer_node)
     graph.add_node("t2i_request_builder", t2i_request_builder_node)
     graph.add_node("t2i_generation", t2i_generation_node)
@@ -59,8 +65,11 @@ def build_marketing_graph(checkpointer=None):
     graph.add_edge("options", "state_update")
     graph.add_edge("state_update", "validator")
     graph.add_edge("format_planner", "copywriting")
-    graph.add_edge("copywriting", "prompt_optimization")
-    graph.add_edge("prompt_optimization", "prompt_renderer")
+    graph.add_edge("copywriting", "copy_spec_parser")
+    graph.add_edge("copy_spec_parser", "text_style_binder")
+    graph.add_edge("text_style_binder", "text_layout_planner")
+    graph.add_edge("text_layout_planner", "image_prompt_planner")
+    graph.add_edge("image_prompt_planner", "prompt_renderer")
     graph.add_edge("prompt_renderer", "t2i_request_builder")
     graph.add_edge("t2i_request_builder", "t2i_generation")
     graph.add_edge("t2i_generation", END)
