@@ -153,3 +153,77 @@ Next follow-up:
 - Keep this as a connectivity/cost-guard smoke result, not as final image quality evidence.
 - Use a separate benchmark step for quality comparison against SD3.5 and FLUX.
 - If future API responses return URL-only output, add URL download-to-file handling without re-calling the API.
+
+## SD3.5 Large Load-Local Retry Result - 2026-05-26
+
+Commands:
+
+```powershell
+python scripts/check_t2i_candidates.py --engines sd35_large
+python scripts/check_t2i_candidates.py --load-local --engines sd35_large
+```
+
+Retry context:
+
+- Previous 6-A load failed because Hugging Face gated model authorization was missing for `stabilityai/stable-diffusion-3.5-large`.
+- After access approval, the same load-local check was retried once.
+
+Result summary:
+
+- `can_import_pipeline`: `true`
+- `hf_token_present`: `true`
+- GPU: `NVIDIA GeForce RTX 3090`
+- VRAM: `24GB`
+- `can_load_model`: `true`
+- `can_generate`: `false`
+- `load_latency_ms`: `2062179`
+- `cuda_oom`: `false`
+- `cuda_memory_before`: `allocated=0.0GB, max_allocated=0.0GB, reserved=0.0GB`
+- `cuda_memory_after`: `allocated=0.0GB, max_allocated=0.0GB, reserved=0.0GB`
+- `error`: `null`
+
+No `--generate-local` run was executed. This validated that the local environment can access and load `stabilityai/stable-diffusion-3.5-large`.
+
+## SD3.5 Large Generation Smoke Result - 2026-05-27
+
+Command:
+
+```powershell
+python scripts/check_t2i_candidates.py --load-local --generate-local --engines sd35_large
+```
+
+Run context:
+
+- This run was performed after the 6-A load-local retry succeeded.
+- The model files had already been downloaded/cached, so this was a warm-cache generation smoke.
+- This is a local generation connectivity and memory smoke, not a final image quality evaluation.
+
+Result summary:
+
+- `can_import_pipeline`: `true`
+- `hf_token_present`: `true`
+- GPU: `NVIDIA GeForce RTX 3090`
+- VRAM: `24GB`
+- `can_load_model`: `true`
+- `can_generate`: `true`
+- `output_path`: `data/outputs/candidate_check/20260527_163310/sd35_large_0.png`
+- saved_file_type: `png`
+- file_size_bytes: `455115`
+- `latency_ms`: `265285`
+- smoke_settings: `num_images=1`, `num_inference_steps=4`, `torch_dtype=float16`, `use_safetensors=true`
+- `cuda_oom`: `false`
+- `cuda_memory_before_load`: `allocated=0.0GB, max_allocated=0.0GB, reserved=0.0GB`
+- `cuda_memory_after_load`: `allocated=0.0GB, max_allocated=0.0GB, reserved=0.0GB`
+- `cuda_memory_before_generate`: `allocated=27.98GB, max_allocated=27.98GB, reserved=28.04GB`
+- `cuda_memory_after_generate`: `allocated=27.99GB, max_allocated=30.38GB, reserved=32.26GB`
+- `error`: `null`
+
+The generated image and candidate check logs remain ignored by git. Next follow-up: inspect the smoke image qualitatively, then decide whether to add a smaller/faster SD3.5 smoke profile or proceed to a real SD3.5 service engine wrapper.
+
+Interpretation notes:
+
+- The SD3.5 load and generation candidate validation is complete at smoke-test level: gated access works, local load works, and one local image was generated.
+- CUDA memory stats above come from torch allocator metrics and should be treated as indicative, not definitive physical VRAM usage. A later profiling step should validate real GPU usage with `nvidia-smi` or a dedicated profiler.
+- `latency_ms=265285` is acceptable for a one-off smoke check, but too slow for an operational default path. Future work should separate `smoke`, `fast preview`, and `balanced/default` profiles.
+- Manual visual check found that the generated image was not suitable as an advertising background: it looked closer to a plain reddish desktop/background image than a useful commercial poster background.
+- This result therefore proves local generation capability, not image quality readiness. Quality tuning should happen in a later benchmark/prompt-profile step.

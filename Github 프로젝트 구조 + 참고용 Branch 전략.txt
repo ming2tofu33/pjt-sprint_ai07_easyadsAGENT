@@ -1,0 +1,273 @@
+# Github 프로젝트 구조 + 참고용 Branch 전략
+
+## 전체 Git 프로젝트 구조
+
+서비스 특성상 **모노레포(monorepo)** 구조를 추천합니다. Python 백엔드 3개(LLM, Image Gen, Vision)와 Node.js FE/BFF가 한 레포에서 Docker Compose로 묶여야 Serving 파트가 오케스트레이션하기 편합니다. 별도 폴리레포는 초기 환경 변수·Pydantic 스키마 공유가 번거롭습니다.
+
+**FE/BFF 분리 기준**: `web`은 오직 `bff`의 `/api/*`만 호출합니다. Python 서비스 주소를 직접 알 필요가 없고, `bff`는 UI가 어떻게 생겼는지 모릅니다. 이 경계가 명확해야 나중에 Next.js를 교체하거나 BFF 인증 로직만 수정할 때 서로 영향이 없습니다.
+
+**요청 흐름**:
+
+```
+User → [web] Next.js (UI 렌더링)
+            ↓
+       [bff] Fastify (API 라우팅/인증/에러)
+            ↓
+    [orchestrator] Python FastAPI + LangGraph
+            ↓
+  [llm-service] / [image-service] / [vision-service]
+```
+
+```
+ad-gen/                              ← 루트 (monorepo)
+│
+├── apps/
+│   │
+│   ├── web/                         ← FE 전담 (Next.js App Router, UI only)
+│   │   ├── app/
+│   │   │   ├── (landing)/
+│   │   │   ├── generate/            ← 입력 폼 + 스트리밍 진행 UI
+│   │   │   └── result/              ← 광고 이미지 + 문구 결과 화면
+│   │   ├── components/
+│   │   │   ├── ui/                  ← shadcn 기반 공통 컴포넌트
+│   │   │   ├── generate/            ← 생성 플로우 전용 컴포넌트
+│   │   │   └── result/
+│   │   ├── lib/
+│   │   │   └── api-client.ts        ← bff 엔드포인트 호출 함수만
+│   │   ├── types/
+│   │   ├── public/
+│   │   ├── package.json
+│   │   └── next.config.ts
+│   │
+│   ├── bff/                         ← BE 전담 (Node.js Fastify)
+│   │   ├── src/
+│   │   │   ├── routes/
+│   │   │   │   ├── generate.ts      ← POST /api/generate → orchestrator 전달
+│   │   │   │   ├── status.ts        ← GET  /api/status/:jobId (폴링 or SSE)
+│   │   │   │   └── health.ts
+│   │   │   ├── services/
+│   │   │   │   ├── orchestrator.ts  ← Python orchestrator 호출 클라이언트
+│   │   │   │   └── session.ts       ← 요청 ID 관리, 타임아웃
+│   │   │   ├── middlewares/
+│   │   │   │   ├── errorHandler.ts
+│   │   │   │   ├── rateLimit.ts
+│   │   │   │   └── logger.ts
+│   │   │   ├── schemas/
+│   │   │   │   └── generate.schema.ts  ← Zod 스키마 (Python Pydantic과 1:1)
+│   │   │   └── app.ts
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   │
+│   ├── llm-service/                 ← Python FastAPI (광고 문구 생성)
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   ├── routers/
+│   │   │   ├── services/
+│   │   │   ├── schemas/             ← Pydantic 스키마
+│   │   │   └── prompts/             ← 업종별 프롬프트 템플릿
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   │
+│   ├── image-service/               ← Python FastAPI (T2I / LoRA)
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   ├── routers/
+│   │   │   ├── services/
+│   │   │   │   ├── t2i.py
+│   │   │   │   └── lora_loader.py
+│   │   │   └── schemas/
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   │
+│   └── vision-service/              ← Python FastAPI (rembg, SAM, 합성)
+│       ├── app/
+│       │   ├── main.py
+│       │   ├── routers/
+│       │   ├── services/
+│       │   │   ├── rembg_pipeline.py
+│       │   │   └── composite.py
+│       │   └── schemas/
+│       ├── tests/
+│       ├── Dockerfile
+│       └── requirements.txt
+│
+├── orchestrator/                    ← Python FastAPI + LangGraph (Serving 파트)
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── graph/                   ← LangGraph StateGraph 노드
+│   │   │   ├── state.py
+│   │   │   ├── nodes/
+│   │   │   │   ├── copy_node.py
+│   │   │   │   ├── image_node.py
+│   │   │   │   ├── vision_node.py
+│   │   │   │   └── validator_node.py
+│   │   │   └── workflow.py
+│   │   └── schemas/
+│   ├── tests/
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── packages/
+│   └── shared-types/                ← 공유 TS 타입 (선택, 팀 규모 따라)
+│
+├── infra/
+│   ├── docker-compose.yml           ← 로컬 개발 전체 스택
+│   ├── docker-compose.prod.yml      ← GCP 배포용
+│   └── nginx/
+│       └── nginx.conf
+│
+├── scripts/
+│   ├── setup.sh                     ← 초기 환경 세팅 (venv, .env 복사)
+│   └── seed_prompts.py              ← 업종별 프롬프트 초기 데이터
+│
+├── docs/
+│   ├── architecture.md
+│   ├── api-spec.md
+│   └── eval-rubric.md               ← Eval 기준 문서
+│
+├── .github/
+│   └── PULL_REQUEST_TEMPLATE.md
+│
+├── .env.example
+├── .gitignore
+└── README.md
+```
+
+---
+
+## Git Branch 룰
+
+### 브랜치 전략: GitHub Flow 변형
+
+팀 규모(6명 파트)와 단기 스프린트 특성상 GitFlow의 `develop`/`release` 분리는 오버엔지니어링입니다. **GitHub Flow** 기반에 `feature` 네이밍 컨벤션만 추가합니다.
+
+```
+main
+ └── feat/{파트약어}/{작업명}
+ └── fix/{파트약어}/{버그명}
+ └── chore/{작업명}
+ └── docs/{작업명}
+ └── eval/{실험명}       ← Eval 파트 전용
+```
+
+### 파트 약어 표준
+
+| 파트 | 약어 |
+| --- | --- |
+| Node.js 프론트엔드 (web) | `fe` |
+| Node.js BFF | `bff` |
+| LLM Application | `llm` |
+| Generative Image | `img` |
+| Vision Pipeline | `vis` |
+| AI Serving / Orchestrator | `srv` |
+| AI Evaluation | `eval` |
+| PM / 문서 | `pm` |
+
+### 브랜치명 예시
+
+```bash
+feat/fe/generate-page-layout
+feat/fe/result-download-button
+feat/bff/generate-route-zod-validation
+feat/bff/sse-status-streaming
+feat/llm/cafe-prompt-template
+feat/img/flux-lora-loader
+feat/vis/rembg-edge-case
+feat/srv/langgraph-validator-node
+fix/bff/orchestrator-timeout-handling
+fix/srv/docker-compose-port-conflict
+eval/img/lora-style-comparison-v2
+docs/api-spec-update
+chore/setup-github-actions
+```
+
+### Commit Message 컨벤션
+
+Angular 컨벤션 기반으로 단순화합니다.
+
+```
+feat(fe): 생성 플로우 입력 폼 UI 추가
+feat(bff): /api/generate Zod 유효성 검사 추가
+feat(llm): 음식점 업종 시스템 프롬프트 v1 추가
+fix(srv): validator node 루프 탈출 조건 수정
+test(img): FLUX guidance_scale 범위 단위 테스트 추가
+docs(eval): 이미지 평가 4축 루브릭 문서 작성
+chore: docker-compose healthcheck 타임아웃 조정
+refactor(vis): rembg 호출 함수 서비스 레이어 분리
+```
+
+### `main` 보호 규칙 (GitHub Branch Protection)
+
+GitHub 레포 Settings에서 아래를 설정합니다.
+
+```
+✅ Require pull request reviews before merging  (1명)
+✅ Require status checks to pass               (docker-build CI)
+✅ Require branches to be up to date
+✅ Do not allow bypassing the above settings
+❌ Require linear history                       (squash merge로 대신)
+```
+
+**머지 전략은 Squash and merge 단일 사용**을 권장합니다. feature 브랜치의 WIP 커밋들이 main에 그대로 들어오면 `git log`가 노이즈로 가득 차기 때문입니다. Squash하면 PR 단위로 main 히스토리가 깔끔하게 유지됩니다.
+
+### PR 규칙
+
+**PR 제목 포맷**은 브랜치명과 1:1 대응합니다.
+
+```
+[feat/fe] 광고 생성 입력 폼 레이아웃 추가
+[feat/bff] /api/generate Zod 스키마 + orchestrator 연동
+[feat/llm] 카페 업종 프롬프트 템플릿 + JSON 출력 파서 추가
+[fix/srv] orchestrator healthcheck 경로 수정
+[eval/img] LoRA 스타일 3종 비교 실험 결과 정리
+```
+
+**PR 머지 조건** 세 가지를 강제합니다.
+
+- Reviewer 1명 approve 필수
+- `tests/` 폴더에 최소 1개 테스트 포함
+- 관련 서비스의 Docker build 통과 (GitHub Actions 자동화)
+
+**PR 크기 기준**은 변경 파일 20개 이하로 잡습니다. 노드 하나 추가, 라우터 하나 추가 단위로 PR을 쪼개야 리뷰 속도가 납니다.
+
+---
+
+## `.github/PULL_REQUEST_TEMPLATE.md`
+
+```markdown
+## 작업 내용
+<!-- 무엇을 만들었는지 한 줄로 -->
+
+## 변경된 파트
+- [ ] fe (web)
+- [ ] bff
+- [ ] llm-service
+- [ ] image-service
+- [ ] vision-service
+- [ ] orchestrator
+- [ ] infra/docs
+
+## 테스트
+- [ ] 단위 테스트 추가 or 기존 테스트 통과 확인
+- [ ] Docker build 로컬 확인
+
+## API 스펙 변경 여부
+- [ ] bff ↔ fe 인터페이스 변경 없음
+- [ ] 변경 있음 → Zod 스키마 + FE api-client.ts 동시 업데이트 완료
+
+## 스키마 변경 여부
+- [ ] Pydantic 스키마 변경 없음
+- [ ] 변경 있음 → 연관 서비스 파트에 알림 완료
+
+## 참고 사항
+<!-- Notion 링크, 실험 결과, 스크린샷 등 -->
+```
+
+---
+
+## BFF 프레임워크
+
+**Fastify** 사용을 권장합니다. Express보다 JSON 직렬화 성능이 3–4배 빠르고, TypeScript 타입 지원이 내장되어 있으며, 스키마 기반 라우팅(Zod)이 자연스럽게 붙습니다. 이미지 생성 요청처럼 응답 시간이 긴 SSE 스트리밍 처리에도 적합합니다.
