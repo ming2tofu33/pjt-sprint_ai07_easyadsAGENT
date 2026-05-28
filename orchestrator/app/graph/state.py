@@ -91,7 +91,14 @@ class MarketingState(TypedDict, total=False):
     user_selection: dict[str, Any] | UserSelectionRequest | None
     image_input: dict[str, Any] | ImageInput | None
     reference_input: dict[str, Any] | ReferenceInput | None
+    source_image_path: str | None
+    reference_image_path: str | None
+    vision_preprocess_mode: str | None
+    vision_pipeline_results: list[dict[str, Any]]
+    image_preprocess_result: dict[str, Any] | None
     image_features: dict[str, Any] | ImageFeatures | None
+    reference_style_profile: dict[str, Any] | None
+    product_preserve_spec: dict[str, Any] | None
     reference_style: dict[str, Any] | ReferenceStyleSpec | None
     context: dict[str, Any] | MarketingContext
     validator_output: dict[str, Any] | ValidatorOutput | None
@@ -190,6 +197,8 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "copy_generation_mode": request.copy_generation_mode,
         "user_custom_headline": request.user_custom_headline,
         "user_custom_subcopy": request.user_custom_subcopy,
+        "source_image_path": request.source_image_path,
+        "reference_image_path": request.reference_image_path,
     }
     copy_required = request.copy_generation_mode != "no_copy"
     text_overlay_pending = request.copy_generation_mode != "no_copy"
@@ -221,7 +230,14 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "user_selection": None,
         "image_input": model_to_dict(request.image_input),
         "reference_input": model_to_dict(request.reference_input),
+        "source_image_path": request.source_image_path,
+        "reference_image_path": request.reference_image_path,
+        "vision_preprocess_mode": request.vision_preprocess_mode,
+        "vision_pipeline_results": [],
+        "image_preprocess_result": None,
         "image_features": None,
+        "reference_style_profile": None,
+        "product_preserve_spec": None,
         "reference_style": None,
         "context": context.model_dump(),
         "validator_output": None,

@@ -52,6 +52,9 @@ JobStatus = Literal[
     "created",
     "input_received",
     "analyzing_image",
+    "preprocessing_image",
+    "preprocessing_reference_image",
+    "preprocessing_product_image",
     "extracting_reference_style",
     "validating_context",
     "waiting_user_selection",
@@ -188,6 +191,9 @@ class InitialMarketingRequest(BaseModel):
     context: MarketingContext | None = None
     image_input: ImageInput | None = None
     reference_input: ReferenceInput | None = None
+    source_image_path: str | None = None
+    reference_image_path: str | None = None
+    vision_preprocess_mode: str | None = None
     render_profile: RenderProfile = "balanced"
     requested_ad_format: str | None = None
     requested_platform: str | None = None
