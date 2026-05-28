@@ -24,6 +24,17 @@
   - `no_copy`: skip copy rendering intent, build `CopySpec(copy_mode="no_copy", items=[])`, and continue through TLFP with `render_text_in_image=false`.
 - All copy branches merge back into `CopySpecParserNode`.
 - `no_copy` means no post-processing text overlay is required. It does not allow the image model to draw text, letters, logos, or watermarks.
+- After mock T2I generation, the graph now continues through:
+  - `BackgroundValidationNode`
+  - `SafeAreaGate`
+  - `CopyPresenceRouter`
+  - `TextRendererNode` for copy-present flows
+  - `ReadabilityGate`
+  - `FinalValidationNode`
+  - `ResultNode`
+- `no_copy` still runs background and safe-area checks, then bypasses `TextRendererNode` and `ReadabilityGate`.
+- Copy-present flows render Korean copy after image generation using the deterministic PIL-based `TextRendererNode`.
+- `ResultNode` writes the final `result_payload`, including `output_path`, validation summary, and artifact references.
 
 ## Deterministic Boundaries
 
@@ -32,10 +43,33 @@
 - LLM calls must not own policy, routing, schema conversion, or state mutation.
 - Vector DBs must be used only as example or reference retrieval layers, not as rule engines.
 - Relational DB and vector store integrations are not part of this milestone.
+- Background validation, safe-area checks, text rendering, readability checks, final validation, and result assembly are deterministic MVP steps.
+- `ReadabilityGate` only reports rule-based contrast and layout issues; it does not trigger automatic regeneration.
+- `TextRendererNode` uses `TextLayoutSpec.slots` as the canonical text placement contract.
+
+## Implemented MVP
+
+- `TextRenderer`: deterministic PIL-based MVP implemented.
+- `ReadabilityGate`: rule-based contrast/layout report MVP implemented.
+- `BackgroundValidation`: file/dimension/render policy validation with OCR/VLM checks explicitly marked `not_run`.
+- `SafeAreaGate`: bbox-based reserved text area and product-zone overlap validation implemented.
+- `ResultNode`: final output payload and artifact reference assembly implemented.
 
 ## Not Implemented Yet
 
-- `TextRenderer` is planned for the next rendering milestone.
-- `ReadabilityGate` is planned for the next validation milestone.
-- Background validation, SafeAreaGate, final validation, and VLM quality gates are not implemented here.
+- Actual OCR.
+- Actual VLM quality gates.
+- Actual product detection or segmentation.
+- Automatic regeneration loops.
+- Advanced Korean typography/font management.
+- Production-grade font loading.
+- Real product occlusion detection.
+- Actual text artifact detection by OCR/VLM.
 - `LLMAdapter`, structured output adapters, and `ModelRouter` are planned for a later model-integration milestone.
+
+## Rendering Policy
+
+- The image model must not render text, letters, numbers, Hangul, logos, or watermarks.
+- `render_text_in_image=false` is preserved through prompt planning, T2I request metadata, validation, and result payloads.
+- `no_copy` means post-processing text overlay is skipped. It does not permit text inside the generated image.
+- Generated files under `data/outputs/` are runtime artifacts and must not be committed.
