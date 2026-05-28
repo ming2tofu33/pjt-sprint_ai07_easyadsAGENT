@@ -35,6 +35,9 @@
 - `no_copy` still runs background and safe-area checks, then bypasses `TextRendererNode` and `ReadabilityGate`.
 - Copy-present flows render Korean copy after image generation using the deterministic PIL-based `TextRendererNode`.
 - `ResultNode` writes the final `result_payload`, including `output_path`, validation summary, and artifact references.
+- Vision Pipeline MVP preprocessing is available before validation when `source_image_path` or `reference_image_path` is supplied.
+- `ReferenceStyleProfile` can inform `ImagePromptPlannerNode` with deterministic palette and style hints.
+- `ProductPreserveSpec` is currently a `center_bbox_stub` only; no real product-preserving edit is performed.
 
 ## Deterministic Boundaries
 
@@ -46,6 +49,7 @@
 - Background validation, safe-area checks, text rendering, readability checks, final validation, and result assembly are deterministic MVP steps.
 - `ReadabilityGate` only reports rule-based contrast and layout issues; it does not trigger automatic regeneration.
 - `TextRendererNode` uses `TextLayoutSpec.slots` as the canonical text placement contract.
+- Vision preprocessing, reference-style extraction, and product-preserve metadata are deterministic PIL-based stubs.
 
 ## Implemented MVP
 
@@ -54,12 +58,15 @@
 - `BackgroundValidation`: file/dimension/render policy validation with OCR/VLM checks explicitly marked `not_run`.
 - `SafeAreaGate`: bbox-based reserved text area and product-zone overlap validation implemented.
 - `ResultNode`: final output payload and artifact reference assembly implemented.
+- `Vision Pipeline MVP`: PIL preprocess, reference style stub, product preserve stub, and optional graph route implemented.
 
 ## Not Implemented Yet
 
 - Actual OCR.
 - Actual VLM quality gates.
 - Actual product detection or segmentation.
+- Actual product-preserving image edit.
+- Actual reference-guided image generation beyond metadata prompt hints.
 - Automatic regeneration loops.
 - Advanced Korean typography/font management.
 - Production-grade font loading.

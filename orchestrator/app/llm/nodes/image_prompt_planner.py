@@ -48,20 +48,27 @@ def image_prompt_planner_node(state: MarketingState) -> dict[str, object]:
 def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptSpec:
     context = context_to_model(state.get("context"))
     ad_format_spec = state.get("ad_format_spec") or {}
+    reference_style_profile = state.get("reference_style_profile") or {}
+    product_preserve_spec = state.get("product_preserve_spec") or {}
     text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
     subject = context.item_or_service or "advertising subject"
     reserved_text = " and ".join(bbox_to_natural_language(bbox) for bbox in text_layout.reserved_text_areas)
     scene = f"clean commercial advertising background for {subject}"
     composition = build_composition(reserved_text)
+    style_hint = reference_style_profile.get("ad_style_prompt")
+    product_hint = build_product_preserve_hint(product_preserve_spec)
+    extra_hints = " ".join(hint for hint in [style_hint, product_hint] if hint)
     positive = (
         f"Create a {scene}. {composition} Do not place the main subject inside the reserved text zones. "
         "The image will receive Korean text overlay later."
     )
+    if extra_hints:
+        positive = f"{positive} Use this additional visual guidance: {extra_hints}"
     negative = f"{TEXT_NEGATIVE}, {COMMON_NEGATIVE_PROMPT}"
     spec = ImagePromptSpec(
         scene_description=scene,
         product_subject=subject,
-        color_palette=[],
+        color_palette=reference_style_profile.get("color_palette") or [],
         composition=composition,
         lighting=lighting_for_business(context.business_type),
         reserved_text_areas=text_layout.reserved_text_areas,
@@ -70,7 +77,14 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
         target_width=int(ad_format_spec.get("width") or text_layout.canvas_width),
         target_height=int(ad_format_spec.get("height") or text_layout.canvas_height),
         aspect_ratio=str(ad_format_spec.get("aspect_ratio") or "1:1"),
-        metadata={"render_text_in_image": False, "tlfp_enabled": True, "source_node": "image_prompt_planner"},
+        metadata={
+            "render_text_in_image": False,
+            "tlfp_enabled": True,
+            "source_node": "image_prompt_planner",
+            "reference_style_profile": reference_style_profile or None,
+            "product_preserve_spec": product_preserve_spec or None,
+            "vision_pipeline_enabled": bool(reference_style_profile or product_preserve_spec),
+        },
     )
     return spec
 
@@ -115,10 +129,13 @@ def build_image_prompt_planner_prompt(state: MarketingState) -> str:
     context = context_to_model(state.get("context"))
     text_layout = state.get("text_layout_spec") or {}
     style = state.get("text_style_spec") or {}
+    reference_style_profile = state.get("reference_style_profile") or {}
+    product_preserve_spec = state.get("product_preserve_spec") or {}
     return (
         "Create a structured ImagePromptSpec for a text-free advertising background. "
         f"subject={context.item_or_service}, business_type={context.business_type}, brand_tone={context.brand_tone}. "
         f"reserved_text_areas={text_layout.get('reserved_text_areas', [])}, style_profile={style.get('profile')}. "
+        f"reference_style_stub={reference_style_profile.get('ad_style_prompt')}, product_preserve_stub={product_preserve_spec.get('product_bbox')}. "
         "Keep all text areas clean; do not include text, letters, numbers, Hangul, logos, or watermarks."
     )
 
@@ -164,6 +181,13 @@ def build_composition(reserved_text: str) -> str:
         f"Reserve {reserved_text} as uncluttered negative space for Korean text overlay in post-processing. "
         "Keep those regions calm, simple, and free of visual clutter."
     )
+
+
+def build_product_preserve_hint(product_preserve_spec: dict[str, object]) -> str | None:
+    bbox = product_preserve_spec.get("product_bbox") if product_preserve_spec else None
+    if not isinstance(bbox, dict):
+        return None
+    return f"Keep the main product visually centered around the source product bbox hint {bbox}; this is a non-segmentation stub."
 
 
 def lighting_for_business(business_type: str | None) -> str:

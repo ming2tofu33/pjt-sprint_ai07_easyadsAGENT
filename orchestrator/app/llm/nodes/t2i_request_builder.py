@@ -18,6 +18,15 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
         or (state.get("text_layout_spec") or {}).get("reserved_text_areas")
         or []
     )
+    reference_style_profile = state.get("reference_style_profile")
+    product_preserve_spec = state.get("product_preserve_spec")
+    vision_pipeline_enabled = bool(
+        state.get("source_image_path")
+        or state.get("reference_image_path")
+        or state.get("vision_pipeline_results")
+        or reference_style_profile
+        or product_preserve_spec
+    )
     metadata = {
         "job_id": state.get("job_id"),
         "thread_id": state.get("thread_id"),
@@ -38,6 +47,11 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
         "render_text_in_image": False,
         "text_overlay_pending": bool(state.get("text_overlay_pending", True)),
         "tlfp_enabled": bool(state.get("image_prompt_spec")),
+        "vision_pipeline_enabled": vision_pipeline_enabled,
+        "source_image_path": state.get("source_image_path"),
+        "reference_image_path": state.get("reference_image_path"),
+        "reference_style_profile": reference_style_profile,
+        "product_preserve_spec": product_preserve_spec,
         "source_node": "t2i_request_builder",
     }
     job_id = str(state.get("job_id") or "unknown-job")
