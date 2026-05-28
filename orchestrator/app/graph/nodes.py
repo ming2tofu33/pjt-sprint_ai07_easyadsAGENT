@@ -17,6 +17,7 @@ from orchestrator.app.graph.state import (
     update_current_brief,
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
+from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.option_registry import get_next_missing_field, get_option_question
 from orchestrator.app.schemas.llm_marketing import CopyModeInferenceOutput, InitialMarketingRequest, MarketingContext, ProgressState, UserSelectionRequest, ValidatorOutput
 
@@ -83,6 +84,8 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         "copy_mode_inference_output": copy_mode_output.model_dump() if copy_mode_output else None,
         "copy_required": copy_required,
         "text_overlay_pending": text_overlay_pending,
+        "model_selections": state.get("model_selections", []),
+        "llm_call_results": state.get("llm_call_results", []),
         "status": "validating_context",
         "option_question": None,
     }
@@ -202,7 +205,31 @@ def resolve_copy_generation_mode(state: MarketingState, text: str):
             source="heuristic",
             reasoning_summary="Copy generation mode inferred from user wording.",
         )
+    output, metadata = run_structured_node(
+        state,
+        node_name="copy_mode_inference",
+        output_schema=CopyModeInferenceOutput,
+        prompt=build_copy_mode_prompt(text, state),
+        fallback_fn=lambda: None,
+        risk_level="low",
+        confidence=0.3,
+        latency_budget="interactive",
+        metadata={"prompt_summary": "copy_generation_mode classification"},
+    )
+    if isinstance(output, CopyModeInferenceOutput) and output.confidence >= 0.6:
+        output.metadata.update({"llm_metadata": metadata})
+        return output.copy_generation_mode, output
     return None, None
+
+
+def build_copy_mode_prompt(text: str, state: MarketingState) -> str:
+    context = state.get("context") or {}
+    return (
+        "Classify the requested copy generation mode for a Korean small-business ad. "
+        "Available modes: suggest_candidates, auto_pilot, no_copy, custom_input. "
+        f"User input: {text[:500]}. "
+        f"Context summary: business_type={context.get('business_type')}, item_or_service={context.get('item_or_service')}."
+    )
 
 
 def infer_copy_generation_mode(text: str) -> str | None:

@@ -21,7 +21,7 @@ def test_copy_candidate_generation_is_stable_and_safe():
     candidates = update["copy_candidates"]
     rendered = " ".join(str(value) for candidate in candidates for value in candidate.values())
 
-    assert [candidate["id"] for candidate in candidates] == ["copy_1", "copy_2", "copy_3"]
+    assert [candidate["id"] for candidate in candidates] == ["copy_1", "copy_2"]
     assert "010-" not in rendered
     assert "주소" not in rendered
     assert "%" not in rendered

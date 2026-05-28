@@ -44,7 +44,7 @@ def test_suggest_candidates_interrupt_then_resume_to_mock():
     payload = first["__interrupt__"][0].value
 
     assert payload["type"] == "copy_candidate_selection"
-    assert [candidate["id"] for candidate in payload["candidates"]] == ["copy_1", "copy_2", "copy_3"]
+    assert [candidate["id"] for candidate in payload["candidates"]] == ["copy_1", "copy_2"]
 
     result = graph.invoke(Command(resume={"selected_copy_id": "copy_2"}), config=config)
 

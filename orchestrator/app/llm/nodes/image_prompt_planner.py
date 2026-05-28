@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from orchestrator.app.graph.state import MarketingState, context_to_model
+from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.schemas.llm_marketing import ImagePrompt
 from orchestrator.app.schemas.text_layout import ImagePromptSpec, NormalizedBBox, TextLayoutSpec
 from orchestrator.app.t2i.prompts import COMMON_NEGATIVE_PROMPT
@@ -16,6 +17,35 @@ TEXT_NEGATIVE = (
 
 
 def image_prompt_planner_node(state: MarketingState) -> dict[str, object]:
+    deterministic = lambda: build_deterministic_image_prompt_spec(state)
+    spec_output, llm_metadata = run_structured_node(
+        state,
+        node_name="image_prompt_planner",
+        output_schema=ImagePromptSpec,
+        prompt=build_image_prompt_planner_prompt(state),
+        fallback_fn=deterministic,
+        risk_level="medium",
+        confidence=0.5,
+        latency_budget="standard",
+        metadata={"prompt_summary": "image prompt planning"},
+    )
+    spec = enforce_image_prompt_safety(state, spec_output if isinstance(spec_output, ImagePromptSpec) else deterministic())
+    image_prompt = build_legacy_image_prompt(state, spec)
+    return {
+        "image_prompt_spec": spec.model_dump(),
+        "image_prompt": image_prompt.model_dump(),
+        "current_brief": {
+            **state.get("current_brief", {}),
+            "image_prompt_spec_ready": True,
+            "render_text_in_image": False,
+        },
+        "model_selections": state.get("model_selections", []),
+        "llm_call_results": state.get("llm_call_results", []),
+        "status": "optimizing_prompt",
+    }
+
+
+def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptSpec:
     context = context_to_model(state.get("context"))
     ad_format_spec = state.get("ad_format_spec") or {}
     text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
@@ -42,27 +72,55 @@ def image_prompt_planner_node(state: MarketingState) -> dict[str, object]:
         aspect_ratio=str(ad_format_spec.get("aspect_ratio") or "1:1"),
         metadata={"render_text_in_image": False, "tlfp_enabled": True, "source_node": "image_prompt_planner"},
     )
+    return spec
+
+
+def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> ImagePrompt:
+    subject = spec.product_subject
     image_prompt = ImagePrompt(
         subject=subject,
         style="clean commercial advertising background",
         lighting=spec.lighting,
         composition=spec.composition,
-        copy_space=infer_copy_space_from_reserved_areas(text_layout.reserved_text_areas),
-        negative_prompt=negative,
-        scene=scene,
+        copy_space=infer_copy_space_from_reserved_areas(spec.reserved_text_areas),
+        negative_prompt=spec.negative_prompt_en or TEXT_NEGATIVE,
+        scene=spec.scene_description,
         avoid_text=True,
         metadata={"render_text_in_image": False, "tlfp_enabled": True},
     )
-    return {
-        "image_prompt_spec": spec.model_dump(),
-        "image_prompt": image_prompt.model_dump(),
-        "current_brief": {
-            **state.get("current_brief", {}),
-            "image_prompt_spec_ready": True,
-            "render_text_in_image": False,
-        },
-        "status": "optimizing_prompt",
-    }
+    return image_prompt
+
+
+def enforce_image_prompt_safety(state: MarketingState, spec: ImagePromptSpec) -> ImagePromptSpec:
+    ad_format_spec = state.get("ad_format_spec") or {}
+    text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
+    negative = spec.negative_prompt_en or ""
+    required_terms = ["text", "letters", "numbers", "hangul", "watermark", "logo"]
+    missing_terms = [term for term in required_terms if term not in negative.lower()]
+    if missing_terms:
+        negative = f"{negative}, {TEXT_NEGATIVE}".strip(", ")
+    return spec.model_copy(
+        update={
+            "reserved_text_areas": text_layout.reserved_text_areas,
+            "must_not_include_text": True,
+            "negative_prompt_en": negative,
+            "target_width": int(ad_format_spec.get("width") or text_layout.canvas_width),
+            "target_height": int(ad_format_spec.get("height") or text_layout.canvas_height),
+            "metadata": {**spec.metadata, "render_text_in_image": False, "tlfp_enabled": True, "safety_enforced": True},
+        }
+    )
+
+
+def build_image_prompt_planner_prompt(state: MarketingState) -> str:
+    context = context_to_model(state.get("context"))
+    text_layout = state.get("text_layout_spec") or {}
+    style = state.get("text_style_spec") or {}
+    return (
+        "Create a structured ImagePromptSpec for a text-free advertising background. "
+        f"subject={context.item_or_service}, business_type={context.business_type}, brand_tone={context.brand_tone}. "
+        f"reserved_text_areas={text_layout.get('reserved_text_areas', [])}, style_profile={style.get('profile')}. "
+        "Keep all text areas clean; do not include text, letters, numbers, Hangul, logos, or watermarks."
+    )
 
 
 def bbox_to_natural_language(bbox: NormalizedBBox) -> str:

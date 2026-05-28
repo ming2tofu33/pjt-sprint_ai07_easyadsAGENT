@@ -1,6 +1,8 @@
 from orchestrator.app.llm.adapters.mock import MockLLMAdapter
-from orchestrator.app.llm.adapters.registry import get_llm_adapter
+from orchestrator.app.llm.adapters.openai import OpenAIAdapter
+from orchestrator.app.llm.adapters.registry import ProviderNotImplementedError, get_llm_adapter, get_llm_adapter_safe
 from orchestrator.app.llm.model_router import choose_model
+from orchestrator.app.llm.settings import LLMSettings
 from orchestrator.app.schemas.llm_model_policy import ModelSelection
 
 
@@ -35,6 +37,12 @@ def test_mock_adapter_invoke_vision():
 
 def test_adapter_registry_returns_safe_mock_fallback():
     assert isinstance(get_llm_adapter("mock"), MockLLMAdapter)
-    assert isinstance(get_llm_adapter("openai"), MockLLMAdapter)
-    assert isinstance(get_llm_adapter("local_gemma"), MockLLMAdapter)
-    assert isinstance(get_llm_adapter("vision_api"), MockLLMAdapter)
+    assert isinstance(get_llm_adapter("openai"), OpenAIAdapter)
+    try:
+        get_llm_adapter("local_gemma")
+    except ProviderNotImplementedError:
+        pass
+    else:
+        raise AssertionError("local_gemma should be explicit not implemented in strict mode")
+    assert isinstance(get_llm_adapter("local_gemma", allow_mock_fallback=True), MockLLMAdapter)
+    assert isinstance(get_llm_adapter_safe("vision_api", LLMSettings(provider_strict_mode=True)), MockLLMAdapter)
