@@ -9,7 +9,6 @@ from uuid import uuid4
 from orchestrator.app.schemas.llm_marketing import (
     AdFormatSpec,
     ArtifactRef,
-    BackgroundValidationReport,
     ConversationMessage,
     CopyCandidate,
     CopyGenerationMode,
@@ -17,7 +16,6 @@ from orchestrator.app.schemas.llm_marketing import (
     CopywritingOutput,
     EntryMode,
     ErrorInfo,
-    FinalValidationReport,
     GeneratedImageCandidate,
     GenerationEngine,
     GenerationRoute,
@@ -46,7 +44,18 @@ from orchestrator.app.schemas.llm_marketing import (
     T2IRequest,
     T2IResult,
 )
-from orchestrator.app.schemas.text_layout import CopySpec, ImagePromptSpec, TextLayoutSpec, TextStyleSpec
+from orchestrator.app.schemas.text_layout import (
+    BackgroundValidationReport,
+    CopySpec,
+    FinalValidationReport,
+    ImagePromptSpec,
+    ReadabilityReport,
+    RenderResult,
+    ResultPayload,
+    SafeAreaReport,
+    TextLayoutSpec,
+    TextStyleSpec,
+)
 
 SCHEMA_VERSION = "llm_marketing_v1"
 REQUIRED_CONTEXT_FIELDS: list[MissingField] = ["business_type", "item_or_service", "promotion_goal", "ad_format"]
@@ -110,10 +119,14 @@ class MarketingState(TypedDict, total=False):
     candidates: list[dict[str, Any] | GeneratedImageCandidate]
     selected_candidate_id: str | None
     background_validation_report: dict[str, Any] | BackgroundValidationReport | None
+    safe_area_report: dict[str, Any] | SafeAreaReport | None
+    readability_report: dict[str, Any] | ReadabilityReport | None
+    render_result: dict[str, Any] | RenderResult | None
     text_overlay_config: dict[str, Any] | TextOverlayConfig | None
     final_image_path: str | None
     final_validation_report: dict[str, Any] | FinalValidationReport | None
     validation_report: dict[str, Any] | ValidationReport | None
+    result_payload: dict[str, Any] | ResultPayload | None
     artifact_refs: list[dict[str, Any] | ArtifactRef]
     error_message: str | None
     error_info: dict[str, Any] | ErrorInfo | None
@@ -230,10 +243,14 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "candidates": [],
         "selected_candidate_id": None,
         "background_validation_report": None,
+        "safe_area_report": None,
+        "readability_report": None,
+        "render_result": None,
         "text_overlay_config": None,
         "final_image_path": None,
         "final_validation_report": None,
         "validation_report": None,
+        "result_payload": None,
         "artifact_refs": [],
         "error_message": None,
         "error_info": None,

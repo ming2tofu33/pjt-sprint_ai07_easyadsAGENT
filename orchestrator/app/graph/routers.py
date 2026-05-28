@@ -34,4 +34,16 @@ def route_after_tone_binding(state: MarketingState) -> str:
     return "auto_pilot_copywriting"
 
 
+def route_by_copy_presence(state: MarketingState) -> str:
+    copy_spec = state.get("copy_spec") or {}
+    if (
+        state.get("copy_required") is False
+        or state.get("text_overlay_pending") is False
+        or state.get("copy_generation_mode") == "no_copy"
+        or copy_spec.get("copy_mode") == "no_copy"
+    ):
+        return "result"
+    return "text_renderer"
+
+
 route_after_validator = route_after_validator_for_intake

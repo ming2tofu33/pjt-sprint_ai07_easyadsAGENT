@@ -32,6 +32,10 @@ LayoutTemplate = Literal[
     "centered_hero",
     "no_text",
 ]
+WcagGrade = Literal["AAA", "AA", "AA_LARGE", "FAIL"]
+SuggestedAction = Literal["none", "swap_color", "add_overlay", "regenerate", "shrink"]
+RuleCheck = Literal["not_run", "pass", "fail"]
+ResultStatus = Literal["done", "failed"]
 
 
 class NormalizedBBox(BaseModel):
@@ -181,4 +185,96 @@ class ImagePromptSpec(BaseModel):
     target_width: int = Field(..., ge=1)
     target_height: int = Field(..., ge=1)
     aspect_ratio: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SlotReadability(BaseModel):
+    slot_id: str
+    role: CopyRole
+    background_luminance: float = Field(..., ge=0.0, le=1.0)
+    text_luminance: float = Field(..., ge=0.0, le=1.0)
+    contrast_ratio: float = Field(..., ge=0.0)
+    wcag_grade: WcagGrade
+    out_of_safe_area: bool = False
+    overlaps_product: bool = False
+    clipped: bool = False
+    suggested_text_color: str | None = None
+    suggested_overlay: OverlayTreatment | None = None
+    suggested_action: SuggestedAction = "none"
+
+
+class ReadabilityReport(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+    overall_pass: bool
+    slots: list[SlotReadability] = Field(default_factory=list)
+    avg_contrast_ratio: float = Field(..., ge=0.0)
+    min_contrast_ratio: float = Field(..., ge=0.0)
+    failed_slot_count: int = Field(..., ge=0)
+    requires_regeneration: bool = False
+    auto_fixes_applied: list[str] = Field(default_factory=list)
+    remaining_issues: list[str] = Field(default_factory=list)
+
+
+class BackgroundValidationReport(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+    overall_pass: bool
+    image_exists: bool
+    image_path: str | None = None
+    width: int | None = None
+    height: int | None = None
+    expected_width: int | None = None
+    expected_height: int | None = None
+    render_text_in_image: bool
+    reserved_text_area_count: int = Field(..., ge=0)
+    text_artifact_check: RuleCheck = "not_run"
+    watermark_check: RuleCheck = "not_run"
+    warnings: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SafeAreaReport(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+    overall_pass: bool
+    reserved_text_area_count: int = Field(..., ge=0)
+    product_overlap_warnings: list[str] = Field(default_factory=list)
+    bbox_issues: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RenderResult(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+    background_image_path: str
+    final_image_path: str
+    rendered_slot_count: int = Field(..., ge=0)
+    skipped_slot_count: int = Field(..., ge=0)
+    warnings: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class FinalValidationReport(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+    overall_pass: bool
+    background_pass: bool
+    safe_area_pass: bool
+    readability_pass: bool | None = None
+    no_copy: bool
+    warnings: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ResultPayload(BaseModel):
+    schema_version: Literal["1.0"] = "1.0"
+    job_id: str
+    thread_id: str
+    status: ResultStatus
+    output_path: str | None = None
+    background_image_path: str | None = None
+    final_image_path: str | None = None
+    copy_generation_mode: str | None = None
+    has_text_overlay: bool
+    validation_summary: dict[str, Any] = Field(default_factory=dict)
+    artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
