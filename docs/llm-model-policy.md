@@ -92,14 +92,55 @@ Implemented:
 - Adapter registry with safe mock fallback.
 - `MarketingState` tracking fields for `user_plan`, `plan_policy`, `model_selections`, and `llm_call_results`.
 
+## 7th-A Milestone Scope
+
+Implemented:
+
+- `OpenAIAdapter` skeleton.
+- API call guard with `LLM_ENABLE_API_CALL=false` as the default.
+- Adapter registry strict/fallback policy.
+- Guarded structured node runner.
+- Optional adapter path for selected nodes:
+  - `copy_mode_inference`
+  - `copy_candidate_generation`
+  - `auto_pilot_copywriting`
+  - `image_prompt_planner`
+- Deterministic fallback remains the default behavior.
+
+## Provider Fallback Policy
+
+- `mock` is the safe provider and always resolves to `MockLLMAdapter`.
+- `openai` resolves to `OpenAIAdapter`.
+- `local_gemma`, `local_qwen`, and `vision_api` are not implemented in this milestone.
+- Strict mode raises a clear provider-not-implemented error for unavailable providers.
+- Mock fallback is allowed only when the caller explicitly opts into `allow_mock_fallback`.
+- Silent provider downgrade is not allowed in production-facing paths.
+
+## API Call Guard
+
+- `LLM_ENABLE_API_CALL=false` by default.
+- `free` plan blocks all API calls even if the environment flag is enabled.
+- `PlanPolicy.max_api_calls_per_job` limits external calls per job.
+- Missing API key, missing model name, SDK import errors, API errors, and structured output parse errors return `LLMCallResult(success=false)` and trigger deterministic fallback.
+- API keys are never written to state, logs, docs, or test output.
+
+## Selected Node Connection State
+
+- `copy_mode_inference`: guarded adapter path added with heuristic fallback.
+- `copy_candidate_generation`: guarded adapter path added with rule-based candidate fallback.
+- `auto_pilot_copywriting`: guarded adapter path added with rule-based copywriting fallback.
+- `image_prompt_planner`: guarded adapter path added with deterministic TLFP prompt fallback.
+- Safety-critical fields such as `must_not_include_text`, `reserved_text_areas`, and `render_text_in_image=false` are enforced after any adapter output.
+
 Not implemented:
 
-- Real OpenAI adapter.
+- Full production OpenAI adapter behavior.
 - Real Local Gemma adapter.
 - Real Local Qwen adapter.
 - Real Vision adapter.
 - API key usage.
-- Real LLM calls from graph nodes.
+- Real LLM calls in default tests.
+- VLM, OCR, streaming, semantic routing, Qdrant, or DB-backed policy.
 
 ## Next Milestone
 
