@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from orchestrator.app.schemas.llm_model_policy import UserPlan
 from orchestrator.app.t2i.schemas import T2IRequest, T2IResult
 
 
@@ -198,6 +199,7 @@ class InitialMarketingRequest(BaseModel):
     copy_generation_mode: CopyGenerationMode | None = None
     user_custom_headline: str | None = None
     user_custom_subcopy: str | None = None
+    user_plan: UserPlan = "free"
 
 class ValidatorOutput(BaseModel):
     context: MarketingContext

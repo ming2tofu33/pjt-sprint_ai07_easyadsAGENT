@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, NotRequired, TypedDict
 from uuid import uuid4
 
+from orchestrator.app.llm.plan_policy import build_default_plan_policy, normalize_user_plan
 from orchestrator.app.schemas.llm_marketing import (
     AdFormatSpec,
     ArtifactRef,
@@ -44,6 +45,7 @@ from orchestrator.app.schemas.llm_marketing import (
     T2IRequest,
     T2IResult,
 )
+from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection, PlanPolicy, UserPlan
 from orchestrator.app.schemas.text_layout import (
     BackgroundValidationReport,
     CopySpec,
@@ -69,6 +71,10 @@ class MarketingState(TypedDict, total=False):
     project_id: str | None
     user_id: str | None
     organization_id: str | None
+    user_plan: UserPlan | str
+    plan_policy: dict[str, Any] | PlanPolicy
+    model_selections: list[dict[str, Any] | ModelSelection]
+    llm_call_results: list[dict[str, Any] | LLMCallResult]
     revision: int
     status: JobStatus
     entry_mode: EntryMode
@@ -174,6 +180,8 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
     timestamp = now_iso()
     job_id = request.job_id or f"job_{uuid4().hex}"
     thread_id = request.thread_id or f"thread_{uuid4().hex}"
+    user_plan = normalize_user_plan(request.user_plan)
+    plan_policy = build_default_plan_policy(user_plan)
     context = request.context or MarketingContext()
     current_brief: dict[str, Any] = {
         "user_input": request.user_input,
@@ -192,6 +200,10 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "project_id": request.project_id,
         "user_id": request.user_id,
         "organization_id": request.organization_id,
+        "user_plan": user_plan,
+        "plan_policy": plan_policy.model_dump(),
+        "model_selections": [],
+        "llm_call_results": [],
         "revision": 1,
         "status": "input_received",
         "entry_mode": request.entry_mode,
@@ -267,6 +279,18 @@ def append_message(state: MarketingState, role: str, content: str, metadata: dic
     state.setdefault("messages", [])
     message = ConversationMessage(role=role, content=content, created_at=now_iso(), metadata=metadata or {})
     state["messages"].append(message.model_dump())
+    state["updated_at"] = now_iso()
+
+
+def append_model_selection(state: MarketingState, selection: dict[str, Any] | ModelSelection) -> None:
+    state.setdefault("model_selections", [])
+    state["model_selections"].append(model_to_dict(selection))
+    state["updated_at"] = now_iso()
+
+
+def append_llm_call_result(state: MarketingState, result: dict[str, Any] | LLMCallResult) -> None:
+    state.setdefault("llm_call_results", [])
+    state["llm_call_results"].append(model_to_dict(result))
     state["updated_at"] = now_iso()
 
 
