@@ -194,6 +194,7 @@ class InitialMarketingRequest(BaseModel):
     source_image_path: str | None = None
     reference_image_path: str | None = None
     vision_preprocess_mode: str | None = None
+    selected_reference_template_id: str | None = None
     render_profile: RenderProfile = "balanced"
     requested_ad_format: str | None = None
     requested_platform: str | None = None

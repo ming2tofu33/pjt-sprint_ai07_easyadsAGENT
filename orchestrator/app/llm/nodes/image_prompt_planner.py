@@ -50,14 +50,18 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
     ad_format_spec = state.get("ad_format_spec") or {}
     reference_style_profile = state.get("reference_style_profile") or {}
     product_preserve_spec = state.get("product_preserve_spec") or {}
+    selected_reference_template = state.get("selected_reference_template") or {}
+    reference_template_selection = state.get("reference_template_selection") or {}
+    template_style_hint = reference_template_selection.get("style_profile_hint") or {}
     text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
     subject = context.item_or_service or "advertising subject"
     reserved_text = " and ".join(bbox_to_natural_language(bbox) for bbox in text_layout.reserved_text_areas)
     scene = f"clean commercial advertising background for {subject}"
     composition = build_composition(reserved_text)
     style_hint = reference_style_profile.get("ad_style_prompt")
+    template_hint = build_reference_template_hint(selected_reference_template, template_style_hint)
     product_hint = build_product_preserve_hint(product_preserve_spec)
-    extra_hints = " ".join(hint for hint in [style_hint, product_hint] if hint)
+    extra_hints = " ".join(hint for hint in [style_hint, template_hint, product_hint] if hint)
     positive = (
         f"Create a {scene}. {composition} Do not place the main subject inside the reserved text zones. "
         "The image will receive Korean text overlay later."
@@ -68,7 +72,7 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
     spec = ImagePromptSpec(
         scene_description=scene,
         product_subject=subject,
-        color_palette=reference_style_profile.get("color_palette") or [],
+        color_palette=reference_style_profile.get("color_palette") or template_style_hint.get("color_palette") or [],
         composition=composition,
         lighting=lighting_for_business(context.business_type),
         reserved_text_areas=text_layout.reserved_text_areas,
@@ -82,8 +86,10 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
             "tlfp_enabled": True,
             "source_node": "image_prompt_planner",
             "reference_style_profile": reference_style_profile or None,
+            "selected_reference_template": selected_reference_template or None,
+            "reference_template_selection": reference_template_selection or None,
             "product_preserve_spec": product_preserve_spec or None,
-            "vision_pipeline_enabled": bool(reference_style_profile or product_preserve_spec),
+            "vision_pipeline_enabled": bool(reference_style_profile or product_preserve_spec or selected_reference_template),
         },
     )
     return spec
@@ -131,11 +137,13 @@ def build_image_prompt_planner_prompt(state: MarketingState) -> str:
     style = state.get("text_style_spec") or {}
     reference_style_profile = state.get("reference_style_profile") or {}
     product_preserve_spec = state.get("product_preserve_spec") or {}
+    selected_reference_template = state.get("selected_reference_template") or {}
     return (
         "Create a structured ImagePromptSpec for a text-free advertising background. "
         f"subject={context.item_or_service}, business_type={context.business_type}, brand_tone={context.brand_tone}. "
         f"reserved_text_areas={text_layout.get('reserved_text_areas', [])}, style_profile={style.get('profile')}. "
-        f"reference_style_stub={reference_style_profile.get('ad_style_prompt')}, product_preserve_stub={product_preserve_spec.get('product_bbox')}. "
+        f"reference_style_stub={reference_style_profile.get('ad_style_prompt')}, "
+        f"reference_template={selected_reference_template.get('title')}, product_preserve_stub={product_preserve_spec.get('product_bbox')}. "
         "Keep all text areas clean; do not include text, letters, numbers, Hangul, logos, or watermarks."
     )
 
@@ -188,6 +196,17 @@ def build_product_preserve_hint(product_preserve_spec: dict[str, object]) -> str
     if not isinstance(bbox, dict):
         return None
     return f"Keep the main product visually centered around the source product bbox hint {bbox}; this is a non-segmentation stub."
+
+
+def build_reference_template_hint(template: dict[str, object], style_hint: dict[str, object]) -> str | None:
+    if not template and not style_hint:
+        return None
+    title = template.get("title") or "selected reference template"
+    keywords = style_hint.get("style_keywords") or template.get("style_keywords") or []
+    palette = style_hint.get("color_palette") or template.get("color_palette") or []
+    layout = style_hint.get("layout_hint") or template.get("layout_hint")
+    background = style_hint.get("background_style") or template.get("background_style")
+    return f"Use reference template '{title}' as metadata-only style guidance: keywords={keywords}, palette={palette}, layout={layout}, background={background}."
 
 
 def lighting_for_business(business_type: str | None) -> str:
