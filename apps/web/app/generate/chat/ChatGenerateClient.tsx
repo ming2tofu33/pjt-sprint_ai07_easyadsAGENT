@@ -247,7 +247,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       ) : null}
 
       {appSurface === "chat" && state.step === 1 ? (
-        <ChatStartStep onSubmit={handleSubmitPrompt} />
+        <ChatStartStep onSubmit={handleSubmitPrompt} onBack={() => router.back()} onGoHome={() => navigateTo("home")} />
       ) : null}
 
       {appSurface === "chat" && state.step === 2 ? (

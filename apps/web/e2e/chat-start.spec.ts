@@ -52,6 +52,16 @@ test("dashboard opens studio, recent ads, and brand kit tabs", async ({ page }) 
   await expect(page.getByText("추천 & 브랜드 키트")).toBeVisible();
 });
 
+test("chat start has visible routes back to app navigation", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /대화로 시작하기/ }).click();
+  await expect(page.getByText("대화로 찰떡 만들기")).toBeVisible();
+
+  await page.getByRole("button", { name: "홈으로" }).click();
+  await expect(page.getByText("레퍼런스 보고 만들기")).toBeVisible();
+});
+
 test("dashboard surfaces are directly addressable", async ({ page }) => {
   await page.goto("/studio");
   await expect(page.getByText("어떻게 시작할까요?")).toBeVisible();

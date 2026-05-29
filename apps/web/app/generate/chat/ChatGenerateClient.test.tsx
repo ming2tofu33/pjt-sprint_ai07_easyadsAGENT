@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigationMock = vi.hoisted(() => ({
   push: vi.fn(),
+  back: vi.fn(),
   replace: vi.fn()
 }));
 
@@ -41,6 +42,7 @@ vi.mock("@/lib/api-client", () => ({
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
     push: navigationMock.push,
+    back: navigationMock.back,
     replace: navigationMock.replace
   })
 }));
@@ -48,6 +50,7 @@ vi.mock("next/navigation", () => ({
 describe("ChatGenerateClient", () => {
   beforeEach(() => {
     navigationMock.push.mockClear();
+    navigationMock.back.mockClear();
     navigationMock.replace.mockClear();
   });
 
@@ -183,6 +186,19 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /레퍼런스/ }).at(-1)!);
     expect(navigationMock.push).toHaveBeenCalledWith("/reference");
+  });
+
+  it("offers previous and home escape routes from chat start", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 화면" }));
+    expect(navigationMock.back).toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "홈으로" }));
+    expect(navigationMock.push).toHaveBeenCalledWith("/");
   });
 
   it("shows realistic creative labels in reference cards", async () => {

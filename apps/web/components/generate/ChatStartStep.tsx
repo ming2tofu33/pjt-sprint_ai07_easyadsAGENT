@@ -22,9 +22,11 @@ const quickStarts = [
 
 type ChatStartStepProps = {
   onSubmit: (prompt: string) => void;
+  onBack: () => void;
+  onGoHome: () => void;
 };
 
-export function ChatStartStep({ onSubmit }: ChatStartStepProps) {
+export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps) {
   const [value, setValue] = useState("우리 카페 딸기라떼 신메뉴 광고 만들어줘");
 
   function submitPrompt() {
@@ -36,7 +38,7 @@ export function ChatStartStep({ onSubmit }: ChatStartStepProps) {
 
   return (
     <>
-      <StepHeader title="대화로 찰떡 만들기" />
+      <StepHeader title="대화로 찰떡 만들기" canGoBack backLabel="이전 화면" onBack={onBack} onHome={onGoHome} />
       <section className={styles.hero}>
         <span className={styles.heroIcon}>
           <MessageCircle size={25} strokeWidth={2.4} />
