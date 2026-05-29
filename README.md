@@ -21,7 +21,19 @@ python -m pytest orchestrator/tests
 
 ## Development setup with uv
 
-Install `uv`, create a local environment, and sync the core + dev requirements:
+Use the Python version recommended in `.python-version`.
+
+Recommended lockfile workflow:
+
+```powershell
+uv venv
+uv sync --group dev
+uv run python scripts\check_uv_env.py
+uv run python -m compileall orchestrator
+uv run python -m pytest orchestrator\tests
+```
+
+Compatibility requirements workflow:
 
 ```powershell
 uv venv
@@ -33,7 +45,7 @@ uv run python -m pytest orchestrator\tests
 
 Detailed setup is in `docs/uv-setup.md`.
 
-GPU/local image generation workers for SD3.5 or FLUX should follow `docs/gpu-cu118-setup.md`. General backend, LangGraph, LLM, Vision, and mock T2I work does not require GPU requirements.
+GPU/local image generation workers for SD3.5 or FLUX should follow `docs/gpu-cu118-setup.md`. General backend, LangGraph, LLM, Vision, and mock T2I work does not require GPU requirements. The default `uv sync --group dev` path does not install torch or CUDA packages.
 
 ## Secret Policy
 
