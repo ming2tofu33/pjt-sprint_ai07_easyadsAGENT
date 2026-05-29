@@ -16,11 +16,19 @@ General backend, LangGraph, LLM skeleton, Vision MVP, and mock T2I work should u
 - Driver compatible with CUDA 11.8 PyTorch wheels
 - `uv` installed
 - `.venv` created with `uv venv`
-- Core dependencies installed:
+- Core dependencies installed with the recommended lockfile workflow:
+
+```powershell
+uv sync --group dev
+```
+
+Compatibility workflow:
 
 ```powershell
 uv pip sync requirements.txt requirements-dev.txt
 ```
+
+The default `uv sync --group dev` path does not install torch or CUDA packages.
 
 ## Install PyTorch CUDA 11.8
 
@@ -39,6 +47,16 @@ uv pip install -r requirements-gpu-cu118.txt
 ```
 
 `requirements-gpu-cu118.txt` intentionally excludes torch so PyTorch can be installed from the CUDA wheel index above.
+
+If you want to use the optional dependency group from `pyproject.toml`, install torch first, then run:
+
+```powershell
+uv pip install -e ".[gpu-cu118]"
+```
+
+Torch remains a separate install because CUDA wheel index selection is environment-specific.
+
+Do not use `uv sync --extra gpu-cu118` as the standard GPU setup path yet. Until the torch CUDA index policy is finalized, it may resolve an unintended CPU torch wheel or create a lock strategy mismatch.
 
 ## Check CUDA
 

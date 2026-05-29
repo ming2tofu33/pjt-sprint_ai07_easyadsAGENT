@@ -2,6 +2,13 @@
 
 This document is the standard local setup guide for EasyAds MVP development.
 
+The project now supports two uv workflows:
+
+- Recommended: `pyproject.toml + uv.lock` with `uv sync --group dev`.
+- Compatibility: requirements files with `uv pip sync requirements.txt requirements-dev.txt`.
+
+Both workflows must keep the backend, LangGraph, LLM skeleton, Vision MVP, mock T2I, and tests working.
+
 ## 1. Install uv
 
 Windows PowerShell:
@@ -10,19 +17,29 @@ Windows PowerShell:
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
+Linux/macOS:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 Check installation:
 
 ```powershell
 uv --version
 ```
 
-## 2. Move to the Project
+## 2. Python Version
+
+Use the Python major/minor version in `.python-version`. It records the Python version used for the passing test environment.
+
+## 3. Move to the Project
 
 ```powershell
 cd C:\Users\UserK\Downloads\easyads-local
 ```
 
-## 3. Create the Virtual Environment
+## 4. Create the Virtual Environment
 
 ```powershell
 uv venv
@@ -40,17 +57,15 @@ Or run commands without activation:
 uv run python --version
 ```
 
-## 4. Install Core and Development Dependencies
+## 5. Recommended Sync: pyproject + uv.lock
 
-For backend, LangGraph, LLM skeleton, Vision MVP, mock T2I, and tests:
+Use this path for new setup:
 
 ```powershell
-uv pip sync requirements.txt requirements-dev.txt
+uv sync --group dev
 ```
 
-`uv pip sync` makes the environment match the listed requirements. If you install GPU packages later, run the GPU commands after this sync step. Running `uv pip sync requirements.txt requirements-dev.txt` again may remove GPU-only packages because they are intentionally split out.
-
-## 5. Verify the Environment
+Then verify:
 
 ```powershell
 uv run python scripts\check_uv_env.py
@@ -58,9 +73,25 @@ uv run python -m compileall orchestrator
 uv run python -m pytest orchestrator\tests
 ```
 
-The standard MVP verification is a full pytest pass. Vision/TLFP coverage is included in the test suite.
+## 6. Compatibility Sync: requirements
 
-## 6. Optional T2I Candidate Check
+Use this path if a teammate still follows the requirements-based workflow:
+
+```powershell
+uv pip sync requirements.txt requirements-dev.txt
+```
+
+Then verify:
+
+```powershell
+uv run python scripts\check_uv_env.py
+uv run python -m compileall orchestrator
+uv run python -m pytest orchestrator\tests
+```
+
+`uv pip sync` makes the environment match the listed requirements. If you install GPU packages later, run the GPU commands after this sync step. Running `uv pip sync requirements.txt requirements-dev.txt` again may remove GPU-only packages because they are intentionally split out.
+
+## 7. Optional T2I Candidate Check
 
 The candidate check should not download or load local models unless explicitly requested:
 
@@ -70,6 +101,6 @@ uv run python scripts\check_t2i_candidates.py
 
 Use `--load-local` or `--generate-local` only after explicit approval because those paths may load large local models.
 
-## 7. GPU Workers
+## 8. GPU Workers
 
 General backend, LLM, Vision, and mock T2I work does not require GPU packages. Local SD3.5/FLUX workers should follow `docs/gpu-cu118-setup.md`.
