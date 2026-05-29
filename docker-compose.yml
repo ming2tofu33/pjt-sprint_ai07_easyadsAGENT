@@ -3,10 +3,27 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    
+    # [포트 자동화] 랜덤 두 자리를 외부 포트로 지정
     ports:
-      - "8000:8000"
+      - "1${HOST_UID}:8000"
+    
+    # [저장소 매핑 자동화]
     volumes:
-      - ./data:/app/data
+      - .:/app                                          # 1. 내 소스코드 실시간 매핑 (codeit 등 폴더명 무관)
+      - /home/models:/app/models                        # 2. 공용 모델 저장소 (용량 1배 고정, 읽기전용)
+      - /home/records:/app/records                      # 3. 공용 실험기록 저장소 (공동 쓰기 가능)
+      - /home/DBs:/app/DBs                              # 4. 공용 DB 저장소 (데이터 보존용)
+    
     env_file:
       - .env
     restart: unless-stopped
+    
+    # [GPU 통로 개척] 서버 본체의 NVIDIA L4 GPU를 컨테이너 상자 내부로 통과시키는 명세
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
