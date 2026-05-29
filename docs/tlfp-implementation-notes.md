@@ -38,6 +38,7 @@
 - Vision Pipeline MVP preprocessing is available before validation when `source_image_path` or `reference_image_path` is supplied.
 - `ReferenceStyleProfile` can inform `ImagePromptPlannerNode` with deterministic palette and style hints.
 - `ProductPreserveSpec` is currently a `center_bbox_stub` only; no real product-preserving edit is performed.
+- `image_preprocess_result` is the latest preprocess result only. Use `vision_pipeline_results` for source/reference history, `product_preserve_spec` for product metadata, and `reference_style_profile` for style metadata.
 
 ## Deterministic Boundaries
 
