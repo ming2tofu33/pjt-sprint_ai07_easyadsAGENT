@@ -1,5 +1,5 @@
 # .PHONY는 파일 이름과 타겟 이름이 겹쳐서 충돌하는 것을 방지하는 방어막입니다.
-.PHONY: help up down logs shell sync lint rag-test port gpu
+.PHONY: help up down logs shell sync lint rag-test test port gpu
 
 # 기본(default) 타겟: 터미널에 그냥 'make'만 쳤을 때 안내문을 띄워줍니다.
 help:
@@ -53,7 +53,7 @@ lint:
 
 rag-test:
 	# 서빙 전, RAG 시스템의 문서 검색 및 답변 생성 로직을 테스트합니다.
-	HOST_UID=$$(id -u) docker compose exec orchestrator python scripts/test_rag.py
+	HOST_UID=$$(id -u) docker compose exec orchestrator uv run python scripts/test_rag.py
 
 port:
 	# 내 서버가 외부와 연결된 포트 번호를 확인합니다.
@@ -62,3 +62,7 @@ port:
 gpu:
 	# 도커 상자 안에서 GPU가 제대로 물렸는지 검증합니다.
 	HOST_UID=$$(id -u) docker compose exec orchestrator nvidia-smi
+
+test:
+	# 컨테이너 내부에서 전체 테스트를 실행합니다.
+	HOST_UID=$$(id -u) docker compose exec orchestrator uv run python -m pytest orchestrator/tests -q
