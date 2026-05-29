@@ -40,6 +40,8 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient />);
 
+    expect(screen.getByText("레퍼런스 보고 만들기")).toBeTruthy();
+    fireEvent.click(screen.getByText("대화로 시작하기"));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
@@ -70,6 +72,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient />);
 
+    fireEvent.click(screen.getByText("대화로 시작하기"));
     fireEvent.click(screen.getByLabelText("요청 보내기"));
     await waitFor(() => expect(screen.getByText("딸기라떼")).toBeTruthy());
     fireEvent.click(screen.getByText("문구 고르기"));
@@ -94,5 +97,19 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("찰떡 레퍼런스 둘러보기")).toBeTruthy();
     expect(screen.queryByText("찰떡 광고 시안이 완성됐어요")).toBeNull();
     vi.useRealTimers();
+  });
+
+  it("opens the reference gallery from the home mock hub", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient />);
+
+    fireEvent.click(screen.getByText("레퍼런스 보고 만들기"));
+    expect(screen.getByText("REFERENCE GALLERY")).toBeTruthy();
+    expect(screen.getByText("찰떡 레퍼런스 둘러보기")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("홈으로"));
+    expect(screen.getByText("레퍼런스 보고 만들기")).toBeTruthy();
   });
 });

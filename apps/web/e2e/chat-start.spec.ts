@@ -3,6 +3,9 @@ import { expect, test } from "@playwright/test";
 test("chat start flow reaches final brief on mobile", async ({ page }) => {
   await page.goto("/generate/chat");
 
+  await expect(page.getByText("레퍼런스 보고 만들기")).toBeVisible();
+  await page.getByRole("button", { name: /대화로 시작하기/ }).click();
+
   await expect(page.getByText("대화로 찰떡 만들기")).toBeVisible();
   await page.getByLabel("요청 보내기").click();
 
@@ -23,6 +26,17 @@ test("chat start flow reaches final brief on mobile", async ({ page }) => {
   await page.getByRole("button", { name: "기다리는 동안 둘러보기" }).click();
   await expect(page.getByText("찰떡 레퍼런스 둘러보기")).toBeVisible();
   await expect(page.getByRole("button", { name: "진행 상황 보기" })).toBeVisible();
+});
+
+test("home mock hub opens reference gallery and returns home", async ({ page }) => {
+  await page.goto("/generate/chat");
+
+  await page.getByRole("button", { name: /레퍼런스 보고 만들기/ }).click();
+  await expect(page.getByText("REFERENCE GALLERY")).toBeVisible();
+  await expect(page.getByText("찰떡 레퍼런스 둘러보기")).toBeVisible();
+
+  await page.getByLabel("홈으로").click();
+  await expect(page.getByText("레퍼런스 보고 만들기")).toBeVisible();
 });
 
 test("desktop keeps the app in a centered mobile shell", async ({ page }) => {

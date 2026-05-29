@@ -6,6 +6,7 @@ import { ChatStartStep } from "@/components/generate/ChatStartStep";
 import { CopyChannelStep } from "@/components/generate/CopyChannelStep";
 import { GenerationCompleteStep } from "@/components/generate/GenerationCompleteStep";
 import { GenerationInProgressStep } from "@/components/generate/GenerationInProgressStep";
+import { HomeStartStep } from "@/components/generate/HomeStartStep";
 import { IntentReviewStep } from "@/components/generate/IntentReviewStep";
 import { MobileShell } from "@/components/generate/MobileShell";
 import { ReferenceBrowseStep } from "@/components/generate/ReferenceBrowseStep";
@@ -13,9 +14,11 @@ import { createChatBrief, startChatGeneration } from "@/lib/api-client";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing";
+type AppSurface = "home" | "chat" | "referenceGallery";
 
 export function ChatGenerateClient() {
   const [state, dispatch] = useReducer(chatFlowReducer, undefined, createInitialChatFlowState);
+  const [appSurface, setAppSurface] = useState<AppSurface>("home");
   const [generationStage, setGenerationStage] = useState<GenerationStage>("brief");
   const [generationProgress, setGenerationProgress] = useState(0);
 
@@ -90,6 +93,13 @@ export function ChatGenerateClient() {
     setGenerationStage("generating");
   }
 
+  function handleOpenFreshChat() {
+    dispatch({ type: "reset" });
+    setGenerationProgress(0);
+    setGenerationStage("brief");
+    setAppSurface("chat");
+  }
+
   function handleBackFromBrief() {
     setGenerationStage("brief");
     dispatch({ type: "back" });
@@ -97,11 +107,26 @@ export function ChatGenerateClient() {
 
   return (
     <MobileShell>
-      {state.step === 1 ? (
+      {appSurface === "home" ? (
+        <HomeStartStep onOpenChat={handleOpenFreshChat} onOpenReference={() => setAppSurface("referenceGallery")} />
+      ) : null}
+
+      {appSurface === "referenceGallery" ? (
+        <ReferenceBrowseStep
+          state={state}
+          progress={generationProgress}
+          isStandaloneGallery
+          onGoHome={() => setAppSurface("home")}
+          onOpenChat={handleOpenFreshChat}
+          onShowProgress={() => setAppSurface("home")}
+        />
+      ) : null}
+
+      {appSurface === "chat" && state.step === 1 ? (
         <ChatStartStep onSubmit={handleSubmitPrompt} />
       ) : null}
 
-      {state.step === 2 ? (
+      {appSurface === "chat" && state.step === 2 ? (
         <IntentReviewStep
           state={state}
           onBack={() => dispatch({ type: "back" })}
@@ -110,7 +135,7 @@ export function ChatGenerateClient() {
         />
       ) : null}
 
-      {state.step === 3 ? (
+      {appSurface === "chat" && state.step === 3 ? (
         <CopyChannelStep
           state={state}
           onBack={() => dispatch({ type: "back" })}
@@ -121,11 +146,11 @@ export function ChatGenerateClient() {
         />
       ) : null}
 
-      {state.step === 4 && generationStage === "brief" ? (
+      {appSurface === "chat" && state.step === 4 && generationStage === "brief" ? (
         <BriefConfirmStep state={state} onBack={handleBackFromBrief} onGenerate={handleStartMockGeneration} />
       ) : null}
 
-      {state.step === 4 && generationStage === "generating" ? (
+      {appSurface === "chat" && state.step === 4 && generationStage === "generating" ? (
         <GenerationInProgressStep
           state={state}
           progress={generationProgress}
@@ -133,7 +158,7 @@ export function ChatGenerateClient() {
         />
       ) : null}
 
-      {state.step === 4 && generationStage === "browsing" ? (
+      {appSurface === "chat" && state.step === 4 && generationStage === "browsing" ? (
         <ReferenceBrowseStep
           state={state}
           progress={generationProgress}
@@ -141,11 +166,19 @@ export function ChatGenerateClient() {
         />
       ) : null}
 
-      {state.step === 4 && generationStage === "complete" ? (
-        <GenerationCompleteStep state={state} onBrowseSimilar={() => setGenerationStage("similarBrowsing")} />
+      {appSurface === "chat" && state.step === 4 && generationStage === "complete" ? (
+        <GenerationCompleteStep
+          state={state}
+          onBrowseSimilar={() => setGenerationStage("similarBrowsing")}
+          onGoHome={() => setAppSurface("home")}
+          onRegenerate={() => {
+            setGenerationProgress(12);
+            setGenerationStage("generating");
+          }}
+        />
       ) : null}
 
-      {state.step === 4 && generationStage === "similarBrowsing" ? (
+      {appSurface === "chat" && state.step === 4 && generationStage === "similarBrowsing" ? (
         <ReferenceBrowseStep
           state={state}
           progress={100}

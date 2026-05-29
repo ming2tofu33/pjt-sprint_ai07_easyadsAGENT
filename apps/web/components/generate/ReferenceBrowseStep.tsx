@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, CheckCircle2, Home, Search, Sparkles } from "lucide-react";
+import { Bookmark, CheckCircle2, ChevronLeft, Home, MessageCircle, Search, Sparkles } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import styles from "./generate.module.css";
@@ -10,6 +10,9 @@ type ReferenceBrowseStepProps = {
   progress: number;
   onShowProgress: () => void;
   isGenerationComplete?: boolean;
+  isStandaloneGallery?: boolean;
+  onGoHome?: () => void;
+  onOpenChat?: () => void;
 };
 
 const categories = ["전체", "카페", "음식점", "뷰티", "포스터", "스토리"];
@@ -25,34 +28,47 @@ export function ReferenceBrowseStep({
   state,
   progress,
   onShowProgress,
-  isGenerationComplete = false
+  isGenerationComplete = false,
+  isStandaloneGallery = false,
+  onGoHome,
+  onOpenChat
 }: ReferenceBrowseStepProps) {
   const brief = buildBrief(state);
   const safeProgress = isGenerationComplete ? 100 : Math.max(12, Math.min(progress, 99));
 
   return (
     <>
-      <div className={styles.progressBanner} data-complete={isGenerationComplete}>
-        {isGenerationComplete ? (
-          <CheckCircle2 size={15} aria-hidden="true" />
-        ) : (
-          <span className={styles.spinnerDot} />
-        )}
-        <strong>
-          {isGenerationComplete ? `${brief.item} 광고 생성 완료` : `${brief.item} 광고 생성 중 · ${safeProgress}%`}
-        </strong>
-        <span>{isGenerationComplete ? "비슷한 스타일을 둘러보세요" : `약 ${Math.max(5, Math.ceil((100 - safeProgress) / 4))}초 남음`}</span>
-        <button type="button" onClick={onShowProgress}>
-          {isGenerationComplete ? "결과로 돌아가기" : "진행 상황 보기"}
-        </button>
-      </div>
+      {isStandaloneGallery ? (
+        <div className={styles.galleryTopBar}>
+          <button aria-label="홈으로" type="button" onClick={onGoHome}>
+            <ChevronLeft size={22} aria-hidden="true" />
+          </button>
+          <span>REFERENCE GALLERY</span>
+          <Search size={21} aria-hidden="true" />
+        </div>
+      ) : (
+        <div className={styles.progressBanner} data-complete={isGenerationComplete}>
+          {isGenerationComplete ? (
+            <CheckCircle2 size={15} aria-hidden="true" />
+          ) : (
+            <span className={styles.spinnerDot} />
+          )}
+          <strong>
+            {isGenerationComplete ? `${brief.item} 광고 생성 완료` : `${brief.item} 광고 생성 중 · ${safeProgress}%`}
+          </strong>
+          <span>{isGenerationComplete ? "비슷한 스타일을 둘러보세요" : `약 ${Math.max(5, Math.ceil((100 - safeProgress) / 4))}초 남음`}</span>
+          <button type="button" onClick={onShowProgress}>
+            {isGenerationComplete ? "결과로 돌아가기" : "진행 상황 보기"}
+          </button>
+        </div>
+      )}
 
       <header className={styles.referenceHeader}>
         <div>
-          <p>레퍼런스</p>
+          <p>{isStandaloneGallery ? "마음에 드는 광고 스타일을 골라보세요" : "레퍼런스"}</p>
           <h1>찰떡 레퍼런스 둘러보기</h1>
         </div>
-        <Search size={22} aria-hidden="true" />
+        {isStandaloneGallery ? null : <Search size={22} aria-hidden="true" />}
       </header>
 
       <label className={styles.searchField}>
@@ -85,28 +101,30 @@ export function ReferenceBrowseStep({
 
       <p className={styles.browseNote}>
         <Sparkles size={17} aria-hidden="true" />
-        {isGenerationComplete
+        {isStandaloneGallery
+          ? "레퍼런스를 고른 뒤 대화로 부족한 정보를 채우면 더 빠르게 광고를 만들 수 있어요."
+          : isGenerationComplete
           ? "완성된 광고와 비슷한 톤의 레퍼런스를 더 둘러볼 수 있어요."
           : "광고가 완성되면 알려드릴게요. 기다리는 동안 다른 스타일을 둘러볼 수 있어요."}
       </p>
 
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">
-        <span data-active="true">
+        <button data-active={isStandaloneGallery ? undefined : "true"} type="button" onClick={onGoHome}>
           <Home size={18} aria-hidden="true" />
           홈
-        </span>
-        <span>
+        </button>
+        <button data-active={isStandaloneGallery ? "true" : undefined} type="button">
           <Search size={18} aria-hidden="true" />
           레퍼런스
-        </span>
-        <span>
-          <Sparkles size={18} aria-hidden="true" />
+        </button>
+        <button type="button" onClick={onOpenChat}>
+          <MessageCircle size={18} aria-hidden="true" />
           스튜디오
-        </span>
-        <span>
+        </button>
+        <button type="button">
           <Bookmark size={18} aria-hidden="true" />
           보관함
-        </span>
+        </button>
       </nav>
     </>
   );

@@ -62,6 +62,7 @@ export type ChatFlowState = {
 };
 
 export type ChatFlowAction =
+  | { type: "reset" }
   | { type: "submitPrompt"; prompt: string }
   | {
       type: "backendStartSucceeded";

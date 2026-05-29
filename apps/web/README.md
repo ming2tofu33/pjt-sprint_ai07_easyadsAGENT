@@ -8,14 +8,16 @@ Next.js 기반의 모바일 웹앱 프론트엔드입니다. 현재 구현 범�
 - 390x844 뷰포트를 주 기준으로 구현
 - 보조 확인 기준: 375x667, 430x932
 - 단계별 UI
-  1. 원하는 광고 요청 입력
-  2. AI가 해석한 정보 확인
-  3. 문구 고르기
-  4. 브리프 확인 및 광고 생성 CTA
+  1. 홈 / 시작 화면
+  2. 원하는 광고 요청 입력
+  3. AI가 해석한 정보 확인
+  4. 문구 고르기
+  5. 브리프 확인 및 광고 생성 CTA
 - 광고 생성 mock 플로우
   - 광고 생성 중
   - 기다리는 동안 레퍼런스 둘러보기
   - 생성 완료 및 mock 광고 시안 확인
+  - 완료 후 홈/레퍼런스/결과 화면 왕복
 - BFF API 연결
 - BFF 또는 백엔드가 꺼져 있을 때도 화면을 확인할 수 있는 로컬 fallback 플로우
 
@@ -32,6 +34,7 @@ apps/web
 │   ├── CopyChannelStep.tsx
 │   ├── GenerationCompleteStep.tsx
 │   ├── GenerationInProgressStep.tsx
+│   ├── HomeStartStep.tsx
 │   ├── IntentReviewStep.tsx
 │   └── ReferenceBrowseStep.tsx
 ├── lib

@@ -69,6 +69,8 @@ export function createInitialChatFlowState(): ChatFlowState {
 
 export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): ChatFlowState {
   switch (action.type) {
+    case "reset":
+      return createInitialChatFlowState();
     case "submitPrompt":
       return {
         ...state,
