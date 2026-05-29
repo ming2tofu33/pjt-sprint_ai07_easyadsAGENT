@@ -3,7 +3,7 @@ name = "easyads-agent"
 version = "0.1.0"
 description = "EasyAds MVP orchestrator for LangGraph, LLM, Vision, and T2I pipelines"
 readme = "README.md"
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "annotated-doc==0.0.4",
     "annotated-types==0.7.0",
