@@ -6,15 +6,18 @@ import { ChatStartStep } from "@/components/generate/ChatStartStep";
 import { CopyChannelStep } from "@/components/generate/CopyChannelStep";
 import { GenerationCompleteStep } from "@/components/generate/GenerationCompleteStep";
 import { GenerationInProgressStep } from "@/components/generate/GenerationInProgressStep";
+import { BrandKitStep } from "@/components/generate/BrandKitStep";
 import { HomeStartStep } from "@/components/generate/HomeStartStep";
 import { IntentReviewStep } from "@/components/generate/IntentReviewStep";
 import { MobileShell } from "@/components/generate/MobileShell";
+import { RecentAdsStep } from "@/components/generate/RecentAdsStep";
 import { ReferenceBrowseStep } from "@/components/generate/ReferenceBrowseStep";
+import { StudioEntryStep } from "@/components/generate/StudioEntryStep";
 import { createChatBrief, startChatGeneration } from "@/lib/api-client";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing";
-type AppSurface = "home" | "chat" | "referenceGallery";
+type AppSurface = "home" | "studio" | "chat" | "referenceGallery" | "recentAds" | "brandKit";
 
 export function ChatGenerateClient() {
   const [state, dispatch] = useReducer(chatFlowReducer, undefined, createInitialChatFlowState);
@@ -100,6 +103,16 @@ export function ChatGenerateClient() {
     setAppSurface("chat");
   }
 
+  function handleRegenerateFromRecent() {
+    dispatch({ type: "reset" });
+    dispatch({ type: "submitPrompt", prompt: "딸기라떼 신메뉴 광고 비슷하게 다시 만들어줘" });
+    dispatch({ type: "continueToCopy" });
+    dispatch({ type: "continueToBrief" });
+    setGenerationProgress(12);
+    setGenerationStage("generating");
+    setAppSurface("chat");
+  }
+
   function handleBackFromBrief() {
     setGenerationStage("brief");
     dispatch({ type: "back" });
@@ -108,7 +121,23 @@ export function ChatGenerateClient() {
   return (
     <MobileShell>
       {appSurface === "home" ? (
-        <HomeStartStep onOpenChat={handleOpenFreshChat} onOpenReference={() => setAppSurface("referenceGallery")} />
+        <HomeStartStep
+          onOpenStudio={() => setAppSurface("studio")}
+          onOpenChat={handleOpenFreshChat}
+          onOpenReference={() => setAppSurface("referenceGallery")}
+          onOpenRecentAds={() => setAppSurface("recentAds")}
+          onOpenBrandKit={() => setAppSurface("brandKit")}
+        />
+      ) : null}
+
+      {appSurface === "studio" ? (
+        <StudioEntryStep
+          onGoHome={() => setAppSurface("home")}
+          onOpenChat={handleOpenFreshChat}
+          onOpenReference={() => setAppSurface("referenceGallery")}
+          onOpenRecentAds={() => setAppSurface("recentAds")}
+          onOpenBrandKit={() => setAppSurface("brandKit")}
+        />
       ) : null}
 
       {appSurface === "referenceGallery" ? (
@@ -117,8 +146,30 @@ export function ChatGenerateClient() {
           progress={generationProgress}
           isStandaloneGallery
           onGoHome={() => setAppSurface("home")}
-          onOpenChat={handleOpenFreshChat}
-          onShowProgress={() => setAppSurface("home")}
+          onOpenReference={() => setAppSurface("referenceGallery")}
+          onOpenStudio={() => setAppSurface("studio")}
+          onOpenRecentAds={() => setAppSurface("recentAds")}
+          onOpenBrandKit={() => setAppSurface("brandKit")}
+          onShowProgress={() => setAppSurface("studio")}
+        />
+      ) : null}
+
+      {appSurface === "recentAds" ? (
+        <RecentAdsStep
+          onGoHome={() => setAppSurface("home")}
+          onOpenReference={() => setAppSurface("referenceGallery")}
+          onOpenStudio={() => setAppSurface("studio")}
+          onOpenBrandKit={() => setAppSurface("brandKit")}
+          onRegenerate={handleRegenerateFromRecent}
+        />
+      ) : null}
+
+      {appSurface === "brandKit" ? (
+        <BrandKitStep
+          onGoHome={() => setAppSurface("home")}
+          onOpenReference={() => setAppSurface("referenceGallery")}
+          onOpenStudio={() => setAppSurface("studio")}
+          onOpenRecentAds={() => setAppSurface("recentAds")}
         />
       ) : null}
 
@@ -163,6 +214,11 @@ export function ChatGenerateClient() {
           state={state}
           progress={generationProgress}
           onShowProgress={() => setGenerationStage("generating")}
+          onGoHome={() => setAppSurface("home")}
+          onOpenReference={() => setAppSurface("referenceGallery")}
+          onOpenStudio={() => setAppSurface("studio")}
+          onOpenRecentAds={() => setAppSurface("recentAds")}
+          onOpenBrandKit={() => setAppSurface("brandKit")}
         />
       ) : null}
 
@@ -184,6 +240,11 @@ export function ChatGenerateClient() {
           progress={100}
           isGenerationComplete
           onShowProgress={() => setGenerationStage("complete")}
+          onGoHome={() => setAppSurface("home")}
+          onOpenReference={() => setAppSurface("referenceGallery")}
+          onOpenStudio={() => setAppSurface("studio")}
+          onOpenRecentAds={() => setAppSurface("recentAds")}
+          onOpenBrandKit={() => setAppSurface("brandKit")}
         />
       ) : null}
     </MobileShell>

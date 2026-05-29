@@ -1,6 +1,6 @@
 # EasyAds Web UI
 
-Next.js 기반의 모바일 웹앱 프론트엔드입니다. 현재 구현 범위는 C 시나리오의 "대화로 시작하기" 플로우이며, 사용자가 광고 요청을 대화처럼 입력하면 문구 후보를 고르고 광고 브리프를 확인하는 흐름까지 연결되어 있습니다.
+Next.js 기반의 모바일 웹앱 프론트엔드입니다. 현재 구현 범위는 앱 대시보드 mock, 스튜디오 진입, C 시나리오의 "대화로 시작하기" 플로우이며, 사용자가 광고 요청을 대화처럼 입력하면 문구 후보를 고르고 광고 브리프를 확인하는 흐름까지 연결되어 있습니다.
 
 ## 구현 범위
 
@@ -8,11 +8,18 @@ Next.js 기반의 모바일 웹앱 프론트엔드입니다. 현재 구현 범�
 - 390x844 뷰포트를 주 기준으로 구현
 - 보조 확인 기준: 375x667, 430x932
 - 단계별 UI
-  1. 홈 / 시작 화면
-  2. 원하는 광고 요청 입력
-  3. AI가 해석한 정보 확인
-  4. 문구 고르기
-  5. 브리프 확인 및 광고 생성 CTA
+  1. 홈 대시보드
+  2. 스튜디오 / 만들기 방식 선택
+  3. 원하는 광고 요청 입력
+  4. AI가 해석한 정보 확인
+  5. 문구 고르기
+  6. 브리프 확인 및 광고 생성 CTA
+- 앱 대시보드 mock 화면
+  - 홈 대시보드
+  - 레퍼런스 갤러리
+  - 스튜디오 진입
+  - 보관함 / 최근 광고
+  - 추천 & 브랜드 키트
 - 광고 생성 mock 플로우
   - 광고 생성 중
   - 기다리는 동안 레퍼런스 둘러보기
@@ -30,12 +37,15 @@ apps/web
 │   └── page.tsx
 ├── components/generate
 │   ├── BriefConfirmStep.tsx
+│   ├── BrandKitStep.tsx
 │   ├── ChatStartStep.tsx
 │   ├── CopyChannelStep.tsx
 │   ├── GenerationCompleteStep.tsx
 │   ├── GenerationInProgressStep.tsx
 │   ├── HomeStartStep.tsx
 │   ├── IntentReviewStep.tsx
+│   ├── RecentAdsStep.tsx
+│   ├── StudioEntryStep.tsx
 │   └── ReferenceBrowseStep.tsx
 ├── lib
 │   ├── api-client.ts

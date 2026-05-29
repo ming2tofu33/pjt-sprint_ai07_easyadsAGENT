@@ -39,6 +39,19 @@ test("home mock hub opens reference gallery and returns home", async ({ page }) 
   await expect(page.getByText("레퍼런스 보고 만들기")).toBeVisible();
 });
 
+test("dashboard opens studio, recent ads, and brand kit tabs", async ({ page }) => {
+  await page.goto("/generate/chat");
+
+  await page.getByRole("button", { name: /광고 만들기/ }).click();
+  await expect(page.getByText("어떻게 시작할까요?")).toBeVisible();
+
+  await page.getByRole("button", { name: /보관함/ }).click();
+  await expect(page.getByText("내 찰떡 광고")).toBeVisible();
+
+  await page.getByRole("button", { name: /마이페이지/ }).click();
+  await expect(page.getByText("추천 & 브랜드 키트")).toBeVisible();
+});
+
 test("desktop keeps the app in a centered mobile shell", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/generate/chat");

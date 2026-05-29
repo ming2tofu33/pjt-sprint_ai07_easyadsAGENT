@@ -112,4 +112,20 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("홈으로"));
     expect(screen.getByText("레퍼런스 보고 만들기")).toBeTruthy();
   });
+
+  it("opens the studio entry and dashboard tabs from the home dashboard", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient />);
+
+    fireEvent.click(screen.getByRole("button", { name: /광고 만들기/ }));
+    expect(screen.getByText("어떻게 시작할까요?")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /보관함/ }));
+    expect(screen.getByText("내 찰떡 광고")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /마이페이지/ }));
+    expect(screen.getByText("추천 & 브랜드 키트")).toBeTruthy();
+  });
 });

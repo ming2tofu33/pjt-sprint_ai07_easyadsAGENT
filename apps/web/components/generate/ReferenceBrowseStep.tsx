@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, CheckCircle2, ChevronLeft, Home, MessageCircle, Search, Sparkles } from "lucide-react";
+import { Bookmark, Briefcase, CheckCircle2, ChevronLeft, Home, Search, Sparkles, User } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import styles from "./generate.module.css";
@@ -12,7 +12,10 @@ type ReferenceBrowseStepProps = {
   isGenerationComplete?: boolean;
   isStandaloneGallery?: boolean;
   onGoHome?: () => void;
-  onOpenChat?: () => void;
+  onOpenReference?: () => void;
+  onOpenStudio?: () => void;
+  onOpenRecentAds?: () => void;
+  onOpenBrandKit?: () => void;
 };
 
 const categories = ["전체", "카페", "음식점", "뷰티", "포스터", "스토리"];
@@ -31,7 +34,10 @@ export function ReferenceBrowseStep({
   isGenerationComplete = false,
   isStandaloneGallery = false,
   onGoHome,
-  onOpenChat
+  onOpenReference,
+  onOpenStudio,
+  onOpenRecentAds,
+  onOpenBrandKit
 }: ReferenceBrowseStepProps) {
   const brief = buildBrief(state);
   const safeProgress = isGenerationComplete ? 100 : Math.max(12, Math.min(progress, 99));
@@ -113,17 +119,21 @@ export function ReferenceBrowseStep({
           <Home size={18} aria-hidden="true" />
           홈
         </button>
-        <button data-active={isStandaloneGallery ? "true" : undefined} type="button">
+        <button data-active={isStandaloneGallery ? "true" : undefined} type="button" onClick={onOpenReference}>
           <Search size={18} aria-hidden="true" />
           레퍼런스
         </button>
-        <button type="button" onClick={onOpenChat}>
-          <MessageCircle size={18} aria-hidden="true" />
+        <button type="button" onClick={onOpenStudio}>
+          <Sparkles size={18} aria-hidden="true" />
           스튜디오
         </button>
-        <button type="button">
-          <Bookmark size={18} aria-hidden="true" />
+        <button type="button" onClick={onOpenRecentAds}>
+          <Briefcase size={18} aria-hidden="true" />
           보관함
+        </button>
+        <button type="button" onClick={onOpenBrandKit}>
+          <User size={18} aria-hidden="true" />
+          마이페이지
         </button>
       </nav>
     </>
