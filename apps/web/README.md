@@ -114,13 +114,28 @@ POST /api/generate/chat/brief
 ```bash
 cd apps/web
 npm install
-npm run dev
+NEXT_PUBLIC_BFF_BASE_URL=http://127.0.0.1:4000 npm run dev
 ```
 
 브라우저에서 다음 주소를 엽니다.
 
 ```text
 http://localhost:3000/generate/chat
+```
+
+## 대시보드 직접 리뷰 URL
+
+대시보드와 생성 상태를 바로 확인할 때는 Web dev server를 켠 뒤 다음 주소를 엽니다.
+
+```text
+http://localhost:3000/generate/chat?surface=home
+http://localhost:3000/generate/chat?surface=studio
+http://localhost:3000/generate/chat?surface=reference
+http://localhost:3000/generate/chat?surface=ads
+http://localhost:3000/generate/chat?surface=brand
+http://localhost:3000/generate/chat?surface=chat
+http://localhost:3000/generate/chat?surface=chat&stage=generating
+http://localhost:3000/generate/chat?surface=chat&stage=complete
 ```
 
 ## 백엔드까지 연결해서 실행하기
@@ -159,9 +174,8 @@ http://localhost:3000/generate/chat
 
 Chrome DevTools의 Toggle device toolbar를 켜고 다음 크기를 확인합니다.
 
-- 375x667
-- 390x844
-- 430x932
+- Primary: 390x844
+- Secondary: 375x667, 430x932
 
 현재 디자인의 주 기준은 390x844입니다. 데스크톱 브라우저에서 열어도 모바일 앱 화면처럼 중앙에 고정된 프레임으로 보이도록 구현되어 있습니다.
 
