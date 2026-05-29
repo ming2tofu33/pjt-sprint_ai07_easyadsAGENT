@@ -19,6 +19,22 @@ EasyAds / 개떡찰떡 프로젝트입니다.
 python -m pytest orchestrator/tests
 ```
 
+## Development setup with uv
+
+Install `uv`, create a local environment, and sync the core + dev requirements:
+
+```powershell
+uv venv
+uv pip sync requirements.txt requirements-dev.txt
+uv run python scripts\check_uv_env.py
+uv run python -m compileall orchestrator
+uv run python -m pytest orchestrator\tests
+```
+
+Detailed setup is in `docs/uv-setup.md`.
+
+GPU/local image generation workers for SD3.5 or FLUX should follow `docs/gpu-cu118-setup.md`. General backend, LangGraph, LLM, Vision, and mock T2I work does not require GPU requirements.
+
 ## Secret Policy
 
 `.env`, `*.env`, 모델 파일, 출력물, 캐시는 git에 올리지 않습니다. 실제 API key는 로컬 `.env` 또는 배포 환경변수로 관리합니다.
