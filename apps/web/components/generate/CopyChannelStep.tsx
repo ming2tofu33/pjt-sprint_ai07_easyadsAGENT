@@ -85,18 +85,20 @@ export function CopyChannelStep({
         <PenLine size={18} aria-hidden="true" />
       </label>
 
-      <div className={styles.progressWrap}>
-        <span>
-          정보 입력 {state.progress.current}/{state.progress.total}
-        </span>
-        <span className={styles.progressTrack}>
-          <span className={styles.progressBar} style={{ width: "75%" }} />
-        </span>
-      </div>
+      <div className={styles.stepFooter}>
+        <div className={styles.progressWrap}>
+          <span>
+            정보 입력 {state.progress.current}/{state.progress.total}
+          </span>
+          <span className={styles.progressTrack}>
+            <span className={styles.progressBar} style={{ width: "75%" }} />
+          </span>
+        </div>
 
-      <button className={styles.primaryButton} type="button" onClick={onContinue}>
-        브리프 확인하기
-      </button>
+        <button className={styles.primaryButton} type="button" onClick={onContinue}>
+          브리프 확인하기
+        </button>
+      </div>
     </>
   );
 }

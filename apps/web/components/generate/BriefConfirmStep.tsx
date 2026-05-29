@@ -37,19 +37,21 @@ export function BriefConfirmStep({ state, onBack }: BriefConfirmStepProps) {
         </div>
       </section>
 
-      <p className={styles.completeNote}>이 내용으로 광고 이미지를 생성할게요. 마음에 들지 않으면 언제든 수정할 수 있어요.</p>
+      <div className={styles.stepFooter}>
+        <p className={styles.completeNote}>이 내용으로 광고 이미지를 생성할게요. 마음에 들지 않으면 언제든 수정할 수 있어요.</p>
 
-      <button className={styles.primaryButton} type="button">
-        찰떡 광고 생성하기 <Sparkles size={18} aria-hidden="true" />
-      </button>
+        <div className={`${styles.progressWrap} ${styles.finalProgress}`}>
+          <span>
+            정보 입력 {state.progress.current}/{state.progress.total}
+          </span>
+          <span className={styles.progressTrack}>
+            <span className={styles.progressBar} style={{ width: "100%" }} />
+          </span>
+        </div>
 
-      <div className={`${styles.progressWrap} ${styles.finalProgress}`}>
-        <span>
-          정보 입력 {state.progress.current}/{state.progress.total}
-        </span>
-        <span className={styles.progressTrack}>
-          <span className={styles.progressBar} style={{ width: "100%" }} />
-        </span>
+        <button className={styles.primaryButton} type="button">
+          찰떡 광고 생성하기 <Sparkles size={18} aria-hidden="true" />
+        </button>
       </div>
     </>
   );

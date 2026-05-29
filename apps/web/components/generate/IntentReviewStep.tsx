@@ -73,18 +73,20 @@ export function IntentReviewStep({ state, onSelectTone, onContinue, onBack }: In
         })}
       </div>
 
-      <div className={styles.progressWrap}>
-        <span>
-          정보 입력 {state.progress.current}/{state.progress.total}
-        </span>
-        <span className={styles.progressTrack}>
-          <span className={styles.progressBar} style={{ width: "25%" }} />
-        </span>
-      </div>
+      <div className={styles.stepFooter}>
+        <div className={styles.progressWrap}>
+          <span>
+            정보 입력 {state.progress.current}/{state.progress.total}
+          </span>
+          <span className={styles.progressTrack}>
+            <span className={styles.progressBar} style={{ width: "25%" }} />
+          </span>
+        </div>
 
-      <button className={styles.primaryButton} type="button" onClick={onContinue}>
-        문구 고르기
-      </button>
+        <button className={styles.primaryButton} type="button" onClick={onContinue}>
+          문구 고르기
+        </button>
+      </div>
     </>
   );
 }
