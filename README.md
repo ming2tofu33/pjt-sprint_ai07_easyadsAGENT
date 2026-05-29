@@ -47,6 +47,28 @@ Detailed setup is in `docs/uv-setup.md`.
 
 GPU/local image generation workers for SD3.5 or FLUX should follow `docs/gpu-cu118-setup.md`. General backend, LangGraph, LLM, Vision, and mock T2I work does not require GPU requirements. The default `uv sync --group dev` path does not install torch or CUDA packages.
 
+## Web UI
+
+The Next.js frontend lives in `apps/web`.
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:3000/generate/chat` for the scenario C chat-start UI.
+
+Validation commands:
+
+```bash
+cd apps/web
+npm run lint
+npm run test
+npm run build
+npm run e2e
+```
+
 ## Secret Policy
 
 `.env`, `*.env`, 모델 파일, 출력물, 캐시는 git에 올리지 않습니다. 실제 API key는 로컬 `.env` 또는 배포 환경변수로 관리합니다.
