@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("chat start flow reaches final brief on mobile", async ({ page }) => {
-  await page.goto("/generate/chat");
+  await page.goto("/");
 
   await expect(page.getByText("레퍼런스 보고 만들기")).toBeVisible();
   await page.getByRole("button", { name: /대화로 시작하기/ }).click();
@@ -29,7 +29,7 @@ test("chat start flow reaches final brief on mobile", async ({ page }) => {
 });
 
 test("home mock hub opens reference gallery and returns home", async ({ page }) => {
-  await page.goto("/generate/chat");
+  await page.goto("/");
 
   await page.getByRole("button", { name: /레퍼런스 보고 만들기/ }).click();
   await expect(page.getByText("REFERENCE GALLERY")).toBeVisible();
@@ -40,7 +40,7 @@ test("home mock hub opens reference gallery and returns home", async ({ page }) 
 });
 
 test("dashboard opens studio, recent ads, and brand kit tabs", async ({ page }) => {
-  await page.goto("/generate/chat");
+  await page.goto("/");
 
   await page.getByRole("button", { name: /광고 만들기/ }).click();
   await expect(page.getByText("어떻게 시작할까요?")).toBeVisible();
@@ -53,24 +53,24 @@ test("dashboard opens studio, recent ads, and brand kit tabs", async ({ page }) 
 });
 
 test("dashboard surfaces are directly addressable", async ({ page }) => {
-  await page.goto("/generate/chat?surface=studio");
+  await page.goto("/studio");
   await expect(page.getByText("어떻게 시작할까요?")).toBeVisible();
 
-  await page.goto("/generate/chat?surface=reference");
+  await page.goto("/reference");
   await expect(page.getByText("REFERENCE GALLERY")).toBeVisible();
 
-  await page.goto("/generate/chat?surface=ads");
+  await page.goto("/ads");
   await expect(page.getByText("내 찰떡 광고")).toBeVisible();
 
-  await page.goto("/generate/chat?surface=brand");
+  await page.goto("/brand");
   await expect(page.getByText("추천 & 브랜드 키트")).toBeVisible();
 
-  await page.goto("/generate/chat?surface=chat&stage=complete");
+  await page.goto("/generate/chat/complete");
   await expect(page.getByText("찰떡 광고 시안이 완성됐어요")).toBeVisible();
 });
 
 test("keyboard focus is visible on dashboard controls", async ({ page }) => {
-  await page.goto("/generate/chat?surface=home");
+  await page.goto("/");
 
   await page.keyboard.press("Tab");
 
@@ -79,7 +79,7 @@ test("keyboard focus is visible on dashboard controls", async ({ page }) => {
 
 test("desktop keeps the app in a centered mobile shell", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
-  await page.goto("/generate/chat");
+  await page.goto("/");
 
   const shell = page.getByLabel("개떡찰떡 모바일 화면");
   await expect(shell).toBeVisible();

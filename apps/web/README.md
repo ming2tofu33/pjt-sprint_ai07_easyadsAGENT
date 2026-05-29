@@ -120,22 +120,23 @@ NEXT_PUBLIC_BFF_BASE_URL=http://127.0.0.1:4000 npm run dev
 브라우저에서 다음 주소를 엽니다.
 
 ```text
-http://localhost:3000/generate/chat
+http://localhost:3000
 ```
 
-## 대시보드 직접 리뷰 URL
+## 서비스 화면 주소
 
-대시보드와 생성 상태를 바로 확인할 때는 Web dev server를 켠 뒤 다음 주소를 엽니다.
+서비스 화면을 바로 확인할 때는 Web dev server를 켠 뒤 다음 주소를 엽니다.
 
 ```text
-http://localhost:3000/generate/chat?surface=home
-http://localhost:3000/generate/chat?surface=studio
-http://localhost:3000/generate/chat?surface=reference
-http://localhost:3000/generate/chat?surface=ads
-http://localhost:3000/generate/chat?surface=brand
-http://localhost:3000/generate/chat?surface=chat
-http://localhost:3000/generate/chat?surface=chat&stage=generating
-http://localhost:3000/generate/chat?surface=chat&stage=complete
+http://localhost:3000
+http://localhost:3000/studio
+http://localhost:3000/reference
+http://localhost:3000/ads
+http://localhost:3000/brand
+http://localhost:3000/generate/chat
+http://localhost:3000/generate/chat/generating
+http://localhost:3000/generate/chat/complete
+http://localhost:3000/generate/chat/similar
 ```
 
 ## 백엔드까지 연결해서 실행하기
@@ -167,7 +168,7 @@ NEXT_PUBLIC_BFF_BASE_URL=http://127.0.0.1:4000 npm run dev
 브라우저에서 다음 주소를 엽니다.
 
 ```text
-http://localhost:3000/generate/chat
+http://localhost:3000
 ```
 
 ## 모바일 기준으로 확인하기

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { BriefConfirmStep } from "@/components/generate/BriefConfirmStep";
 import { ChatStartStep } from "@/components/generate/ChatStartStep";
 import { CopyChannelStep } from "@/components/generate/CopyChannelStep";
@@ -19,26 +19,26 @@ import { createChatBrief, startChatGeneration } from "@/lib/api-client";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 import {
   buildDashboardHref,
-  parseDashboardStage,
-  parseDashboardSurface,
   type DashboardStage,
   type DashboardSurface
 } from "@/lib/dashboard-navigation";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing";
 
-export function ChatGenerateClient() {
+type ChatGenerateClientProps = {
+  initialSurface?: DashboardSurface;
+  initialStage?: DashboardStage;
+};
+
+export function ChatGenerateClient({ initialSurface = "home", initialStage = "start" }: ChatGenerateClientProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [state, dispatch] = useReducer(chatFlowReducer, undefined, createInitialChatFlowState);
-  const querySurface = parseDashboardSurface(searchParams.get("surface"));
-  const dashboardStage = parseDashboardStage(searchParams.get("stage"));
   const [optimisticSurface, setOptimisticSurface] = useState<DashboardSurface | null>(null);
   const [generationStage, setGenerationStage] = useState<GenerationStage>("brief");
   const [generationProgress, setGenerationProgress] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const lastPrimedStageRef = useRef<DashboardStage | null>(null);
-  const appSurface = optimisticSurface ?? querySurface;
+  const appSurface = optimisticSurface ?? initialSurface;
 
   const navigateTo = useCallback(
     (surface: DashboardSurface, stage?: DashboardStage) => {
@@ -50,7 +50,7 @@ export function ChatGenerateClient() {
 
   useEffect(() => {
     setOptimisticSurface(null);
-  }, [querySurface]);
+  }, [initialSurface]);
 
   useEffect(() => {
     if (appSurface !== "chat") {
@@ -58,7 +58,7 @@ export function ChatGenerateClient() {
       return;
     }
 
-    if (dashboardStage === "start") {
+    if (initialStage === "start") {
       if (lastPrimedStageRef.current === "start") {
         return;
       }
@@ -69,7 +69,7 @@ export function ChatGenerateClient() {
       return;
     }
 
-    if (lastPrimedStageRef.current === dashboardStage) {
+    if (lastPrimedStageRef.current === initialStage) {
       return;
     }
 
@@ -77,12 +77,12 @@ export function ChatGenerateClient() {
     dispatch({ type: "submitPrompt", prompt: "삼겹살집 회식 손님 많이 오게 포스터 만들어줘" });
     dispatch({ type: "continueToCopy" });
     dispatch({ type: "continueToBrief" });
-    setGenerationProgress(dashboardStage === "generating" ? 68 : 100);
+    setGenerationProgress(initialStage === "generating" ? 68 : 100);
     setGenerationStage(
-      dashboardStage === "generating" ? "generating" : dashboardStage === "similar" ? "similarBrowsing" : "complete"
+      initialStage === "generating" ? "generating" : initialStage === "similar" ? "similarBrowsing" : "complete"
     );
-    lastPrimedStageRef.current = dashboardStage;
-  }, [appSurface, dashboardStage]);
+    lastPrimedStageRef.current = initialStage;
+  }, [appSurface, initialStage]);
 
   useEffect(() => {
     if (generationStage !== "generating" && generationStage !== "browsing") {
@@ -180,7 +180,6 @@ export function ChatGenerateClient() {
   function handleBackFromBrief() {
     setGenerationStage("brief");
     dispatch({ type: "back" });
-    navigateTo("chat", "brief");
   }
 
   function showToast(message: string) {

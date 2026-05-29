@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { ChatGenerateClient } from "@/app/generate/chat/ChatGenerateClient";
 
 export default function HomePage() {
-  redirect("/generate/chat");
+  return <ChatGenerateClient initialSurface="home" />;
 }

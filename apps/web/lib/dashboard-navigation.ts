@@ -8,9 +8,19 @@ const dashboardSurfaceSet = new Set<string>(dashboardSurfaces);
 const dashboardStageSet = new Set<string>(dashboardStages);
 
 export function buildDashboardHref(surface: DashboardSurface, stage?: DashboardStage): string {
-  const href = `/generate/chat?surface=${surface}`;
+  if (surface === "home") {
+    return "/";
+  }
 
-  return stage ? `${href}&stage=${stage}` : href;
+  if (surface !== "chat") {
+    return `/${surface}`;
+  }
+
+  if (!stage || stage === "start" || stage === "brief") {
+    return "/generate/chat";
+  }
+
+  return `/generate/chat/${stage}`;
 }
 
 export function parseDashboardSurface(surface: string | null | undefined): DashboardSurface {
