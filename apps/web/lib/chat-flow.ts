@@ -48,16 +48,22 @@ export function createInitialChatFlowState(): ChatFlowState {
     entryMode: "chat_start",
     step: 1,
     progress: { current: 0, total: 4, label: "대화 시작" },
+    jobId: "",
+    threadId: "",
     userInput: "",
     inferredContext: {
       businessType: "",
       itemOrService: "",
       promotionGoal: ""
     },
+    copyCandidates: copyOptions,
     selectedTone: "감성적인",
     selectedCopyId: "spring-strawberry",
     selectedChannelId: "instagram-feed",
-    customDirection: ""
+    customDirection: "",
+    brief: null,
+    isLoading: false,
+    errorMessage: null
   };
 }
 
@@ -69,7 +75,29 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         step: 2,
         progress: { current: 1, total: 4, label: "정보 입력" },
         userInput: action.prompt,
-        inferredContext: inferContextFromPrompt(action.prompt)
+        inferredContext: inferContextFromPrompt(action.prompt),
+        isLoading: true,
+        errorMessage: null
+      };
+    case "backendStartSucceeded":
+      return {
+        ...state,
+        step: 2,
+        progress: { current: 1, total: 4, label: "정보 입력" },
+        userInput: action.prompt,
+        jobId: action.jobId,
+        threadId: action.threadId,
+        inferredContext: action.context,
+        copyCandidates: action.copyCandidates.length > 0 ? action.copyCandidates : state.copyCandidates,
+        selectedCopyId: action.recommendedCopyId || action.copyCandidates[0]?.id || state.selectedCopyId,
+        isLoading: false,
+        errorMessage: null
+      };
+    case "backendRequestFailed":
+      return {
+        ...state,
+        isLoading: false,
+        errorMessage: action.message
       };
     case "selectTone":
       return {
@@ -97,11 +125,19 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         ...state,
         customDirection: action.value
       };
+    case "backendBriefSucceeded":
+      return {
+        ...state,
+        brief: action.brief,
+        isLoading: false,
+        errorMessage: null
+      };
     case "continueToBrief":
       return {
         ...state,
         step: 4,
-        progress: { current: 4, total: 4, label: "정보 입력" }
+        progress: { current: 4, total: 4, label: "정보 입력" },
+        isLoading: false
       };
     case "back":
       return {
@@ -114,7 +150,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
 }
 
 export function selectedCopyLabel(state: ChatFlowState): string {
-  return copyOptions.find((copy) => copy.id === state.selectedCopyId)?.headline ?? copyOptions[0].headline;
+  return state.copyCandidates.find((copy) => copy.id === state.selectedCopyId)?.headline ?? copyOptions[0].headline;
 }
 
 export function selectedChannelLabel(state: ChatFlowState): string {
@@ -123,6 +159,9 @@ export function selectedChannelLabel(state: ChatFlowState): string {
 }
 
 export function buildBrief(state: ChatFlowState): ChatBrief {
+  if (state.brief) {
+    return state.brief;
+  }
   return {
     purpose: state.inferredContext.promotionGoal,
     item: state.inferredContext.itemOrService,

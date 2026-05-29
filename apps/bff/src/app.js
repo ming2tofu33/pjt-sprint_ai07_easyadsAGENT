@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import cors from "@fastify/cors";
 import { z } from "zod";
 
 const chatStartSchema = z.object({
@@ -35,6 +36,10 @@ export function buildApp(options = {}) {
   const app = Fastify({ logger: options.logger ?? false });
   const orchestratorBaseUrl = options.orchestratorBaseUrl ?? process.env.ORCHESTRATOR_BASE_URL ?? "http://127.0.0.1:8000";
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+
+  app.register(cors, {
+    origin: options.corsOrigin ?? process.env.CORS_ORIGIN ?? true
+  });
 
   app.get("/health", async () => ({ status: "ok" }));
 

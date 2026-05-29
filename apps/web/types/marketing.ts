@@ -23,6 +23,8 @@ export type ToneOption = {
 export type CopyOption = {
   id: string;
   headline: string;
+  subcopy?: string | null;
+  cta?: string | null;
   selectedByDefault?: boolean;
 };
 
@@ -45,20 +47,37 @@ export type ChatFlowState = {
   entryMode: EntryMode;
   step: ChatFlowStep;
   progress: ProgressState;
+  jobId: string;
+  threadId: string;
   userInput: string;
   inferredContext: InferredContext;
+  copyCandidates: CopyOption[];
   selectedTone: string;
   selectedCopyId: string;
   selectedChannelId: string;
   customDirection: string;
+  brief: ChatBrief | null;
+  isLoading: boolean;
+  errorMessage: string | null;
 };
 
 export type ChatFlowAction =
   | { type: "submitPrompt"; prompt: string }
+  | {
+      type: "backendStartSucceeded";
+      prompt: string;
+      jobId: string;
+      threadId: string;
+      context: InferredContext;
+      copyCandidates: CopyOption[];
+      recommendedCopyId?: string | null;
+    }
+  | { type: "backendRequestFailed"; message: string }
   | { type: "selectTone"; tone: string }
   | { type: "continueToCopy" }
   | { type: "selectCopy"; copyId: string }
   | { type: "selectChannel"; channelId: string }
   | { type: "setCustomDirection"; value: string }
+  | { type: "backendBriefSucceeded"; brief: ChatBrief }
   | { type: "continueToBrief" }
   | { type: "back" };

@@ -3,7 +3,7 @@
 import clsx from "clsx";
 import { Check, Instagram, PenLine } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
-import { channelOptions, copyOptions } from "@/lib/chat-flow";
+import { channelOptions } from "@/lib/chat-flow";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -35,7 +35,7 @@ export function CopyChannelStep({
 
       <h2 className={styles.sectionTitle}>추천 문구</h2>
       <div className={styles.selectList}>
-        {copyOptions.map((copy, index) => {
+        {state.copyCandidates.map((copy, index) => {
           const selected = state.selectedCopyId === copy.id;
           return (
             <button
