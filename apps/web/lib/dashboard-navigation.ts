@@ -1,4 +1,4 @@
-export const dashboardSurfaces = ["home", "studio", "reference", "ads", "brand", "chat", "photo"] as const;
+export const dashboardSurfaces = ["home", "studio", "reference", "ads", "my", "brand", "chat", "photo"] as const;
 export const dashboardStages = ["start", "brief", "generating", "complete", "similar"] as const;
 
 export type DashboardSurface = (typeof dashboardSurfaces)[number];
@@ -15,6 +15,9 @@ export function buildDashboardHref(surface: DashboardSurface, stage?: DashboardS
   if (surface !== "chat") {
     if (surface === "photo") {
       return "/generate/photo";
+    }
+    if (surface === "my" || surface === "brand") {
+      return "/my";
     }
     return `/${surface}`;
   }

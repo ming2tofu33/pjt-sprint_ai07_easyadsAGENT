@@ -1,5 +1,5 @@
-import { ChatGenerateClient } from "@/app/generate/chat/ChatGenerateClient";
+import { HomeEntryClient } from "@/components/generate/HomeEntryClient";
 
 export default function HomePage() {
-  return <ChatGenerateClient initialSurface="home" />;
+  return <HomeEntryClient />;
 }

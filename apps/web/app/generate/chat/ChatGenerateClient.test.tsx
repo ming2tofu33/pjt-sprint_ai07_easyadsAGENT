@@ -133,6 +133,17 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("레퍼런스 보고 만들기")).toBeTruthy();
   });
 
+  it("opens a reference style detail from the gallery", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="reference" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "감성 카페 신메뉴 포스터 상세 보기" }));
+
+    expect(navigationMock.push).toHaveBeenCalledWith("/reference/ref-strawberry-poster");
+  });
+
   it("opens the studio entry and dashboard tabs from the home dashboard", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
@@ -146,7 +157,8 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("내 찰떡 광고")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /마이페이지/ }));
-    expect(screen.getByText("추천 & 브랜드 키트")).toBeTruthy();
+    expect(navigationMock.push).toHaveBeenCalledWith("/my");
+    expect(screen.getByRole("heading", { name: "마이페이지" })).toBeTruthy();
   });
 
   it("opens the photo flow from the home dashboard", async () => {
@@ -159,7 +171,7 @@ describe("ChatGenerateClient", () => {
 
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/photo");
     expect(screen.getByText("사진으로 찰떡 만들기")).toBeTruthy();
-    expect(screen.getByText("사진을 끌어오거나 선택하세요")).toBeTruthy();
+    expect(screen.getByText("사진 한 장으로 광고를 시작해보세요.")).toBeTruthy();
   });
 
   it("renders dashboard surfaces from route props", async () => {
@@ -175,8 +187,11 @@ describe("ChatGenerateClient", () => {
     rerender(<ChatGenerateClient initialSurface="ads" />);
     expect(screen.getByText("내 찰떡 광고")).toBeTruthy();
 
+    rerender(<ChatGenerateClient initialSurface="my" />);
+    expect(screen.getByRole("heading", { name: "마이페이지" })).toBeTruthy();
+
     rerender(<ChatGenerateClient initialSurface="brand" />);
-    expect(screen.getByText("추천 & 브랜드 키트")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "마이페이지" })).toBeTruthy();
 
     rerender(<ChatGenerateClient initialSurface="photo" />);
     expect(screen.getByText("사진으로 찰떡 만들기")).toBeTruthy();
@@ -189,6 +204,21 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="chat" initialStage="complete" />);
 
     await waitFor(() => expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy());
+  });
+
+  it("opens ad detail and save routes from generated results", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" initialStage="complete" />);
+
+    await waitFor(() => expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "봄을 닮은 한 잔 상세 보기" }));
+    expect(navigationMock.push).toHaveBeenCalledWith("/ads/result-1");
+
+    fireEvent.click(screen.getByText("선택한 시안 저장하기"));
+    expect(navigationMock.push).toHaveBeenCalledWith("/ads/result-1/save");
   });
 
   it("pushes stable URLs when top-level tabs are selected", async () => {
@@ -244,12 +274,26 @@ describe("ChatGenerateClient", () => {
 
     const { rerender } = render(<ChatGenerateClient initialSurface="ads" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "진행 상황 보기" }));
-    expect(screen.getByText("딸기라떼 신메뉴 광고 생성 상태를 확인합니다.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "봄을 닮은 한 잔 다시 보기" }));
+    expect(navigationMock.push).toHaveBeenCalledWith("/ads/result-1");
 
-    rerender(<ChatGenerateClient initialSurface="brand" />);
-    fireEvent.click(screen.getByRole("button", { name: /수정하기/ }));
-    expect(screen.getByText("브랜드 키트 수정 화면은 곧 연결됩니다.")).toBeTruthy();
+    rerender(<ChatGenerateClient initialSurface="my" />);
+    fireEvent.click(screen.getByRole("button", { name: /브랜드 키트 관리/ }));
+    expect(navigationMock.push).toHaveBeenCalledWith("/brand/kit/info");
+  });
+
+  it("opens notifications from home and recent ads headers", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    const { rerender } = render(<ChatGenerateClient />);
+
+    fireEvent.click(screen.getByRole("button", { name: "알림" }));
+    expect(navigationMock.push).toHaveBeenCalledWith("/notifications");
+
+    rerender(<ChatGenerateClient initialSurface="ads" />);
+    fireEvent.click(screen.getByRole("button", { name: "알림" }));
+    expect(navigationMock.push).toHaveBeenCalledWith("/notifications");
   });
 
   it("walks through the photo generation mock flow", async () => {
@@ -258,7 +302,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="photo" />);
 
-    fireEvent.click(screen.getByRole("button", { name: /다음 단계/ }));
+    fireEvent.click(screen.getByRole("button", { name: "사진 분석 시작" }));
     expect(screen.getByText("AI 분석 결과")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "문구와 분위기 선택하기" }));

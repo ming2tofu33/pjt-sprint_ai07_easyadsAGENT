@@ -1,5 +1,10 @@
-import { ChatGenerateClient } from "@/app/generate/chat/ChatGenerateClient";
+import { MobileShell } from "@/components/generate/MobileShell";
+import { MyPageStep } from "@/components/generate/MyPageStep";
 
 export default function BrandPage() {
-  return <ChatGenerateClient initialSurface="brand" />;
+  return (
+    <MobileShell>
+      <MyPageStep />
+    </MobileShell>
+  );
 }

@@ -6,7 +6,7 @@ export default defineConfig({
   webServer: {
     command: "NEXT_PUBLIC_BFF_BASE_URL=http://127.0.0.1:4999 npm run dev",
     url: "http://127.0.0.1:3000",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === "1",
     timeout: 120_000
   },
   use: {

@@ -9,11 +9,15 @@ type AdCreativeCardProps = {
   index?: number;
   compact?: boolean;
   onSave?: () => void;
+  onOpen?: () => void;
 };
 
-export function AdCreativeCard({ creative, index, compact = false, onSave }: AdCreativeCardProps) {
+export function AdCreativeCard({ creative, index, compact = false, onSave, onOpen }: AdCreativeCardProps) {
   return (
     <article className={styles.adCreativeCard} data-tone={creative.tone} data-compact={compact}>
+      {onOpen ? (
+        <button aria-label={`${creative.title} 상세 보기`} className={styles.adCreativeOpenButton} type="button" onClick={onOpen} />
+      ) : null}
       {typeof index === "number" ? <strong className={styles.adCreativeNumber}>{index + 1}</strong> : null}
       <button aria-label={`${creative.title} 저장`} className={styles.adCreativeSaveButton} type="button" onClick={onSave}>
         <Bookmark size={15} aria-hidden="true" />

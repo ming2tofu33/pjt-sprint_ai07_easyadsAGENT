@@ -5,19 +5,19 @@ import {
   Camera,
   Check,
   ChevronRight,
+  Coffee,
   ImagePlus,
   Instagram,
   MessageCircle,
   Package,
-  RefreshCw,
   Send,
   Sparkles,
   Store,
-  Upload,
   Utensils
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { channelOptions, toneOptions } from "@/lib/chat-flow";
+import { ChoiceChip } from "./ChoiceChip";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -29,10 +29,10 @@ type PhotoGenerateStepProps = {
 };
 
 const photoKinds = [
-  { label: "음식 사진", icon: Utensils },
-  { label: "제품 사진", icon: Package },
-  { label: "매장/인테리어", icon: Store },
-  { label: "로고", icon: ImagePlus }
+  { label: "음식 사진", icon: Utensils, prompt: "딸기라떼 사진으로 신메뉴 광고 만들기" },
+  { label: "제품 사진", icon: Package, prompt: "제품 사진으로 상세 홍보 광고 만들기" },
+  { label: "매장 사진", icon: Store, prompt: "매장 사진으로 방문 유도 광고 만들기" },
+  { label: "카페 신메뉴", icon: Coffee, prompt: "카페 신메뉴 사진으로 인스타 광고 만들기" }
 ];
 
 const goals = ["신메뉴 출시", "시즌 한정 메뉴", "할인 이벤트", "인스타 감성 피드", "스토리 홍보", "리뷰 이벤트"];
@@ -41,6 +41,7 @@ const copyCandidates = [
   "오늘만 더 달콤하게, 신메뉴 딸기라떼",
   "딸기 한가득, 지금 가장 상큼한 메뉴"
 ];
+const photoExamples = ["딸기라떼 신메뉴 사진으로 광고 만들어줘", "네일 시술 사진으로 예약 홍보 만들어줘", "매장 내부 사진으로 오픈 이벤트 알려줘"];
 
 export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: PhotoGenerateStepProps) {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
@@ -49,10 +50,20 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
   const [tone, setTone] = useState("감성적인");
   const [channel, setChannel] = useState("instagram-feed");
   const [direction, setDirection] = useState("");
+  const [photoPrompt, setPhotoPrompt] = useState(photoExamples[0]);
 
   const selectedChannel = useMemo(
     () => channelOptions.find((item) => item.id === channel) ?? channelOptions[0],
     [channel]
+  );
+  const progressPercent = `${step * 25}%`;
+  const photoProgress = (
+    <div className={styles.progressWrap} aria-label={`사진 플로우 ${step}/4 단계`}>
+      <span>정보 입력 {step}/4</span>
+      <span className={styles.progressTrack}>
+        <span className={styles.progressBar} style={{ width: progressPercent }} />
+      </span>
+    </div>
   );
 
   function goBack() {
@@ -69,44 +80,45 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
 
       {step === 1 ? (
         <>
-          <section className={styles.photoDropzone}>
-            <span>
-              <Upload size={28} aria-hidden="true" />
+          <section className={styles.hero}>
+            <span className={styles.heroIcon}>
+              <ImagePlus size={25} strokeWidth={2.4} aria-hidden="true" />
             </span>
-            <h2>사진을 끌어오거나 선택하세요</h2>
-            <p>JPG, PNG · 최대 10MB</p>
+            <h2 className={styles.heroTitle}>사진 한 장으로 광고를 시작해보세요.</h2>
+            <p className={styles.heroCopy}>AI가 사진 속 상품과 분위기를 읽고 어울리는 문구와 광고 방향을 제안해드려요.</p>
           </section>
 
-          <h2 className={styles.sectionTitle}>어떤 사진을 올릴 수 있나요?</h2>
-          <div className={styles.photoKindGrid}>
-            {photoKinds.map(({ label, icon: Icon }) => (
-              <button key={label} type="button">
-                <Icon size={20} aria-hidden="true" />
-                {label}
+          <h2 className={styles.sectionTitle}>예시로 시작해보기</h2>
+          <div className={styles.exampleList}>
+            {photoExamples.map((example) => (
+              <button className={styles.examplePill} key={example} type="button" onClick={() => setPhotoPrompt(example)}>
+                <ImagePlus size={15} aria-hidden="true" />
+                <span>{example}</span>
               </button>
             ))}
           </div>
 
-          <h2 className={styles.sectionTitle}>최근 업로드</h2>
-          <button className={styles.photoRecentCard} type="button">
-            <div className={styles.photoThumb} aria-hidden="true" />
-            <span>
+          <h2 className={styles.sectionTitle}>빠른 시작</h2>
+          <div className={styles.chipGrid}>
+            {photoKinds.map(({ label, icon: Icon, prompt }) => (
+              <ChoiceChip key={label} onClick={() => setPhotoPrompt(prompt)}>
+                <Icon size={16} aria-hidden="true" />
+                <span>{label}</span>
+              </ChoiceChip>
+            ))}
+          </div>
+
+          <div className={`${styles.inputCard} ${styles.photoInputCard}`}>
+            <ImagePlus size={19} aria-hidden="true" />
+            <span className={styles.photoInputText}>
               <strong>strawberry_latte.jpg</strong>
-              <small>1.2MB · 2024.05.23</small>
+              <small>{photoPrompt}</small>
             </span>
-            <Check size={18} aria-hidden="true" />
-          </button>
-
-          <p className={styles.photoTip}>
-            <Sparkles size={17} aria-hidden="true" />
-            AI가 사진을 보고 광고 방향과 문구를 제안해드려요.
-          </p>
-
-          <div className={styles.stepFooter}>
-            <button className={styles.primaryButton} type="button" onClick={() => setStep(2)}>
-              다음 단계 <ArrowRight size={18} aria-hidden="true" />
+            <button className={styles.sendButton} type="button" aria-label="사진 분석 시작" onClick={() => setStep(2)}>
+              <ArrowRight size={18} aria-hidden="true" />
             </button>
           </div>
+          <p className={styles.helperText}>샘플 사진으로 먼저 볼 수 있어요. 실제 업로드는 백엔드 연결 단계에서 붙이면 됩니다.</p>
         </>
       ) : null}
 
@@ -147,6 +159,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
           </label>
 
           <div className={styles.stepFooter}>
+            {photoProgress}
             <button className={styles.primaryButton} type="button" onClick={() => setStep(3)}>
               문구와 분위기 선택하기
             </button>
@@ -188,6 +201,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
           </div>
 
           <div className={styles.stepFooter}>
+            {photoProgress}
             <button className={styles.primaryButton} type="button" onClick={() => setStep(4)}>
               브리프 확인하기
             </button>
@@ -222,6 +236,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
           </p>
 
           <div className={styles.stepFooter}>
+            {photoProgress}
             <button className={styles.primaryButton} type="button" onClick={onGenerate}>
               찰떡 광고 생성하기 <Sparkles size={18} aria-hidden="true" />
             </button>
@@ -232,11 +247,6 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
         </>
       ) : null}
 
-      <div className={styles.photoProgress} aria-label={`사진 플로우 ${step}/4 단계`}>
-        {[1, 2, 3, 4].map((item) => (
-          <span data-active={item <= step ? "true" : undefined} key={item} />
-        ))}
-      </div>
     </>
   );
 }

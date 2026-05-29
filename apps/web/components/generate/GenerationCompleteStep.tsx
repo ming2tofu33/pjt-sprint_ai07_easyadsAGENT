@@ -15,6 +15,8 @@ type GenerationCompleteStepProps = {
   onRegenerate: () => void;
   onSaveCreative?: (title: string) => void;
   onEditCreative?: () => void;
+  onOpenCreative?: (creativeId: string) => void;
+  onSaveSelected?: (creativeId: string) => void;
 };
 
 const editActions = ["문구 더 짧게", "상품 더 크게", "핑크톤 줄이기", "여백 줄이기", "스토리용 변환", "+ 더보기"];
@@ -25,7 +27,9 @@ export function GenerationCompleteStep({
   onGoHome,
   onRegenerate,
   onSaveCreative,
-  onEditCreative
+  onEditCreative,
+  onOpenCreative,
+  onSaveSelected
 }: GenerationCompleteStepProps) {
   const brief = buildBrief(state);
 
@@ -51,6 +55,7 @@ export function GenerationCompleteStep({
             creative={{ ...creative, subtitle: index === 0 ? brief.copy : creative.subtitle }}
             index={index}
             key={creative.id}
+            onOpen={() => onOpenCreative?.(creative.id)}
             onSave={() => onSaveCreative?.(creative.title)}
           />
         ))}
@@ -89,7 +94,7 @@ export function GenerationCompleteStep({
             비슷한 스타일 더 보기
           </button>
         </div>
-        <button className={styles.textButton} type="button" onClick={() => onSaveCreative?.("선택한 시안")}>
+        <button className={styles.textButton} type="button" onClick={() => onSaveSelected?.(resultCreatives[0].id)}>
           <Download size={16} aria-hidden="true" />
           선택한 시안 저장하기
         </button>

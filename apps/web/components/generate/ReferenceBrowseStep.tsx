@@ -19,6 +19,7 @@ type ReferenceBrowseStepProps = {
   onOpenRecentAds?: () => void;
   onOpenBrandKit?: () => void;
   onSaveCreative?: (title: string) => void;
+  onOpenCreative?: (creativeId: string) => void;
 };
 
 const categories = ["전체", "카페", "음식점", "뷰티", "포스터", "스토리"];
@@ -34,7 +35,8 @@ export function ReferenceBrowseStep({
   onOpenStudio,
   onOpenRecentAds,
   onOpenBrandKit,
-  onSaveCreative
+  onSaveCreative,
+  onOpenCreative
 }: ReferenceBrowseStepProps) {
   const brief = buildBrief(state);
   const safeProgress = isGenerationComplete ? 100 : Math.max(12, Math.min(progress, 99));
@@ -89,7 +91,7 @@ export function ReferenceBrowseStep({
 
       <section className={styles.referenceGrid} aria-label="광고 레퍼런스 목록">
         {referenceCreatives.map((item) => (
-          <AdCreativeCard creative={item} key={item.id} onSave={() => onSaveCreative?.(item.title)} />
+          <AdCreativeCard creative={item} key={item.id} onOpen={() => onOpenCreative?.(item.id)} onSave={() => onSaveCreative?.(item.title)} />
         ))}
       </section>
 

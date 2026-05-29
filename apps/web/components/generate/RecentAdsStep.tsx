@@ -1,7 +1,7 @@
 "use client";
 
-import { Bell, Briefcase, Home, MoreHorizontal, Search, Smile, Sparkles, User } from "lucide-react";
-import { recentCreatives, type CreativeTone } from "@/lib/mock-dashboard-data";
+import { Bell, Bookmark, Briefcase, Home, MoreHorizontal, Search, SlidersHorizontal, Sparkles, Star, User } from "lucide-react";
+import { archivedCreatives, type CreativeTone, type MockCreative } from "@/lib/mock-dashboard-data";
 import styles from "./generate.module.css";
 
 type RecentAdsStepProps = {
@@ -11,7 +11,8 @@ type RecentAdsStepProps = {
   onOpenBrandKit: () => void;
   onRegenerate: () => void;
   onShowProgress: () => void;
-  onOpenAd: (title: string) => void;
+  onOpenAd: (creativeId: string) => void;
+  onOpenNotifications: () => void;
 };
 
 const toneClassByCreativeTone: Record<CreativeTone, string> = {
@@ -22,6 +23,21 @@ const toneClassByCreativeTone: Record<CreativeTone, string> = {
   peach: "referenceTonecoral"
 };
 
+const filters = ["전체", "생성 중", "저장됨", "즐겨찾기"];
+
+function getStatusLabel(creative: MockCreative) {
+  if (creative.status === "generating") {
+    return "생성 중";
+  }
+  if (creative.status === "favorite") {
+    return "즐겨찾기";
+  }
+  if (creative.status === "draft") {
+    return "삭제";
+  }
+  return "저장됨";
+}
+
 export function RecentAdsStep({
   onGoHome,
   onOpenReference,
@@ -29,60 +45,57 @@ export function RecentAdsStep({
   onOpenBrandKit,
   onRegenerate,
   onShowProgress,
-  onOpenAd
+  onOpenAd,
+  onOpenNotifications
 }: RecentAdsStepProps) {
   return (
     <>
       <header className={styles.recentHeader}>
-        <button aria-label="알림" type="button">
+        <button aria-label="알림" type="button" onClick={onOpenNotifications}>
           <Bell size={20} aria-hidden="true" />
         </button>
         <h1>내 찰떡 광고</h1>
         <Search size={21} aria-hidden="true" />
       </header>
 
-      <section className={styles.generatingCard}>
-        <h2>생성 중인 광고</h2>
-        <div className={styles.inProgressAd}>
-          <div className={`${styles.smallCreative} ${styles.referenceTonepink}`} />
-          <div>
-            <strong>딸기라떼 신메뉴 광고</strong>
-            <p>인스타 피드 (1:1)</p>
-            <span className={styles.inlineProgress}>
-              <span style={{ width: "68%" }} />
-            </span>
-            <small>
-              생성 중... 잠시만 기다려주세요 <Smile size={12} aria-hidden="true" />
-            </small>
-            <button className={styles.statusButton} type="button" onClick={onShowProgress}>
-              진행 상황 보기
-            </button>
-          </div>
-          <strong className={styles.percentText}>68%</strong>
-        </div>
-      </section>
+      <div className={styles.archiveFilterRow} aria-label="보관함 필터">
+        {filters.map((filter) => (
+          <button className={filter === "전체" ? styles.categoryActive : undefined} key={filter} type="button">
+            {filter}
+          </button>
+        ))}
+        <button aria-label="필터 설정" type="button">
+          <SlidersHorizontal size={18} aria-hidden="true" />
+        </button>
+      </div>
 
-      <section className={styles.recentListSection}>
-        <div className={styles.sectionRow}>
-          <h2>최근 만든 광고</h2>
-          <button type="button">전체 보기 ›</button>
-        </div>
-        <div className={styles.recentAdList}>
-          {recentCreatives.map((ad) => (
-            <article className={styles.recentAdItem} key={ad.title}>
-              <div className={`${styles.smallCreative} ${styles[toneClassByCreativeTone[ad.tone]]}`} />
+      <section className={styles.archiveGrid} aria-label="내 광고 보관함">
+        {archivedCreatives.map((ad) => (
+          <article className={styles.archiveCard} key={ad.id}>
+            <button aria-label={`${ad.title} 다시 보기`} className={`${styles.archiveVisual} ${styles[toneClassByCreativeTone[ad.tone]]}`} type="button" onClick={() => onOpenAd(ad.id)}>
+              <span data-status={ad.status ?? "saved"}>{getStatusLabel(ad)}</span>
+              <Bookmark size={17} aria-hidden="true" />
+              {ad.progress ? (
+                <small className={styles.archiveProgress}>
+                  <i style={{ width: `${ad.progress}%` }} />
+                  {ad.progress}%
+                </small>
+              ) : null}
+            </button>
+            <div className={styles.archiveCopy}>
+              <strong>{ad.title}</strong>
+              <p>{ad.channel ?? ad.format} · {ad.date ?? "2024.05.29"}</p>
               <div>
-                <strong>{ad.title}</strong>
-                <p>{ad.subtitle} · {ad.date}</p>
-                <div>
-                  <button type="button" onClick={() => onOpenAd(ad.title)}>다시 보기</button>
-                  <button type="button" onClick={onRegenerate}>비슷하게 만들기</button>
-                </div>
+                <button aria-label={`${ad.title} 즐겨찾기`} type="button">
+                  <Star size={16} aria-hidden="true" />
+                </button>
+                <button aria-label={`${ad.title} 더보기`} type="button" onClick={() => ad.status === "generating" ? onShowProgress() : onRegenerate()}>
+                  <MoreHorizontal size={17} aria-hidden="true" />
+                </button>
               </div>
-              <MoreHorizontal size={20} aria-hidden="true" />
-            </article>
-          ))}
-        </div>
+            </div>
+          </article>
+        ))}
       </section>
 
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">

@@ -8,21 +8,24 @@ import { CopyChannelStep } from "@/components/generate/CopyChannelStep";
 import { DashboardToast } from "@/components/generate/DashboardToast";
 import { GenerationCompleteStep } from "@/components/generate/GenerationCompleteStep";
 import { GenerationInProgressStep } from "@/components/generate/GenerationInProgressStep";
-import { BrandKitStep } from "@/components/generate/BrandKitStep";
 import { HomeStartStep } from "@/components/generate/HomeStartStep";
 import { IntentReviewStep } from "@/components/generate/IntentReviewStep";
 import { MobileShell } from "@/components/generate/MobileShell";
+import { MyPageStep } from "@/components/generate/MyPageStep";
 import { PhotoGenerateStep } from "@/components/generate/PhotoGenerateStep";
 import { RecentAdsStep } from "@/components/generate/RecentAdsStep";
 import { ReferenceBrowseStep } from "@/components/generate/ReferenceBrowseStep";
 import { StudioEntryStep } from "@/components/generate/StudioEntryStep";
 import { createChatBrief, startChatGeneration } from "@/lib/api-client";
+import { buildAdHref } from "@/lib/ad-navigation";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 import {
   buildDashboardHref,
   type DashboardStage,
   type DashboardSurface
 } from "@/lib/dashboard-navigation";
+import { buildNotificationHref } from "@/lib/notification-navigation";
+import { buildReferenceStyleHref } from "@/lib/reference-navigation";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing";
 
@@ -197,7 +200,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenPhoto={() => navigateTo("photo")}
           onOpenReference={() => navigateTo("reference")}
           onOpenRecentAds={() => navigateTo("ads")}
-          onOpenBrandKit={() => navigateTo("brand")}
+          onOpenBrandKit={() => navigateTo("my")}
+          onOpenNotifications={() => router.push(buildNotificationHref())}
         />
       ) : null}
 
@@ -208,7 +212,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenPhoto={() => navigateTo("photo")}
           onOpenReference={() => navigateTo("reference")}
           onOpenRecentAds={() => navigateTo("ads")}
-          onOpenBrandKit={() => navigateTo("brand")}
+          onOpenBrandKit={() => navigateTo("my")}
         />
       ) : null}
 
@@ -221,8 +225,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenReference={() => navigateTo("reference")}
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
-          onOpenBrandKit={() => navigateTo("brand")}
+          onOpenBrandKit={() => navigateTo("my")}
           onShowProgress={() => navigateTo("studio")}
+          onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
         />
       ) : null}
@@ -232,21 +237,16 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onGoHome={() => navigateTo("home")}
           onOpenReference={() => navigateTo("reference")}
           onOpenStudio={() => navigateTo("studio")}
-          onOpenBrandKit={() => navigateTo("brand")}
+          onOpenBrandKit={() => navigateTo("my")}
           onRegenerate={handleRegenerateFromRecent}
           onShowProgress={() => showToast("딸기라떼 신메뉴 광고 생성 상태를 확인합니다.")}
-          onOpenAd={(title) => showToast(`${title} 상세 화면은 곧 연결됩니다.`)}
+          onOpenAd={(creativeId) => router.push(buildAdHref(creativeId))}
+          onOpenNotifications={() => router.push(buildNotificationHref())}
         />
       ) : null}
 
-      {appSurface === "brand" ? (
-        <BrandKitStep
-          onGoHome={() => navigateTo("home")}
-          onOpenReference={() => navigateTo("reference")}
-          onOpenStudio={() => navigateTo("studio")}
-          onOpenRecentAds={() => navigateTo("ads")}
-          onEditBrandKit={() => showToast("브랜드 키트 수정 화면은 곧 연결됩니다.")}
-        />
+      {appSurface === "my" || appSurface === "brand" ? (
+        <MyPageStep />
       ) : null}
 
       {appSurface === "photo" ? (
@@ -306,7 +306,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenReference={() => navigateTo("reference")}
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
-          onOpenBrandKit={() => navigateTo("brand")}
+          onOpenBrandKit={() => navigateTo("my")}
+          onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
         />
       ) : null}
@@ -328,6 +329,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           }}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
           onEditCreative={() => showToast("선택한 시안 편집 화면은 곧 연결됩니다.")}
+          onOpenCreative={(creativeId) => router.push(buildAdHref(creativeId))}
+          onSaveSelected={(creativeId) => router.push(buildAdHref(creativeId, "save"))}
         />
       ) : null}
 
@@ -341,7 +344,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenReference={() => navigateTo("reference")}
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
-          onOpenBrandKit={() => navigateTo("brand")}
+          onOpenBrandKit={() => navigateTo("my")}
+          onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
         />
       ) : null}

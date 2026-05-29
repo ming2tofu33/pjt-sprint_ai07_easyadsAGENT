@@ -11,7 +11,8 @@ describe("dashboard navigation", () => {
     expect(buildDashboardHref("studio")).toBe("/studio");
     expect(buildDashboardHref("reference")).toBe("/reference");
     expect(buildDashboardHref("ads")).toBe("/ads");
-    expect(buildDashboardHref("brand")).toBe("/brand");
+    expect(buildDashboardHref("my")).toBe("/my");
+    expect(buildDashboardHref("brand")).toBe("/my");
     expect(buildDashboardHref("photo")).toBe("/generate/photo");
     expect(buildDashboardHref("chat")).toBe("/generate/chat");
   });
@@ -29,6 +30,7 @@ describe("dashboard navigation", () => {
     expect(parseDashboardSurface("studio")).toBe("studio");
     expect(parseDashboardSurface("reference")).toBe("reference");
     expect(parseDashboardSurface("ads")).toBe("ads");
+    expect(parseDashboardSurface("my")).toBe("my");
     expect(parseDashboardSurface("brand")).toBe("brand");
     expect(parseDashboardSurface("chat")).toBe("chat");
     expect(parseDashboardSurface("photo")).toBe("photo");

@@ -22,6 +22,7 @@ type HomeStartStepProps = {
   onOpenReference: () => void;
   onOpenRecentAds: () => void;
   onOpenBrandKit: () => void;
+  onOpenNotifications: () => void;
 };
 
 export function HomeStartStep({
@@ -30,14 +31,15 @@ export function HomeStartStep({
   onOpenPhoto,
   onOpenReference,
   onOpenRecentAds,
-  onOpenBrandKit
+  onOpenBrandKit,
+  onOpenNotifications
 }: HomeStartStepProps) {
   return (
     <>
       <header className={styles.dashboardHeader}>
         <h1>개떡찰떡</h1>
         <div>
-          <button aria-label="알림" type="button">
+          <button aria-label="알림" type="button" onClick={onOpenNotifications}>
             <Bell size={19} aria-hidden="true" />
           </button>
           <button aria-label="프로필" type="button" onClick={onOpenBrandKit}>
