@@ -52,6 +52,23 @@ test("dashboard opens studio, recent ads, and brand kit tabs", async ({ page }) 
   await expect(page.getByText("추천 & 브랜드 키트")).toBeVisible();
 });
 
+test("dashboard surfaces are directly addressable", async ({ page }) => {
+  await page.goto("/generate/chat?surface=studio");
+  await expect(page.getByText("어떻게 시작할까요?")).toBeVisible();
+
+  await page.goto("/generate/chat?surface=reference");
+  await expect(page.getByText("REFERENCE GALLERY")).toBeVisible();
+
+  await page.goto("/generate/chat?surface=ads");
+  await expect(page.getByText("내 찰떡 광고")).toBeVisible();
+
+  await page.goto("/generate/chat?surface=brand");
+  await expect(page.getByText("추천 & 브랜드 키트")).toBeVisible();
+
+  await page.goto("/generate/chat?surface=chat&stage=complete");
+  await expect(page.getByText("찰떡 광고 시안이 완성됐어요")).toBeVisible();
+});
+
 test("desktop keeps the app in a centered mobile shell", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/generate/chat");

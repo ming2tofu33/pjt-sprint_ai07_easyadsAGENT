@@ -1,6 +1,12 @@
 import React from "react";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const navigationMock = vi.hoisted(() => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  searchParams: new URLSearchParams()
+}));
 
 vi.mock("@/lib/api-client", () => ({
   startChatGeneration: vi.fn(async () => ({
@@ -33,7 +39,21 @@ vi.mock("@/lib/api-client", () => ({
   }))
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: navigationMock.push,
+    replace: navigationMock.replace
+  }),
+  useSearchParams: () => navigationMock.searchParams
+}));
+
 describe("ChatGenerateClient", () => {
+  beforeEach(() => {
+    navigationMock.push.mockClear();
+    navigationMock.replace.mockClear();
+    navigationMock.searchParams = new URLSearchParams();
+  });
+
   it("walks through the four chat generation steps", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
@@ -127,5 +147,39 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /마이페이지/ }));
     expect(screen.getByText("추천 & 브랜드 키트")).toBeTruthy();
+  });
+
+  it("renders dashboard surfaces from query params", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    navigationMock.searchParams = new URLSearchParams("surface=studio");
+    const { rerender } = render(<ChatGenerateClient />);
+    expect(screen.getByText("어떻게 시작할까요?")).toBeTruthy();
+
+    navigationMock.searchParams = new URLSearchParams("surface=reference");
+    rerender(<ChatGenerateClient />);
+    expect(screen.getByText("REFERENCE GALLERY")).toBeTruthy();
+
+    navigationMock.searchParams = new URLSearchParams("surface=ads");
+    rerender(<ChatGenerateClient />);
+    expect(screen.getByText("내 찰떡 광고")).toBeTruthy();
+
+    navigationMock.searchParams = new URLSearchParams("surface=brand");
+    rerender(<ChatGenerateClient />);
+    expect(screen.getByText("추천 & 브랜드 키트")).toBeTruthy();
+  });
+
+  it("pushes stable URLs when top-level tabs are selected", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient />);
+
+    fireEvent.click(screen.getByRole("button", { name: /광고 만들기/ }));
+    expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?surface=studio");
+
+    fireEvent.click(screen.getAllByRole("button", { name: /레퍼런스/ }).at(-1)!);
+    expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?surface=reference");
   });
 });
