@@ -94,6 +94,9 @@ class MarketingState(TypedDict, total=False):
     source_image_path: str | None
     reference_image_path: str | None
     vision_preprocess_mode: str | None
+    selected_reference_template_id: str | None
+    selected_reference_template: dict[str, Any] | None
+    reference_template_selection: dict[str, Any] | None
     vision_pipeline_results: list[dict[str, Any]]
     image_preprocess_result: dict[str, Any] | None
     image_features: dict[str, Any] | ImageFeatures | None
@@ -199,6 +202,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "user_custom_subcopy": request.user_custom_subcopy,
         "source_image_path": request.source_image_path,
         "reference_image_path": request.reference_image_path,
+        "selected_reference_template_id": request.selected_reference_template_id,
     }
     copy_required = request.copy_generation_mode != "no_copy"
     text_overlay_pending = request.copy_generation_mode != "no_copy"
@@ -233,6 +237,9 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "source_image_path": request.source_image_path,
         "reference_image_path": request.reference_image_path,
         "vision_preprocess_mode": request.vision_preprocess_mode,
+        "selected_reference_template_id": request.selected_reference_template_id,
+        "selected_reference_template": None,
+        "reference_template_selection": None,
         "vision_pipeline_results": [],
         "image_preprocess_result": None,
         "image_features": None,
