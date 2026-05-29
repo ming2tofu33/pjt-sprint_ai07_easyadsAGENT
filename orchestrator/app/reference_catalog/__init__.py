@@ -1,0 +1,1 @@
+"""Reference template catalog backend."""
