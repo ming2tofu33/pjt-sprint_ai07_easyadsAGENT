@@ -479,6 +479,9 @@ class TextOverlayConfig(BaseModel):
     output_channel: OutputChannel = "instagram_feed"
 
 
+# Legacy marketing-level validation schemas remain here for compatibility with
+# earlier state/report imports. TLFP render/readability reports live in
+# orchestrator.app.schemas.text_layout.
 class BackgroundValidationReport(BaseModel):
     overall_pass: bool
     text_artifact_pass: bool

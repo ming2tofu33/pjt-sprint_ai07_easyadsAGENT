@@ -1,5 +1,6 @@
 import pytest
 from pydantic import ValidationError
+from typing import get_args
 
 from orchestrator.app.schemas.vision import (
     ImageInputSpec,
@@ -7,6 +8,7 @@ from orchestrator.app.schemas.vision import (
     ImagePreprocessResult,
     ProductPreserveSpec,
     ReferenceStyleProfile,
+    VisionArtifactType,
     VisionPipelineResult,
 )
 
@@ -82,3 +84,7 @@ def test_input_spec_validates_target_size_and_max_side():
         ImageInputSpec(image_path="input.png", max_side=128)
     with pytest.raises(ValidationError):
         ImageInputSpec(image_path="input.png", target_width=0)
+
+
+def test_vision_artifact_type_includes_preprocessed_preview():
+    assert "preprocessed_preview" in get_args(VisionArtifactType)
