@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { ChatGenerateClient } from "./ChatGenerateClient";
 
 export default function ChatGeneratePage() {
-  return <ChatGenerateClient />;
+  return (
+    <Suspense fallback={null}>
+      <ChatGenerateClient />
+    </Suspense>
+  );
 }
