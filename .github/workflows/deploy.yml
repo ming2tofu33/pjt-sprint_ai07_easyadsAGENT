@@ -63,31 +63,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 🔓 자물쇠 1 해제: 브랜치 상관없이 무조건 도커 허브 로그인
       - name: Log in to Docker Hub
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # 🔓 자물쇠 2 해제: 브랜치 상관없이 무조건 latest 태그 생성
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: unhalim/codeit-final # 👈 질문자님의 도커 허브 레포지토리 이름 명시
+          images: unhalim/codeit-final
           tags: |
             type=sha,prefix=sha-,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build (and push on main)
+      # 🔓 자물쇠 3 해제: 브랜치 상관없이 무조건 push: true 로 고정
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

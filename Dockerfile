@@ -57,4 +57,5 @@ EXPOSE 8000
 CMD ["tail", "-f", "/dev/null"]
 
 #배포(서빙) 모드로 변경 시
+
 #CMD ["uvicorn", "orchestrator.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
