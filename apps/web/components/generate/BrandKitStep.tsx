@@ -1,6 +1,8 @@
 "use client";
 
 import { Briefcase, Home, Palette, Search, Sparkles, Store, User } from "lucide-react";
+import { brandFacts, referenceCreatives } from "@/lib/mock-dashboard-data";
+import { AdCreativeCard } from "./AdCreativeCard";
 import styles from "./generate.module.css";
 
 type BrandKitStepProps = {
@@ -8,16 +10,16 @@ type BrandKitStepProps = {
   onOpenReference: () => void;
   onOpenStudio: () => void;
   onOpenRecentAds: () => void;
+  onEditBrandKit?: () => void;
 };
 
-const recommendations = [
-  { title: "감성 카페 신메뉴", tone: "cream" },
-  { title: "리뷰 이벤트 배너", tone: "mint" },
-  { title: "인스타 스토리", tone: "coral" },
-  { title: "시즌 할인 포스터", tone: "pink" }
-];
-
-export function BrandKitStep({ onGoHome, onOpenReference, onOpenStudio, onOpenRecentAds }: BrandKitStepProps) {
+export function BrandKitStep({
+  onGoHome,
+  onOpenReference,
+  onOpenStudio,
+  onOpenRecentAds,
+  onEditBrandKit
+}: BrandKitStepProps) {
   return (
     <>
       <header className={styles.brandKitHeader}>
@@ -30,11 +32,8 @@ export function BrandKitStep({ onGoHome, onOpenReference, onOpenStudio, onOpenRe
           <button type="button" onClick={onOpenReference}>더 보기 ›</button>
         </div>
         <div className={styles.recommendGrid}>
-          {recommendations.map((item) => (
-            <article className={`${styles.recommendCard} ${styles[`referenceTone${item.tone}`]}`} key={item.title}>
-              <div className={styles.miniCup} />
-              <strong>{item.title}</strong>
-            </article>
+          {referenceCreatives.map((item) => (
+            <AdCreativeCard compact creative={item} key={item.id} onSave={() => onOpenReference()} />
           ))}
         </div>
       </section>
@@ -42,38 +41,38 @@ export function BrandKitStep({ onGoHome, onOpenReference, onOpenStudio, onOpenRe
       <section className={styles.brandProfileCard}>
         <div className={styles.sectionRow}>
           <h2>브랜드 키트</h2>
-          <button type="button">수정하기 ›</button>
+          <button type="button" onClick={onEditBrandKit}>수정하기 ›</button>
         </div>
         <div className={styles.brandIdentity}>
           <span>
             <Store size={28} aria-hidden="true" />
           </span>
           <div>
-            <strong>도민 카페</strong>
-            <small>사용 중</small>
-            <p>카페 · 성수동 감성 상권 · @domin_cafe</p>
+            <strong>{brandFacts.name}</strong>
+            <small>{brandFacts.status}</small>
+            <p>{brandFacts.meta}</p>
           </div>
         </div>
         <dl className={styles.brandFacts}>
           <div>
             <dt>브랜드 톤</dt>
-            <dd>감성적인, 따뜻한</dd>
+            <dd>{brandFacts.tone}</dd>
           </div>
           <div>
             <dt>브랜드 컬러</dt>
             <dd>
-              <span style={{ background: "#d7b48b" }} />
-              <span style={{ background: "#ffd7c9" }} />
-              <span style={{ background: "#d8a29b" }} />
+              {brandFacts.colors.map((color) => (
+                <span key={color} style={{ background: color }} />
+              ))}
             </dd>
           </div>
           <div>
             <dt>대표 상품</dt>
-            <dd>딸기라떼, 바닐라라떼, 크림라떼</dd>
+            <dd>{brandFacts.products}</dd>
           </div>
           <div>
             <dt>자주 쓰는 문구</dt>
-            <dd>신메뉴 출시, 매일 한정 수량, 예약은 DM</dd>
+            <dd>{brandFacts.phrases}</dd>
           </div>
         </dl>
       </section>

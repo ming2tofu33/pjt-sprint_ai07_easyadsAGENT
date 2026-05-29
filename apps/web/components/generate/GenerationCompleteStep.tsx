@@ -1,8 +1,10 @@
 "use client";
 
-import { Bookmark, CheckCircle2, Download, Home, RotateCcw, Share2, Sparkles } from "lucide-react";
+import { CheckCircle2, Download, Home, RotateCcw, Share2, Sparkles } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
+import { resultCreatives } from "@/lib/mock-dashboard-data";
+import { AdCreativeCard } from "./AdCreativeCard";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -11,18 +13,20 @@ type GenerationCompleteStepProps = {
   onBrowseSimilar: () => void;
   onGoHome: () => void;
   onRegenerate: () => void;
+  onSaveCreative?: (title: string) => void;
+  onEditCreative?: () => void;
 };
-
-const mockCreatives = [
-  { label: "봄을 닮은 한 잔", tone: "pink" },
-  { label: "New Strawberry Latte", tone: "coral" },
-  { label: "딸기 한가득 오늘의 신메뉴", tone: "cream" },
-  { label: "STRAWBERRY LATTE", tone: "mint" }
-];
 
 const editActions = ["문구 더 짧게", "상품 더 크게", "핑크톤 줄이기", "여백 줄이기", "스토리용 변환", "+ 더보기"];
 
-export function GenerationCompleteStep({ state, onBrowseSimilar, onGoHome, onRegenerate }: GenerationCompleteStepProps) {
+export function GenerationCompleteStep({
+  state,
+  onBrowseSimilar,
+  onGoHome,
+  onRegenerate,
+  onSaveCreative,
+  onEditCreative
+}: GenerationCompleteStepProps) {
   const brief = buildBrief(state);
 
   return (
@@ -42,18 +46,13 @@ export function GenerationCompleteStep({ state, onBrowseSimilar, onGoHome, onReg
       </header>
 
       <section className={styles.resultGrid} aria-label="생성된 광고 시안">
-        {mockCreatives.map((creative, index) => (
-          <article className={`${styles.resultCard} ${styles[`referenceTone${creative.tone}`]}`} key={creative.label}>
-            <strong className={styles.resultNumber}>{index + 1}</strong>
-            <button aria-label={`${creative.label} 저장`} type="button">
-              <Bookmark size={14} aria-hidden="true" />
-            </button>
-            <div className={styles.mockCup}>
-              <span />
-            </div>
-            <h2>{creative.label}</h2>
-            <p>{brief.copy}</p>
-          </article>
+        {resultCreatives.map((creative, index) => (
+          <AdCreativeCard
+            creative={{ ...creative, subtitle: index === 0 ? brief.copy : creative.subtitle }}
+            index={index}
+            key={creative.id}
+            onSave={() => onSaveCreative?.(creative.title)}
+          />
         ))}
       </section>
 
@@ -76,7 +75,7 @@ export function GenerationCompleteStep({ state, onBrowseSimilar, onGoHome, onReg
             <RotateCcw size={17} aria-hidden="true" />
             다시 생성하기
           </button>
-          <button className={styles.primaryButton} type="button">
+          <button className={styles.primaryButton} type="button" onClick={onEditCreative}>
             선택한 시안 편집하기 <Sparkles size={18} aria-hidden="true" />
           </button>
         </div>
@@ -90,7 +89,7 @@ export function GenerationCompleteStep({ state, onBrowseSimilar, onGoHome, onReg
             비슷한 스타일 더 보기
           </button>
         </div>
-        <button className={styles.textButton} type="button">
+        <button className={styles.textButton} type="button" onClick={() => onSaveCreative?.("선택한 시안")}>
           <Download size={16} aria-hidden="true" />
           선택한 시안 저장하기
         </button>

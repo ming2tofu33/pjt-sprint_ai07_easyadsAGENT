@@ -1853,6 +1853,11 @@
   background: #fff7ef;
 }
 
+.adCreativeCard[data-compact="true"] {
+  min-height: 128px;
+  padding: 8px;
+}
+
 .adCreativeCard[data-tone="strawberry"] {
   background: linear-gradient(145deg, #ffe2df, #fff4ec);
 }
@@ -1892,6 +1897,10 @@
   align-items: center;
 }
 
+.adCreativeCard[data-compact="true"] .adCreativeVisual {
+  min-height: 48px;
+}
+
 .adCreativeCup {
   width: 58px;
   height: 68px;
@@ -1900,6 +1909,12 @@
     radial-gradient(circle at 34% 12%, #fff 0 8px, transparent 9px),
     linear-gradient(180deg, #fff 0 26%, rgba(255, 108, 91, 0.68) 27% 100%);
   box-shadow: 0 10px 22px rgba(159, 63, 47, 0.14);
+}
+
+.adCreativeCard[data-compact="true"] .adCreativeCup {
+  width: 42px;
+  height: 50px;
+  border-radius: 12px 12px 17px 17px;
 }
 
 .adCreativeFruit {
@@ -1933,6 +1948,11 @@
   font-weight: 950;
 }
 
+.adCreativeCard[data-compact="true"] .adCreativeCopy h2 {
+  max-width: 96px;
+  font-size: 11px;
+}
+
 .adCreativeCopy p {
   margin: 6px 0 0;
   max-width: 132px;
@@ -1940,6 +1960,11 @@
   font-size: 10px;
   line-height: 1.35;
   font-weight: 800;
+}
+
+.adCreativeCard[data-compact="true"] .adCreativeCopy p,
+.adCreativeCard[data-compact="true"] .adCreativeSaveButton {
+  display: none;
 }
 
 .adCreativeNumber {

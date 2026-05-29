@@ -182,4 +182,15 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /레퍼런스/ }).at(-1)!);
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?surface=reference");
   });
+
+  it("shows realistic creative labels in reference cards", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    navigationMock.searchParams = new URLSearchParams("surface=reference");
+    render(<ChatGenerateClient />);
+
+    expect(screen.getByText("SPRING SALE")).toBeTruthy();
+    expect(screen.getByText("SUMMER SALE")).toBeTruthy();
+  });
 });

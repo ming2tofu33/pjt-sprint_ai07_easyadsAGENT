@@ -1,8 +1,10 @@
 "use client";
 
-import { Bookmark, Briefcase, CheckCircle2, ChevronLeft, Home, Search, Sparkles, User } from "lucide-react";
+import { Briefcase, CheckCircle2, ChevronLeft, Home, Search, Sparkles, User } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
+import { referenceCreatives } from "@/lib/mock-dashboard-data";
+import { AdCreativeCard } from "./AdCreativeCard";
 import styles from "./generate.module.css";
 
 type ReferenceBrowseStepProps = {
@@ -16,16 +18,10 @@ type ReferenceBrowseStepProps = {
   onOpenStudio?: () => void;
   onOpenRecentAds?: () => void;
   onOpenBrandKit?: () => void;
+  onSaveCreative?: (title: string) => void;
 };
 
 const categories = ["전체", "카페", "음식점", "뷰티", "포스터", "스토리"];
-
-const references = [
-  { title: "감성 카페 신메뉴 포스터", tone: "pink" },
-  { title: "브런치 카페 이벤트 배너", tone: "mint" },
-  { title: "카페 할인 프로모션", tone: "cream" },
-  { title: "봄 시즌 감성 광고", tone: "coral" }
-];
 
 export function ReferenceBrowseStep({
   state,
@@ -37,7 +33,8 @@ export function ReferenceBrowseStep({
   onOpenReference,
   onOpenStudio,
   onOpenRecentAds,
-  onOpenBrandKit
+  onOpenBrandKit,
+  onSaveCreative
 }: ReferenceBrowseStepProps) {
   const brief = buildBrief(state);
   const safeProgress = isGenerationComplete ? 100 : Math.max(12, Math.min(progress, 99));
@@ -91,17 +88,8 @@ export function ReferenceBrowseStep({
       </div>
 
       <section className={styles.referenceGrid} aria-label="광고 레퍼런스 목록">
-        {references.map((item, index) => (
-          <article className={`${styles.referenceCard} ${styles[`referenceTone${item.tone}`]}`} key={item.title}>
-            <button aria-label={`${item.title} 저장`} type="button">
-              <Bookmark size={15} aria-hidden="true" />
-            </button>
-            <div className={styles.mockCup}>
-              <span />
-            </div>
-            <h2>{item.title}</h2>
-            <p>{index % 2 === 0 ? brief.copy : "부드러운 색감과 여백이 살아있는 광고 스타일"}</p>
-          </article>
+        {referenceCreatives.map((item) => (
+          <AdCreativeCard creative={item} key={item.id} onSave={() => onSaveCreative?.(item.title)} />
         ))}
       </section>
 
