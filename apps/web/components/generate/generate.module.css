@@ -7,6 +7,14 @@
 }
 
 .phone {
+  --dashboard-lime: #eaff79;
+  --dashboard-lime-soft: #f5ffd0;
+  --dashboard-mint: #dff8f2;
+  --dashboard-mint-border: #bcebe2;
+  --dashboard-peach: #fff0ea;
+  --dashboard-purple-soft: #eee8ff;
+  --dashboard-card-radius: 14px;
+  --dashboard-section-gap: 18px;
   width: min(100%, 390px);
   min-height: 760px;
   background: var(--color-surface);
@@ -26,6 +34,10 @@
   overflow-y: auto;
 }
 
+.body button {
+  touch-action: manipulation;
+}
+
 .topNav {
   min-height: 44px;
   display: grid;
@@ -34,8 +46,8 @@
 }
 
 .iconButton {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border: 0;
   border-radius: 999px;
   background: transparent;
@@ -2021,4 +2033,44 @@
   line-height: 1.4;
   font-weight: 850;
   box-shadow: 0 12px 28px rgba(17, 17, 17, 0.08);
+}
+
+.bottomTabs button,
+.categoryScroller button,
+.recentAdItem div div button,
+.editActionGrid button,
+.resultChips span {
+  min-height: 44px;
+}
+
+.adCreativeSaveButton,
+.galleryTopBar button,
+.dashboardHeader button,
+.studioTopNav button,
+.recentHeader button,
+.iconButton {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.quickDashboardGrid button,
+.studioOptionCard,
+.brandNoticeCard,
+.primaryButton,
+.secondaryButton,
+.adCreativeCard {
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.quickDashboardGrid button:active,
+.studioOptionCard:active,
+.brandNoticeCard:active,
+.primaryButton:active,
+.secondaryButton:active,
+.adCreativeCard:active {
+  transform: scale(0.98);
 }

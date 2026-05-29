@@ -69,6 +69,14 @@ test("dashboard surfaces are directly addressable", async ({ page }) => {
   await expect(page.getByText("찰떡 광고 시안이 완성됐어요")).toBeVisible();
 });
 
+test("keyboard focus is visible on dashboard controls", async ({ page }) => {
+  await page.goto("/generate/chat?surface=home");
+
+  await page.keyboard.press("Tab");
+
+  await expect(page.locator(":focus-visible")).toBeVisible();
+});
+
 test("desktop keeps the app in a centered mobile shell", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto("/generate/chat");
