@@ -59,6 +59,21 @@ npm run dev
 
 Open `http://127.0.0.1:3000/generate/chat` for the scenario C chat-start UI.
 
+To run the chat UI with the backend connection, start three processes:
+
+```bash
+# 1. Orchestrator API
+uv run uvicorn orchestrator.app.main:app --host 0.0.0.0 --port 8010
+
+# 2. BFF API
+cd apps/bff
+ORCHESTRATOR_BASE_URL=http://127.0.0.1:8010 PORT=4000 npm run dev
+
+# 3. Web UI
+cd apps/web
+NEXT_PUBLIC_BFF_BASE_URL=http://127.0.0.1:4000 npm run dev
+```
+
 Validation commands:
 
 ```bash
