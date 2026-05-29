@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api-client", () => ({
@@ -62,5 +62,37 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByText("기다리는 동안 둘러보기"));
     expect(screen.getByText("찰떡 레퍼런스 둘러보기")).toBeTruthy();
     expect(screen.getByText(/광고 생성 중 ·/)).toBeTruthy();
+  });
+
+  it("keeps similar style browsing open after generation completes", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient />);
+
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+    await waitFor(() => expect(screen.getByText("딸기라떼")).toBeTruthy());
+    fireEvent.click(screen.getByText("문구 고르기"));
+    fireEvent.click(screen.getByText("브리프 확인하기"));
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByText(/찰떡 광고 생성하기/));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+
+    expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy();
+    fireEvent.click(screen.getByText("비슷한 스타일 더 보기"));
+    expect(screen.getByText("결과로 돌아가기")).toBeTruthy();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(screen.getByText("찰떡 레퍼런스 둘러보기")).toBeTruthy();
+    expect(screen.queryByText("찰떡 광고 시안이 완성됐어요")).toBeNull();
+    vi.useRealTimers();
   });
 });

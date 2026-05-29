@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Home, Search, Sparkles } from "lucide-react";
+import { Bookmark, CheckCircle2, Home, Search, Sparkles } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import styles from "./generate.module.css";
@@ -9,6 +9,7 @@ type ReferenceBrowseStepProps = {
   state: ChatFlowState;
   progress: number;
   onShowProgress: () => void;
+  isGenerationComplete?: boolean;
 };
 
 const categories = ["전체", "카페", "음식점", "뷰티", "포스터", "스토리"];
@@ -20,18 +21,29 @@ const references = [
   { title: "봄 시즌 감성 광고", tone: "coral" }
 ];
 
-export function ReferenceBrowseStep({ state, progress, onShowProgress }: ReferenceBrowseStepProps) {
+export function ReferenceBrowseStep({
+  state,
+  progress,
+  onShowProgress,
+  isGenerationComplete = false
+}: ReferenceBrowseStepProps) {
   const brief = buildBrief(state);
-  const safeProgress = Math.max(12, Math.min(progress, 99));
+  const safeProgress = isGenerationComplete ? 100 : Math.max(12, Math.min(progress, 99));
 
   return (
     <>
-      <div className={styles.progressBanner}>
-        <span className={styles.spinnerDot} />
-        <strong>{brief.item} 광고 생성 중 · {safeProgress}%</strong>
-        <span>약 {Math.max(5, Math.ceil((100 - safeProgress) / 4))}초 남음</span>
+      <div className={styles.progressBanner} data-complete={isGenerationComplete}>
+        {isGenerationComplete ? (
+          <CheckCircle2 size={15} aria-hidden="true" />
+        ) : (
+          <span className={styles.spinnerDot} />
+        )}
+        <strong>
+          {isGenerationComplete ? `${brief.item} 광고 생성 완료` : `${brief.item} 광고 생성 중 · ${safeProgress}%`}
+        </strong>
+        <span>{isGenerationComplete ? "비슷한 스타일을 둘러보세요" : `약 ${Math.max(5, Math.ceil((100 - safeProgress) / 4))}초 남음`}</span>
         <button type="button" onClick={onShowProgress}>
-          진행 상황 보기
+          {isGenerationComplete ? "결과로 돌아가기" : "진행 상황 보기"}
         </button>
       </div>
 
@@ -73,7 +85,9 @@ export function ReferenceBrowseStep({ state, progress, onShowProgress }: Referen
 
       <p className={styles.browseNote}>
         <Sparkles size={17} aria-hidden="true" />
-        광고가 완성되면 알려드릴게요. 기다리는 동안 다른 스타일을 둘러볼 수 있어요.
+        {isGenerationComplete
+          ? "완성된 광고와 비슷한 톤의 레퍼런스를 더 둘러볼 수 있어요."
+          : "광고가 완성되면 알려드릴게요. 기다리는 동안 다른 스타일을 둘러볼 수 있어요."}
       </p>
 
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">

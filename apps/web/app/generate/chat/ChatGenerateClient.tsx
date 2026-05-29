@@ -12,7 +12,7 @@ import { ReferenceBrowseStep } from "@/components/generate/ReferenceBrowseStep";
 import { createChatBrief, startChatGeneration } from "@/lib/api-client";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 
-type GenerationStage = "brief" | "generating" | "browsing" | "complete";
+type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing";
 
 export function ChatGenerateClient() {
   const [state, dispatch] = useReducer(chatFlowReducer, undefined, createInitialChatFlowState);
@@ -142,7 +142,16 @@ export function ChatGenerateClient() {
       ) : null}
 
       {state.step === 4 && generationStage === "complete" ? (
-        <GenerationCompleteStep state={state} onBrowseSimilar={() => setGenerationStage("browsing")} />
+        <GenerationCompleteStep state={state} onBrowseSimilar={() => setGenerationStage("similarBrowsing")} />
+      ) : null}
+
+      {state.step === 4 && generationStage === "similarBrowsing" ? (
+        <ReferenceBrowseStep
+          state={state}
+          progress={100}
+          isGenerationComplete
+          onShowProgress={() => setGenerationStage("complete")}
+        />
       ) : null}
     </MobileShell>
   );

@@ -627,6 +627,11 @@
   font-weight: 850;
 }
 
+.progressBanner[data-complete="true"] {
+  background: var(--color-coral-soft);
+  color: #6a4039;
+}
+
 .progressBanner button {
   grid-column: 3;
   border: 0;
