@@ -19,6 +19,16 @@ def route_after_input_assets(state: MarketingState) -> str:
     return "validator"
 
 
+def route_after_input_reference_template(state: MarketingState) -> str:
+    if state.get("selected_reference_template_id"):
+        return "reference_template_resolve"
+    return route_after_input_assets(state)
+
+
+def route_after_reference_template_resolve(state: MarketingState) -> str:
+    return route_after_input_assets(state)
+
+
 def route_after_product_preprocess(state: MarketingState) -> str:
     if state.get("reference_image_path") and not state.get("reference_style_profile"):
         return "reference_preprocess"

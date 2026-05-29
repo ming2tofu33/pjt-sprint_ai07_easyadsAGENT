@@ -194,6 +194,7 @@ class InitialMarketingRequest(BaseModel):
     source_image_path: str | None = None
     reference_image_path: str | None = None
     vision_preprocess_mode: str | None = None
+    selected_reference_template_id: str | None = None
     render_profile: RenderProfile = "balanced"
     requested_ad_format: str | None = None
     requested_platform: str | None = None
@@ -479,6 +480,9 @@ class TextOverlayConfig(BaseModel):
     output_channel: OutputChannel = "instagram_feed"
 
 
+# Legacy marketing-level validation schemas remain here for compatibility with
+# earlier state/report imports. TLFP render/readability reports live in
+# orchestrator.app.schemas.text_layout.
 class BackgroundValidationReport(BaseModel):
     overall_pass: bool
     text_artifact_pass: bool

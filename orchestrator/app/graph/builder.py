@@ -12,7 +12,9 @@ except ImportError:  # pragma: no cover - older langgraph fallback
 from orchestrator.app.graph.nodes import input_node, options_node, state_update_node, validator_node
 from orchestrator.app.graph.routers import (
     route_after_input_assets,
+    route_after_input_reference_template,
     route_after_product_preprocess,
+    route_after_reference_template_resolve,
     route_after_tone_binding,
     route_after_validator_for_intake,
     route_after_validator_for_marketing,
@@ -39,6 +41,7 @@ from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
 from orchestrator.app.llm.nodes.text_layout_planner import text_layout_planner_node
 from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
 from orchestrator.app.llm.nodes.tone_binding import tone_binding_node
+from orchestrator.app.reference_catalog.nodes import reference_template_resolve_node
 from orchestrator.app.vision.nodes import product_preprocess_node, reference_preprocess_node
 
 
@@ -61,6 +64,7 @@ def build_intake_graph(checkpointer=None):
 def build_marketing_graph(checkpointer=None):
     graph = StateGraph(MarketingState)
     graph.add_node("input", input_node)
+    graph.add_node("reference_template_resolve", reference_template_resolve_node)
     graph.add_node("product_preprocess", product_preprocess_node)
     graph.add_node("reference_preprocess", reference_preprocess_node)
     graph.add_node("validator", validator_node)
@@ -92,12 +96,18 @@ def build_marketing_graph(checkpointer=None):
     graph.set_entry_point("input")
     graph.add_conditional_edges(
         "input",
-        route_after_input_assets,
+        route_after_input_reference_template,
         {
+            "reference_template_resolve": "reference_template_resolve",
             "product_preprocess": "product_preprocess",
             "reference_preprocess": "reference_preprocess",
             "validator": "validator",
         },
+    )
+    graph.add_conditional_edges(
+        "reference_template_resolve",
+        route_after_reference_template_resolve,
+        {"product_preprocess": "product_preprocess", "reference_preprocess": "reference_preprocess", "validator": "validator"},
     )
     graph.add_conditional_edges(
         "product_preprocess",

@@ -20,12 +20,16 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
     )
     reference_style_profile = state.get("reference_style_profile")
     product_preserve_spec = state.get("product_preserve_spec")
+    selected_reference_template = state.get("selected_reference_template")
+    reference_template_selection = state.get("reference_template_selection")
+    template_style_hint = (reference_template_selection or {}).get("style_profile_hint") or {}
     vision_pipeline_enabled = bool(
         state.get("source_image_path")
         or state.get("reference_image_path")
         or state.get("vision_pipeline_results")
         or reference_style_profile
         or product_preserve_spec
+        or selected_reference_template
     )
     metadata = {
         "job_id": state.get("job_id"),
@@ -52,6 +56,13 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
         "reference_image_path": state.get("reference_image_path"),
         "reference_style_profile": reference_style_profile,
         "product_preserve_spec": product_preserve_spec,
+        "selected_reference_template_id": state.get("selected_reference_template_id"),
+        "selected_reference_template": selected_reference_template,
+        "reference_template_selection": reference_template_selection,
+        "reference_template_style_keywords": template_style_hint.get("style_keywords"),
+        "reference_template_color_palette": template_style_hint.get("color_palette"),
+        "reference_template_layout_hint": template_style_hint.get("layout_hint"),
+        "reference_template_typography_hint": template_style_hint.get("typography_hint"),
         "source_node": "t2i_request_builder",
     }
     job_id = str(state.get("job_id") or "unknown-job")

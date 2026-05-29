@@ -1,1 +1,1 @@
-"""HTTP API routers for the EasyAds orchestrator."""
+"""HTTP API routers and backend contract schemas for the EasyAds orchestrator."""
