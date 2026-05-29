@@ -12,6 +12,7 @@ describe("dashboard navigation", () => {
     expect(buildDashboardHref("reference")).toBe("/reference");
     expect(buildDashboardHref("ads")).toBe("/ads");
     expect(buildDashboardHref("brand")).toBe("/brand");
+    expect(buildDashboardHref("photo")).toBe("/generate/photo");
     expect(buildDashboardHref("chat")).toBe("/generate/chat");
   });
 
@@ -30,6 +31,7 @@ describe("dashboard navigation", () => {
     expect(parseDashboardSurface("ads")).toBe("ads");
     expect(parseDashboardSurface("brand")).toBe("brand");
     expect(parseDashboardSurface("chat")).toBe("chat");
+    expect(parseDashboardSurface("photo")).toBe("photo");
   });
 
   it("falls back to home for missing or invalid dashboard surfaces", () => {

@@ -18,6 +18,7 @@ import styles from "./generate.module.css";
 type HomeStartStepProps = {
   onOpenStudio: () => void;
   onOpenChat: () => void;
+  onOpenPhoto: () => void;
   onOpenReference: () => void;
   onOpenRecentAds: () => void;
   onOpenBrandKit: () => void;
@@ -26,6 +27,7 @@ type HomeStartStepProps = {
 export function HomeStartStep({
   onOpenStudio,
   onOpenChat,
+  onOpenPhoto,
   onOpenReference,
   onOpenRecentAds,
   onOpenBrandKit
@@ -70,7 +72,7 @@ export function HomeStartStep({
           <strong>레퍼런스 보고 만들기</strong>
           <small>마음에 드는 광고 스타일을 골라요</small>
         </button>
-        <button type="button">
+        <button type="button" onClick={onOpenPhoto}>
           <span data-tone="purple">
             <Camera size={24} aria-hidden="true" />
           </span>

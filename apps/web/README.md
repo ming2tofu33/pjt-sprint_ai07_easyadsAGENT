@@ -134,6 +134,7 @@ http://localhost:3000/reference
 http://localhost:3000/ads
 http://localhost:3000/brand
 http://localhost:3000/generate/chat
+http://localhost:3000/generate/photo
 http://localhost:3000/generate/chat/generating
 http://localhost:3000/generate/chat/complete
 http://localhost:3000/generate/chat/similar

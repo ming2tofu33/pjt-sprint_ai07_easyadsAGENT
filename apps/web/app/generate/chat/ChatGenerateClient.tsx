@@ -12,6 +12,7 @@ import { BrandKitStep } from "@/components/generate/BrandKitStep";
 import { HomeStartStep } from "@/components/generate/HomeStartStep";
 import { IntentReviewStep } from "@/components/generate/IntentReviewStep";
 import { MobileShell } from "@/components/generate/MobileShell";
+import { PhotoGenerateStep } from "@/components/generate/PhotoGenerateStep";
 import { RecentAdsStep } from "@/components/generate/RecentAdsStep";
 import { ReferenceBrowseStep } from "@/components/generate/ReferenceBrowseStep";
 import { StudioEntryStep } from "@/components/generate/StudioEntryStep";
@@ -193,6 +194,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         <HomeStartStep
           onOpenStudio={() => navigateTo("studio")}
           onOpenChat={handleOpenFreshChat}
+          onOpenPhoto={() => navigateTo("photo")}
           onOpenReference={() => navigateTo("reference")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("brand")}
@@ -203,6 +205,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         <StudioEntryStep
           onGoHome={() => navigateTo("home")}
           onOpenChat={handleOpenFreshChat}
+          onOpenPhoto={() => navigateTo("photo")}
           onOpenReference={() => navigateTo("reference")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("brand")}
@@ -243,6 +246,18 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
           onEditBrandKit={() => showToast("브랜드 키트 수정 화면은 곧 연결됩니다.")}
+        />
+      ) : null}
+
+      {appSurface === "photo" ? (
+        <PhotoGenerateStep
+          onBack={() => router.back()}
+          onGoHome={() => navigateTo("home")}
+          onOpenChat={handleOpenFreshChat}
+          onGenerate={() => {
+            lastPrimedStageRef.current = "generating";
+            navigateTo("chat", "generating");
+          }}
         />
       ) : null}
 

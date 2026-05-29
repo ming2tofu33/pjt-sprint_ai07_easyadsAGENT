@@ -149,6 +149,19 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("추천 & 브랜드 키트")).toBeTruthy();
   });
 
+  it("opens the photo flow from the home dashboard", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient />);
+
+    fireEvent.click(screen.getByRole("button", { name: /내 사진으로 만들기/ }));
+
+    expect(navigationMock.push).toHaveBeenCalledWith("/generate/photo");
+    expect(screen.getByText("사진으로 찰떡 만들기")).toBeTruthy();
+    expect(screen.getByText("사진을 끌어오거나 선택하세요")).toBeTruthy();
+  });
+
   it("renders dashboard surfaces from route props", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
@@ -164,6 +177,9 @@ describe("ChatGenerateClient", () => {
 
     rerender(<ChatGenerateClient initialSurface="brand" />);
     expect(screen.getByText("추천 & 브랜드 키트")).toBeTruthy();
+
+    rerender(<ChatGenerateClient initialSurface="photo" />);
+    expect(screen.getByText("사진으로 찰떡 만들기")).toBeTruthy();
   });
 
   it("renders chat result stages from route props", async () => {
@@ -234,5 +250,24 @@ describe("ChatGenerateClient", () => {
     rerender(<ChatGenerateClient initialSurface="brand" />);
     fireEvent.click(screen.getByRole("button", { name: /수정하기/ }));
     expect(screen.getByText("브랜드 키트 수정 화면은 곧 연결됩니다.")).toBeTruthy();
+  });
+
+  it("walks through the photo generation mock flow", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="photo" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /다음 단계/ }));
+    expect(screen.getByText("AI 분석 결과")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "문구와 분위기 선택하기" }));
+    expect(screen.getByText("추천 문구")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "브리프 확인하기" }));
+    expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /찰떡 광고 생성하기/ }));
+    expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat/generating");
   });
 });

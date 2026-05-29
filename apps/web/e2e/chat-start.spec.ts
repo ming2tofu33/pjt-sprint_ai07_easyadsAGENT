@@ -62,6 +62,27 @@ test("chat start has visible routes back to app navigation", async ({ page }) =>
   await expect(page.getByText("레퍼런스 보고 만들기")).toBeVisible();
 });
 
+test("photo upload flow reaches brief and generation", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /내 사진으로 만들기/ }).click();
+  await expect(page).toHaveURL(/\/generate\/photo$/);
+  await expect(page.getByText("사진을 끌어오거나 선택하세요")).toBeVisible();
+
+  await page.getByRole("button", { name: /다음 단계/ }).click();
+  await expect(page.getByText("AI 분석 결과")).toBeVisible();
+
+  await page.getByRole("button", { name: "문구와 분위기 선택하기" }).click();
+  await expect(page.getByText("추천 문구")).toBeVisible();
+
+  await page.getByRole("button", { name: "브리프 확인하기" }).click();
+  await expect(page.getByText("AI가 브리프를 정리했어요")).toBeVisible();
+
+  await page.getByRole("button", { name: /찰떡 광고 생성하기/ }).click();
+  await expect(page).toHaveURL(/\/generate\/chat\/generating$/);
+  await expect(page.getByText("찰떡 광고를 만들고 있어요")).toBeVisible();
+});
+
 test("dashboard surfaces are directly addressable", async ({ page }) => {
   await page.goto("/studio");
   await expect(page.getByText("어떻게 시작할까요?")).toBeVisible();
@@ -74,6 +95,9 @@ test("dashboard surfaces are directly addressable", async ({ page }) => {
 
   await page.goto("/brand");
   await expect(page.getByText("추천 & 브랜드 키트")).toBeVisible();
+
+  await page.goto("/generate/photo");
+  await expect(page.getByText("사진으로 찰떡 만들기")).toBeVisible();
 
   await page.goto("/generate/chat/complete");
   await expect(page.getByText("찰떡 광고 시안이 완성됐어요")).toBeVisible();

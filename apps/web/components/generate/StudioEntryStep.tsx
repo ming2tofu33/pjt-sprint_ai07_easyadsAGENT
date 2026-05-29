@@ -6,6 +6,7 @@ import styles from "./generate.module.css";
 type StudioEntryStepProps = {
   onGoHome: () => void;
   onOpenChat: () => void;
+  onOpenPhoto: () => void;
   onOpenReference: () => void;
   onOpenRecentAds: () => void;
   onOpenBrandKit: () => void;
@@ -14,6 +15,7 @@ type StudioEntryStepProps = {
 export function StudioEntryStep({
   onGoHome,
   onOpenChat,
+  onOpenPhoto,
   onOpenReference,
   onOpenRecentAds,
   onOpenBrandKit
@@ -45,7 +47,7 @@ export function StudioEntryStep({
           <span className={styles.optionArrow}>→</span>
         </button>
 
-        <button className={styles.studioOptionCard} type="button">
+        <button className={styles.studioOptionCard} type="button" onClick={onOpenPhoto}>
           <span className={styles.optionThumb} data-kind="photo">
             <Upload size={26} aria-hidden="true" />
           </span>
