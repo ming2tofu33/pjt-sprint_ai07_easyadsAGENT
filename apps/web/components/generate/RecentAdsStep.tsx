@@ -1,6 +1,7 @@
 "use client";
 
-import { Bell, Briefcase, Home, MoreHorizontal, Search, Sparkles, User } from "lucide-react";
+import { Bell, Briefcase, Home, MoreHorizontal, Search, Smile, Sparkles, User } from "lucide-react";
+import { recentCreatives, type CreativeTone } from "@/lib/mock-dashboard-data";
 import styles from "./generate.module.css";
 
 type RecentAdsStepProps = {
@@ -9,15 +10,27 @@ type RecentAdsStepProps = {
   onOpenStudio: () => void;
   onOpenBrandKit: () => void;
   onRegenerate: () => void;
+  onShowProgress: () => void;
+  onOpenAd: (title: string) => void;
 };
 
-const recentAds = [
-  { title: "딸기라떼 신메뉴 광고", meta: "인스타 피드 (1:1) · 2024.05.29", tone: "pink" },
-  { title: "카페 할인 이벤트", meta: "인스타 스토리 (9:16) · 2024.05.25", tone: "cream" },
-  { title: "여름 시즌 포스터", meta: "포스터 (4:5) · 2024.05.20", tone: "mint" }
-];
+const toneClassByCreativeTone: Record<CreativeTone, string> = {
+  strawberry: "referenceTonepink",
+  mint: "referenceTonemint",
+  cream: "referenceTonecream",
+  sunny: "referenceTonecream",
+  peach: "referenceTonecoral"
+};
 
-export function RecentAdsStep({ onGoHome, onOpenReference, onOpenStudio, onOpenBrandKit, onRegenerate }: RecentAdsStepProps) {
+export function RecentAdsStep({
+  onGoHome,
+  onOpenReference,
+  onOpenStudio,
+  onOpenBrandKit,
+  onRegenerate,
+  onShowProgress,
+  onOpenAd
+}: RecentAdsStepProps) {
   return (
     <>
       <header className={styles.recentHeader}>
@@ -38,7 +51,12 @@ export function RecentAdsStep({ onGoHome, onOpenReference, onOpenStudio, onOpenB
             <span className={styles.inlineProgress}>
               <span style={{ width: "68%" }} />
             </span>
-            <small>생성 중... 잠시만 기다려주세요 😊</small>
+            <small>
+              생성 중... 잠시만 기다려주세요 <Smile size={12} aria-hidden="true" />
+            </small>
+            <button className={styles.statusButton} type="button" onClick={onShowProgress}>
+              진행 상황 보기
+            </button>
           </div>
           <strong className={styles.percentText}>68%</strong>
         </div>
@@ -50,14 +68,14 @@ export function RecentAdsStep({ onGoHome, onOpenReference, onOpenStudio, onOpenB
           <button type="button">전체 보기 ›</button>
         </div>
         <div className={styles.recentAdList}>
-          {recentAds.map((ad) => (
+          {recentCreatives.map((ad) => (
             <article className={styles.recentAdItem} key={ad.title}>
-              <div className={`${styles.smallCreative} ${styles[`referenceTone${ad.tone}`]}`} />
+              <div className={`${styles.smallCreative} ${styles[toneClassByCreativeTone[ad.tone]]}`} />
               <div>
                 <strong>{ad.title}</strong>
-                <p>{ad.meta}</p>
+                <p>{ad.subtitle} · {ad.date}</p>
                 <div>
-                  <button type="button">다시 보기</button>
+                  <button type="button" onClick={() => onOpenAd(ad.title)}>다시 보기</button>
                   <button type="button" onClick={onRegenerate}>비슷하게 만들기</button>
                 </div>
               </div>

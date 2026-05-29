@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, Home, Image as ImageIcon, MessageCircle, Search, Sparkles, Upload, User } from "lucide-react";
+import { ChevronLeft, Home, Image as ImageIcon, Lightbulb, MessageCircle, Search, Sparkles, Upload, User } from "lucide-react";
 import styles from "./generate.module.css";
 
 type StudioEntryStepProps = {
@@ -69,7 +69,8 @@ export function StudioEntryStep({
       </div>
 
       <p className={styles.studioTip}>
-        💡 어떤 방식이든 AI가 광고 브리프를 만들고 찰떡같은 광고 이미지를 제안해드려요.
+        <Lightbulb size={17} aria-hidden="true" />
+        <span>어떤 방식이든 AI가 광고 브리프를 만들고 찰떡같은 광고 이미지를 제안해드려요.</span>
       </p>
 
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">

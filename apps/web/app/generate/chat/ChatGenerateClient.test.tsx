@@ -193,4 +193,32 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("SPRING SALE")).toBeTruthy();
     expect(screen.getByText("SUMMER SALE")).toBeTruthy();
   });
+
+  it("shows feedback when a mock creative is saved", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    navigationMock.searchParams = new URLSearchParams("surface=reference");
+    render(<ChatGenerateClient />);
+
+    fireEvent.click(screen.getByLabelText("감성 카페 신메뉴 포스터 저장"));
+
+    expect(screen.getByText("감성 카페 신메뉴 포스터를 보관함에 저장했어요.")).toBeTruthy();
+  });
+
+  it("shows feedback for recent ad and brand kit actions", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    navigationMock.searchParams = new URLSearchParams("surface=ads");
+    const { rerender } = render(<ChatGenerateClient />);
+
+    fireEvent.click(screen.getByRole("button", { name: "진행 상황 보기" }));
+    expect(screen.getByText("딸기라떼 신메뉴 광고 생성 상태를 확인합니다.")).toBeTruthy();
+
+    navigationMock.searchParams = new URLSearchParams("surface=brand");
+    rerender(<ChatGenerateClient />);
+    fireEvent.click(screen.getByRole("button", { name: /수정하기/ }));
+    expect(screen.getByText("브랜드 키트 수정 화면은 곧 연결됩니다.")).toBeTruthy();
+  });
 });

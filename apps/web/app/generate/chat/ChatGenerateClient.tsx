@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { BriefConfirmStep } from "@/components/generate/BriefConfirmStep";
 import { ChatStartStep } from "@/components/generate/ChatStartStep";
 import { CopyChannelStep } from "@/components/generate/CopyChannelStep";
+import { DashboardToast } from "@/components/generate/DashboardToast";
 import { GenerationCompleteStep } from "@/components/generate/GenerationCompleteStep";
 import { GenerationInProgressStep } from "@/components/generate/GenerationInProgressStep";
 import { BrandKitStep } from "@/components/generate/BrandKitStep";
@@ -35,6 +36,7 @@ export function ChatGenerateClient() {
   const [optimisticSurface, setOptimisticSurface] = useState<DashboardSurface | null>(null);
   const [generationStage, setGenerationStage] = useState<GenerationStage>("brief");
   const [generationProgress, setGenerationProgress] = useState(0);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const lastPrimedStageRef = useRef<DashboardStage | null>(null);
   const appSurface = optimisticSurface ?? querySurface;
 
@@ -181,6 +183,11 @@ export function ChatGenerateClient() {
     navigateTo("chat", "brief");
   }
 
+  function showToast(message: string) {
+    setToastMessage(message);
+    window.setTimeout(() => setToastMessage(null), 3000);
+  }
+
   return (
     <MobileShell>
       {appSurface === "home" ? (
@@ -214,6 +221,7 @@ export function ChatGenerateClient() {
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("brand")}
           onShowProgress={() => navigateTo("studio")}
+          onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
         />
       ) : null}
 
@@ -224,6 +232,8 @@ export function ChatGenerateClient() {
           onOpenStudio={() => navigateTo("studio")}
           onOpenBrandKit={() => navigateTo("brand")}
           onRegenerate={handleRegenerateFromRecent}
+          onShowProgress={() => showToast("딸기라떼 신메뉴 광고 생성 상태를 확인합니다.")}
+          onOpenAd={(title) => showToast(`${title} 상세 화면은 곧 연결됩니다.`)}
         />
       ) : null}
 
@@ -233,6 +243,7 @@ export function ChatGenerateClient() {
           onOpenReference={() => navigateTo("reference")}
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
+          onEditBrandKit={() => showToast("브랜드 키트 수정 화면은 곧 연결됩니다.")}
         />
       ) : null}
 
@@ -282,6 +293,7 @@ export function ChatGenerateClient() {
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("brand")}
+          onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
         />
       ) : null}
 
@@ -300,6 +312,8 @@ export function ChatGenerateClient() {
             lastPrimedStageRef.current = "generating";
             navigateTo("chat", "generating");
           }}
+          onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onEditCreative={() => showToast("선택한 시안 편집 화면은 곧 연결됩니다.")}
         />
       ) : null}
 
@@ -314,8 +328,10 @@ export function ChatGenerateClient() {
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("brand")}
+          onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
         />
       ) : null}
+      <DashboardToast message={toastMessage} />
     </MobileShell>
   );
 }
