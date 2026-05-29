@@ -266,3 +266,68 @@
   font-size: 12px;
   font-weight: 800;
 }
+
+.assistantBubble {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.assistantAvatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--color-purple);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+}
+
+.bubble {
+  border-radius: 16px;
+  background: #f3f2f0;
+  padding: 13px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 750;
+}
+
+.contextCard {
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid #d9cffd;
+  background: linear-gradient(160deg, #fbfaff, var(--color-purple-soft));
+}
+
+.contextTitle {
+  margin: 0 0 14px;
+  color: #6d52d8;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.contextGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.contextItem {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.contextItem span {
+  color: #5f5582;
+  font-weight: 800;
+}
+
+.contextItem strong {
+  font-weight: 900;
+}
