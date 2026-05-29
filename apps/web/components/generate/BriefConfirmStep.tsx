@@ -10,9 +10,10 @@ import styles from "./generate.module.css";
 type BriefConfirmStepProps = {
   state: ChatFlowState;
   onBack: () => void;
+  onGenerate: () => void;
 };
 
-export function BriefConfirmStep({ state, onBack }: BriefConfirmStepProps) {
+export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStepProps) {
   const brief = buildBrief(state);
 
   return (
@@ -49,7 +50,7 @@ export function BriefConfirmStep({ state, onBack }: BriefConfirmStepProps) {
           </span>
         </div>
 
-        <button className={styles.primaryButton} type="button">
+        <button className={styles.primaryButton} type="button" onClick={onGenerate}>
           찰떡 광고 생성하기 <Sparkles size={18} aria-hidden="true" />
         </button>
       </div>

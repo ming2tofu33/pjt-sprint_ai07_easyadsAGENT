@@ -54,5 +54,13 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("인스타 스토리 (9:16)")).toBeTruthy();
+
+    fireEvent.click(screen.getByText(/찰떡 광고 생성하기/));
+    expect(screen.getByText("광고 생성 중")).toBeTruthy();
+    expect(screen.getByText("찰떡 광고를 만들고 있어요")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("기다리는 동안 둘러보기"));
+    expect(screen.getByText("찰떡 레퍼런스 둘러보기")).toBeTruthy();
+    expect(screen.getByText(/광고 생성 중 ·/)).toBeTruthy();
   });
 });

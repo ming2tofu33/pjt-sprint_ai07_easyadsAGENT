@@ -1,16 +1,42 @@
 "use client";
 
-import React, { useReducer } from "react";
+import React, { useEffect, useReducer, useState } from "react";
 import { BriefConfirmStep } from "@/components/generate/BriefConfirmStep";
 import { ChatStartStep } from "@/components/generate/ChatStartStep";
 import { CopyChannelStep } from "@/components/generate/CopyChannelStep";
+import { GenerationCompleteStep } from "@/components/generate/GenerationCompleteStep";
+import { GenerationInProgressStep } from "@/components/generate/GenerationInProgressStep";
 import { IntentReviewStep } from "@/components/generate/IntentReviewStep";
 import { MobileShell } from "@/components/generate/MobileShell";
+import { ReferenceBrowseStep } from "@/components/generate/ReferenceBrowseStep";
 import { createChatBrief, startChatGeneration } from "@/lib/api-client";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 
+type GenerationStage = "brief" | "generating" | "browsing" | "complete";
+
 export function ChatGenerateClient() {
   const [state, dispatch] = useReducer(chatFlowReducer, undefined, createInitialChatFlowState);
+  const [generationStage, setGenerationStage] = useState<GenerationStage>("brief");
+  const [generationProgress, setGenerationProgress] = useState(0);
+
+  useEffect(() => {
+    if (generationStage !== "generating" && generationStage !== "browsing") {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setGenerationProgress((current) => {
+        const nextProgress = Math.min(current + 8, 100);
+        if (nextProgress >= 100) {
+          window.clearInterval(timer);
+          setGenerationStage("complete");
+        }
+        return nextProgress;
+      });
+    }, 650);
+
+    return () => window.clearInterval(timer);
+  }, [generationStage]);
 
   async function handleSubmitPrompt(prompt: string) {
     dispatch({ type: "submitPrompt", prompt });
@@ -59,6 +85,16 @@ export function ChatGenerateClient() {
     }
   }
 
+  function handleStartMockGeneration() {
+    setGenerationProgress(12);
+    setGenerationStage("generating");
+  }
+
+  function handleBackFromBrief() {
+    setGenerationStage("brief");
+    dispatch({ type: "back" });
+  }
+
   return (
     <MobileShell>
       {state.step === 1 ? (
@@ -85,7 +121,29 @@ export function ChatGenerateClient() {
         />
       ) : null}
 
-      {state.step === 4 ? <BriefConfirmStep state={state} onBack={() => dispatch({ type: "back" })} /> : null}
+      {state.step === 4 && generationStage === "brief" ? (
+        <BriefConfirmStep state={state} onBack={handleBackFromBrief} onGenerate={handleStartMockGeneration} />
+      ) : null}
+
+      {state.step === 4 && generationStage === "generating" ? (
+        <GenerationInProgressStep
+          state={state}
+          progress={generationProgress}
+          onBrowse={() => setGenerationStage("browsing")}
+        />
+      ) : null}
+
+      {state.step === 4 && generationStage === "browsing" ? (
+        <ReferenceBrowseStep
+          state={state}
+          progress={generationProgress}
+          onShowProgress={() => setGenerationStage("generating")}
+        />
+      ) : null}
+
+      {state.step === 4 && generationStage === "complete" ? (
+        <GenerationCompleteStep state={state} onBrowseSimilar={() => setGenerationStage("browsing")} />
+      ) : null}
     </MobileShell>
   );
 }

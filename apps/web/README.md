@@ -12,6 +12,10 @@ Next.js 기반의 모바일 웹앱 프론트엔드입니다. 현재 구현 범�
   2. AI가 해석한 정보 확인
   3. 문구 고르기
   4. 브리프 확인 및 광고 생성 CTA
+- 광고 생성 mock 플로우
+  - 광고 생성 중
+  - 기다리는 동안 레퍼런스 둘러보기
+  - 생성 완료 및 mock 광고 시안 확인
 - BFF API 연결
 - BFF 또는 백엔드가 꺼져 있을 때도 화면을 확인할 수 있는 로컬 fallback 플로우
 
@@ -23,14 +27,13 @@ apps/web
 │   ├── ChatGenerateClient.tsx
 │   └── page.tsx
 ├── components/generate
-│   ├── ChatComposer.tsx
-│   ├── ChatHeader.tsx
-│   ├── ChatMessageList.tsx
-│   ├── ChatProgress.tsx
-│   ├── CopySelectionPanel.tsx
-│   ├── DraftBriefPanel.tsx
-│   ├── PromptInputPanel.tsx
-│   └── QuickStartChips.tsx
+│   ├── BriefConfirmStep.tsx
+│   ├── ChatStartStep.tsx
+│   ├── CopyChannelStep.tsx
+│   ├── GenerationCompleteStep.tsx
+│   ├── GenerationInProgressStep.tsx
+│   ├── IntentReviewStep.tsx
+│   └── ReferenceBrowseStep.tsx
 ├── lib
 │   ├── api-client.ts
 │   └── chat-flow.ts
@@ -178,5 +181,5 @@ npm run e2e
 ## 현재 주의할 점
 
 - 프론트는 BFF 호출이 실패하면 로컬 fallback 플로우로 계속 진행합니다. 그래서 화면이 정상 동작한다고 해서 항상 백엔드 연결이 성공한 것은 아닙니다.
-- 실제 이미지 생성 프로덕션 플로우가 완전히 연결된 상태는 아닙니다. 현재는 대화 시작, 문구 후보, 브리프 확인까지의 API 연결이 구현되어 있습니다.
+- 실제 이미지 생성 프로덕션 플로우가 완전히 연결된 상태는 아닙니다. 현재는 대화 시작, 문구 후보, 브리프 확인까지 API가 연결되어 있고, 최종 광고 생성 중/둘러보기/완료 화면은 프론트 mock으로 구현되어 있습니다.
 - 시나리오 참고 자료는 루트의 `images/` 아래에 있고, 프론트에서 직접 사용하는 정적 참고 파일은 `apps/web/public/scenarios` 아래에 있습니다.

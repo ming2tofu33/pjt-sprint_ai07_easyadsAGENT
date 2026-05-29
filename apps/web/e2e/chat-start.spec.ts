@@ -16,6 +16,13 @@ test("chat start flow reaches final brief on mobile", async ({ page }) => {
 
   await expect(page.getByText("AI가 브리프를 정리했어요")).toBeVisible();
   await expect(page.getByText("찰떡 광고 생성하기")).toBeVisible();
+
+  await page.getByRole("button", { name: /찰떡 광고 생성하기/ }).click();
+  await expect(page.getByText("찰떡 광고를 만들고 있어요")).toBeVisible();
+
+  await page.getByRole("button", { name: "기다리는 동안 둘러보기" }).click();
+  await expect(page.getByText("찰떡 레퍼런스 둘러보기")).toBeVisible();
+  await expect(page.getByRole("button", { name: "진행 상황 보기" })).toBeVisible();
 });
 
 test("desktop keeps the app in a centered mobile shell", async ({ page }) => {
