@@ -1,1 +1,1 @@
-"""Backend API contract package."""
+"""HTTP API routers and backend contract schemas for the EasyAds orchestrator."""

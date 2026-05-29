@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.worktrees/
 outputs/
 data/
 models/
@@ -11,3 +12,7 @@ models/
 *.pt
 *.env
 docs/api_key.env
+node_modules/
+.next/
+playwright-report/
+test-results/
