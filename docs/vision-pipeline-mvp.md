@@ -28,7 +28,7 @@ Runtime paths:
 - preprocessed image: `data/processed/{job_id}/preprocessed.png`
 - preview: `data/processed/{job_id}/preview.png`
 
-`MarketingState.image_preprocess_result` stores the most recent preprocess result. When both `source_image_path` and `reference_image_path` are supplied, use `vision_pipeline_results` for the complete ordered source/reference history.
+`MarketingState.image_preprocess_result` stores the most recent vision preprocess result. When both `source_image_path` and `reference_image_path` are supplied, it may point to the reference preprocess result because reference preprocessing runs after product preprocessing. Use `vision_pipeline_results` for the complete ordered source/reference history. Use `product_preserve_spec` for product preservation metadata and `reference_style_profile` for reference style metadata.
 
 ## Reference Style Stub
 
@@ -95,3 +95,12 @@ The T2I-only path remains unchanged when no image path is provided.
 - Add VLM image feature extraction behind the guarded adapter layer.
 - Add product-preserving edit request schemas and routing.
 - Add reference-guided prompt enhancement with structured output and cost guard.
+
+## Warning Status
+
+The current full test suite reports 48 warnings. They are not functional failures.
+
+- `PIL.Image.getdata` deprecation warnings appear in `readability_gate.py` and the deterministic reference style stub.
+- SWIG-related deprecation warnings appear during T2I candidate tests.
+- These warnings are not caused by external API, VLM, OCR, rembg, SAM, or model calls.
+- Follow-up cleanup should replace deprecated Pillow access patterns and isolate third-party import warnings if CI later treats warnings as errors.
