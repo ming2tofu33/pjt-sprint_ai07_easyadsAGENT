@@ -1,66 +1,107 @@
 # EasyAds Web UI
 
-Next.js 기반의 모바일 웹앱 프론트엔드입니다. 현재 구현 범위는 앱 대시보드 mock, 스튜디오 진입, C 시나리오의 "대화로 시작하기" 플로우이며, 사용자가 광고 요청을 대화처럼 입력하면 문구 후보를 고르고 광고 브리프를 확인하는 흐름까지 연결되어 있습니다.
+Next.js 기반의 모바일 웹앱 프론트엔드입니다. 390x844 모바일 뷰포트를 주 기준으로, 데스크톱 브라우저에서도 중앙 모바일 쉘 안에서 실제 앱 화면을 확인할 수 있게 구성되어 있습니다.
 
-## 구현 범위
+## 현재 구현 범위
 
-- `/generate/chat` 모바일 웹앱 화면
-- 390x844 뷰포트를 주 기준으로 구현
-- 보조 확인 기준: 375x667, 430x932
-- 단계별 UI
-  1. 홈 대시보드
-  2. 스튜디오 / 만들기 방식 선택
-  3. 원하는 광고 요청 입력
-  4. AI가 해석한 정보 확인
-  5. 문구 고르기
-  6. 브리프 확인 및 광고 생성 CTA
-- 앱 대시보드 mock 화면
+- 홈/스튜디오 진입 화면
+  - 첫 방문 온보딩 분기
   - 홈 대시보드
-  - 레퍼런스 갤러리
-  - 스튜디오 진입
-  - 보관함 / 최근 광고
-  - 추천 & 브랜드 키트
-- 광고 생성 mock 플로우
-  - 광고 생성 중
-  - 기다리는 동안 레퍼런스 둘러보기
-  - 생성 완료 및 mock 광고 시안 확인
-  - 완료 후 홈/레퍼런스/결과 화면 왕복
+  - 스튜디오 만들기 방식 선택
+- 광고 생성 플로우
+  - 대화로 시작하기
+  - 내 사진으로 만들기
+  - 생성 중/생성 완료/실패/유사 스타일 보기 mock
+- 레퍼런스 기반 제작 플로우
+  - 레퍼런스 상세 보기
+  - AI 스타일 분석
+  - 유사 스타일 추천
+  - 이 스타일로 시작하기
+- 광고 시안 저장/관리 플로우
+  - 결과 상세 확인
+  - 저장 방식 선택
+  - 저장 완료
+  - 보관함/빈 상태
+- 브랜드 키트 플로우
+  - 브랜드 키트 홈
+  - 기본 정보
+  - 톤앤매너
+  - 생성 완료
+- 운영/설정성 화면
+  - 알림 관리
+  - 마이페이지/계정/사용량
+  - 앱 설정
+  - 온보딩
+  - 예외 상태 UI
 - BFF API 연결
-- BFF 또는 백엔드가 꺼져 있을 때도 화면을 확인할 수 있는 로컬 fallback 플로우
+  - 대화 시작/브리프 확인 API 호출
+  - BFF 또는 백엔드가 꺼져 있을 때도 확인 가능한 로컬 fallback
+
+전체 라우트 목록은 [ROUTES.md](./ROUTES.md)를 기준으로 관리합니다.
 
 ## 구조
 
 ```text
 apps/web
-├── app/generate/chat
-│   ├── ChatGenerateClient.tsx
-│   └── page.tsx
+├── app
+│   ├── ads
+│   ├── brand
+│   ├── generate
+│   ├── my
+│   ├── notifications
+│   ├── onboarding
+│   ├── reference
+│   ├── settings
+│   └── studio
 ├── components/generate
-│   ├── BriefConfirmStep.tsx
-│   ├── BrandKitStep.tsx
-│   ├── ChatStartStep.tsx
-│   ├── CopyChannelStep.tsx
-│   ├── GenerationCompleteStep.tsx
-│   ├── GenerationInProgressStep.tsx
-│   ├── HomeStartStep.tsx
-│   ├── IntentReviewStep.tsx
-│   ├── RecentAdsStep.tsx
-│   ├── StudioEntryStep.tsx
-│   └── ReferenceBrowseStep.tsx
 ├── lib
-│   ├── api-client.ts
-│   └── chat-flow.ts
-└── e2e
-    └── chat-start.spec.ts
+├── e2e
+├── DESIGN_SYSTEM.md
+└── ROUTES.md
 ```
 
 주요 역할은 다음과 같습니다.
 
-- `ChatGenerateClient.tsx`: 대화형 생성 플로우의 클라이언트 상태와 화면 전환을 담당합니다.
-- `api-client.ts`: BFF API 호출을 담당합니다.
-- `chat-flow.ts`: 프론트 fallback 플로우와 화면용 데이터 변환을 담당합니다.
-- `components/generate/*`: 모바일 UI 구성 요소입니다.
-- `e2e/chat-start.spec.ts`: Playwright 기반 모바일 뷰포트 스모크 테스트입니다.
+- `app/*`: Next.js App Router 페이지입니다.
+- `components/generate/*`: 모바일 앱 화면을 구성하는 재사용 UI 컴포넌트입니다.
+- `lib/*-navigation.ts`: 화면별 route 결정, mock id 검증, CTA 이동 규칙을 담당합니다.
+- `lib/chat-flow.ts`: 대화형 생성 fallback 플로우와 화면용 데이터 변환을 담당합니다.
+- `lib/api-client.ts`: BFF API 호출을 담당합니다.
+- `lib/mock-dashboard-data.ts`: 홈/보관함/레퍼런스/알림 등 mock 데이터를 담당합니다.
+- `e2e/chat-start.spec.ts`: Playwright 기반 모바일/데스크톱 쉘 스모크 테스트입니다.
+
+## 디자인 시스템
+
+프론트 UI는 [DESIGN_SYSTEM.md](./DESIGN_SYSTEM.md)의 토큰, 버튼, 카드, 화면 배치 규칙을 기준으로 정리합니다.
+
+- 전역 토큰: `app/globals.css`
+- 모바일 UI 스타일: `components/generate/generate.module.css`
+- 새 화면을 만들 때 버튼/카드/텍스트/경계선은 raw hex 대신 토큰을 우선 사용합니다.
+- 광고 시안, 레퍼런스 포스터, 온보딩 일러스트처럼 콘텐츠 자체의 색은 예외로 둘 수 있습니다.
+
+## 실행 방법
+
+프론트 UI만 빠르게 확인할 때 사용합니다. 백엔드가 꺼져 있어도 fallback 데이터로 대부분의 플로우를 볼 수 있습니다.
+
+```bash
+cd apps/web
+npm install
+NEXT_PUBLIC_BFF_BASE_URL=http://127.0.0.1:4000 npm run dev
+```
+
+브라우저에서 다음 주소를 엽니다.
+
+```text
+http://localhost:3000
+```
+
+첫 방문 기준으로는 `/` 접속 시 온보딩 완료 기록이 없으면 `/onboarding`으로 이동합니다. 온보딩에서 시작/건너뛰기를 누르면 브라우저 localStorage에 완료 기록이 저장되고 이후에는 홈 대시보드가 바로 열립니다.
+
+온보딩을 다시 처음부터 확인하려면 브라우저 개발자 도구에서 아래 값을 삭제하세요.
+
+```text
+localStorage.removeItem("easyads_onboarding_completed")
+```
 
 ## 백엔드 연결 흐름
 
@@ -77,72 +118,10 @@ Browser
 
 ```http
 POST /api/generate/chat/start
-```
-
-요청 예시:
-
-```json
-{
-  "userInput": "삼겹살집 회식 손님 많이 오게 포스터 만들어줘",
-  "adFormat": "poster"
-}
-```
-
-```http
 POST /api/generate/chat/brief
 ```
 
-요청 예시:
-
-```json
-{
-  "jobId": "job-id",
-  "threadId": "thread-id",
-  "selectedCopyId": "copy-1",
-  "selectedChannel": "instagram",
-  "context": {
-    "businessType": "음식점",
-    "goal": "방문 유도"
-  }
-}
-```
-
-## 프론트만 실행하기
-
-화면 UI만 빠르게 확인할 때 사용합니다. 백엔드가 꺼져 있어도 fallback 데이터로 플로우를 볼 수 있습니다.
-
-```bash
-cd apps/web
-npm install
-NEXT_PUBLIC_BFF_BASE_URL=http://127.0.0.1:4000 npm run dev
-```
-
-브라우저에서 다음 주소를 엽니다.
-
-```text
-http://localhost:3000
-```
-
-## 서비스 화면 주소
-
-서비스 화면을 바로 확인할 때는 Web dev server를 켠 뒤 다음 주소를 엽니다.
-
-```text
-http://localhost:3000
-http://localhost:3000/studio
-http://localhost:3000/reference
-http://localhost:3000/ads
-http://localhost:3000/brand
-http://localhost:3000/generate/chat
-http://localhost:3000/generate/photo
-http://localhost:3000/generate/chat/generating
-http://localhost:3000/generate/chat/complete
-http://localhost:3000/generate/chat/similar
-```
-
-## 백엔드까지 연결해서 실행하기
-
-터미널 3개를 사용합니다. 예시는 8010 포트를 사용합니다. 로컬에서 8000 또는 8001 포트가 이미 사용 중일 수 있어서 충돌을 피하기 위한 값입니다.
+백엔드까지 연결해서 실행할 때는 터미널 3개를 사용합니다.
 
 터미널 1: orchestrator 실행
 
@@ -166,20 +145,14 @@ npm install
 NEXT_PUBLIC_BFF_BASE_URL=http://127.0.0.1:4000 npm run dev
 ```
 
-브라우저에서 다음 주소를 엽니다.
-
-```text
-http://localhost:3000
-```
-
-## 모바일 기준으로 확인하기
+## 모바일 기준
 
 Chrome DevTools의 Toggle device toolbar를 켜고 다음 크기를 확인합니다.
 
 - Primary: 390x844
 - Secondary: 375x667, 430x932
 
-현재 디자인의 주 기준은 390x844입니다. 데스크톱 브라우저에서 열어도 모바일 앱 화면처럼 중앙에 고정된 프레임으로 보이도록 구현되어 있습니다.
+데스크톱 브라우저에서 열어도 모바일 앱 화면처럼 중앙에 고정된 프레임으로 보이도록 구현되어 있습니다.
 
 ## 검증 명령어
 
@@ -197,18 +170,48 @@ cd apps/web
 npm run e2e
 ```
 
-백엔드 연결까지 확인하려면 orchestrator와 BFF를 먼저 켠 뒤 E2E를 실행합니다.
+E2E는 기본적으로 새 Next.js dev server를 직접 띄웁니다. 3000번 포트에 오래된 서버가 이미 떠 있으면 테스트가 실패할 수 있으니, 아래 명령으로 확인 후 종료합니다.
 
-## 작업 흐름
+```bash
+ss -ltnp 'sport = :3000'
+```
 
-1. UI만 바꿀 때는 `components/generate/*`와 `ChatGenerateClient.tsx`를 먼저 확인합니다.
-2. 화면 상태나 fallback 응답을 바꿀 때는 `lib/chat-flow.ts`를 같이 수정합니다.
-3. API 요청/응답 필드가 바뀌면 `lib/api-client.ts`, `apps/bff`, `orchestrator` 계약을 함께 맞춥니다.
-4. 모바일 기준 3개 뷰포트에서 레이아웃을 확인합니다.
-5. `npm run test`, `npm run build`, 필요하면 `npm run e2e`를 실행합니다.
+이미 켜둔 서버를 재사용해야 할 때만 명시적으로 실행합니다.
+
+```bash
+cd apps/web
+PLAYWRIGHT_REUSE_SERVER=1 npm run e2e
+```
+
+## 커밋 전 작업 단위
+
+현재 `git status` 기준 변경분은 커밋 전에 아래처럼 나누는 것이 좋습니다.
+
+1. `feat(web): add mobile app routes and mock flows`
+   - `app/ads`, `app/brand`, `app/generate`, `app/my`, `app/notifications`, `app/onboarding`, `app/reference`, `app/settings`, `app/studio`
+   - `components/generate/*`
+   - `lib/*-navigation.ts`, `lib/mock-dashboard-data.ts`
+2. `test(web): cover navigation and mobile shell flows`
+   - `lib/*.test.ts`
+   - `app/generate/chat/*.test.tsx`
+   - `e2e/chat-start.spec.ts`
+   - `playwright.config.ts`
+3. `style(web): introduce design tokens and shared mobile styling`
+   - `app/globals.css`
+   - `components/generate/generate.module.css`
+   - `DESIGN_SYSTEM.md`
+4. `docs(web): document routes, usage, and implementation status`
+   - `README.md`
+   - `ROUTES.md`
+   - `docs/superpowers/plans/*`
+5. `docs/assets: add scenario references`
+   - `images/*`
+   - `apps/web/public/scenarios/*`
+
+실제 커밋을 만들 때는 각 단위별로 `git diff -- <path>`를 확인한 뒤 staging하는 것을 권장합니다. 아직 최종 이미지/문서까지 한 커밋에 섞이면 리뷰 범위가 커지기 쉽습니다.
 
 ## 현재 주의할 점
 
-- 프론트는 BFF 호출이 실패하면 로컬 fallback 플로우로 계속 진행합니다. 그래서 화면이 정상 동작한다고 해서 항상 백엔드 연결이 성공한 것은 아닙니다.
+- 프론트는 BFF 호출이 실패하면 로컬 fallback 플로우로 계속 진행합니다. 화면이 정상 동작한다고 해서 항상 백엔드 연결이 성공한 것은 아닙니다.
 - 실제 이미지 생성 프로덕션 플로우가 완전히 연결된 상태는 아닙니다. 현재는 대화 시작, 문구 후보, 브리프 확인까지 API가 연결되어 있고, 최종 광고 생성 중/둘러보기/완료 화면은 프론트 mock으로 구현되어 있습니다.
 - 시나리오 참고 자료는 루트의 `images/` 아래에 있고, 프론트에서 직접 사용하는 정적 참고 파일은 `apps/web/public/scenarios` 아래에 있습니다.
