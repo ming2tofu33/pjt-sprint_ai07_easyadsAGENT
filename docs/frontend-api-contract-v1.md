@@ -4,17 +4,19 @@
 
 This document defines backend API request and response contracts for frontend integration. It is not a frontend implementation guide. This milestone does not add Next.js `route.ts` files, React hooks, frontend API clients, or frontend mock data.
 
-## 2. Current Scope
+Reference Catalog and BrandKit FastAPI routes are implemented in v1.
 
-Backend Pydantic DTOs are provided for common responses, reference templates, brand kits, generation jobs, archive items, usage summaries, and user settings.
-
-Reference Catalog FastAPI routes are implemented in v1:
+Implemented routes:
 
 - `GET /api/v1/references`
 - `GET /api/v1/references/{template_id}`
 - `GET /api/v1/references/{template_id}/similar`
+- `GET /api/v1/brand-kits/current`
+- `POST /api/v1/brand-kits`
+- `GET /api/v1/brand-kits/{brand_kit_id}`
+- `PATCH /api/v1/brand-kits/{brand_kit_id}`
 
-BrandKit, GenerationJob, Archive, Usage, and Settings routers are still out of scope. Persistence, object storage, background queues, and real image/model calls also remain out of scope.
+GenerationJob, Archive, Usage, and Settings routers are still out of scope. Persistence, object storage, background queues, and real image/model calls also remain out of scope.
 
 ## 3. Common Response Format
 
@@ -106,6 +108,56 @@ Contracts:
 - `BrandKitUpdateRequest`
 - `BrandKitGetCurrentResponse`
 
+### BrandKit Routes
+
+#### `GET /api/v1/brand-kits/current`
+
+Purpose: return the current BrandKit for a user. Query param `user_id` is optional; when omitted, the backend skeleton uses `demo_user`.
+
+Response schema: `BrandKitGetCurrentResponse`.
+
+Empty state: when no BrandKit exists, the response returns `has_brand_kit: false`, `brand_kit: null`, and an `EmptyState` with `kind: "no_brand_kit"`.
+
+#### `POST /api/v1/brand-kits`
+
+Purpose: create a BrandKit in the in-memory skeleton store and mark it as current for the user.
+
+Request body: `BrandKitCreateRequest`.
+
+Response schema: `BrandKitMutationResponse`.
+
+Validation errors such as an empty `store_name`, empty `business_type`, or invalid `brand_colors` return a structured error with `invalid_brand_kit_request`.
+
+#### `GET /api/v1/brand-kits/{brand_kit_id}`
+
+Purpose: fetch a BrandKit by id.
+
+Path params: `brand_kit_id`.
+
+Response schema: `BrandKitMutationResponse`.
+
+Missing ids return a structured error with `brand_kit_not_found`.
+
+#### `PATCH /api/v1/brand-kits/{brand_kit_id}`
+
+Purpose: partially update an existing BrandKit.
+
+Path params: `brand_kit_id`.
+
+Request body: `BrandKitUpdateRequest`. Fields omitted or sent as `null` keep their existing values. Empty lists such as `brand_colors: []` are treated as explicit updates.
+
+Response schema: `BrandKitMutationResponse`.
+
+Missing ids return `brand_kit_not_found`. Invalid update payloads return `invalid_brand_kit_request`.
+
+Current limitations:
+- BrandKit storage is in-memory only.
+- Data is not retained after server restart.
+- Real database persistence is planned for a later milestone.
+- Logo upload and object storage are not implemented.
+- Authenticated user extraction is not implemented.
+- When `user_id` is omitted, `demo_user` is used.
+
 ## 7. GenerationJob API Contract
 
 Generation jobs start in `queued_only` mode by default. This contract carries reference template selection, optional image paths, copy mode, user plan, status, progress, output path, and result payload. The API contract does not imply immediate image generation or external model calls.
@@ -144,14 +196,14 @@ Contracts:
 
 ## 11. Not Implemented Yet
 
-## 11. Not Implemented Yet
-
-- BrandKit, GenerationJob, Archive, Usage, and Settings routers
+- GenerationJob, Archive, Usage, and Settings routers
 - Database persistence
 - Redis, Celery, or queue execution
 - Object storage and signed URLs
 - Static asset serving for reference thumbnails/previews
 - Saved reference state
+- Logo upload and object storage integration for BrandKit
+- Authenticated user extraction for BrandKit
 - Frontend gallery, hooks, API clients, or mock data files
 - Real GPT-image-2, SD3.5, FLUX, LLM, VLM, OCR, rembg, or SAM calls
 

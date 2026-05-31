@@ -101,3 +101,9 @@ class BrandKitGetCurrentResponse(BaseModel):
     brand_kit: BrandKitResponse | None = None
     empty_state: EmptyState | None = None
     meta: ApiMeta = Field(default_factory=ApiMeta)
+
+
+class BrandKitMutationResponse(BaseModel):
+    success: Literal[True] = True
+    brand_kit: BrandKitResponse
+    meta: ApiMeta = Field(default_factory=ApiMeta)
