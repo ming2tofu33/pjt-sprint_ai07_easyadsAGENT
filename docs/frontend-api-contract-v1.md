@@ -4,7 +4,9 @@
 
 This document defines backend API request and response contracts for frontend integration. It is not a frontend implementation guide. This milestone does not add Next.js `route.ts` files, React hooks, frontend API clients, or frontend mock data.
 
-Reference Catalog and BrandKit FastAPI routes are implemented in v1.
+## 2. Current Scope
+
+Reference Catalog, BrandKit, and GenerationJob FastAPI routes are implemented in v1.
 
 Implemented routes:
 
@@ -15,8 +17,10 @@ Implemented routes:
 - `POST /api/v1/brand-kits`
 - `GET /api/v1/brand-kits/{brand_kit_id}`
 - `PATCH /api/v1/brand-kits/{brand_kit_id}`
+- `POST /api/v1/generation-jobs`
+- `GET /api/v1/generation-jobs/{job_id}`
 
-GenerationJob, Archive, Usage, and Settings routers are still out of scope. Persistence, object storage, background queues, and real image/model calls also remain out of scope.
+Archive, Usage, and Settings routers are still out of scope. Persistence, object storage, background queues, and real image/model calls also remain out of scope.
 
 ## 3. Common Response Format
 
@@ -169,6 +173,48 @@ Contracts:
 - `GenerationJobCreateResponse`
 - `GenerationJobGetResponse`
 
+### Generation Job Routes
+
+#### `POST /api/v1/generation-jobs`
+
+Purpose: create a queued generation job that the frontend can poll.
+
+Request body: `GenerationJobCreateRequest`.
+
+Response schema: `GenerationJobCreateResponse`.
+
+Behavior:
+- Creates an in-memory job with `status: "queued"`.
+- Creates a `thread_` id for future graph execution.
+- Stores `selected_reference_template_id`, `brand_kit_id`, `user_id`, `entry_mode`, `copy_generation_mode`, and `user_plan`.
+- Validates `selected_reference_template_id` against the seed Reference Catalog when provided.
+- Records `requested_run_mode` but always uses `effective_run_mode: "queued_only"`.
+
+Error responses:
+- Invalid request payload returns `invalid_generation_job_request`.
+- Missing reference template returns `reference_template_not_found`.
+
+#### `GET /api/v1/generation-jobs/{job_id}`
+
+Purpose: fetch a generation job for polling.
+
+Path params: `job_id`.
+
+Response schema: `GenerationJobGetResponse`.
+
+FE polling example: poll this endpoint and read `job.status`, `job.progress.progress_percent`, and `job.progress.current_stage`.
+
+Error responses:
+- Missing job returns `generation_job_not_found`.
+
+Current limitations:
+- GenerationJob storage is in-memory only.
+- Job state is not retained after server restart.
+- Worker and queue execution are not implemented.
+- `build_marketing_graph()` is not executed.
+- GPT-image-2, SD3.5, and FLUX are not called.
+- `run_mode: "mock_immediate"` and `run_mode: "graph_immediate"` degrade to `queued_only`.
+
 ## 8. Archive Response Contract
 
 Archive DTOs expose saved or generated ad records with public URLs when available. Internal generated file paths should not be exposed directly through public API responses.
@@ -196,7 +242,7 @@ Contracts:
 
 ## 11. Not Implemented Yet
 
-- GenerationJob, Archive, Usage, and Settings routers
+- Archive, Usage, and Settings routers
 - Database persistence
 - Redis, Celery, or queue execution
 - Object storage and signed URLs

@@ -21,7 +21,7 @@ GenerationJobStatus = Literal[
     "failed",
     "cancelled",
 ]
-GenerationRunMode = Literal["queued_only", "mock_immediate"]
+GenerationRunMode = Literal["queued_only", "mock_immediate", "graph_immediate"]
 
 
 class GenerationJobCreateRequest(BaseModel):

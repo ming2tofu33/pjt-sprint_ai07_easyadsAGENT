@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from orchestrator.app.api.routers.brand_kits import router as brand_kits_router
+from orchestrator.app.api.routers.generation_jobs import router as generation_jobs_router
 from orchestrator.app.api.routers.references import router as references_router
 from orchestrator.app.api.schemas.common import ErrorResponse
 
@@ -28,6 +29,11 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
         tags=["brand-kits"],
     )
+    app.include_router(
+        generation_jobs_router,
+        prefix="/api/v1",
+        tags=["generation-jobs"],
+    )
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -35,6 +41,13 @@ def create_app() -> FastAPI:
             error = ErrorResponse(
                 error_code="invalid_brand_kit_request",
                 message="Invalid brand kit request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.startswith("/api/v1/generation-jobs"):
+            error = ErrorResponse(
+                error_code="invalid_generation_job_request",
+                message="Invalid generation job request.",
                 detail=str(exc),
             )
             return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
