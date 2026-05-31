@@ -141,8 +141,8 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
-    expect(screen.getByText("백엔드 분석")).toBeTruthy();
-    expect(screen.getByText(/백엔드 분석 결과/)).toBeTruthy();
+    expect(screen.getByText("요청 분석")).toBeTruthy();
+    expect(screen.getByText(/요청에 대한 분석 결과/)).toBeTruthy();
     await waitFor(() => expect(screen.getByText("딸기라떼")).toBeTruthy());
     await waitFor(() => expect(screen.getByRole("button", { name: "문구 고르기" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByText("상큼한"));
@@ -150,7 +150,8 @@ describe("ChatGenerateClient", () => {
 
     expect(screen.getByText("문구와 채널을 골라주세요")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "AI 추천 문구" })).toBeTruthy();
-    expect(screen.getAllByText("백엔드 생성").length).toBeGreaterThan(0);
+    expect(screen.getByText("요청 기반")).toBeTruthy();
+    expect(screen.queryByText("백엔드 생성")).toBeNull();
     fireEvent.click(screen.getByText("인스타 스토리"));
     fireEvent.click(screen.getByText("브리프 확인하기"));
 
@@ -171,7 +172,7 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy();
     expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeTruthy();
 
-    fireEvent.click(screen.getByText("샘플 레퍼런스 보기"));
+    fireEvent.click(screen.getByText("레퍼런스 갤러리 보기"));
     expect(screen.getByText("찰떡 레퍼런스 둘러보기")).toBeTruthy();
     expect(screen.getByText("결과로 돌아가기")).toBeTruthy();
   });
@@ -187,8 +188,8 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     expect(screen.getAllByText("요청 분석 중").length).toBeGreaterThan(0);
-    expect(screen.getByText("백엔드 대기")).toBeTruthy();
-    expect(screen.getByText(/응답을 받은 뒤에만 표시/)).toBeTruthy();
+    expect(screen.getByText("분석 중")).toBeTruthy();
+    expect(screen.getByText(/분석이 끝난 뒤에만 표시/)).toBeTruthy();
     expect(screen.queryByText("딸기라떼")).toBeNull();
     expect(screen.queryByText("카페")).toBeNull();
     expect(screen.queryByText("신메뉴 출시")).toBeNull();
@@ -210,7 +211,7 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByText("카페/디저트"));
 
     await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
-    expect(screen.getByText("백엔드 분석")).toBeTruthy();
+    expect(screen.getByText("요청 분석")).toBeTruthy();
     expect(screen.getByText("대표 메뉴")).toBeTruthy();
   });
 
@@ -236,7 +237,7 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByLabelText("직접 답변 입력").hasAttribute("disabled")).toBe(true);
   });
 
-  it("labels fallback copy candidates as samples and blocks brief creation", async () => {
+  it("shows an empty copy state and blocks brief creation when backend candidates are missing", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
@@ -249,9 +250,9 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "문구 고르기" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByText("문구 고르기"));
 
-    expect(screen.getByRole("heading", { name: "샘플 문구" })).toBeTruthy();
-    expect(screen.getAllByText("샘플 문구").length).toBeGreaterThan(1);
-    expect(screen.getByText(/백엔드 문구 후보를 아직 받지 못해 샘플을 표시/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "AI 추천 문구" })).toBeTruthy();
+    expect(screen.getByText("문구 후보가 아직 없어요")).toBeTruthy();
+    expect(screen.queryByText("봄을 닮은 한 잔, 딸기라떼 출시")).toBeNull();
     expect(screen.getByRole("button", { name: "브리프 확인하기" }).hasAttribute("disabled")).toBe(true);
   });
 
@@ -274,14 +275,14 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy();
     expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeTruthy();
 
-    fireEvent.click(screen.getByText("샘플 레퍼런스 보기"));
+    fireEvent.click(screen.getByText("레퍼런스 갤러리 보기"));
 
     expect(screen.getByText("찰떡 레퍼런스 둘러보기")).toBeTruthy();
     expect(screen.getByText("결과로 돌아가기")).toBeTruthy();
     expect(screen.queryByText("찰떡 광고 시안이 완성됐어요")).toBeNull();
   });
 
-  it("opens the reference gallery from the home mock hub", async () => {
+  it("opens the reference gallery from the home dashboard", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
@@ -301,6 +302,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="reference" />);
 
+    fireEvent.click(screen.getByRole("button", { name: "샘플 레퍼런스 보기" }));
     fireEvent.click(screen.getByRole("button", { name: "감성 카페 신메뉴 포스터 상세 보기" }));
 
     expect(navigationMock.push).toHaveBeenCalledWith("/reference/ref-strawberry-poster");
@@ -487,16 +489,22 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="reference" />);
 
+    expect(screen.getByText("아직 연결된 레퍼런스 결과가 없어요")).toBeTruthy();
+    expect(screen.queryByText("SPRING SALE")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "샘플 레퍼런스 보기" }));
+
     expect(screen.getByText("SPRING SALE")).toBeTruthy();
     expect(screen.getByText("SUMMER SALE")).toBeTruthy();
   });
 
-  it("shows feedback when a mock creative is saved", async () => {
+  it("shows feedback when a sample reference creative is saved", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
     render(<ChatGenerateClient initialSurface="reference" />);
 
+    fireEvent.click(screen.getByRole("button", { name: "샘플 레퍼런스 보기" }));
     fireEvent.click(screen.getByLabelText("감성 카페 신메뉴 포스터 저장"));
 
     expect(screen.getByText("감성 카페 신메뉴 포스터를 보관함에 저장했어요.")).toBeTruthy();
@@ -508,6 +516,7 @@ describe("ChatGenerateClient", () => {
 
     const { rerender } = render(<ChatGenerateClient initialSurface="ads" />);
 
+    fireEvent.click(screen.getByRole("button", { name: "보기" }));
     fireEvent.click(screen.getByRole("button", { name: "봄을 닮은 한 잔 다시 보기" }));
     expect(navigationMock.push).toHaveBeenCalledWith("/ads/result-1");
 
@@ -522,6 +531,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="ads" />);
 
+    fireEvent.click(screen.getByRole("button", { name: "보기" }));
     fireEvent.click(screen.getByRole("button", { name: "봄을 닮은 한 잔 더보기" }));
 
     expect(screen.getByRole("menu", { name: "봄을 닮은 한 잔 작업 메뉴" })).toBeTruthy();

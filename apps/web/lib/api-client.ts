@@ -46,9 +46,22 @@ async function postJson<TResponse>(path: string, body: unknown): Promise<TRespon
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload?.message || payload?.error || "API request failed");
+    throw new Error(normalizeApiErrorMessage(payload?.message || payload?.error || "API request failed"));
   }
   return payload as TResponse;
+}
+
+function normalizeApiErrorMessage(message: string): string {
+  if (message.includes("OPENAI_API_KEY missing")) {
+    return "이미지 생성 API 키가 설정되지 않았어요. OPENAI_API_KEY를 확인해주세요.";
+  }
+  if (message.includes("API call disabled")) {
+    return "이미지 생성 API 호출이 비활성화되어 있어요. 실제 생성을 확인하려면 T2I_ALLOW_API_CALLS=true 설정이 필요합니다.";
+  }
+  if (message.includes("input image not found")) {
+    return "업로드한 사진 파일을 생성 서버에서 찾지 못했어요. BFF_UPLOAD_DIR와 orchestrator 실행 위치를 확인해주세요.";
+  }
+  return message;
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {

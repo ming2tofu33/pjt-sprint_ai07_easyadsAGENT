@@ -242,13 +242,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     dispatch({ type: "reset" });
-    dispatch({ type: "submitPrompt", prompt: "삼겹살집 회식 손님 많이 오게 포스터 만들어줘" });
-    dispatch({ type: "continueToCopy" });
-    dispatch({ type: "continueToBrief" });
-    setGenerationProgress(initialStage === "generating" ? 68 : 100);
-    setGenerationStage(
-      initialStage === "generating" ? "generating" : initialStage === "similar" ? "similarBrowsing" : "complete"
-    );
+    dispatch({ type: "showResultShell" });
+    setGenerationProgress(0);
+    setGenerationStage("complete");
     lastPrimedStageRef.current = initialStage;
   }, [appSurface, applyTurnResponse, initialStage, restoreBriefSnapshot]);
 
@@ -365,7 +361,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       };
       writeChatFlowSnapshot(snapshot);
       clearChatTurnSnapshot();
-      setGeneratedCreatives(addGeneratedCreativeSnapshot(snapshot));
+      setGeneratedCreatives(response.brief.finalImagePath ? addGeneratedCreativeSnapshot(snapshot) : readGeneratedCreatives());
       dispatch({ type: "backendBriefSucceeded", brief: response.brief });
       dispatch({ type: "continueToBrief" });
     } catch (error) {
@@ -377,18 +373,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }
 
   function handleOpenGeneratedResult() {
-    if (state.brief?.finalImagePath) {
-      setGenerationProgress(100);
-      setGenerationStage("complete");
-      lastPrimedStageRef.current = "complete";
-      navigateTo("chat", "complete");
-      return;
-    }
-
-    setGenerationProgress(12);
-    setGenerationStage("generating");
-    lastPrimedStageRef.current = "generating";
-    navigateTo("chat", "generating");
+    setGenerationProgress(100);
+    setGenerationStage("complete");
+    lastPrimedStageRef.current = "complete";
+    navigateTo("chat", "complete");
   }
 
   function handleOpenFreshChat() {
@@ -401,14 +389,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }
 
   function handleRegenerateFromRecent() {
-    dispatch({ type: "reset" });
-    dispatch({ type: "submitPrompt", prompt: "딸기라떼 신메뉴 광고 비슷하게 다시 만들어줘" });
-    dispatch({ type: "continueToCopy" });
-    dispatch({ type: "continueToBrief" });
-    setGenerationProgress(12);
-    setGenerationStage("generating");
-    lastPrimedStageRef.current = "generating";
-    navigateTo("chat", "generating");
+    showToast("새 요청 화면에서 비슷하게 만들 광고를 입력해주세요.");
+    handleOpenFreshChat();
   }
 
   function handleDeleteGeneratedAd(creativeId: string, title: string) {

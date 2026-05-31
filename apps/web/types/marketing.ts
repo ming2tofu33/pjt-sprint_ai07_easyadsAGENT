@@ -52,7 +52,7 @@ export type CopyOption = {
   selectedByDefault?: boolean;
 };
 
-export type CopyCandidateSource = "sample" | "backend";
+export type CopyCandidateSource = "empty" | "sample" | "backend";
 
 export type ChannelOption = {
   id: string;
@@ -122,4 +122,5 @@ export type ChatFlowAction =
   | { type: "setCustomDirection"; value: string }
   | { type: "backendBriefSucceeded"; brief: ChatBrief }
   | { type: "continueToBrief" }
+  | { type: "showResultShell" }
   | { type: "back" };

@@ -226,7 +226,11 @@ def build_product_preserve_hint(product_preserve_spec: dict[str, object]) -> str
     bbox = product_preserve_spec.get("product_bbox") if product_preserve_spec else None
     if not isinstance(bbox, dict):
         return None
-    return f"Keep the main product visually centered around the source product bbox hint {bbox}; this is a non-segmentation stub."
+    return (
+        "Use the uploaded source image as the product reference. Preserve the main product's visual identity, "
+        f"shape, color, and approximate position around normalized bbox {bbox}; create a polished advertising "
+        "scene around it while keeping the reserved text areas clean."
+    )
 
 
 def build_reference_template_hint(template: dict[str, object], style_hint: dict[str, object]) -> str | None:

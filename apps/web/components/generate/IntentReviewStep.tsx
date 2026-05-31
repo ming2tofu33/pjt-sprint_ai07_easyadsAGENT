@@ -29,7 +29,7 @@ export function IntentReviewStep({ state, onSelectTone, onContinue, onBack }: In
     state.contextSource === "backend" &&
     Boolean(state.inferredContext.businessType && state.inferredContext.itemOrService && state.inferredContext.promotionGoal);
   const cannotContinue = state.isLoading || !hasBackendSession || !hasBackendContext;
-  const contextBadge = hasBackendContext ? "백엔드 분석" : state.isLoading ? "백엔드 대기" : "확인 필요";
+  const contextBadge = hasBackendContext ? "요청 분석" : state.isLoading ? "분석 중" : "확인 필요";
 
   return (
     <>
@@ -39,10 +39,10 @@ export function IntentReviewStep({ state, onSelectTone, onContinue, onBack }: In
         <span className={styles.assistantAvatar}>AI</span>
         <p className={styles.bubble}>
           {state.isLoading
-            ? "백엔드가 요청을 분석하고 있어요. 응답을 받기 전에는 임시 추론값을 보여주지 않아요."
+            ? "요청을 분석하고 있어요. 응답을 받기 전에는 임시 추론값을 보여주지 않아요."
             : hasBackendContext
-              ? "좋아요! 백엔드가 파악한 내용을 아래에 정리했어요."
-              : "아직 백엔드 분석값을 충분히 받지 못했어요. 확인이 필요한 항목을 다시 채워야 해요."}
+              ? "좋아요! 파악한 내용을 아래에 정리했어요."
+              : "아직 분석값을 충분히 받지 못했어요. 확인이 필요한 항목을 다시 채워야 해요."}
         </p>
       </div>
 
@@ -54,14 +54,14 @@ export function IntentReviewStep({ state, onSelectTone, onContinue, onBack }: In
 
         {state.isLoading ? (
           <p className={styles.contextSourceNote}>
-            지금은 백엔드 응답을 기다리는 중이에요. 업종, 상품, 광고 목적은 응답을 받은 뒤에만 표시합니다.
+            지금은 응답을 기다리는 중이에요. 업종, 상품, 광고 목적은 분석이 끝난 뒤에만 표시합니다.
           </p>
         ) : (
           <>
             <p className={styles.contextSourceNote}>
               {hasBackendContext
-                ? "아래 값은 이번 요청에 대한 백엔드 분석 결과입니다."
-                : "백엔드 분석값이 비어 있어 실제 생성 단계로 이동하지 않습니다."}
+                ? "아래 값은 이번 요청에 대한 분석 결과입니다."
+                : "분석값이 비어 있어 실제 생성 단계로 이동하지 않습니다."}
             </p>
             <div className={styles.contextGrid}>
               <div className={styles.contextItem}>
@@ -111,11 +111,11 @@ export function IntentReviewStep({ state, onSelectTone, onContinue, onBack }: In
         {state.errorMessage ? (
           <p className={styles.helperText}>{state.errorMessage}</p>
         ) : state.isLoading ? (
-          <p className={styles.helperText}>백엔드가 요청을 분석하고 있어요.</p>
+          <p className={styles.helperText}>요청을 분석하고 있어요.</p>
         ) : !hasBackendSession ? (
-          <p className={styles.helperText}>백엔드 응답을 받은 뒤 문구 선택으로 이동할 수 있어요.</p>
+          <p className={styles.helperText}>응답을 받은 뒤 문구 선택으로 이동할 수 있어요.</p>
         ) : !hasBackendContext ? (
-          <p className={styles.helperText}>백엔드 분석값이 비어 있어 문구 선택으로 이동할 수 없어요.</p>
+          <p className={styles.helperText}>분석값이 비어 있어 문구 선택으로 이동할 수 없어요.</p>
         ) : null}
         <div className={styles.progressWrap}>
           <span>

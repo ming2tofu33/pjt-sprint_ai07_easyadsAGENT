@@ -25,9 +25,8 @@ export function CopyChannelStep({
   onBack
 }: CopyChannelStepProps) {
   const hasBackendSession = Boolean(state.jobId && state.threadId);
-  const hasBackendCopyCandidates = state.copyCandidateSource === "backend";
+  const hasBackendCopyCandidates = state.copyCandidateSource === "backend" && state.copyCandidates.length > 0;
   const cannotContinue = state.isLoading || !hasBackendSession || !hasBackendCopyCandidates;
-  const copySourceLabel = hasBackendCopyCandidates ? "백엔드 생성" : "샘플 문구";
 
   return (
     <>
@@ -39,35 +38,43 @@ export function CopyChannelStep({
       </div>
 
       <div className={styles.copySectionHeader}>
-        <h2 className={styles.sectionTitle}>{hasBackendCopyCandidates ? "AI 추천 문구" : "샘플 문구"}</h2>
-        <span>{copySourceLabel}</span>
+        <h2 className={styles.sectionTitle}>AI 추천 문구</h2>
+        {hasBackendCopyCandidates ? <span>요청 기반</span> : null}
       </div>
       <p className={styles.copySourceNote}>
         {hasBackendCopyCandidates
-          ? "백엔드가 이번 요청을 바탕으로 생성한 문구 후보예요."
-          : "백엔드 문구 후보를 아직 받지 못해 샘플을 표시하고 있어요."}
+          ? "이번 요청을 바탕으로 생성된 문구 후보예요."
+          : "아직 이번 요청에 맞는 문구 후보를 받지 못했어요."}
       </p>
-      <div className={styles.selectList}>
-        {state.copyCandidates.map((copy, index) => {
-          const selected = state.selectedCopyId === copy.id;
-          return (
-            <button
-              key={copy.id}
-              type="button"
-              className={clsx(styles.copyCard, selected && styles.copyCardSelected)}
-              aria-pressed={selected}
-              onClick={() => onSelectCopy(copy.id)}
-            >
-              <span className={styles.copyNumber}>{index + 1}</span>
-              <span className={styles.copyContent}>
-                <span>{copy.headline}</span>
-                <small>{copySourceLabel}</small>
-              </span>
-              {selected ? <Check size={19} aria-hidden="true" /> : <span />}
-            </button>
-          );
-        })}
-      </div>
+      {hasBackendCopyCandidates ? (
+        <div className={styles.selectList}>
+          {state.copyCandidates.map((copy, index) => {
+            const selected = state.selectedCopyId === copy.id;
+            const copyDetail = [copy.subcopy, copy.cta].filter(Boolean).join(" · ");
+            return (
+              <button
+                key={copy.id}
+                type="button"
+                className={clsx(styles.copyCard, selected && styles.copyCardSelected)}
+                aria-pressed={selected}
+                onClick={() => onSelectCopy(copy.id)}
+              >
+                <span className={styles.copyNumber}>{index + 1}</span>
+                <span className={styles.copyContent}>
+                  <span>{copy.headline}</span>
+                  {copyDetail ? <small>{copyDetail}</small> : null}
+                </span>
+                {selected ? <Check size={19} aria-hidden="true" /> : <span />}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <section className={styles.emptyResultPanel} aria-label="문구 후보 없음">
+          <strong>문구 후보가 아직 없어요</strong>
+          <p>이번 응답에 문구 후보가 없어서 실제 이미지 생성을 진행하지 않습니다. 요청을 다시 보내주세요.</p>
+        </section>
+      )}
 
       <h2 className={styles.sectionTitle}>어디에 사용할까요?</h2>
       <div className={styles.channelGrid}>
@@ -107,7 +114,7 @@ export function CopyChannelStep({
           <p className={styles.helperText}>백엔드 세션을 먼저 받아야 실제 이미지 생성을 요청할 수 있어요.</p>
         ) : null}
         {!state.errorMessage && hasBackendSession && !hasBackendCopyCandidates ? (
-          <p className={styles.helperText}>샘플 문구로는 실제 이미지 생성을 진행하지 않아요. 다시 요청해 백엔드 문구를 받아주세요.</p>
+          <p className={styles.helperText}>이번 요청에 맞는 문구 후보를 받은 뒤 브리프를 만들 수 있어요.</p>
         ) : null}
         <div className={styles.progressWrap}>
           <span>

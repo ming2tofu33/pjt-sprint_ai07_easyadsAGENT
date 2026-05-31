@@ -88,8 +88,8 @@ export function GenerationCompleteStep({
         channelName(brief.channel)
       ].map(cleanLabel).filter(Boolean)
     : [];
-  const editActions = brief ? buildEditActions(brief) : [];
-  const generatedCreative = brief
+  const editActions = brief && generatedImageUrl ? buildEditActions(brief) : [];
+  const generatedCreative = brief && generatedImageUrl
     ? {
         id: state.jobId ? `generated-${state.jobId}` : "generated-current",
         title: cleanLabel(brief.copy) || cleanLabel(brief.item) || "생성 결과",
@@ -97,7 +97,7 @@ export function GenerationCompleteStep({
         format: brief.channel.match(/\(([^)]+)\)/)?.[1] ?? cleanLabel(brief.channel),
         imageUrl: generatedImageUrl,
         tone: creativeToneFromBrief(brief),
-        badge: generatedImageUrl ? "실제 생성" : "브리프 기준",
+        badge: "실제 생성",
         status: "saved" as const,
         channel: channelName(brief.channel),
         fileName: "final_composite.png",
@@ -115,12 +115,12 @@ export function GenerationCompleteStep({
       <StepHeader title="GENERATED RESULTS" canGoBack onBack={onGoHome} />
 
       <header className={styles.resultsHeader}>
-        <h1>{hasBrief ? "찰떡 광고 시안이 완성됐어요" : "생성된 시안이 아직 없어요"}</h1>
+        <h1>{generatedImageUrl ? "찰떡 광고 시안이 완성됐어요" : hasBrief ? "이미지 생성이 완료되지 않았어요" : "생성된 시안이 아직 없어요"}</h1>
         <p>
           {generatedImageUrl
             ? "실제 생성된 결과만 먼저 보여드려요."
             : hasBrief
-              ? "이미지 생성이 완료되지 않아 백엔드 브리프 기준으로만 보여드려요."
+              ? "브리프는 준비됐지만 표시할 실제 이미지가 없어요. 설정을 확인한 뒤 다시 생성해주세요."
               : "대화로 광고를 생성하면 실제 결과와 선택한 문구가 여기에 표시됩니다."}
         </p>
         {resultChips.length > 0 ? (
@@ -143,8 +143,12 @@ export function GenerationCompleteStep({
       ) : (
         <section className={styles.emptyResultPanel} aria-label="생성 결과 없음">
           <ImageOff size={24} aria-hidden="true" />
-          <strong>표시할 생성 결과가 없어요</strong>
-          <p>먼저 대화로 광고를 만들면 이 화면에 실제 이미지와 브리프가 함께 표시됩니다.</p>
+          <strong>{hasBrief ? "실제 이미지 파일을 받지 못했어요" : "표시할 생성 결과가 없어요"}</strong>
+          <p>
+            {hasBrief
+              ? "임의 카드로 대신 보여주지 않고, 실제 이미지가 준비된 경우에만 결과 카드를 표시합니다."
+              : "먼저 대화로 광고를 만들면 이 화면에 실제 이미지와 브리프가 함께 표시됩니다."}
+          </p>
         </section>
       )}
 
@@ -153,7 +157,7 @@ export function GenerationCompleteStep({
         {generatedImageUrl
           ? "이 결과는 이번 브라우저 세션의 보관함에 자동 저장됐어요."
           : hasBrief
-            ? "아직 실제 생성 이미지가 없어 브리프 정보만 표시하고 있어요."
+            ? "이미지가 없어 이번 브리프는 세션 보관함에 저장하지 않았어요."
             : "아직 생성된 결과가 없어 보관함에 저장된 항목도 없어요."}
       </p>
 
@@ -181,7 +185,7 @@ export function GenerationCompleteStep({
           </button>
           <button className={styles.secondaryButton} type="button" onClick={onBrowseSimilar}>
             <Share2 size={17} aria-hidden="true" />
-            샘플 레퍼런스 보기
+            레퍼런스 갤러리 보기
           </button>
         </div>
         {generatedImageUrl && generatedCreative ? (

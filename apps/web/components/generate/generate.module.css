@@ -1493,6 +1493,29 @@
   font-weight: 950;
 }
 
+.sampleLibraryHeader {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sampleLibraryHeader .archiveSectionTitle {
+  margin: 0;
+}
+
+.sampleLibraryHeader button {
+  min-height: 32px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 999px;
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .sampleNotice {
   margin: 12px 0;
   border: 1px solid #ebe1cc;
@@ -2453,6 +2476,11 @@
   font-size: 12px;
   line-height: 1.45;
   font-weight: 780;
+}
+
+.emptyResultPanel .secondaryButton {
+  width: min(100%, 190px);
+  margin-top: 6px;
 }
 
 .resultCard {

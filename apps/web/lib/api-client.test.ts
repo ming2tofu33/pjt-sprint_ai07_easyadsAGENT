@@ -74,4 +74,18 @@ describe("api-client photo generation", () => {
       })
     );
   });
+
+  it("maps image generation configuration errors to actionable messages", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ message: "API call disabled; pass allow_api_call=True or --include-api" }, { status: 502 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      startPhotoGeneration({
+        userInput: "이 사진으로 신메뉴 광고 만들어줘",
+        sourceImagePath: "data/uploads/photo_1.png"
+      })
+    ).rejects.toThrow("T2I_ALLOW_API_CALLS=true");
+  });
 });
