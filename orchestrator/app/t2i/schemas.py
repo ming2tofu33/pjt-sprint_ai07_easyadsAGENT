@@ -14,6 +14,7 @@ class T2IRequest(BaseModel):
     """Common request sent to all text-to-image engines."""
 
     prompt: str = Field(..., min_length=1)
+    input_image_paths: list[str] = Field(default_factory=list)
     negative_prompt: str = ""
     width: int = Field(default=1024, ge=256, le=2048)
     height: int = Field(default=1024, ge=256, le=2048)

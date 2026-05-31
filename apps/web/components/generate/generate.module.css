@@ -510,6 +510,38 @@
   font-weight: 900;
 }
 
+.copySectionHeader {
+  margin: 22px 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.copySectionHeader .sectionTitle {
+  margin: 0;
+}
+
+.copySectionHeader span {
+  flex: 0 0 auto;
+  border: 1px solid #d7cafd;
+  border-radius: 999px;
+  background: #f5f0ff;
+  color: #684bc2;
+  padding: 5px 8px;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.copySourceNote {
+  margin: 0 0 10px;
+  color: #6f665a;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 760;
+}
+
 .muted {
   color: var(--color-muted);
 }
@@ -542,6 +574,11 @@
   color: var(--color-brand-purple-text);
 }
 
+.chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .inputCard {
   margin-top: auto;
   border: 1px solid var(--color-purple);
@@ -550,7 +587,7 @@
   background: var(--color-bg-card);
   display: grid;
   grid-template-columns: 32px 1fr 42px;
-  align-items: center;
+  align-items: end;
   gap: 8px;
 }
 
@@ -559,6 +596,19 @@
   outline: 0;
   min-width: 0;
   color: var(--color-text);
+  background: transparent;
+  font: inherit;
+}
+
+.promptTextarea {
+  width: 100%;
+  min-height: 42px;
+  max-height: 128px;
+  padding: 10px 0;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 
 .sendButton {
@@ -586,6 +636,14 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.sendButton:disabled {
+  cursor: not-allowed;
+  background: #ece9df;
+  color: #8f8b81;
 }
 
 .secondaryButton {
@@ -750,6 +808,28 @@
   font-weight: 750;
 }
 
+.chatTranscript {
+  display: grid;
+  gap: 10px;
+}
+
+.chatTranscript .assistantBubble {
+  margin-top: 0;
+}
+
+.userBubble {
+  justify-self: end;
+  max-width: 84%;
+  margin: 0;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--color-action-primary);
+  color: var(--color-action-primary-text);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 800;
+}
+
 .contextCard {
   margin-top: 16px;
   padding: 18px;
@@ -763,6 +843,38 @@
   color: var(--color-brand-purple-strong);
   font-size: 13px;
   font-weight: 900;
+}
+
+.contextReviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.contextReviewHeader .contextTitle {
+  margin: 0;
+}
+
+.contextReviewHeader span {
+  flex: 0 0 auto;
+  border: 1px solid #d7cafd;
+  border-radius: 999px;
+  background: #f5f0ff;
+  color: #684bc2;
+  padding: 5px 8px;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.contextSourceNote {
+  margin: 0 0 14px;
+  color: #5f5582;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 780;
 }
 
 .contextGrid {
@@ -802,6 +914,27 @@
   gap: 10px;
   align-items: center;
   text-align: left;
+  font-weight: 900;
+}
+
+.copyContent {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.copyContent > span {
+  min-width: 0;
+}
+
+.copyContent small {
+  justify-self: start;
+  border-radius: 999px;
+  background: rgba(90, 64, 177, 0.1);
+  color: #684bc2;
+  padding: 3px 7px;
+  font-size: 10px;
+  line-height: 1;
   font-weight: 900;
 }
 
@@ -1352,6 +1485,26 @@
   color: var(--color-action-primary-text);
 }
 
+.archiveSectionTitle {
+  margin: 16px 0 10px;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 950;
+}
+
+.sampleNotice {
+  margin: 12px 0;
+  border: 1px solid #ebe1cc;
+  border-radius: 14px;
+  background: #fff8ed;
+  color: #62533f;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 820;
+}
+
 .archiveGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1371,6 +1524,18 @@
   overflow: hidden;
   display: block;
   color: var(--color-text);
+}
+
+.archiveVisual[data-has-image="true"] {
+  background: #f6f4ef;
+}
+
+.archiveVisual[data-has-image="true"]::after {
+  display: none;
+}
+
+.archiveImage {
+  object-fit: cover;
 }
 
 .archiveVisual::after {
@@ -1466,7 +1631,7 @@
   font-weight: 760;
 }
 
-.archiveCopy div {
+.archiveInlineActions {
   position: absolute;
   right: 0;
   top: 6px;
@@ -1474,13 +1639,53 @@
   gap: 2px;
 }
 
-.archiveCopy div button {
+.archiveInlineActions button {
   width: 32px;
   height: 32px;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: #5f5b55;
+}
+
+.archiveActionMenu {
+  position: absolute;
+  right: 0;
+  top: 42px;
+  z-index: 10;
+  width: min(168px, calc(100vw - 48px));
+  border: 1px solid var(--color-border-soft);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 34px rgba(32, 27, 20, 0.16);
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+}
+
+.archiveActionMenu button {
+  min-height: 36px;
+  width: 100%;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--color-text-primary);
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.archiveActionMenu button:hover,
+.archiveActionMenu button:focus-visible {
+  background: #f7f4ee;
+}
+
+.archiveActionMenu .archiveDangerAction {
+  color: #bd3d35;
 }
 
 .studioIntro {
@@ -2197,6 +2402,59 @@
   margin-top: 18px;
 }
 
+.generatedResultGrid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.generatedResultGrid .adCreativeCard {
+  min-height: 0;
+}
+
+.generatedResultGrid .adCreativeVisual[data-has-image="true"] {
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  background: #f6f2ea;
+}
+
+.generatedResultGrid .adCreativeImage {
+  object-fit: contain;
+}
+
+.generatedResultGrid .adCreativeCopy h2,
+.generatedResultGrid .adCreativeCopy p {
+  max-width: 100%;
+}
+
+.emptyResultPanel {
+  margin-top: 18px;
+  min-height: 158px;
+  border: 1px dashed #d8d3c8;
+  border-radius: 16px;
+  background: #fbfaf6;
+  color: #6f665a;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 22px;
+  text-align: center;
+}
+
+.emptyResultPanel strong {
+  color: var(--color-text-primary);
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 950;
+}
+
+.emptyResultPanel p {
+  max-width: 260px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 780;
+}
+
 .resultCard {
   min-height: 172px;
 }
@@ -2271,11 +2529,20 @@
   gap: 10px;
 }
 
+.generatedResultActions {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .editActionGrid {
   margin-top: 14px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.editActionGrid button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .textButton {
@@ -2494,14 +2761,32 @@
 }
 
 .adCreativeVisual {
+  position: relative;
   min-height: 72px;
+  overflow: hidden;
+  border-radius: 10px;
   display: flex;
   justify-content: flex-end;
   align-items: center;
 }
 
+.adCreativeVisual[data-has-image="true"] {
+  min-height: 92px;
+  margin: -10px -10px 8px;
+  border-radius: 0 0 12px 12px;
+}
+
 .adCreativeCard[data-compact="true"] .adCreativeVisual {
   min-height: 48px;
+}
+
+.adCreativeCard[data-compact="true"] .adCreativeVisual[data-has-image="true"] {
+  min-height: 70px;
+  margin: -8px -8px 6px;
+}
+
+.adCreativeImage {
+  object-fit: cover;
 }
 
 .adCreativeCup {
@@ -3465,6 +3750,7 @@
 }
 
 .photoDropzone {
+  position: relative;
   margin-top: 18px;
   min-height: 154px;
   border: 1px solid rgba(176, 203, 32, 0.46);
@@ -3478,6 +3764,32 @@
   gap: 9px;
   text-align: center;
   padding: 18px;
+  overflow: hidden;
+}
+
+.photoStartForm {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.photoDropzone[data-has-file="true"] {
+  border-color: rgba(90, 64, 177, 0.34);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(245, 241, 255, 0.84)),
+    var(--color-bg-card);
+}
+
+.photoFileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  opacity: 0;
+  overflow: hidden;
 }
 
 .photoDropzone span {
@@ -3489,6 +3801,19 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 10px 24px rgba(176, 203, 32, 0.18);
+}
+
+.photoDropzone .photoPreviewFrame {
+  position: relative;
+  width: 100%;
+  height: 176px;
+  border-radius: 14px;
+  overflow: hidden;
+  background-color: #fff;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  box-shadow: inset 0 0 0 1px rgba(17, 17, 17, 0.06);
 }
 
 .photoDropzone h2,
@@ -3504,6 +3829,37 @@
   color: var(--color-muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+.photoDropzone p {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.photoUploadButton {
+  min-height: 38px;
+  border: 1px solid rgba(90, 64, 177, 0.22);
+  border-radius: 999px;
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 900;
+  box-shadow: 0 8px 20px rgba(17, 17, 17, 0.06);
+}
+
+.photoUploadButton:focus-visible {
+  outline: 3px solid rgba(90, 64, 177, 0.24);
+  outline-offset: 3px;
 }
 
 .photoKindGrid,
@@ -3641,20 +3997,30 @@
 
 .photoPromptCard {
   margin-top: 14px;
-  min-height: 52px;
+  min-height: 56px;
   display: grid;
   grid-template-columns: 1fr 28px;
-  align-items: center;
+  align-items: end;
   gap: 8px;
-  padding: 0 12px;
+  padding: 8px 12px;
   color: var(--color-text);
 }
 
-.photoPromptCard input {
+.photoPromptTextarea {
+  width: 100%;
+  min-height: 38px;
+  max-height: 132px;
+  padding: 8px 0;
   min-width: 0;
   border: 0;
   outline: 0;
   color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 
 .photoInputCard {

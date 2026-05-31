@@ -70,11 +70,15 @@ export function ReferenceBrowseStep({
 
       <header className={styles.referenceHeader}>
         <div>
-          <p>{isStandaloneGallery ? "마음에 드는 광고 스타일을 골라보세요" : "레퍼런스"}</p>
+          <p>샘플 레퍼런스</p>
           <h1>찰떡 레퍼런스 둘러보기</h1>
         </div>
         {isStandaloneGallery ? null : <Search size={22} aria-hidden="true" />}
       </header>
+
+      <p className={styles.sampleNotice}>
+        아직 레퍼런스 API와 연결되지 않은 샘플 목록이에요. 실제 생성 결과와 섞이지 않도록 샘플로 표시합니다.
+      </p>
 
       <label className={styles.searchField}>
         <Search size={17} aria-hidden="true" />

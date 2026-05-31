@@ -47,3 +47,23 @@ def test_image_prompt_planner_uses_reserved_text_areas_and_no_text_negative():
         assert phrase in spec["negative_prompt_en"]
     assert spec["target_width"] == 1080
     assert spec["target_height"] == 1080
+
+
+def test_image_prompt_planner_includes_frontend_visual_choices():
+    state = _state()
+    state["current_brief"]["selected_channel_id"] = "poster"
+    state["current_brief"]["selected_tone"] = "고급스러운"
+    state["current_brief"]["custom_direction"] = "상품을 중앙에 더 크게 보여줘"
+    state["context"]["brand_tone"] = "고급스러운"
+    state["context"]["extra"]["selected_channel_id"] = "poster"
+    state["context"]["extra"]["custom_direction"] = "상품을 중앙에 더 크게 보여줘"
+
+    update = image_prompt_planner_node(state)
+    spec = update["image_prompt_spec"]
+
+    assert "상품을 중앙에 더 크게 보여줘" in spec["scene_description"]
+    assert "상품을 중앙에 더 크게 보여줘" in spec["positive_prompt_en"]
+    assert "고급스러운" in spec["positive_prompt_en"]
+    assert spec["metadata"]["selected_channel_id"] == "poster"
+    assert spec["metadata"]["selected_tone"] == "고급스러운"
+    assert spec["metadata"]["custom_direction"] == "상품을 중앙에 더 크게 보여줘"

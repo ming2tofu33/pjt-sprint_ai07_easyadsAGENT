@@ -15,6 +15,12 @@ SYSTEM_FONT_CANDIDATES = [
     "C:/Windows/Fonts/malgun.ttf",
     "C:/Windows/Fonts/malgunbd.ttf",
     "C:/Windows/Fonts/arial.ttf",
+    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+    "/Library/Fonts/AppleGothic.ttf",
+    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/unifont/unifont.otf",
 ]
 
 

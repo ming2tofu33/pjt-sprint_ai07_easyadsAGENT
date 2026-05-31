@@ -14,9 +14,9 @@ type GenerationInProgressStepProps = {
 
 const statusItems = [
   "광고 브리프 정리 완료",
-  "문구와 이미지 방향 구성 완료",
-  "광고 시안 생성 중",
-  "결과 확인 준비 중"
+  "이미지 생성 요청 완료",
+  "생성 결과 불러오는 중",
+  "결과 화면 준비 중"
 ];
 
 export function GenerationInProgressStep({ state, progress, onBrowse }: GenerationInProgressStepProps) {
@@ -31,8 +31,8 @@ export function GenerationInProgressStep({ state, progress, onBrowse }: Generati
         <span className={styles.generatingOrb}>
           <Sparkles size={24} aria-hidden="true" />
         </span>
-        <h1>찰떡 광고를 만들고 있어요</h1>
-        <p>{brief.item}에 어울리는 문구와 이미지를 조합하는 중이에요.</p>
+        <h1>생성 결과를 준비하고 있어요</h1>
+        <p>{brief.item} 광고 이미지가 준비되면 실제 결과 화면으로 이동해요.</p>
       </section>
 
       <section className={styles.statusCard}>
@@ -62,16 +62,16 @@ export function GenerationInProgressStep({ state, progress, onBrowse }: Generati
         <span className={styles.progressTrack}>
           <span className={styles.progressBar} style={{ width: `${safeProgress}%` }} />
         </span>
-        <p>약 {Math.max(5, Math.ceil((100 - safeProgress) / 4))}초 남았어요</p>
+        <p>실제 이미지 API 응답을 기다리는 동안만 표시돼요.</p>
       </div>
 
       <section>
-        <h2 className={styles.sectionTitle}>생성 중인 광고 시안</h2>
+        <h2 className={styles.sectionTitle}>실제 생성 결과 준비</h2>
         <div className={styles.skeletonGrid} aria-label="생성 중인 광고 시안 미리보기">
-          {Array.from({ length: 4 }).map((_, index) => (
+          {Array.from({ length: 1 }).map((_, index) => (
             <div className={styles.skeletonCreative} key={index}>
               <span />
-              <small>생성 중...</small>
+              <small>이미지 불러오는 중...</small>
             </div>
           ))}
         </div>

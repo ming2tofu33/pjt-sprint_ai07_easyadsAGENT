@@ -39,3 +39,34 @@ def test_t2i_request_builder_maps_prompt_render_output_to_t2i_request():
     assert request["metadata"]["text_overlay_pending"] is True
     assert request["metadata"]["reserved_text_areas"] == [{"x": 0.05, "y": 0.06, "w": 0.90, "h": 0.18}]
     assert request["metadata"]["source_node"] == "t2i_request_builder"
+
+
+def test_t2i_request_builder_passes_source_image_as_input_image():
+    state = create_initial_marketing_state(
+        InitialMarketingRequest(
+            user_input="ready",
+            job_id="photo-builder-job",
+            thread_id="photo-builder-thread",
+            source_image_path="data/uploads/menu.png",
+            context=MarketingContext(
+                business_type="cafe",
+                item_or_service="딸기라떼",
+                promotion_goal="discount_event",
+                extra={"ad_format": "instagram_feed"},
+            ),
+        )
+    )
+    state["prompt_render_output"] = {
+        "engine": "gpt_image_2",
+        "positive_prompt": "text-free cafe drink background",
+        "negative_prompt": "text, watermark, logo",
+        "width": 1080,
+        "height": 1080,
+    }
+
+    update = t2i_request_builder_node(state)
+    request = update["t2i_request"]
+
+    assert request["input_image_paths"] == ["data/uploads/menu.png"]
+    assert request["metadata"]["input_image_paths"] == ["data/uploads/menu.png"]
+    assert request["metadata"]["source_image_path"] == "data/uploads/menu.png"
