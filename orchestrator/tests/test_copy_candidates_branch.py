@@ -16,6 +16,21 @@ def _state():
     )
 
 
+def _state_for_context(business_type: str, item_or_service: str, promotion_goal: str):
+    return create_initial_marketing_state(
+        InitialMarketingRequest(
+            user_input="ready",
+            copy_generation_mode="suggest_candidates",
+            context=MarketingContext(
+                business_type=business_type,
+                item_or_service=item_or_service,
+                promotion_goal=promotion_goal,
+                extra={"ad_format": "instagram_feed"},
+            ),
+        )
+    )
+
+
 def test_copy_candidate_generation_is_stable_and_safe():
     update = copy_candidate_generation_node(_state())
     candidates = update["copy_candidates"]
@@ -39,6 +54,17 @@ def test_copy_candidate_generation_does_not_leak_option_value_codes():
     assert "예약 서비스" in rendered
     assert "한 판" not in rendered
     assert "회식은 역시 예약 서비스" not in rendered
+
+
+def test_copy_candidate_generation_uses_cafe_appropriate_fallback_copy():
+    update = copy_candidate_generation_node(_state_for_context("cafe", "딸기라떼", "discount_event"))
+    rendered = " ".join(str(value) for candidate in update["copy_candidates"] for value in candidate.values())
+
+    assert "딸기라떼" in rendered
+    assert "혜택" in rendered
+    assert "한 판" not in rendered
+    assert "회식" not in rendered
+    assert "예약 문의" not in rendered
 
 
 def test_selected_copy_updates_marketing_copy_and_copy_spec():

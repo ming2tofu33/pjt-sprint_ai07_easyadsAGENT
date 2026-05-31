@@ -14,10 +14,10 @@ from orchestrator.app.api.chat import (
     _option_question_response,
     _thread_config,
 )
-from orchestrator.app.graph.builder import build_marketing_graph
+from orchestrator.app.api.marketing_graph import MARKETING_GRAPH
 
 router = APIRouter(prefix="/v1/marketing/photo", tags=["marketing-photo"])
-_GRAPH = build_marketing_graph()
+_GRAPH = MARKETING_GRAPH
 
 
 class PhotoStartRequest(CamelModel):

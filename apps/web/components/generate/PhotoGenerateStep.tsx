@@ -1,7 +1,8 @@
 "use client";
 
 import { FileImage, ImagePlus, MessageCircle, Send, Sparkles, UploadCloud } from "lucide-react";
-import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { AutosizeTextarea } from "./AutosizeTextarea";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -30,6 +31,8 @@ function formatFileSize(size: number) {
 }
 
 export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: PhotoGenerateStepProps) {
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
@@ -67,7 +70,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
     acceptFile(event.target.files?.[0] ?? null);
   }
 
-  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     acceptFile(event.dataTransfer.files?.[0] ?? null);
   }
@@ -97,18 +100,25 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
         <span className={styles.heroIcon}>
           <ImagePlus size={25} strokeWidth={2.4} aria-hidden="true" />
         </span>
-        <h2 className={styles.heroTitle}>사진과 요청을 함께 보내주세요.</h2>
-        <p className={styles.heroCopy}>업로드한 사진은 백엔드에 저장되고, LangGraph가 부족한 정보를 이어서 물어봐요.</p>
+        <h2 className={styles.heroTitle}>사진과 광고 방향을 함께 보내주세요.</h2>
+        <p className={styles.heroCopy}>AI가 사진을 참고해 필요한 정보를 확인하고 어울리는 문구를 제안해드려요.</p>
       </section>
 
-      <form className={styles.photoStartForm} onSubmit={handleSubmit}>
-        <label
+      <form ref={formRef} className={styles.photoStartForm} onSubmit={handleSubmit}>
+        <div
           className={styles.photoDropzone}
           data-has-file={selectedFile ? "true" : undefined}
           onDragOver={(event) => event.preventDefault()}
           onDrop={handleDrop}
         >
-          <input aria-label="광고 사진 선택" accept="image/png,image/jpeg,image/webp" type="file" onChange={handleFileChange} />
+          <input
+            ref={fileInputRef}
+            aria-label="광고 사진 선택"
+            accept="image/png,image/jpeg,image/webp"
+            className={styles.photoFileInput}
+            type="file"
+            onChange={handleFileChange}
+          />
           {previewUrl ? (
             <span className={styles.photoPreviewFrame} style={{ backgroundImage: `url(${previewUrl})` }} aria-hidden="true" />
           ) : (
@@ -126,12 +136,17 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
               "PNG, JPG, WebP 파일을 사용할 수 있어요."
             )}
           </p>
-        </label>
+          <button className={styles.photoUploadButton} type="button" onClick={() => fileInputRef.current?.click()}>
+            <UploadCloud size={16} aria-hidden="true" />
+            {selectedFile ? "다른 사진 선택" : "사진 선택하기"}
+          </button>
+        </div>
 
         <label className={styles.photoPromptCard}>
-          <input
+          <AutosizeTextarea
+            className={styles.photoPromptTextarea}
             aria-label="사진 광고 요청 입력"
-            placeholder="예: 이 사진으로 신메뉴 광고 만들어줘"
+            placeholder="광고 방향을 입력해주세요"
             value={prompt}
             onChange={(event) => {
               setPrompt(event.target.value);
@@ -139,6 +154,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
                 setErrorMessage(null);
               }
             }}
+            onSubmit={() => formRef.current?.requestSubmit()}
           />
           <Send size={17} aria-hidden="true" />
         </label>
@@ -151,7 +167,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
         ) : (
           <p className={styles.photoTip}>
             <Sparkles size={17} aria-hidden="true" />
-            다음 화면에서는 실제 백엔드 응답으로 이해한 내용, 추가 질문, 문구 후보가 표시됩니다.
+            선택한 사진과 입력한 방향을 바탕으로 다음 단계가 이어집니다.
           </p>
         )}
 

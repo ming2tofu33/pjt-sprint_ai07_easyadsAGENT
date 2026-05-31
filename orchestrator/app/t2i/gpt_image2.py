@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -67,13 +68,34 @@ class GPTImage2Engine(BaseT2IEngine):
             client = OpenAI(api_key=settings.openai_api_key)
             size = _resolve_size(request.width, request.height)
             model = _resolve_model(settings.gpt_image_model)
-            response = client.images.generate(
-                model=model,
-                prompt=request.prompt,
-                size=size,
-                quality=_map_quality(request.quality),
-                n=request.num_images,
-            )
+            input_image_paths = [str(path) for path in request.input_image_paths if str(path).strip()]
+            if input_image_paths:
+                missing_paths = [path for path in input_image_paths if not Path(path).exists()]
+                if missing_paths:
+                    return self._error_result(request, started, f"input image not found: {missing_paths[0]}")
+                with ExitStack() as stack:
+                    image_files = [stack.enter_context(Path(path).open("rb")) for path in input_image_paths]
+                    response = client.images.edit(
+                        image=image_files,
+                        model=model,
+                        prompt=request.prompt,
+                        size=size,
+                        quality=_map_quality(request.quality),
+                        n=request.num_images,
+                        response_format="b64_json",
+                        input_fidelity="high",
+                    )
+                api_operation = "edit"
+            else:
+                response = client.images.generate(
+                    model=model,
+                    prompt=request.prompt,
+                    size=size,
+                    quality=_map_quality(request.quality),
+                    n=request.num_images,
+                    response_format="b64_json",
+                )
+                api_operation = "generate"
             image_paths = _save_openai_images(response, output_dir)
             width, height = _size_to_dimensions(size, request.width, request.height)
             return T2IResult(
@@ -92,6 +114,9 @@ class GPTImage2Engine(BaseT2IEngine):
                     "requested_size": f"{request.width}x{request.height}",
                     "api_size": size,
                     "api_call": True,
+                    "api_operation": api_operation,
+                    "input_image_paths": input_image_paths,
+                    "input_fidelity": "high" if input_image_paths else None,
                 },
                 error=None,
             )

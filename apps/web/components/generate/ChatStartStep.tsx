@@ -2,6 +2,7 @@
 
 import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, Send, Utensils } from "lucide-react";
 import { useState } from "react";
+import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
@@ -69,16 +70,12 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
 
       <div className={styles.inputCard}>
         <ImageIcon size={19} aria-hidden="true" />
-        <input
-          className={styles.input}
+        <AutosizeTextarea
+          className={`${styles.input} ${styles.promptTextarea}`}
           value={value}
           aria-label="광고 요청 입력"
           onChange={(event) => setValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              submitPrompt();
-            }
-          }}
+          onSubmit={submitPrompt}
         />
         <button className={styles.sendButton} type="button" aria-label="요청 보내기" onClick={submitPrompt}>
           <Send size={18} aria-hidden="true" />

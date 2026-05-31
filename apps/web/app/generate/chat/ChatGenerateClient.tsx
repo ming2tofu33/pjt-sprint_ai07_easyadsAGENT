@@ -50,8 +50,13 @@ type ChatGenerateClientProps = {
 };
 
 type ChatFlowSnapshot = GeneratedCreativeSnapshot;
+type ChatTurnSnapshot = {
+  prompt: string;
+  response: ChatTurnResponse;
+};
 
 const CHAT_FLOW_SNAPSHOT_STORAGE_KEY = "easyads_chat_flow_snapshot_v1";
+const CHAT_TURN_SNAPSHOT_STORAGE_KEY = "easyads_chat_turn_snapshot_v1";
 
 function readChatFlowSnapshot(): ChatFlowSnapshot | null {
   try {
@@ -75,6 +80,31 @@ function clearChatFlowSnapshot() {
     window.sessionStorage.removeItem(CHAT_FLOW_SNAPSHOT_STORAGE_KEY);
   } catch {
     // Ignore storage failures; the in-memory flow can still continue.
+  }
+}
+
+function readChatTurnSnapshot(): ChatTurnSnapshot | null {
+  try {
+    const raw = window.sessionStorage.getItem(CHAT_TURN_SNAPSHOT_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as ChatTurnSnapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeChatTurnSnapshot(snapshot: ChatTurnSnapshot) {
+  try {
+    window.sessionStorage.setItem(CHAT_TURN_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // The in-memory flow will still continue when route state is preserved.
+  }
+}
+
+function clearChatTurnSnapshot() {
+  try {
+    window.sessionStorage.removeItem(CHAT_TURN_SNAPSHOT_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures; a fresh chat can still reset in memory.
   }
 }
 
@@ -106,6 +136,54 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     [router]
   );
 
+  const restoreBriefSnapshot = useCallback((snapshot: ChatFlowSnapshot, stage: DashboardStage) => {
+    dispatch({ type: "reset" });
+    dispatch({
+      type: "backendStartSucceeded",
+      prompt: snapshot.prompt,
+      jobId: snapshot.jobId,
+      threadId: snapshot.threadId,
+      context: snapshot.context,
+      copyCandidates: snapshot.copyCandidates,
+      recommendedCopyId: snapshot.selectedCopyId,
+      copyCandidateSource: snapshot.copyCandidateSource
+    });
+    dispatch({ type: "selectTone", tone: snapshot.selectedTone });
+    dispatch({ type: "selectCopy", copyId: snapshot.selectedCopyId });
+    dispatch({ type: "selectChannel", channelId: snapshot.selectedChannelId });
+    dispatch({ type: "setCustomDirection", value: snapshot.customDirection });
+    dispatch({ type: "backendBriefSucceeded", brief: snapshot.brief });
+    dispatch({ type: "continueToBrief" });
+    setGenerationProgress(stage === "generating" ? 68 : stage === "start" ? 0 : 100);
+    setGenerationStage(
+      stage === "generating" ? "generating" : stage === "similar" ? "similarBrowsing" : stage === "start" ? "brief" : "complete"
+    );
+    lastPrimedStageRef.current = stage;
+  }, []);
+
+  const applyTurnResponse = useCallback((prompt: string, response: ChatTurnResponse) => {
+    if (isQuestionResponse(response)) {
+      dispatch({
+        type: "backendQuestionReceived",
+        jobId: response.jobId,
+        threadId: response.threadId,
+        context: response.context,
+        question: response.question
+      });
+      return;
+    }
+
+    dispatch({
+      type: "backendStartSucceeded",
+      prompt,
+      jobId: response.jobId,
+      threadId: response.threadId,
+      context: response.context,
+      copyCandidates: response.copyCandidates,
+      recommendedCopyId: response.recommendedCopyId
+    });
+  }, []);
+
   useEffect(() => {
     setOptimisticSurface(null);
   }, [initialSurface]);
@@ -123,10 +201,29 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     if (initialStage === "start") {
+      const snapshot = readChatFlowSnapshot();
+      if (snapshot) {
+        clearChatTurnSnapshot();
+        restoreBriefSnapshot(snapshot, "start");
+        return;
+      }
+
+      const pendingTurn = readChatTurnSnapshot();
+      if (pendingTurn) {
+        dispatch({ type: "reset" });
+        dispatch({ type: "submitPrompt", prompt: pendingTurn.prompt });
+        applyTurnResponse(pendingTurn.prompt, pendingTurn.response);
+        setGenerationProgress(0);
+        setGenerationStage("brief");
+        lastPrimedStageRef.current = "start";
+        return;
+      }
+
       if (lastPrimedStageRef.current === "start") {
         return;
       }
       clearChatFlowSnapshot();
+      clearChatTurnSnapshot();
       dispatch({ type: "reset" });
       setGenerationProgress(0);
       setGenerationStage("brief");
@@ -140,28 +237,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     const snapshot = readChatFlowSnapshot();
     if (snapshot) {
-      dispatch({ type: "reset" });
-      dispatch({
-        type: "backendStartSucceeded",
-        prompt: snapshot.prompt,
-        jobId: snapshot.jobId,
-        threadId: snapshot.threadId,
-        context: snapshot.context,
-        copyCandidates: snapshot.copyCandidates,
-        recommendedCopyId: snapshot.selectedCopyId,
-        copyCandidateSource: snapshot.copyCandidateSource
-      });
-      dispatch({ type: "selectTone", tone: snapshot.selectedTone });
-      dispatch({ type: "selectCopy", copyId: snapshot.selectedCopyId });
-      dispatch({ type: "selectChannel", channelId: snapshot.selectedChannelId });
-      dispatch({ type: "setCustomDirection", value: snapshot.customDirection });
-      dispatch({ type: "backendBriefSucceeded", brief: snapshot.brief });
-      dispatch({ type: "continueToBrief" });
-      setGenerationProgress(initialStage === "generating" ? 68 : 100);
-      setGenerationStage(
-        initialStage === "generating" ? "generating" : initialStage === "similar" ? "similarBrowsing" : "complete"
-      );
-      lastPrimedStageRef.current = initialStage;
+      restoreBriefSnapshot(snapshot, initialStage);
       return;
     }
 
@@ -174,7 +250,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       initialStage === "generating" ? "generating" : initialStage === "similar" ? "similarBrowsing" : "complete"
     );
     lastPrimedStageRef.current = initialStage;
-  }, [appSurface, initialStage]);
+  }, [appSurface, applyTurnResponse, initialStage, restoreBriefSnapshot]);
 
   useEffect(() => {
     if (generationStage !== "generating" && generationStage !== "browsing") {
@@ -197,30 +273,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     return () => window.clearInterval(timer);
   }, [generationStage, navigateTo]);
 
-  function applyTurnResponse(prompt: string, response: ChatTurnResponse) {
-    if (isQuestionResponse(response)) {
-      dispatch({
-        type: "backendQuestionReceived",
-        jobId: response.jobId,
-        threadId: response.threadId,
-        context: response.context,
-        question: response.question
-      });
-      return;
-    }
-
-    dispatch({
-      type: "backendStartSucceeded",
-      prompt,
-      jobId: response.jobId,
-      threadId: response.threadId,
-      context: response.context,
-      copyCandidates: response.copyCandidates,
-      recommendedCopyId: response.recommendedCopyId
-    });
-  }
-
   async function handleSubmitPrompt(prompt: string) {
+    clearChatFlowSnapshot();
+    clearChatTurnSnapshot();
     dispatch({ type: "submitPrompt", prompt });
     try {
       const response = await startChatGeneration(prompt);
@@ -258,12 +313,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
   async function handleStartPhotoGeneration(input: PhotoGenerateInput) {
     clearChatFlowSnapshot();
-    dispatch({ type: "reset" });
-    dispatch({ type: "submitPrompt", prompt: input.prompt });
+    clearChatTurnSnapshot();
     setGenerationProgress(0);
     setGenerationStage("brief");
-    lastPrimedStageRef.current = "start";
-    navigateTo("chat", "start");
 
     try {
       const upload = await uploadPhotoAsset(input.file);
@@ -271,12 +323,11 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         userInput: input.prompt,
         sourceImagePath: upload.sourceImagePath
       });
-      applyTurnResponse(input.prompt, response);
+      writeChatTurnSnapshot({ prompt: input.prompt, response });
+      lastPrimedStageRef.current = null;
+      navigateTo("chat", "start");
     } catch (error) {
-      dispatch({
-        type: "backendRequestFailed",
-        message: error instanceof Error ? error.message : "사진 기반 생성 요청에 실패했습니다. 파일과 서버 연결을 확인해주세요."
-      });
+      throw new Error(error instanceof Error ? error.message : "사진 기반 생성 요청에 실패했습니다. 파일과 서버 연결을 확인해주세요.");
     }
   }
 
@@ -313,6 +364,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         brief: response.brief
       };
       writeChatFlowSnapshot(snapshot);
+      clearChatTurnSnapshot();
       setGeneratedCreatives(addGeneratedCreativeSnapshot(snapshot));
       dispatch({ type: "backendBriefSucceeded", brief: response.brief });
       dispatch({ type: "continueToBrief" });
@@ -341,6 +393,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
   function handleOpenFreshChat() {
     clearChatFlowSnapshot();
+    clearChatTurnSnapshot();
     dispatch({ type: "reset" });
     setGenerationProgress(0);
     setGenerationStage("brief");

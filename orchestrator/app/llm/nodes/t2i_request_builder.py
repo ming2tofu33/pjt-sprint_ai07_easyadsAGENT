@@ -69,9 +69,13 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
         "reference_template_typography_hint": template_style_hint.get("typography_hint"),
         "source_node": "t2i_request_builder",
     }
+    input_image_paths = [path for path in [state.get("source_image_path")] if path]
+    if input_image_paths:
+        metadata["input_image_paths"] = input_image_paths
     job_id = str(state.get("job_id") or "unknown-job")
     request = T2IRequest(
         prompt=prompt_render_output["positive_prompt"],
+        input_image_paths=input_image_paths,
         negative_prompt=prompt_render_output.get("negative_prompt") or "",
         width=int(prompt_render_output.get("width") or 1024),
         height=int(prompt_render_output.get("height") or 1024),

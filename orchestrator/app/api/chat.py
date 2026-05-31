@@ -8,11 +8,11 @@ from fastapi import APIRouter, HTTPException
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
-from orchestrator.app.graph.builder import build_marketing_graph
+from orchestrator.app.api.marketing_graph import MARKETING_GRAPH
 from orchestrator.app.llm.option_registry import option_label_for_value
 
 router = APIRouter(prefix="/v1/marketing/chat", tags=["marketing-chat"])
-_GRAPH = build_marketing_graph()
+_GRAPH = MARKETING_GRAPH
 
 
 BUSINESS_LABELS = {

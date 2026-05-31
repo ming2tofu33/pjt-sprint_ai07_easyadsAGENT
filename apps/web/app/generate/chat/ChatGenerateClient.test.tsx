@@ -214,6 +214,28 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("대표 메뉴")).toBeTruthy();
   });
 
+  it("locks option answers while a LangGraph answer request is pending", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.answerChatQuestion).mockClear();
+    vi.mocked(api.answerChatQuestion).mockReturnValueOnce(new Promise(() => undefined));
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), { target: { value: "광고 만들어줘" } });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    const cafeButton = await screen.findByRole("button", { name: "카페/디저트" });
+    fireEvent.click(cafeButton);
+
+    await waitFor(() => expect(cafeButton.hasAttribute("disabled")).toBe(true));
+    fireEvent.click(cafeButton);
+
+    expect(api.answerChatQuestion).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("직접 답변 입력").hasAttribute("disabled")).toBe(true);
+  });
+
   it("labels fallback copy candidates as samples and blocks brief creation", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
@@ -311,7 +333,8 @@ describe("ChatGenerateClient", () => {
 
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/photo");
     expect(screen.getByText("내 사진으로 만들기")).toBeTruthy();
-    expect(screen.getByText("사진과 요청을 함께 보내주세요.")).toBeTruthy();
+    expect(screen.getByText("사진과 광고 방향을 함께 보내주세요.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "사진 선택하기" })).toBeTruthy();
   });
 
   it("renders dashboard surfaces from route props", async () => {
@@ -555,5 +578,93 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "문구 고르기" }));
     expect(screen.getByText("사진 속 메뉴를 오늘의 신메뉴로")).toBeTruthy();
+  });
+
+  it("restores a pending photo turn after the chat route remounts", async () => {
+    window.sessionStorage.setItem(
+      "easyads_chat_turn_snapshot_v1",
+      JSON.stringify({
+        prompt: "이 사진으로 신메뉴 광고 만들어줘",
+        response: {
+          type: "copy_candidates",
+          jobId: "photo_1",
+          threadId: "photo_1_thread",
+          status: "generating_copy_candidates",
+          context: {
+            businessType: "카페",
+            itemOrService: "딸기라떼",
+            promotionGoal: "신메뉴 출시"
+          },
+          copyCandidates: [{ id: "copy_photo_1", headline: "사진 속 메뉴를 오늘의 신메뉴로" }],
+          recommendedCopyId: "copy_photo_1"
+        }
+      })
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
+    expect(screen.getByText("딸기라떼")).toBeTruthy();
+    expect(window.sessionStorage.getItem("easyads_chat_turn_snapshot_v1")).not.toBeNull();
+  });
+
+  it("keeps a completed photo brief after the chat start route remounts", async () => {
+    window.sessionStorage.setItem(
+      "easyads_chat_turn_snapshot_v1",
+      JSON.stringify({
+        prompt: "이 사진으로 신메뉴 광고 만들어줘",
+        response: {
+          type: "copy_candidates",
+          jobId: "photo_1",
+          threadId: "photo_1_thread",
+          status: "generating_copy_candidates",
+          context: {
+            businessType: "카페",
+            itemOrService: "딸기라떼",
+            promotionGoal: "신메뉴 출시"
+          },
+          copyCandidates: [{ id: "copy_photo_1", headline: "사진 속 메뉴를 오늘의 신메뉴로" }],
+          recommendedCopyId: "copy_photo_1"
+        }
+      })
+    );
+    window.sessionStorage.setItem(
+      "easyads_chat_flow_snapshot_v1",
+      JSON.stringify({
+        prompt: "이 사진으로 신메뉴 광고 만들어줘",
+        jobId: "photo_1",
+        threadId: "photo_1_thread",
+        context: {
+          businessType: "카페",
+          itemOrService: "딸기라떼",
+          promotionGoal: "신메뉴 출시"
+        },
+        copyCandidates: [{ id: "copy_photo_1", headline: "사진 속 메뉴를 오늘의 신메뉴로" }],
+        selectedCopyId: "copy_photo_1",
+        selectedChannelId: "instagram-feed",
+        selectedTone: "감성적인",
+        customDirection: "",
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: "사진 속 메뉴를 오늘의 신메뉴로",
+          tone: "감성적인 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "사진 속 상품이 잘 보이도록 깔끔한 배경과 문구 여백을 구성해요.",
+          finalImagePath: null
+        }
+      })
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    expect(screen.getByText("사진 속 메뉴를 오늘의 신메뉴로")).toBeTruthy();
+    expect(screen.queryByText("대화로 찰떡 만들기")).toBeNull();
+    expect(window.sessionStorage.getItem("easyads_chat_turn_snapshot_v1")).toBeNull();
   });
 });

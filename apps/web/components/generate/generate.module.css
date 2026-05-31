@@ -574,6 +574,11 @@
   color: var(--color-brand-purple-text);
 }
 
+.chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .inputCard {
   margin-top: auto;
   border: 1px solid var(--color-purple);
@@ -582,7 +587,7 @@
   background: var(--color-bg-card);
   display: grid;
   grid-template-columns: 32px 1fr 42px;
-  align-items: center;
+  align-items: end;
   gap: 8px;
 }
 
@@ -591,6 +596,19 @@
   outline: 0;
   min-width: 0;
   color: var(--color-text);
+  background: transparent;
+  font: inherit;
+}
+
+.promptTextarea {
+  width: 100%;
+  min-height: 42px;
+  max-height: 128px;
+  padding: 10px 0;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 
 .sendButton {
@@ -3746,7 +3764,6 @@
   gap: 9px;
   text-align: center;
   padding: 18px;
-  cursor: pointer;
   overflow: hidden;
 }
 
@@ -3763,12 +3780,16 @@
     var(--color-bg-card);
 }
 
-.photoDropzone input {
+.photoFileInput {
   position: absolute;
-  inset: 0;
-  z-index: 2;
-  cursor: pointer;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
   opacity: 0;
+  overflow: hidden;
 }
 
 .photoDropzone span {
@@ -3818,6 +3839,27 @@
   gap: 5px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.photoUploadButton {
+  min-height: 38px;
+  border: 1px solid rgba(90, 64, 177, 0.22);
+  border-radius: 999px;
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 900;
+  box-shadow: 0 8px 20px rgba(17, 17, 17, 0.06);
+}
+
+.photoUploadButton:focus-visible {
+  outline: 3px solid rgba(90, 64, 177, 0.24);
+  outline-offset: 3px;
 }
 
 .photoKindGrid,
@@ -3955,20 +3997,30 @@
 
 .photoPromptCard {
   margin-top: 14px;
-  min-height: 52px;
+  min-height: 56px;
   display: grid;
   grid-template-columns: 1fr 28px;
-  align-items: center;
+  align-items: end;
   gap: 8px;
-  padding: 0 12px;
+  padding: 8px 12px;
   color: var(--color-text);
 }
 
-.photoPromptCard input {
+.photoPromptTextarea {
+  width: 100%;
+  min-height: 38px;
+  max-height: 132px;
+  padding: 8px 0;
   min-width: 0;
   border: 0;
   outline: 0;
   color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
 }
 
 .photoInputCard {

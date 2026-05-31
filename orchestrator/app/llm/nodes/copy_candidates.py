@@ -61,12 +61,16 @@ def build_rule_based_candidate_output(state: MarketingState) -> CopyCandidateLis
     item = display_item_or_service(context.item_or_service)
     if is_reservation_service_item(context.item_or_service, item, context.extra):
         candidates = build_reservation_service_candidates(item)
+    elif context.business_type == "cafe":
+        candidates = build_cafe_candidates(item, context.promotion_goal)
+    elif context.business_type == "restaurant":
+        candidates = build_restaurant_candidates(item)
     else:
-        candidates = build_default_candidates(item)
+        candidates = build_generic_candidates(item, context.promotion_goal)
     return CopyCandidateListOutput(candidates=candidates, recommended_candidate_id="copy_1", metadata={"source_node": "copy_candidate_generation", "fallback": "rule_based"})
 
 
-def build_default_candidates(item: str) -> list[CopyCandidate]:
+def build_restaurant_candidates(item: str) -> list[CopyCandidate]:
     return [
         CopyCandidate(
             id="copy_1",
@@ -91,6 +95,145 @@ def build_default_candidates(item: str) -> list[CopyCandidate]:
             cta="예약 문의하기",
             tone_label="cta",
             rationale="Action-oriented version.",
+        ),
+    ]
+
+
+def build_cafe_candidates(item: str, promotion_goal: str | None) -> list[CopyCandidate]:
+    if promotion_goal == "discount_event":
+        return [
+            CopyCandidate(
+                id="copy_1",
+                headline=f"{item}, 오늘 더 달콤하게",
+                subcopy="놓치기 아쉬운 혜택을 준비했어요",
+                cta="혜택 확인하기",
+                tone_label="fresh",
+                rationale="Cafe discount version without restaurant gathering wording.",
+            ),
+            CopyCandidate(
+                id="copy_2",
+                headline=f"달콤한 {item} 혜택",
+                subcopy="가볍게 들러 즐기기 좋은 카페 이벤트",
+                cta="오늘 혜택 보기",
+                tone_label="bright",
+                rationale="Benefit-first cafe version.",
+            ),
+            CopyCandidate(
+                id="copy_3",
+                headline=f"오늘의 카페 타임은 {item}",
+                subcopy="기분 좋은 한 잔에 혜택까지 더했어요",
+                cta="지금 확인하기",
+                tone_label="emotional",
+                rationale="Soft cafe visit CTA version.",
+            ),
+        ]
+    if promotion_goal == "new_launch":
+        return [
+            CopyCandidate(
+                id="copy_1",
+                headline=f"새롭게 만나는 {item}",
+                subcopy="카페에서 준비한 새로운 한 잔을 만나보세요",
+                cta="신메뉴 보기",
+                tone_label="fresh",
+                rationale="Cafe new-launch version.",
+            ),
+            CopyCandidate(
+                id="copy_2",
+                headline=f"첫 한 잔의 설렘, {item}",
+                subcopy="오늘 가장 먼저 맛보고 싶은 신메뉴",
+                cta="지금 맛보기",
+                tone_label="emotional",
+                rationale="Emotional cafe launch version.",
+            ),
+            CopyCandidate(
+                id="copy_3",
+                headline=f"{item} 출시",
+                subcopy="달콤한 메뉴가 새롭게 준비됐어요",
+                cta="메뉴 확인하기",
+                tone_label="clear",
+                rationale="Direct cafe launch version.",
+            ),
+        ]
+    return [
+        CopyCandidate(
+            id="copy_1",
+            headline=f"{item} 한 잔의 여유",
+            subcopy="잠깐의 휴식이 필요한 순간에 어울리는 메뉴",
+            cta="메뉴 확인하기",
+            tone_label="emotional",
+            rationale="Default cafe version.",
+        ),
+        CopyCandidate(
+            id="copy_2",
+            headline=f"오늘은 {item} 어때요?",
+            subcopy="가볍게 들러 즐기기 좋은 카페 메뉴",
+            cta="지금 확인하기",
+            tone_label="friendly",
+            rationale="Friendly cafe visit version.",
+        ),
+        CopyCandidate(
+            id="copy_3",
+            headline=f"달콤하게 쉬어가는 {item}",
+            subcopy="카페에서 준비한 기분 좋은 한 잔",
+            cta="방문해보기",
+            tone_label="warm",
+            rationale="Warm cafe version.",
+        ),
+    ]
+
+
+def build_generic_candidates(item: str, promotion_goal: str | None) -> list[CopyCandidate]:
+    if promotion_goal == "discount_event":
+        return [
+            CopyCandidate(
+                id="copy_1",
+                headline=f"{item} 혜택을 지금 확인하세요",
+                subcopy="필요한 정보를 간결하게 담은 이벤트 안내",
+                cta="혜택 확인하기",
+                tone_label="direct",
+                rationale="Generic discount version.",
+            ),
+            CopyCandidate(
+                id="copy_2",
+                headline=f"놓치기 아쉬운 {item} 이벤트",
+                subcopy="오늘 확인하면 좋은 혜택을 준비했어요",
+                cta="자세히 보기",
+                tone_label="benefit",
+                rationale="Benefit-first generic version.",
+            ),
+            CopyCandidate(
+                id="copy_3",
+                headline=f"지금 만나는 {item}",
+                subcopy="상품/서비스의 장점을 쉽게 확인해보세요",
+                cta="지금 확인하기",
+                tone_label="clear",
+                rationale="Clear generic version.",
+            ),
+        ]
+    return [
+        CopyCandidate(
+            id="copy_1",
+            headline=f"{item}을 지금 확인하세요",
+            subcopy="필요한 정보를 간결하게 담은 안내",
+            cta="자세히 보기",
+            tone_label="clear",
+            rationale="Default generic version.",
+        ),
+        CopyCandidate(
+            id="copy_2",
+            headline=f"새롭게 만나는 {item}",
+            subcopy="우리 가게가 준비한 내용을 확인해보세요",
+            cta="지금 확인하기",
+            tone_label="friendly",
+            rationale="Friendly generic version.",
+        ),
+        CopyCandidate(
+            id="copy_3",
+            headline=f"{item}이 필요한 순간",
+            subcopy="간결하고 명확하게 전하는 광고 메시지",
+            cta="문의하기",
+            tone_label="direct",
+            rationale="Action-oriented generic version.",
         ),
     ]
 

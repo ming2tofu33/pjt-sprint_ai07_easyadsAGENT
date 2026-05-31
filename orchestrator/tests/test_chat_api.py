@@ -4,6 +4,13 @@ from orchestrator.app.api import chat as chat_api
 from orchestrator.app.main import app
 
 
+PNG_1X1 = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xcfP"
+    b"\x0f\x00\x03\x86\x01\x80Z4}k\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
 def test_chat_start_returns_inferred_context_and_copy_candidates():
     client = TestClient(app)
 
@@ -136,6 +143,37 @@ def test_photo_start_can_return_option_question(monkeypatch):
     assert payload["type"] == "option_question"
     assert payload["question"]["field"] == "business_type"
     assert payload["missingFields"] == ["business_type"]
+
+
+def test_photo_start_option_question_can_resume_via_chat_answer(tmp_path):
+    source = tmp_path / "menu.png"
+    source.write_bytes(PNG_1X1)
+    client = TestClient(app)
+    start = client.post(
+        "/v1/marketing/photo/start",
+        json={
+            "userInput": "이 사진으로 할인 광고 만들어줘",
+            "sourceImagePath": str(source),
+            "adFormat": "instagram_feed",
+            "renderProfile": "premium_api",
+        },
+    ).json()
+
+    response = client.post(
+        "/v1/marketing/chat/answer",
+        json={
+            "jobId": start["jobId"],
+            "threadId": start["threadId"],
+            "field": start["question"]["field"],
+            "value": "cafe",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "option_question"
+    assert payload["context"]["businessType"] == "카페"
+    assert payload["question"]["field"] == "item_or_service"
 
 
 def test_chat_answer_resumes_to_next_turn():

@@ -23,6 +23,7 @@ def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
     }
     result = generate_image_v1(
         prompt=request.prompt,
+        input_image_paths=request.input_image_paths,
         negative_prompt=request.negative_prompt,
         engine_preference=requested_engine,
         width=request.width,
