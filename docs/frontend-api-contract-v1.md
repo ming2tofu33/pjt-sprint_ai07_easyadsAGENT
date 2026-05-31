@@ -6,7 +6,15 @@ This document defines backend API request and response contracts for frontend in
 
 ## 2. Current Scope
 
-Backend Pydantic DTOs are provided for common responses, reference templates, brand kits, generation jobs, archive items, usage summaries, and user settings. Endpoint routers, persistence, object storage, background queues, and real image/model calls remain out of scope.
+Backend Pydantic DTOs are provided for common responses, reference templates, brand kits, generation jobs, archive items, usage summaries, and user settings.
+
+Reference Catalog FastAPI routes are implemented in v1:
+
+- `GET /api/v1/references`
+- `GET /api/v1/references/{template_id}`
+- `GET /api/v1/references/{template_id}/similar`
+
+BrandKit, GenerationJob, Archive, Usage, and Settings routers are still out of scope. Persistence, object storage, background queues, and real image/model calls also remain out of scope.
 
 ## 3. Common Response Format
 
@@ -47,6 +55,45 @@ Contracts:
 - `ReferenceTemplateListResponse`
 - `ReferenceTemplateDetailResponse`
 - `ReferenceTemplateSimilarResponse`
+
+### Reference Catalog Routes
+
+#### `GET /api/v1/references`
+
+Purpose: list seed reference templates for a gallery-style picker.
+
+Query params:
+- `keyword`
+- `category`
+- `business_type`
+- `ad_format`
+- `platform`
+- `aspect_ratio`
+- `tags`
+- `style_keywords`
+- `limit`
+- `offset`
+- `sort_by`
+- `active_only`
+
+Repeated query params are supported for list filters, for example `?tags=CTA&tags=event`. The response schema is `ReferenceTemplateListResponse`. Empty searches return `200` with `items: []` and an `EmptyState`.
+
+#### `GET /api/v1/references/{template_id}`
+
+Purpose: fetch a single reference template detail for preview and selection. The response schema is `ReferenceTemplateDetailResponse`. Missing templates return a structured `ErrorResponse` with `reference_template_not_found`.
+
+The `detail` object may include style hints such as `style_keywords`, `color_palette`, `layout_hint`, `typography_hint`, `background_style`, and `has_source_image`. Internal local asset paths are not returned.
+
+#### `GET /api/v1/references/{template_id}/similar`
+
+Purpose: return deterministic similar templates based on the seed catalog scoring rules. Query param `limit` accepts values from 1 to 50. The response schema is `ReferenceTemplateSimilarResponse`. Missing templates return a structured `ErrorResponse` with `reference_template_not_found`.
+
+Current limitations:
+- `thumbnail_url` and `preview_url` are `null` while asset serving is not implemented.
+- Internal local paths are not exposed through the public API response.
+- The catalog is seed metadata based, not database backed.
+- Saved reference state is not implemented.
+- Static file serving and object storage are not implemented.
 
 ## 6. BrandKit API Contract
 
@@ -97,10 +144,14 @@ Contracts:
 
 ## 11. Not Implemented Yet
 
-- FastAPI routers and endpoint handlers
+## 11. Not Implemented Yet
+
+- BrandKit, GenerationJob, Archive, Usage, and Settings routers
 - Database persistence
 - Redis, Celery, or queue execution
 - Object storage and signed URLs
+- Static asset serving for reference thumbnails/previews
+- Saved reference state
 - Frontend gallery, hooks, API clients, or mock data files
 - Real GPT-image-2, SD3.5, FLUX, LLM, VLM, OCR, rembg, or SAM calls
 
