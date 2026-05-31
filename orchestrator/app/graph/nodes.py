@@ -18,8 +18,11 @@ from orchestrator.app.graph.state import (
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.node_runner import run_structured_node
-from orchestrator.app.llm.option_registry import get_next_missing_field, get_option_question
+from orchestrator.app.llm.option_registry import get_next_missing_field, get_option_question, option_label_for_value
 from orchestrator.app.schemas.llm_marketing import CopyModeInferenceOutput, InitialMarketingRequest, MarketingContext, ProgressState, UserSelectionRequest, ValidatorOutput
+
+
+DISPLAY_LABEL_CONTEXT_FIELDS = {"item_or_service"}
 
 
 def input_node(input_value: MarketingState | InitialMarketingRequest | dict[str, Any]) -> MarketingState:
@@ -134,6 +137,11 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
             return {"missing_fields": missing, "status": "updating_state"}
 
     extra_return: dict[str, Any] = {}
+    original_value = value
+    value = display_value_for_selection(field, value)
+    if value != original_value and field in DISPLAY_LABEL_CONTEXT_FIELDS:
+        extra[f"{field}_option_value"] = original_value
+        context_data["extra"] = extra
     if field == "copy_generation_mode":
         update_current_brief(state, {"copy_generation_mode": value})
         extra_return.update(
@@ -178,6 +186,12 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
         "user_selection": None,
         **extra_return,
     }
+
+
+def display_value_for_selection(field: str, value: Any) -> Any:
+    if field not in DISPLAY_LABEL_CONTEXT_FIELDS:
+        return value
+    return option_label_for_value(field, value) or value
 
 
 def infer_marketing_context(text: str) -> dict[str, Any]:

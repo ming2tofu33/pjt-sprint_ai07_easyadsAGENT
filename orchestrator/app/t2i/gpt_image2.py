@@ -33,11 +33,20 @@ class GPTImage2Engine(BaseT2IEngine):
     def health(self) -> dict[str, Any]:
         settings = get_t2i_settings()
         sdk_available = _is_openai_sdk_available()
+        model = _resolve_model(settings.gpt_image_model)
         if not settings.openai_api_key:
             return {"available": False, "loaded": self.is_loaded(), "reason": "OPENAI_API_KEY missing", "sdk_available": sdk_available}
         if not sdk_available:
             return {"available": False, "loaded": self.is_loaded(), "reason": "openai package missing", "sdk_available": False}
-        return {"available": True, "loaded": self.is_loaded(), "reason": None, "sdk_available": True, "model": settings.gpt_image_model}
+        return {
+            "available": True,
+            "loaded": self.is_loaded(),
+            "reason": None,
+            "sdk_available": True,
+            "model": model,
+            "configured_model": settings.gpt_image_model,
+            "api_call_allowed": self.allow_api_call,
+        }
 
     def generate(self, request: T2IRequest) -> T2IResult:
         started = time.perf_counter()
@@ -56,24 +65,34 @@ class GPTImage2Engine(BaseT2IEngine):
             output_dir = Path(request.output_dir or settings.output_dir)
             output_dir.mkdir(parents=True, exist_ok=True)
             client = OpenAI(api_key=settings.openai_api_key)
+            size = _resolve_size(request.width, request.height)
+            model = _resolve_model(settings.gpt_image_model)
             response = client.images.generate(
-                model=settings.gpt_image_model,
+                model=model,
                 prompt=request.prompt,
-                size=f"{request.width}x{request.height}",
+                size=size,
                 quality=_map_quality(request.quality),
                 n=request.num_images,
             )
             image_paths = _save_openai_images(response, output_dir)
+            width, height = _size_to_dimensions(size, request.width, request.height)
             return T2IResult(
                 engine=self.name,
                 image_paths=image_paths,
                 seed=request.seed,
                 latency_ms=int((time.perf_counter() - started) * 1000),
-                width=request.width,
-                height=request.height,
+                width=width,
+                height=height,
                 prompt=request.prompt,
                 negative_prompt=request.negative_prompt,
-                metadata={**request.metadata, "model": settings.gpt_image_model, "api_call": True},
+                metadata={
+                    **request.metadata,
+                    "model": model,
+                    "configured_model": settings.gpt_image_model,
+                    "requested_size": f"{request.width}x{request.height}",
+                    "api_size": size,
+                    "api_call": True,
+                },
                 error=None,
             )
         except Exception as exc:  # pragma: no cover - real API is opt-in and not used in tests
@@ -104,6 +123,32 @@ def _is_openai_sdk_available() -> bool:
 
 def _map_quality(quality: str) -> str:
     return {"draft": "low", "standard": "medium", "high": "high"}.get(quality, "medium")
+
+
+SUPPORTED_GPT_IMAGE_MODELS = {"gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"}
+DEFAULT_GPT_IMAGE_MODEL = "gpt-image-1"
+
+
+def _resolve_model(configured_model: str) -> str:
+    if configured_model in SUPPORTED_GPT_IMAGE_MODELS:
+        return configured_model
+    return DEFAULT_GPT_IMAGE_MODEL
+
+
+def _resolve_size(width: int, height: int) -> str:
+    if width > height:
+        return "1536x1024"
+    if height > width:
+        return "1024x1536"
+    return "1024x1024"
+
+
+def _size_to_dimensions(size: str, fallback_width: int, fallback_height: int) -> tuple[int, int]:
+    try:
+        width, height = size.split("x", 1)
+        return int(width), int(height)
+    except ValueError:
+        return fallback_width, fallback_height
 
 
 def _save_openai_images(response: Any, output_dir: Path) -> list[str]:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from orchestrator.app.schemas.llm_marketing import MissingField, OptionItem, OptionQuestion
 
 
@@ -242,12 +244,23 @@ def get_option_question(field: MissingField) -> OptionQuestion:
     return OPTION_QUESTION_REGISTRY[field]
 
 
+def option_label_for_value(field: str, value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    question = OPTION_QUESTION_REGISTRY.get(field)
+    if question is None:
+        return None
+    for option in question.options:
+        if option.value == value:
+            return option.label
+    return None
+
+
 def get_next_missing_field(missing_fields: list[MissingField]) -> MissingField | None:
     registered = [field for field in missing_fields if field in OPTION_QUESTION_REGISTRY]
     if not registered:
         return None
     return min(registered, key=lambda field: OPTION_FIELD_PRIORITY.get(field, 99))
-
 
 
 

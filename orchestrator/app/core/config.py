@@ -49,6 +49,7 @@ class T2ISettings:
     openai_api_key: str
     hf_token: str
     default_engine: str
+    allow_api_calls: bool
     output_dir: Path
     enable_api_cost_guard: bool
     gpt_image_model: str
@@ -64,9 +65,10 @@ class T2ISettings:
             openai_api_key=_get_env("OPENAI_API_KEY", ""),
             hf_token=_get_env("HF_TOKEN", ""),
             default_engine=_get_env("T2I_DEFAULT_ENGINE", "mock"),
+            allow_api_calls=_get_bool("T2I_ALLOW_API_CALLS", False),
             output_dir=output_dir,
             enable_api_cost_guard=_get_bool("T2I_ENABLE_API_COST_GUARD", True),
-            gpt_image_model=_get_env("T2I_GPT_IMAGE_MODEL", "gpt-image-2"),
+            gpt_image_model=_get_env("T2I_GPT_IMAGE_MODEL", "gpt-image-1"),
             sd35_model_id=_get_env("T2I_SD35_MODEL_ID", "stabilityai/stable-diffusion-3.5-large"),
             flux_model_id=_get_env("T2I_FLUX_MODEL_ID", "black-forest-labs/FLUX.1-schnell"),
         )

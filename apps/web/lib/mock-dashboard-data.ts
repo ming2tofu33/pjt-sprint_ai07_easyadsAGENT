@@ -5,6 +5,7 @@ export type MockCreative = {
   title: string;
   subtitle: string;
   format: string;
+  imageUrl?: string | null;
   date?: string;
   tone: CreativeTone;
   badge?: string;

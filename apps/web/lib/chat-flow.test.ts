@@ -26,6 +26,64 @@ describe("chat flow state", () => {
     expect(next.userInput).toContain("딸기라떼");
     expect(next.progress.current).toBe(1);
     expect(next.progress.total).toBe(4);
+    expect(next.inferredContext).toEqual({
+      businessType: "",
+      itemOrService: "",
+      promotionGoal: ""
+    });
+    expect(next.contextSource).toBe("empty");
+    expect(next.copyCandidateSource).toBe("sample");
+  });
+
+  it("marks copy candidates as backend-generated when the backend returns candidates", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendStartSucceeded",
+      prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {
+        businessType: "카페",
+        itemOrService: "딸기라떼",
+        promotionGoal: "신메뉴 출시"
+      },
+      copyCandidates: [{ id: "copy_backend", headline: "백엔드가 만든 딸기라떼 문구" }],
+      recommendedCopyId: "copy_backend"
+    });
+
+    expect(state.copyCandidateSource).toBe("backend");
+    expect(state.contextSource).toBe("backend");
+    expect(state.copyCandidates[0].headline).toBe("백엔드가 만든 딸기라떼 문구");
+    expect(state.selectedCopyId).toBe("copy_backend");
+  });
+
+  it("keeps default copy candidates marked as sample when the backend returns none", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendStartSucceeded",
+      prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {
+        businessType: "카페",
+        itemOrService: "딸기라떼",
+        promotionGoal: "신메뉴 출시"
+      },
+      copyCandidates: [],
+      recommendedCopyId: null
+    });
+
+    expect(state.copyCandidateSource).toBe("sample");
+    expect(state.contextSource).toBe("backend");
+    expect(state.copyCandidates[0].id).toBe("spring-strawberry");
   });
 
   it("builds a complete brief after tone copy and channel selections", () => {
@@ -33,6 +91,22 @@ describe("chat flow state", () => {
     state = chatFlowReducer(state, {
       type: "submitPrompt",
       prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendStartSucceeded",
+      prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {
+        businessType: "카페",
+        itemOrService: "딸기라떼",
+        promotionGoal: "신메뉴 출시"
+      },
+      copyCandidates: [
+        { id: "spring-strawberry", headline: "봄을 닮은 한 잔, 딸기라떼 출시", selectedByDefault: true },
+        { id: "today-sweet", headline: "오늘만 더 달콤하게, 신메뉴 딸기라떼" }
+      ],
+      recommendedCopyId: "spring-strawberry"
     });
     state = chatFlowReducer(state, { type: "selectTone", tone: "감성적인" });
     state = chatFlowReducer(state, { type: "continueToCopy" });
@@ -52,7 +126,9 @@ describe("chat flow state", () => {
     expect(brief.purpose).toBe("신메뉴 출시");
     expect(brief.item).toBe("딸기라떼");
     expect(brief.copy).toBe("봄을 닮은 한 잔, 딸기라떼 출시");
+    expect(brief.tone).toBe("감성적인 분위기");
     expect(brief.channel).toBe("인스타 피드 (1:1)");
-    expect(brief.imageDirection).toContain("크림톤 배경");
+    expect(brief.imageDirection).toBe("감성적인 분위기를 살려 딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.");
+    expect(brief.imageDirection).not.toContain("크림톤 배경");
   });
 });

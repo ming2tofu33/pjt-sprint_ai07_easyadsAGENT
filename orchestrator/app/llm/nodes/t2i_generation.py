@@ -1,4 +1,4 @@
-"""Mock T2I generation node for the marketing graph."""
+"""T2I generation node for the marketing graph."""
 
 from __future__ import annotations
 
@@ -13,17 +13,18 @@ from orchestrator.app.t2i.service import generate_image_v1
 
 def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
     request = T2IRequest(**(state.get("t2i_request") or {}))
+    requested_engine = request.metadata.get("requested_engine") or request.metadata.get("engine") or state.get("engine")
     metadata = {
         **request.metadata,
         "job_id": state.get("job_id"),
         "thread_id": state.get("thread_id"),
-        "engine_override": "mock",
+        "requested_engine": requested_engine,
         "source_node": "t2i_generation",
     }
     result = generate_image_v1(
         prompt=request.prompt,
         negative_prompt=request.negative_prompt,
-        engine_preference="mock",
+        engine_preference=requested_engine,
         width=request.width,
         height=request.height,
         seed=request.seed,
@@ -37,7 +38,7 @@ def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
             image_path=path,
             width=result.width,
             height=result.height,
-            engine="mock",
+            engine=result.engine,
             seed=result.seed,
             latency_ms=result.latency_ms,
             metadata={"source_node": "t2i_generation", "text_overlay_pending": True},
@@ -47,10 +48,10 @@ def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
     artifacts = [
         ArtifactRef(
             artifact_id=f"{state.get('job_id')}_image_{index}",
-            artifact_type="mock_background",
+            artifact_type="generated_background",
             path=path,
             label=Path(path).name,
-            metadata={"engine": "mock", "text_overlay_pending": True},
+            metadata={"engine": result.engine, "text_overlay_pending": True},
         ).model_dump()
         for index, path in enumerate(result.image_paths)
     ]

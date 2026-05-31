@@ -50,6 +50,7 @@ def test_duplicate_phrases_are_removed_case_insensitively():
 
 def test_generate_image_v1_returns_mock_image_path(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("T2I_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("T2I_DEFAULT_ENGINE", "mock")
     result = generate_image_v1(
         prompt="Korean BBQ campaign poster background",
         width=512,
@@ -65,6 +66,7 @@ def test_generate_image_v1_returns_mock_image_path(tmp_path: Path, monkeypatch):
 
 def test_generate_image_v1_metadata_contains_job_and_effective_negative_prompt(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("T2I_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("T2I_DEFAULT_ENGINE", "mock")
     result = generate_image_v1(
         prompt="Cafe signature drink ad background",
         negative_prompt="bad crop",
@@ -82,6 +84,7 @@ def test_generate_image_v1_metadata_contains_job_and_effective_negative_prompt(t
 
 def test_generate_image_v1_uses_job_scoped_output_path(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("T2I_OUTPUT_DIR", str(tmp_path))
+    monkeypatch.setenv("T2I_DEFAULT_ENGINE", "mock")
     result = generate_image_v1(
         prompt="Retail product promo background",
         metadata={"job_id": "job-path", "business_type": "product"},

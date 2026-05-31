@@ -17,8 +17,8 @@ def prompt_renderer_node(state: MarketingState) -> dict[str, Any]:
     layout_spec = state.get("layout_spec") or {}
     image_prompt_spec = state.get("image_prompt_spec")
     engine = state.get("engine") if state.get("engine") in SUPPORTED_RENDER_ENGINES else "mock"
-    # The 3rd LLM graph milestone renders through mock only; real engines remain disabled here.
-    effective_engine = "mock"
+    # Local engines are still placeholders; only the API image lane is wired for real generation.
+    effective_engine = "gpt_image_2" if engine == "gpt_image_2" else "mock"
     metadata = {
         "requested_engine": engine,
         "ad_format": ad_format_spec.get("ad_format"),

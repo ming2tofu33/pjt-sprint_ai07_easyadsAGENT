@@ -1,6 +1,7 @@
 "use client";
 
 import { Bookmark } from "lucide-react";
+import Image from "next/image";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
 import styles from "./generate.module.css";
 
@@ -13,18 +14,35 @@ type AdCreativeCardProps = {
 };
 
 export function AdCreativeCard({ creative, index, compact = false, onSave, onOpen }: AdCreativeCardProps) {
+  const hasImage = Boolean(creative.imageUrl);
+
   return (
     <article className={styles.adCreativeCard} data-tone={creative.tone} data-compact={compact}>
       {onOpen ? (
         <button aria-label={`${creative.title} 상세 보기`} className={styles.adCreativeOpenButton} type="button" onClick={onOpen} />
       ) : null}
       {typeof index === "number" ? <strong className={styles.adCreativeNumber}>{index + 1}</strong> : null}
-      <button aria-label={`${creative.title} 저장`} className={styles.adCreativeSaveButton} type="button" onClick={onSave}>
-        <Bookmark size={15} aria-hidden="true" />
-      </button>
-      <div className={styles.adCreativeVisual} aria-hidden="true">
-        <span className={styles.adCreativeCup} />
-        <span className={styles.adCreativeFruit} />
+      {onSave ? (
+        <button aria-label={`${creative.title} 저장`} className={styles.adCreativeSaveButton} type="button" onClick={onSave}>
+          <Bookmark size={15} aria-hidden="true" />
+        </button>
+      ) : null}
+      <div className={styles.adCreativeVisual} data-has-image={hasImage ? "true" : undefined} aria-hidden="true">
+        {creative.imageUrl ? (
+          <Image
+            alt=""
+            className={styles.adCreativeImage}
+            fill
+            sizes={compact ? "96px" : "160px"}
+            src={creative.imageUrl}
+            unoptimized
+          />
+        ) : (
+          <>
+            <span className={styles.adCreativeCup} />
+            <span className={styles.adCreativeFruit} />
+          </>
+        )}
       </div>
       <div className={styles.adCreativeCopy}>
         {creative.badge ? <em>{creative.badge}</em> : null}

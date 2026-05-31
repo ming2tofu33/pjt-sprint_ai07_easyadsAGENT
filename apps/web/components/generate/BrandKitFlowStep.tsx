@@ -189,7 +189,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
         <section className={styles.brandCompleteHero}>
           <CheckCircle2 size={42} aria-hidden="true" />
           <h1>브랜드 키트가 저장됐어요</h1>
-          <p>이제 저장된 정보를 바탕으로 AI가 더 찰떡같이 광고를 제안할게요.</p>
+          <p>현재는 이 브라우저 안에서만 확인되는 임시 브랜드 키트예요.</p>
         </section>
 
         <section className={styles.brandSummaryCard}>
@@ -216,7 +216,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
 
         <p className={styles.styleNotice}>
           <Sparkles size={17} aria-hidden="true" />
-          예: “이번 주말 이벤트 광고 만들어줘”라고만 말해도, 저장된 가게 정보를 바탕으로 브리프를 제안할 수 있어요.
+          브랜드 키트 저장 API가 연결되면 “이번 주말 이벤트 광고 만들어줘” 같은 요청에 자동 반영됩니다.
         </p>
 
         <BrandFlowFooter current={4} tone="coral">
@@ -238,7 +238,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
       <section className={styles.brandStartHero}>
         <div>
           <h1>우리 가게 정보를 저장해두면,</h1>
-          <p>다음 광고부터 AI가 더 찰떡같이 만들어드려요.</p>
+          <p>지금은 샘플 입력 화면으로 먼저 흐름을 확인할 수 있어요.</p>
         </div>
         <span aria-hidden="true">
           <Store size={42} />

@@ -28,6 +28,19 @@ def test_copy_candidate_generation_is_stable_and_safe():
     json.dumps({"candidates": candidates}, ensure_ascii=False)
 
 
+def test_copy_candidate_generation_does_not_leak_option_value_codes():
+    state = _state()
+    state["context"]["item_or_service"] = "reservation_service"
+
+    update = copy_candidate_generation_node(state)
+    rendered = " ".join(str(value) for candidate in update["copy_candidates"] for value in candidate.values())
+
+    assert "reservation_service" not in rendered
+    assert "예약 서비스" in rendered
+    assert "한 판" not in rendered
+    assert "회식은 역시 예약 서비스" not in rendered
+
+
 def test_selected_copy_updates_marketing_copy_and_copy_spec():
     state = _state()
     state.update(copy_candidate_generation_node(state))
@@ -38,3 +51,30 @@ def test_selected_copy_updates_marketing_copy_and_copy_spec():
     assert state["selected_copy_id"] == "copy_2"
     assert state["marketing_copy"]["headline"] == "회식은 역시 삼겹살"
     assert state["copy_spec"]["items"][0]["role"] == "headline"
+
+
+def test_selected_copy_persists_frontend_choices_in_graph_state():
+    state = _state()
+    state.update(copy_candidate_generation_node(state))
+    state["copy_selection"] = {
+        "selected_copy_id": "copy_1",
+        "selected_channel_id": "instagram-story",
+        "selected_tone": "깔끔한",
+        "custom_direction": "상품을 더 크게 보여줘",
+    }
+
+    update = state_update_selected_copy_node(state)
+
+    assert update["selected_channel_id"] == "instagram-story"
+    assert update["selected_ad_format"] == "instagram_story"
+    assert update["selected_tone"] == "깔끔한"
+    assert update["custom_direction"] == "상품을 더 크게 보여줘"
+    assert update["context"]["brand_tone"] == "깔끔한"
+    assert update["context"]["extra"]["ad_format"] == "instagram_story"
+    assert update["context"]["extra"]["selected_channel_id"] == "instagram-story"
+    assert update["current_brief"]["selected_channel_id"] == "instagram-story"
+    assert update["current_brief"]["selected_tone"] == "깔끔한"
+    assert update["current_brief"]["custom_direction"] == "상품을 더 크게 보여줘"
+    assert update["ad_format_spec"]["ad_format"] == "instagram_story"
+    assert update["ad_format_spec"]["height"] == 1920
+    assert update["layout_spec"]["layout_type"] == "story_vertical"

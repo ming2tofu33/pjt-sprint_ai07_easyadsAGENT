@@ -12,7 +12,7 @@ from orchestrator.app.llm.nodes.final_validation import final_validation_node
 from orchestrator.app.llm.nodes.readability_gate import average_region_rgb, contrast_ratio, readability_gate_node, relative_luminance
 from orchestrator.app.llm.nodes.result import result_node
 from orchestrator.app.llm.nodes.safe_area_gate import safe_area_gate_node
-from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
+from orchestrator.app.llm.nodes.text_renderer import SYSTEM_FONT_CANDIDATES, text_renderer_node
 from orchestrator.app.schemas.text_layout import (
     BackgroundValidationReport,
     CopyItem,
@@ -188,6 +188,11 @@ def test_text_renderer_creates_final_image(tmp_path):
     assert output["render_result"]["rendered_slot_count"] == 1
     assert output["text_overlay_pending"] is False
     assert output["artifact_refs"][-1]["type"] == "final_image"
+
+
+def test_text_renderer_has_cross_platform_korean_font_candidates():
+    assert any("malgun" in candidate.lower() for candidate in SYSTEM_FONT_CANDIDATES)
+    assert any("nanum" in candidate.lower() or "notosanscjk" in candidate.lower() or "unifont" in candidate.lower() for candidate in SYSTEM_FONT_CANDIDATES)
 
 
 def test_readability_helpers_and_gate(tmp_path):

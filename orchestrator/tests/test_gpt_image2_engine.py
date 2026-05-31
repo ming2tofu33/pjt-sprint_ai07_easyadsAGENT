@@ -1,6 +1,6 @@
 ﻿"""Tests for the cost-safe GPT-image-2 T2I engine."""
 
-from orchestrator.app.t2i.gpt_image2 import GPTImage2Engine
+from orchestrator.app.t2i.gpt_image2 import GPTImage2Engine, _resolve_model, _resolve_size
 from orchestrator.app.t2i.schemas import T2IRequest
 
 
@@ -47,3 +47,12 @@ def test_gpt_image2_generate_blocks_api_call_by_default(monkeypatch, tmp_path):
     assert result.image_paths == []
     assert result.error == "API call disabled; pass allow_api_call=True or --include-api"
     assert result.metadata["api_call"] is False
+
+
+def test_gpt_image2_resolves_supported_image_api_values():
+    assert _resolve_model("gpt-image-2") == "gpt-image-2"
+    assert _resolve_model("gpt-image-1") == "gpt-image-1"
+    assert _resolve_model("unknown-image-model") == "gpt-image-1"
+    assert _resolve_size(1080, 1080) == "1024x1024"
+    assert _resolve_size(1200, 628) == "1536x1024"
+    assert _resolve_size(1080, 1920) == "1024x1536"

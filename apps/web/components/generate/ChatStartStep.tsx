@@ -67,7 +67,7 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
         ))}
       </div>
 
-      <label className={styles.inputCard}>
+      <div className={styles.inputCard}>
         <ImageIcon size={19} aria-hidden="true" />
         <input
           className={styles.input}
@@ -83,7 +83,7 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
         <button className={styles.sendButton} type="button" aria-label="요청 보내기" onClick={submitPrompt}>
           <Send size={18} aria-hidden="true" />
         </button>
-      </label>
+      </div>
       <p className={styles.helperText}>대충 써도 괜찮아요. AI가 찰떡같이 알아들을게요.</p>
     </>
   );
