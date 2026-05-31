@@ -57,7 +57,7 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
     subject = context.item_or_service or "advertising subject"
     reserved_text = " and ".join(bbox_to_natural_language(bbox) for bbox in text_layout.reserved_text_areas)
     scene = f"clean commercial advertising background for {subject}"
-    composition = build_composition(reserved_text)
+    composition = build_composition(reserved_text, getattr(text_layout, "template", None))
     style_hint = reference_style_profile.get("ad_style_prompt")
     template_hint = build_reference_template_hint(selected_reference_template, template_style_hint)
     product_hint = build_product_preserve_hint(product_preserve_spec)
@@ -182,7 +182,11 @@ def infer_copy_space_from_reserved_areas(reserved_areas: list[NormalizedBBox]) -
     return "center"
 
 
-def build_composition(reserved_text: str) -> str:
+def build_composition(reserved_text: str, template: str | None = None) -> str:
+    if template == "left_text_right_product":
+        return "Rule of thirds, main subject strongly shifted to the right. Vast, minimalist, and uncluttered negative space on the left side for text layout. Clean background, studio lighting."
+    if template == "right_text_left_product":
+        return "Rule of thirds, main subject strongly shifted to the left. Vast, minimalist, and uncluttered negative space on the right side for text layout. Clean background, studio lighting."
     if not reserved_text:
         return "Use a clean product-focused composition with no text and no typography."
     return (

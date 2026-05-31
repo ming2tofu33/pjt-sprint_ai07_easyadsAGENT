@@ -26,6 +26,7 @@ TextAlignment = Literal["left", "center", "right"]
 LayoutTemplate = Literal[
     "top_headline_center_product_bottom_cta",
     "left_text_right_product",
+    "right_text_left_product",
     "bottom_overlay_panel",
     "multi_zone_flyer",
     "minimal_corner",
