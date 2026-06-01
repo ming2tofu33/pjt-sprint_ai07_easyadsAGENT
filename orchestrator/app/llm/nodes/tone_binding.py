@@ -6,7 +6,7 @@ from typing import Any
 
 from orchestrator.app.graph.state import MarketingState, context_to_model
 from orchestrator.app.llm.copy_tone import get_copy_tone_profile
-from orchestrator.app.llm.metadata_builders import build_tone_binding_metadata
+from orchestrator.app.llm.metadata_builders import build_tone_binding_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.schemas.llm_marketing import ToneBindingOutput
 
@@ -81,7 +81,7 @@ def build_tone_binding_prompt(state: MarketingState) -> str:
     metadata = build_tone_binding_metadata(state)
     return (
         "Create a structured ToneBindingOutput for Korean advertising copy policy. "
-        f"metadata_contract={metadata}. "
+        f"metadata_contract={metadata_contract_to_prompt_json(metadata)}. "
         "Return only fields that match ToneBindingOutput. "
         "Do not write final ad copy. "
         "Do not invent phone numbers, addresses, prices, discounts, or event periods."

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from orchestrator.app.llm.metadata_contracts import (
@@ -12,6 +13,22 @@ from orchestrator.app.llm.metadata_contracts import (
     LLMMetadataTask,
     LLMMetadataTrace,
     sanitize_metadata,
+)
+
+
+PUBLIC_SUMMARY_CONSTRAINT_KEYS = (
+    "render_text_in_image",
+    "must_not_include_text",
+    "text_overlay_pending",
+    "copy_required",
+    "do_not_invent",
+    "no_user_unprovided_claims",
+    "preserve_custom_input",
+    "preserve_user_copy",
+    "no_rewrite",
+    "no_new_facts",
+    "classify_only",
+    "no_copy_rewrite",
 )
 
 
@@ -86,6 +103,32 @@ def build_tone_binding_metadata(state: dict[str, Any] | None) -> dict[str, Any]:
     )
 
 
+def build_copy_mode_inference_metadata(state: dict[str, Any] | None, latest_user_input: str | None = None) -> dict[str, Any]:
+    source = state or {}
+    return build_metadata_payload(
+        source,
+        node_name="copy_mode_inference",
+        objective="Classify the user's intended copy generation mode without changing copy text.",
+        output_schema="CopyModeInferenceOutput",
+        available_state={
+            "latest_user_input": latest_user_input if latest_user_input is not None else source.get("user_input"),
+            "user_input": source.get("user_input"),
+            "messages": source.get("messages", []),
+            "current_brief": source.get("current_brief", {}),
+            "context": source.get("context", {}),
+            "entry_mode": source.get("entry_mode"),
+            "copy_generation_mode": source.get("copy_generation_mode"),
+            "user_custom_headline": source.get("user_custom_headline"),
+            "user_custom_subcopy": source.get("user_custom_subcopy"),
+        },
+        constraints={
+            "allowed_copy_generation_modes": ["suggest_candidates", "auto_pilot", "no_copy", "custom_input"],
+            "classify_only": True,
+            "no_copy_rewrite": True,
+        },
+    )
+
+
 def build_copy_generation_metadata(
     state: dict[str, Any] | None,
     node_name: str = "copy_generation",
@@ -117,6 +160,30 @@ def build_copy_generation_metadata(
             "channel_copy_rules": tone.get("channel_copy_rules", []),
             "copy_constraints": tone.get("copy_constraints", []),
             "preserve_custom_input": source.get("copy_generation_mode") == "custom_input",
+        },
+    )
+
+
+def build_custom_copy_validation_metadata(state: dict[str, Any] | None) -> dict[str, Any]:
+    source = state or {}
+    return build_metadata_payload(
+        source,
+        node_name="custom_copy_validation",
+        objective="Validate user-provided copy while preserving the user's original wording.",
+        output_schema="MarketingCopy",
+        available_state={
+            "custom_copy_input": source.get("custom_copy_input"),
+            "user_custom_headline": source.get("user_custom_headline"),
+            "user_custom_subcopy": source.get("user_custom_subcopy"),
+            "context": source.get("context", {}),
+            "ad_format_spec": source.get("ad_format_spec"),
+            "layout_spec": source.get("layout_spec"),
+            "tone_binding_output": source.get("tone_binding_output"),
+        },
+        constraints={
+            "preserve_user_copy": True,
+            "no_rewrite": True,
+            "no_new_facts": True,
         },
     )
 
@@ -263,6 +330,40 @@ def build_metadata_payload(
         constraints={**build_common_constraints_metadata(state), **sanitize_metadata(constraints or {})},
     )
     return sanitize_metadata(payload.to_metadata_dict())
+
+
+def metadata_contract_to_prompt_json(metadata_contract: dict[str, Any] | None) -> str:
+    """Serialize metadata contracts as stable JSON before embedding them in prompts."""
+    sanitized = sanitize_metadata(metadata_contract or {})
+    if not isinstance(sanitized, dict):
+        sanitized = {}
+    return json.dumps(sanitized, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def build_metadata_contract_summary(metadata_contract: dict[str, Any] | None) -> dict[str, Any]:
+    """Return a compact public-safe summary for domain output metadata."""
+    contract = sanitize_metadata(metadata_contract or {})
+    if not isinstance(contract, dict):
+        contract = {}
+    trace = _dict(contract.get("trace"))
+    task = _dict(contract.get("task"))
+    output_rules = _dict(contract.get("output_rules"))
+    constraints = _dict(contract.get("constraints"))
+    constraint_summary = {
+        key: constraints[key]
+        for key in PUBLIC_SUMMARY_CONSTRAINT_KEYS
+        if key in constraints
+    }
+    return sanitize_metadata(
+        {
+            "schema_version": trace.get("schema_version"),
+            "node_name": trace.get("node_name"),
+            "output_schema": task.get("output_schema"),
+            "structured_output_only": output_rules.get("structured_output_only"),
+            "no_chain_of_thought": output_rules.get("no_chain_of_thought"),
+            "constraints": constraint_summary,
+        }
+    )
 
 
 def _schema_name(output_schema: Any) -> str:

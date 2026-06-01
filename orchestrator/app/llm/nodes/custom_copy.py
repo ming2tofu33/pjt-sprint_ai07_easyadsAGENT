@@ -7,6 +7,7 @@ from typing import Any
 from langgraph.types import interrupt
 
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.llm.metadata_builders import build_custom_copy_validation_metadata, build_metadata_contract_summary
 from orchestrator.app.schemas.llm_marketing import CustomCopyInput, MarketingCopy
 
 
@@ -38,6 +39,8 @@ def custom_copy_input_interrupt_node(state: MarketingState) -> dict[str, Any]:
 
 
 def custom_copy_validation_node(state: MarketingState) -> dict[str, Any]:
+    metadata_contract = build_custom_copy_validation_metadata(state)
+    metadata_summary = build_metadata_contract_summary(metadata_contract)
     raw_input = state.get("custom_copy_input") or {}
     headline = state.get("user_custom_headline") or raw_input.get("user_custom_headline") or raw_input.get("headline")
     subcopy = state.get("user_custom_subcopy") or raw_input.get("user_custom_subcopy") or raw_input.get("subcopy")
@@ -47,13 +50,23 @@ def custom_copy_validation_node(state: MarketingState) -> dict[str, Any]:
     warnings = []
     if len(str(headline)) > 15:
         warnings.append("headline exceeds recommended 15 characters")
-    custom = CustomCopyInput(headline=str(headline), subcopy=subcopy, cta=cta, metadata={"warnings": warnings})
+    custom = CustomCopyInput(
+        headline=str(headline),
+        subcopy=subcopy,
+        cta=cta,
+        metadata={"warnings": warnings, "llm_metadata_summary": metadata_summary},
+    )
     copy = MarketingCopy(
         headline=custom.headline,
         subcopy=custom.subcopy,
         cta=custom.cta or "지금 확인하기",
         hashtags=custom.hashtags,
-        metadata={"source_node": "custom_copy_validation", "warnings": warnings},
+        metadata={
+            "source_node": "custom_copy_validation",
+            "warnings": warnings,
+            "preserved_user_copy": True,
+            "llm_metadata_summary": metadata_summary,
+        },
     )
     return {
         "marketing_copy": copy.model_dump(),
