@@ -53,6 +53,8 @@ export type ChatBriefResponse = {
 
 export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & {
   copyGenerationMode?: CopyGenerationMode;
+  adFormat?: string;
+  renderProfile?: string;
 };
 
 export type ReferenceTemplateCard = {
@@ -219,12 +221,12 @@ function readFileAsDataUrl(file: File): Promise<string> {
 export function startChatGeneration(userInput: string, options: GenerationStartOptions = {}): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/chat/start", {
     userInput,
-    adFormat: "instagram_feed",
-    renderProfile: "premium_api",
-    copyGenerationMode: options.copyGenerationMode,
-    userCustomHeadline: options.userCustomHeadline,
-    userCustomSubcopy: options.userCustomSubcopy,
-    selectedReferenceTemplateId: options.selectedReferenceTemplateId
+    adFormat: options.adFormat ?? "instagram_feed",
+    renderProfile: options.renderProfile ?? "premium_api",
+    copyGenerationMode: options.copyGenerationMode ?? undefined,
+    userCustomHeadline: options.userCustomHeadline ?? undefined,
+    userCustomSubcopy: options.userCustomSubcopy ?? undefined,
+    selectedReferenceTemplateId: options.selectedReferenceTemplateId ?? undefined
   });
 }
 
@@ -266,17 +268,17 @@ export function startPhotoGeneration(input: {
   copyGenerationMode?: CopyGenerationMode;
   userCustomHeadline?: string;
   userCustomSubcopy?: string;
-  selectedReferenceTemplateId?: string;
+  selectedReferenceTemplateId?: string | null;
 }): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/photo/start", {
     userInput: input.userInput,
     sourceImagePath: input.sourceImagePath,
     adFormat: input.adFormat ?? "instagram_feed",
     renderProfile: input.renderProfile ?? "premium_api",
-    copyGenerationMode: input.copyGenerationMode,
-    userCustomHeadline: input.userCustomHeadline,
-    userCustomSubcopy: input.userCustomSubcopy,
-    selectedReferenceTemplateId: input.selectedReferenceTemplateId
+    copyGenerationMode: input.copyGenerationMode ?? undefined,
+    userCustomHeadline: input.userCustomHeadline ?? undefined,
+    userCustomSubcopy: input.userCustomSubcopy ?? undefined,
+    selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? undefined
   });
 }
 

@@ -62,10 +62,6 @@ export type CustomCopyFields = {
   userCustomSubcopy?: string;
 };
 
-export type ReferenceTemplateFields = {
-  selectedReferenceTemplateId?: string;
-};
-
 export type ChannelOption = {
   id: string;
   label: string;
@@ -80,6 +76,11 @@ export type ChatBrief = {
   channel: string;
   imageDirection: string;
   finalImagePath?: string | null;
+};
+
+export type ReferenceTemplateFields = {
+  selectedReferenceTemplateId?: string | null;
+  selectedReferenceTemplateTitle?: string | null;
 };
 
 export type ChatFlowState = {
@@ -100,6 +101,8 @@ export type ChatFlowState = {
   customDirection: string;
   brief: ChatBrief | null;
   generationJob?: GenerationJob | null;
+  selectedReferenceTemplateId?: string | null;
+  selectedReferenceTemplateTitle?: string | null;
   currentQuestion: OptionQuestion | null;
   conversationMessages: ChatTranscriptMessage[];
   isLoading: boolean;
@@ -137,6 +140,18 @@ export type ChatFlowAction =
   | { type: "selectChannel"; channelId: string }
   | { type: "setCustomDirection"; value: string }
   | { type: "backendBriefSucceeded"; brief: ChatBrief }
+  | {
+      type: "requestContextLoaded";
+      selectedReferenceTemplateId?: string | null;
+      selectedReferenceTemplateTitle?: string | null;
+      draftPrompt?: string | null;
+    }
+  | {
+      type: "referenceTemplateSelected";
+      selectedReferenceTemplateId: string;
+      selectedReferenceTemplateTitle?: string | null;
+    }
+  | { type: "referenceTemplateCleared" }
   | { type: "continueToBrief" }
   | { type: "showResultShell" }
   | { type: "back" }

@@ -359,7 +359,12 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
         "user_custom_headline": _clean_optional_text(request.user_custom_headline),
         "user_custom_subcopy": _clean_optional_text(request.user_custom_subcopy),
         "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
-        "context": {"extra": {"ad_format": request.ad_format}},
+        "context": {
+            "extra": {
+                "ad_format": request.ad_format,
+                "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
+            }
+        },
     }
     result = _GRAPH.invoke(state, config=_thread_config(thread_id))
     interrupt = _interrupt_value(result)

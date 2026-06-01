@@ -60,6 +60,8 @@ export function createInitialChatFlowState(): ChatFlowState {
     customDirection: "",
     brief: null,
     generationJob: null,
+    selectedReferenceTemplateId: null,
+    selectedReferenceTemplateTitle: null,
     currentQuestion: null,
     conversationMessages: [],
     isLoading: false,
@@ -187,6 +189,25 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         brief: action.brief,
         isLoading: false,
         errorMessage: null
+      };
+    case "requestContextLoaded":
+      return {
+        ...state,
+        userInput: state.userInput || action.draftPrompt || state.userInput,
+        selectedReferenceTemplateId: action.selectedReferenceTemplateId ?? null,
+        selectedReferenceTemplateTitle: action.selectedReferenceTemplateTitle ?? null
+      };
+    case "referenceTemplateSelected":
+      return {
+        ...state,
+        selectedReferenceTemplateId: action.selectedReferenceTemplateId,
+        selectedReferenceTemplateTitle: action.selectedReferenceTemplateTitle ?? null
+      };
+    case "referenceTemplateCleared":
+      return {
+        ...state,
+        selectedReferenceTemplateId: null,
+        selectedReferenceTemplateTitle: null
       };
     case "continueToBrief":
       return {

@@ -71,6 +71,7 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
             "extra": {
                 "ad_format": request.ad_format,
                 "source_image_path": request.source_image_path,
+                "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
             }
         },
     }

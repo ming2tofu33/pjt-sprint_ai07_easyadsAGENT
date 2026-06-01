@@ -6,8 +6,11 @@ import {
   appendSavedBrandKitContext,
   buildBrandKitGenerationContext,
   clearGenerationDraftPrompt,
+  clearGenerationRequestContext,
+  readGenerationRequestContext,
   readGenerationDraftPrompt,
   readGenerationDraftReferenceTemplateId,
+  saveGenerationRequestContext,
   writeGenerationDraftPrompt,
   writeGenerationDraftReferenceTemplateId
 } from "./generation-request-context";
@@ -60,5 +63,26 @@ describe("generation-request-context", () => {
     clearGenerationDraftPrompt();
 
     expect(readGenerationDraftReferenceTemplateId()).toBe("");
+  });
+
+  it("keeps develop reference request context compatible with draft readers", () => {
+    saveGenerationRequestContext({
+      selectedReferenceTemplateId: "temp_watermelon_juice_feed",
+      selectedReferenceTemplateTitle: "수박주스 블루 여름 피드",
+      draftPrompt: "수박주스 블루 여름 피드 스타일로 광고를 만들고 싶어요.",
+      source: "reference_gallery"
+    });
+
+    expect(readGenerationRequestContext()).toEqual({
+      selectedReferenceTemplateId: "temp_watermelon_juice_feed",
+      selectedReferenceTemplateTitle: "수박주스 블루 여름 피드",
+      draftPrompt: "수박주스 블루 여름 피드 스타일로 광고를 만들고 싶어요.",
+      source: "reference_gallery"
+    });
+    expect(readGenerationDraftPrompt()).toBe("수박주스 블루 여름 피드 스타일로 광고를 만들고 싶어요.");
+    expect(readGenerationDraftReferenceTemplateId()).toBe("temp_watermelon_juice_feed");
+
+    clearGenerationRequestContext();
+    expect(readGenerationRequestContext()).toBeNull();
   });
 });

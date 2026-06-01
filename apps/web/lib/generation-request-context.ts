@@ -9,9 +9,20 @@ import {
 
 export const GENERATION_DRAFT_PROMPT_STORAGE_KEY = "easyads_generation_draft_prompt_v1";
 export const GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY = "easyads_generation_draft_reference_template_v1";
+const GENERATION_REQUEST_CONTEXT_STORAGE_KEY = "easyads_generation_request_context_v1";
+
+export type GenerationRequestContext = {
+  selectedReferenceTemplateId?: string;
+  selectedReferenceTemplateTitle?: string;
+  draftPrompt?: string;
+  source?: "reference_gallery" | "manual" | "unknown";
+};
 
 function storage(): Storage | null {
   try {
+    if (typeof window === "undefined") {
+      return null;
+    }
     return window.sessionStorage;
   } catch {
     return null;
@@ -60,9 +71,36 @@ export function writeGenerationDraftReferenceTemplateId(templateId: string) {
   }
 }
 
+export function saveGenerationRequestContext(context: GenerationRequestContext): void {
+  try {
+    storage()?.setItem(GENERATION_REQUEST_CONTEXT_STORAGE_KEY, JSON.stringify(context));
+    if (context.draftPrompt) {
+      writeGenerationDraftPrompt(context.draftPrompt);
+    }
+    if (context.selectedReferenceTemplateId) {
+      writeGenerationDraftReferenceTemplateId(context.selectedReferenceTemplateId);
+    }
+  } catch {
+    // Generation can continue without persisted request context.
+  }
+}
+
+export function readGenerationRequestContext(): GenerationRequestContext | null {
+  try {
+    const raw = storage()?.getItem(GENERATION_REQUEST_CONTEXT_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as GenerationRequestContext) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function readGenerationDraftPrompt(): string {
   try {
-    return storage()?.getItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY) ?? "";
+    const draftPrompt = storage()?.getItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY);
+    if (draftPrompt) {
+      return draftPrompt;
+    }
+    return readGenerationRequestContext()?.draftPrompt ?? "";
   } catch {
     return "";
   }
@@ -70,9 +108,21 @@ export function readGenerationDraftPrompt(): string {
 
 export function readGenerationDraftReferenceTemplateId(): string {
   try {
-    return storage()?.getItem(GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY) ?? "";
+    const templateId = storage()?.getItem(GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY);
+    if (templateId) {
+      return templateId;
+    }
+    return readGenerationRequestContext()?.selectedReferenceTemplateId ?? "";
   } catch {
     return "";
+  }
+}
+
+export function clearGenerationRequestContext(): void {
+  try {
+    storage()?.removeItem(GENERATION_REQUEST_CONTEXT_STORAGE_KEY);
+  } catch {
+    // Ignore unavailable storage.
   }
 }
 
@@ -80,6 +130,7 @@ export function clearGenerationDraftPrompt() {
   try {
     storage()?.removeItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY);
     storage()?.removeItem(GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY);
+    storage()?.removeItem(GENERATION_REQUEST_CONTEXT_STORAGE_KEY);
   } catch {
     // Ignore storage failures; a fresh chat can still continue.
   }

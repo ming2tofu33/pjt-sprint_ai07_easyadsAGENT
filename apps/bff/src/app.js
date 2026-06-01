@@ -78,6 +78,13 @@ const photoStartSchema = z.object({
   }
 });
 
+const generationJobSchema = z.object({
+  user_input: z.string().optional(),
+  userInput: z.string().optional(),
+  selected_reference_template_id: z.string().optional(),
+  selectedReferenceTemplateId: z.string().optional()
+}).passthrough();
+
 async function proxyJson({ fetchImpl, url, body }) {
   const response = await fetchImpl(url, {
     method: "POST",
@@ -255,6 +262,24 @@ export function buildApp(options = {}) {
       fetchImpl,
       url: `${orchestratorBaseUrl}/v1/marketing/photo/start`,
       body: parsed.data
+    });
+  });
+
+  app.post("/api/generation-jobs", async (request, reply) => {
+    const parsed = generationJobSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+    const body = {
+      ...parsed.data,
+      selected_reference_template_id: parsed.data.selected_reference_template_id ?? parsed.data.selectedReferenceTemplateId
+    };
+    delete body.selectedReferenceTemplateId;
+
+    return proxyJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/generation-jobs`,
+      body
     });
   });
 
