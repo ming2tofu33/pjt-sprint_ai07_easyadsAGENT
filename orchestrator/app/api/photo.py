@@ -12,11 +12,14 @@ from orchestrator.app.api.chat import (
     ChatStartResponse,
     CopyGenerationMode,
     _brief_ready_response,
+    _clean_optional_text,
     _copy_candidates_response,
     _interrupt_value,
     _option_question_response,
+    _require_custom_copy_headline,
     _selected_channel_id_for_ad_format,
     _thread_config,
+    BRIEF_READY_COPY_MODES,
 )
 from orchestrator.app.api.marketing_graph import MARKETING_GRAPH
 
@@ -31,11 +34,23 @@ class PhotoStartRequest(CamelModel):
     render_profile: str = Field(default="premium_api", alias="renderProfile")
     vision_preprocess_mode: str = Field(default="resize_only", alias="visionPreprocessMode")
     copy_generation_mode: CopyGenerationMode = Field(default="suggest_candidates", alias="copyGenerationMode")
+    user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
+    user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
 
 
 @router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse, response_model_by_alias=True)
 def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse:
-    job_seed = f"{request.source_image_path}:{request.user_input}"
+    _require_custom_copy_headline(request.copy_generation_mode, request.user_custom_headline)
+    job_seed = ":".join(
+        [
+            request.source_image_path,
+            request.user_input,
+            request.ad_format,
+            request.copy_generation_mode,
+            _clean_optional_text(request.user_custom_headline) or "",
+            _clean_optional_text(request.user_custom_subcopy) or "",
+        ]
+    )
     job_id = f"photo_{abs(hash(job_seed))}"
     thread_id = f"{job_id}_thread"
     state = {
@@ -47,6 +62,8 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
         "render_profile": request.render_profile,
         "vision_preprocess_mode": request.vision_preprocess_mode,
         "copy_generation_mode": request.copy_generation_mode,
+        "user_custom_headline": _clean_optional_text(request.user_custom_headline),
+        "user_custom_subcopy": _clean_optional_text(request.user_custom_subcopy),
         "context": {
             "extra": {
                 "ad_format": request.ad_format,
@@ -59,7 +76,7 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
 
     if interrupt and interrupt.get("type") == "option_question":
         return _option_question_response(result, interrupt)
-    if result.get("copy_generation_mode") == "no_copy" and result.get("status") == "done":
+    if result.get("copy_generation_mode") in BRIEF_READY_COPY_MODES and result.get("status") == "done":
         return _brief_ready_response(result, job_id=job_id, thread_id=thread_id, selected_channel_id=_selected_channel_id_for_ad_format(request.ad_format))
 
     return _copy_candidates_response(result, job_id=job_id, thread_id=thread_id, interrupt=interrupt)

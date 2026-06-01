@@ -23,7 +23,8 @@ import {
   startChatGeneration,
   startPhotoGeneration,
   uploadPhotoAsset,
-  type ChatTurnResponse
+  type ChatTurnResponse,
+  type GenerationStartOptions
 } from "@/lib/api-client";
 import { buildAdHref } from "@/lib/ad-navigation";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
@@ -124,8 +125,7 @@ function isBriefReadyResponse(response: ChatTurnResponse): response is Extract<C
 type PhotoGenerateInput = {
   file: File;
   prompt: string;
-  copyGenerationMode?: CopyGenerationMode;
-};
+} & GenerationStartOptions;
 
 export function ChatGenerateClient({ initialSurface = "home", initialStage = "start" }: ChatGenerateClientProps) {
   const router = useRouter();
@@ -331,14 +331,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     return () => window.clearInterval(timer);
   }, [generationStage, navigateTo]);
 
-  async function handleSubmitPrompt(prompt: string, options: { copyGenerationMode?: CopyGenerationMode } = {}) {
+  async function handleSubmitPrompt(prompt: string, options: GenerationStartOptions = {}) {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
     dispatch({ type: "submitPrompt", prompt, copyGenerationMode: options.copyGenerationMode });
     try {
-      const response = await startChatGeneration(appendSavedBrandKitContext(prompt), {
-        copyGenerationMode: options.copyGenerationMode
-      });
+      const response = await startChatGeneration(appendSavedBrandKitContext(prompt), options);
       applyTurnResponse(prompt, response);
     } catch (error) {
       dispatch({
@@ -382,7 +380,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const response = await startPhotoGeneration({
         userInput: appendSavedBrandKitContext(input.prompt),
         sourceImagePath: upload.sourceImagePath,
-        copyGenerationMode: input.copyGenerationMode
+        copyGenerationMode: input.copyGenerationMode,
+        userCustomHeadline: input.userCustomHeadline,
+        userCustomSubcopy: input.userCustomSubcopy
       });
       writeChatTurnSnapshot({ prompt: input.prompt, response });
       lastPrimedStageRef.current = null;

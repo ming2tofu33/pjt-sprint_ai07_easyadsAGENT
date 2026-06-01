@@ -10,7 +10,11 @@ const navigationMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api-client", () => ({
-  startChatGeneration: vi.fn(async (userInput: string, options?: { copyGenerationMode?: string }) => {
+  startChatGeneration: vi.fn(
+    async (
+      userInput: string,
+      options?: { copyGenerationMode?: string; userCustomHeadline?: string; userCustomSubcopy?: string }
+    ) => {
     if (options?.copyGenerationMode === "no_copy") {
       return {
         type: "brief_ready",
@@ -32,6 +36,29 @@ vi.mock("@/lib/api-client", () => ({
           finalImagePath: "data/outputs/job_no_copy/final_composite.png"
         },
         copyGenerationMode: "no_copy"
+      };
+    }
+    if (options?.copyGenerationMode === "custom_input") {
+      return {
+        type: "brief_ready",
+        jobId: "job_custom_copy",
+        threadId: "thread_custom_copy",
+        status: "done",
+        context: {
+          businessType: "카페",
+          itemOrService: "딸기라떼",
+          promotionGoal: "신메뉴 출시"
+        },
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: options.userCustomHeadline ?? "직접 입력한 문구",
+          tone: "브랜드에 맞춘 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+          finalImagePath: "data/outputs/job_custom_copy/final_composite.png"
+        },
+        copyGenerationMode: "custom_input"
       };
     }
     if (userInput === "광고 만들어줘") {
@@ -120,7 +147,7 @@ vi.mock("@/lib/api-client", () => ({
     mimeType: "image/png",
     sizeBytes: 3
   })),
-  startPhotoGeneration: vi.fn(async (input?: { copyGenerationMode?: string }) => {
+  startPhotoGeneration: vi.fn(async (input?: { copyGenerationMode?: string; userCustomHeadline?: string; userCustomSubcopy?: string }) => {
     if (input?.copyGenerationMode === "no_copy") {
       return {
         type: "brief_ready",
@@ -142,6 +169,29 @@ vi.mock("@/lib/api-client", () => ({
           finalImagePath: "data/outputs/photo_no_copy/final_composite.png"
         },
         copyGenerationMode: "no_copy"
+      };
+    }
+    if (input?.copyGenerationMode === "custom_input") {
+      return {
+        type: "brief_ready",
+        jobId: "photo_custom_copy",
+        threadId: "photo_custom_copy_thread",
+        status: "done",
+        context: {
+          businessType: "카페",
+          itemOrService: "딸기라떼",
+          promotionGoal: "신메뉴 출시"
+        },
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: input.userCustomHeadline ?? "직접 입력한 문구",
+          tone: "브랜드에 맞춘 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+          finalImagePath: "data/outputs/photo_custom_copy/final_composite.png"
+        },
+        copyGenerationMode: "custom_input"
       };
     }
     return {
@@ -270,6 +320,38 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("문구 없이 이미지로만")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+  });
+
+  it("skips copy selection when chat generation starts with user-provided copy", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.startChatGeneration).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "우리 카페 딸기라떼 신메뉴 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByText("직접 문구"));
+    fireEvent.change(screen.getByLabelText("직접 메인 문구 입력"), {
+      target: { value: "오늘만 딸기라떼 반값" }
+    });
+    fireEvent.change(screen.getByLabelText("직접 보조 문구 입력"), {
+      target: { value: "오후 2시부터 5시까지" }
+    });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() =>
+      expect(api.startChatGeneration).toHaveBeenCalledWith(expect.stringContaining("우리 카페 딸기라떼 신메뉴 광고 만들어줘"), {
+        copyGenerationMode: "custom_input",
+        userCustomHeadline: "오늘만 딸기라떼 반값",
+        userCustomSubcopy: "오후 2시부터 5시까지"
+      })
+    );
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    expect(screen.getByText("오늘만 딸기라떼 반값")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
   });
 
@@ -757,6 +839,43 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("문구 없이 이미지로만")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+  });
+
+  it("routes photo generation directly to a backend brief with user-provided copy", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.uploadPhotoAsset).mockClear();
+    vi.mocked(api.startPhotoGeneration).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="photo" />);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "menu.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("광고 사진 선택"), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("사진 광고 요청 입력"), {
+      target: { value: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByText("직접 문구"));
+    fireEvent.change(screen.getByLabelText("사진 직접 메인 문구 입력"), {
+      target: { value: "오늘만 딸기라떼 반값" }
+    });
+    fireEvent.change(screen.getByLabelText("사진 직접 보조 문구 입력"), {
+      target: { value: "오후 2시부터 5시까지" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
+
+    await waitFor(() =>
+      expect(api.startPhotoGeneration).toHaveBeenCalledWith({
+        userInput: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘",
+        sourceImagePath: "data/uploads/photo_1.png",
+        copyGenerationMode: "custom_input",
+        userCustomHeadline: "오늘만 딸기라떼 반값",
+        userCustomSubcopy: "오후 2시부터 5시까지"
+      })
+    );
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    expect(screen.getByText("오늘만 딸기라떼 반값")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
   });
 

@@ -55,6 +55,11 @@ export type CopyOption = {
 export type CopyCandidateSource = "empty" | "sample" | "backend";
 export type CopyGenerationMode = "suggest_candidates" | "auto_pilot" | "custom_input" | "no_copy";
 
+export type CustomCopyFields = {
+  userCustomHeadline?: string;
+  userCustomSubcopy?: string;
+};
+
 export type ChannelOption = {
   id: string;
   label: string;

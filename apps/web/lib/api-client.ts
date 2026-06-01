@@ -1,4 +1,12 @@
-import type { ChatBrief, CopyGenerationMode, CopyOption, InferredContext, OptionQuestion, PartialInferredContext } from "@/types/marketing";
+import type {
+  ChatBrief,
+  CopyGenerationMode,
+  CopyOption,
+  CustomCopyFields,
+  InferredContext,
+  OptionQuestion,
+  PartialInferredContext
+} from "@/types/marketing";
 
 const BFF_BASE_URL = process.env.NEXT_PUBLIC_BFF_BASE_URL || "http://127.0.0.1:4000";
 
@@ -40,6 +48,10 @@ export type ChatBriefResponse = {
   threadId: string;
   status: string;
   brief: ChatBrief;
+};
+
+export type GenerationStartOptions = CustomCopyFields & {
+  copyGenerationMode?: CopyGenerationMode;
 };
 
 export type PhotoUploadResponse = {
@@ -84,12 +96,14 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-export function startChatGeneration(userInput: string, options: { copyGenerationMode?: CopyGenerationMode } = {}): Promise<ChatTurnResponse> {
+export function startChatGeneration(userInput: string, options: GenerationStartOptions = {}): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/chat/start", {
     userInput,
     adFormat: "instagram_feed",
     renderProfile: "premium_api",
-    copyGenerationMode: options.copyGenerationMode
+    copyGenerationMode: options.copyGenerationMode,
+    userCustomHeadline: options.userCustomHeadline,
+    userCustomSubcopy: options.userCustomSubcopy
   });
 }
 
@@ -129,12 +143,16 @@ export function startPhotoGeneration(input: {
   adFormat?: string;
   renderProfile?: string;
   copyGenerationMode?: CopyGenerationMode;
+  userCustomHeadline?: string;
+  userCustomSubcopy?: string;
 }): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/photo/start", {
     userInput: input.userInput,
     sourceImagePath: input.sourceImagePath,
     adFormat: input.adFormat ?? "instagram_feed",
     renderProfile: input.renderProfile ?? "premium_api",
-    copyGenerationMode: input.copyGenerationMode
+    copyGenerationMode: input.copyGenerationMode,
+    userCustomHeadline: input.userCustomHeadline,
+    userCustomSubcopy: input.userCustomSubcopy
   });
 }

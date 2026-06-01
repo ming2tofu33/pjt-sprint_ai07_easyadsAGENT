@@ -8,12 +8,25 @@ import cors from "@fastify/cors";
 import { z } from "zod";
 
 const copyGenerationModes = ["suggest_candidates", "auto_pilot", "custom_input", "no_copy"];
+const customCopyFieldsSchema = {
+  userCustomHeadline: z.string().trim().min(1).optional(),
+  userCustomSubcopy: z.string().trim().optional()
+};
 
 const chatStartSchema = z.object({
   userInput: z.string().min(1),
   adFormat: z.string().optional(),
   renderProfile: z.string().optional(),
-  copyGenerationMode: z.enum(copyGenerationModes).optional()
+  copyGenerationMode: z.enum(copyGenerationModes).optional(),
+  ...customCopyFieldsSchema
+}).superRefine((data, context) => {
+  if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["userCustomHeadline"],
+      message: "userCustomHeadline is required for custom_input"
+    });
+  }
 });
 
 const chatBriefSchema = z.object({
@@ -48,7 +61,16 @@ const photoStartSchema = z.object({
   sourceImagePath: z.string().min(1),
   adFormat: z.string().optional(),
   renderProfile: z.string().optional(),
-  copyGenerationMode: z.enum(copyGenerationModes).optional()
+  copyGenerationMode: z.enum(copyGenerationModes).optional(),
+  ...customCopyFieldsSchema
+}).superRefine((data, context) => {
+  if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["userCustomHeadline"],
+      message: "userCustomHeadline is required for custom_input"
+    });
+  }
 });
 
 async function proxyJson({ fetchImpl, url, body }) {

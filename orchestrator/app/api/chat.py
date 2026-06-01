@@ -49,6 +49,7 @@ AD_FORMAT_BY_CHANNEL = {
 
 CHANNEL_BY_AD_FORMAT = {value: key for key, value in AD_FORMAT_BY_CHANNEL.items()}
 CopyGenerationMode = Literal["suggest_candidates", "auto_pilot", "custom_input", "no_copy"]
+BRIEF_READY_COPY_MODES = {"auto_pilot", "custom_input", "no_copy"}
 
 
 class CamelModel(BaseModel):
@@ -89,6 +90,8 @@ class ChatStartRequest(CamelModel):
     ad_format: str = Field(default="instagram_feed", alias="adFormat")
     render_profile: str = Field(default="fast", alias="renderProfile")
     copy_generation_mode: CopyGenerationMode = Field(default="suggest_candidates", alias="copyGenerationMode")
+    user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
+    user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
 
 
 class ChatStartResponse(CamelModel):
@@ -308,6 +311,11 @@ def _brief_ready_response(result: dict[str, Any], *, job_id: str, thread_id: str
     )
 
 
+def _require_custom_copy_headline(copy_generation_mode: str | None, user_custom_headline: str | None) -> None:
+    if copy_generation_mode == "custom_input" and not _clean_optional_text(user_custom_headline):
+        raise HTTPException(status_code=400, detail={"message": "userCustomHeadline is required for custom_input"})
+
+
 def _brief_resume_payload(request: ChatBriefRequest) -> dict[str, str]:
     payload = {
         "selected_copy_id": request.selected_copy_id,
@@ -327,7 +335,17 @@ def _brief_resume_payload(request: ChatBriefRequest) -> dict[str, str]:
 
 @router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse, response_model_by_alias=True)
 def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse:
-    job_id = f"chat_{abs(hash(request.user_input))}"
+    _require_custom_copy_headline(request.copy_generation_mode, request.user_custom_headline)
+    job_seed = ":".join(
+        [
+            request.user_input,
+            request.ad_format,
+            request.copy_generation_mode,
+            _clean_optional_text(request.user_custom_headline) or "",
+            _clean_optional_text(request.user_custom_subcopy) or "",
+        ]
+    )
+    job_id = f"chat_{abs(hash(job_seed))}"
     thread_id = f"{job_id}_thread"
     state = {
         "entry_mode": "chat_start",
@@ -336,6 +354,8 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
         "thread_id": thread_id,
         "render_profile": request.render_profile,
         "copy_generation_mode": request.copy_generation_mode,
+        "user_custom_headline": _clean_optional_text(request.user_custom_headline),
+        "user_custom_subcopy": _clean_optional_text(request.user_custom_subcopy),
         "context": {"extra": {"ad_format": request.ad_format}},
     }
     result = _GRAPH.invoke(state, config=_thread_config(thread_id))
@@ -343,7 +363,7 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
 
     if interrupt and interrupt.get("type") == "option_question":
         return _option_question_response(result, interrupt)
-    if result.get("copy_generation_mode") == "no_copy" and result.get("status") == "done":
+    if result.get("copy_generation_mode") in BRIEF_READY_COPY_MODES and result.get("status") == "done":
         return _brief_ready_response(result, job_id=job_id, thread_id=thread_id, selected_channel_id=_selected_channel_id_for_ad_format(request.ad_format))
 
     return _copy_candidates_response(result, job_id=job_id, thread_id=thread_id, interrupt=interrupt)
@@ -364,7 +384,7 @@ def answer_chat_question(request: ChatAnswerRequest) -> ChatStartResponse | Chat
     interrupt = _interrupt_value(result)
     if interrupt and interrupt.get("type") == "option_question":
         return _option_question_response(result, interrupt)
-    if result.get("copy_generation_mode") == "no_copy" and result.get("status") == "done":
+    if result.get("copy_generation_mode") in BRIEF_READY_COPY_MODES and result.get("status") == "done":
         current_brief = result.get("current_brief") or {}
         return _brief_ready_response(
             result,

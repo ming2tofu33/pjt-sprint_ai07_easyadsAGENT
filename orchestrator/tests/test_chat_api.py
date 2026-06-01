@@ -316,6 +316,55 @@ def test_photo_start_no_copy_returns_brief_ready_response(tmp_path):
     assert payload["brief"]["finalImagePath"]
 
 
+def test_chat_start_custom_copy_returns_brief_ready_response():
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/start",
+        json={
+            "userInput": "우리 카페 딸기라떼 신메뉴 인스타 피드 광고 만들어줘",
+            "adFormat": "instagram_feed",
+            "renderProfile": "fast",
+            "copyGenerationMode": "custom_input",
+            "userCustomHeadline": "오늘만 딸기라떼 반값",
+            "userCustomSubcopy": "오후 2시부터 5시까지",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "brief_ready"
+    assert payload["copyGenerationMode"] == "custom_input"
+    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값"
+    assert payload["brief"]["finalImagePath"]
+
+
+def test_photo_start_custom_copy_returns_brief_ready_response(tmp_path):
+    source = tmp_path / "menu.png"
+    source.write_bytes(PNG_1X1)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/photo/start",
+        json={
+            "userInput": "우리 카페 딸기라떼 신메뉴 인스타 피드 광고 만들어줘",
+            "sourceImagePath": str(source),
+            "adFormat": "instagram_feed",
+            "renderProfile": "fast",
+            "copyGenerationMode": "custom_input",
+            "userCustomHeadline": "오늘만 딸기라떼 반값",
+            "userCustomSubcopy": "오후 2시부터 5시까지",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "brief_ready"
+    assert payload["copyGenerationMode"] == "custom_input"
+    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값"
+    assert payload["brief"]["finalImagePath"]
+
+
 def test_chat_answer_resumes_to_next_turn():
     client = TestClient(app)
     start = client.post(

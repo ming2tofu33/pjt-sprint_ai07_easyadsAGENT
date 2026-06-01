@@ -579,6 +579,61 @@
   opacity: 0.58;
 }
 
+.copyModeGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.quickStartGrid .chip,
+.copyModeGrid .chip {
+  gap: 5px;
+  padding: 9px 6px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.quickStartGrid .chip span,
+.copyModeGrid .chip span {
+  white-space: nowrap;
+}
+
+.customCopyFields {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.customCopyField {
+  border: 1px solid var(--color-border-soft);
+  border-radius: 14px;
+  background: var(--color-bg-card);
+  padding: 10px 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.customCopyField span {
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 850;
+}
+
+.customCopyTextarea {
+  width: 100%;
+  min-height: 30px;
+  max-height: 86px;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
 .inputCard {
   margin-top: auto;
   border: 1px solid var(--color-purple);
@@ -589,6 +644,10 @@
   grid-template-columns: 32px 1fr 42px;
   align-items: end;
   gap: 8px;
+}
+
+.inputCard.startInputCard {
+  margin-top: 0;
 }
 
 .contextAnswerInputCard {
