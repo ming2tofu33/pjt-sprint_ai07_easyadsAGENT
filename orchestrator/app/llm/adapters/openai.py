@@ -9,6 +9,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from orchestrator.app.llm.adapters.base import BaseLLMAdapter
+from orchestrator.app.llm.metadata_contracts import sanitize_metadata
 from orchestrator.app.llm.settings import LLMSettings, get_llm_settings
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection
 
@@ -56,7 +57,7 @@ class OpenAIAdapter(BaseLLMAdapter):
                 latency_ms=elapsed_ms(started),
                 token_usage=None,
                 cost_estimate=None,
-                metadata={**sanitize_metadata(metadata), "provider": "openai", "model_configured": True},
+                metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "model_configured": True},
             )
         except json.JSONDecodeError:
             return self._error(model_selection, "structured_output_parse_failed", started, metadata)
@@ -92,7 +93,7 @@ class OpenAIAdapter(BaseLLMAdapter):
                 raw_text=raw_text,
                 latency_ms=elapsed_ms(started),
                 cost_estimate=None,
-                metadata={**sanitize_metadata(metadata), "provider": "openai", "model_configured": True},
+                metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "model_configured": True},
             )
         except Exception as exc:
             return self._error(model_selection, f"openai_api_error:{type(exc).__name__}", started, metadata)
@@ -106,7 +107,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         metadata: dict[str, Any] | None = None,
     ) -> LLMCallResult:
         started = perf_counter()
-        return self._error(model_selection, "openai_vision_not_implemented", started, {**sanitize_metadata(metadata), "image_path_present": bool(image_path)})
+        return self._error(model_selection, "openai_vision_not_implemented", started, {**sanitize_metadata(metadata or {}), "image_path_present": bool(image_path)})
 
     def _preflight(self, model_selection: ModelSelection) -> tuple[bool, str | None]:
         if not self.settings.enable_api_call:
@@ -139,16 +140,10 @@ class OpenAIAdapter(BaseLLMAdapter):
             latency_ms=elapsed_ms(started),
             token_usage=None,
             cost_estimate=None,
-            metadata={**sanitize_metadata(metadata), "provider": "openai", "api_key_present": bool(self.settings.openai_api_key)},
+            metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "api_key_present": bool(self.settings.openai_api_key)},
         )
 
 
 def elapsed_ms(started: float) -> int:
     return max(0, round((perf_counter() - started) * 1000))
 
-
-def sanitize_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
-    safe = dict(metadata or {})
-    for key in ("prompt", "api_key", "openai_api_key", "OPENAI_API_KEY"):
-        safe.pop(key, None)
-    return safe
