@@ -11,6 +11,8 @@ from orchestrator.app.api.schemas.common import ApiMeta, ErrorResponse
 
 GenerationJobStatus = Literal[
     "queued",
+    "running",
+    "done",
     "briefing",
     "waiting_user_input",
     "planning",

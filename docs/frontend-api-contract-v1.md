@@ -2,9 +2,11 @@
 
 ## 1. Purpose
 
-This document defines backend API request and response contracts for frontend integration. It is not a frontend implementation guide. This milestone does not add Next.js `route.ts` files, React hooks, frontend API clients, or frontend mock data.
+This document defines backend API request and response contracts for frontend integration. It is not a frontend screen implementation guide. BFF route handlers and API client helpers may exist in `apps/web`, but screen-level frontend implementation, query hooks, and frontend mock data are out of scope for this contract.
 
-Reference Catalog and BrandKit FastAPI routes are implemented in v1.
+## 2. Current Scope
+
+Reference Catalog, BrandKit, and GenerationJob FastAPI routes are implemented in v1.
 
 Implemented routes:
 
@@ -15,8 +17,10 @@ Implemented routes:
 - `POST /api/v1/brand-kits`
 - `GET /api/v1/brand-kits/{brand_kit_id}`
 - `PATCH /api/v1/brand-kits/{brand_kit_id}`
+- `POST /api/v1/generation-jobs`
+- `GET /api/v1/generation-jobs/{job_id}`
 
-GenerationJob, Archive, Usage, and Settings routers are still out of scope. Persistence, object storage, background queues, and real image/model calls also remain out of scope.
+Archive, Usage, and Settings routers are still out of scope. Persistence, object storage, background queues, and real image/model calls also remain out of scope.
 
 ## 3. Common Response Format
 
@@ -160,7 +164,7 @@ Current limitations:
 
 ## 7. GenerationJob API Contract
 
-Generation jobs start in `queued_only` mode by default. This contract carries reference template selection, optional image paths, copy mode, user plan, status, progress, output path, and result payload. The API contract does not imply immediate image generation or external model calls.
+Generation jobs start in `queued_only` mode by default. This contract carries reference template selection, optional image paths, copy mode, user plan, status, progress, output path, and result payload. The API contract does not imply real image generation or external model calls.
 
 Contracts:
 - `GenerationJobCreateRequest`
@@ -168,6 +172,51 @@ Contracts:
 - `GenerationJobResponse`
 - `GenerationJobCreateResponse`
 - `GenerationJobGetResponse`
+
+### Generation Job Routes
+
+#### `POST /api/v1/generation-jobs`
+
+Purpose: create a generation job record that the frontend can poll.
+
+Request body: `GenerationJobCreateRequest`.
+
+Response schema: `GenerationJobCreateResponse`.
+
+Run mode policy:
+- `queued_only`: create a queued job only.
+- `mock_immediate`: run deterministic mock execution, write local mock artifacts, and return a completed job.
+- `graph_immediate`: currently degrades to `queued_only`; no graph execution happens.
+
+`mock_immediate` result:
+- `status: "done"`
+- `progress.progress_percent: 100`
+- `progress.current_stage: "completed"`
+- `output_path: "data/outputs/{job_id}/final_0.png"`
+- `result_payload` includes background, final, metadata, prompt, and validation artifact paths.
+
+#### `GET /api/v1/generation-jobs/{job_id}`
+
+Purpose: fetch a generation job for polling.
+
+Path params: `job_id`.
+
+Response schema: `GenerationJobGetResponse`.
+
+Error responses:
+- Missing job returns `generation_job_not_found`.
+- Missing selected reference template during create returns `reference_template_not_found`.
+- Invalid create payload returns `invalid_generation_job_request`.
+
+Current limitations:
+- GenerationJob storage is in-memory only.
+- Job state is not retained after server restart.
+- Worker and queue execution are not implemented.
+- `build_marketing_graph()` is not executed.
+- GPT-image-2, SD3.5, and FLUX are not called.
+- LLM/VLM/OCR calls are not made.
+- Output URL/static serving is not implemented.
+- `download_url` is `null`.
 
 ## 8. Archive Response Contract
 
@@ -196,7 +245,7 @@ Contracts:
 
 ## 11. Not Implemented Yet
 
-- GenerationJob, Archive, Usage, and Settings routers
+- Archive, Usage, and Settings routers
 - Database persistence
 - Redis, Celery, or queue execution
 - Object storage and signed URLs
