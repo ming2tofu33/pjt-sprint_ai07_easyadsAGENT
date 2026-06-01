@@ -16,6 +16,7 @@ import {
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildBrandKitHref } from "@/lib/brand-kit-navigation";
+import { brandKitMeta, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { myProfile } from "@/lib/mock-dashboard-data";
 import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
@@ -26,9 +27,11 @@ import styles from "./generate.module.css";
 export function MyPageStep() {
   const router = useRouter();
   const [sessionCreativeCount, setSessionCreativeCount] = useState(0);
+  const [brandKit, setBrandKit] = useState<StoredBrandKit | null>(null);
 
   useEffect(() => {
     setSessionCreativeCount(readGeneratedCreatives().length);
+    setBrandKit(readSavedBrandKit());
   }, []);
 
   return (
@@ -57,11 +60,11 @@ export function MyPageStep() {
         <ChevronRight size={18} aria-hidden="true" />
       </button>
 
-      <button className={styles.myBrandBanner} type="button" onClick={() => router.push(buildBrandKitHref("complete"))}>
+      <button className={styles.myBrandBanner} type="button" onClick={() => router.push(buildBrandKitHref(brandKit ? "complete" : "info"))}>
         <Store size={24} aria-hidden="true" />
         <strong>
-          브랜드 키트 연결 전
-          <small>현재는 입력 흐름만 확인할 수 있어요</small>
+          {brandKit ? "브랜드 키트 사용 중" : "브랜드 키트 연결 전"}
+          <small>{brandKit ? `${brandKit.businessName} · ${brandKitTone(brandKit)} · ${brandKitMeta(brandKit)}` : "현재는 입력 흐름만 확인할 수 있어요"}</small>
         </strong>
         <ChevronRight size={18} aria-hidden="true" />
       </button>

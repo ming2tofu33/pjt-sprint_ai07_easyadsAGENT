@@ -158,14 +158,28 @@ test("brand kit setup flow reaches completion", async ({ page }) => {
   await page.getByRole("button", { name: /브랜드 키트 관리/ }).click();
   await expect(page).toHaveURL(/\/brand\/kit\/info$/);
   await expect(page.getByText("가게 정보를 알려주세요")).toBeVisible();
+  await expect(page.getByRole("button", { name: /다음/ })).toBeDisabled();
 
+  await page.getByLabel("가게 이름").fill("연남 테스트 카페");
+  await page.getByRole("button", { name: "카페" }).click();
+  await page.getByLabel("지역 또는 상권").fill("연남동");
+  await page.getByLabel("SNS 계정").fill("@test_cafe");
   await page.getByRole("button", { name: /다음/ }).click();
   await expect(page).toHaveURL(/\/brand\/kit\/tone$/);
   await expect(page.getByText("우리 가게는 어떤 느낌인가요?")).toBeVisible();
 
+  await page.getByRole("button", { name: /따뜻한/ }).click();
+  await page.getByRole("button", { name: /예약은 DM 주세요/ }).click();
+  await page.getByRole("button", { name: /딸기라떼/ }).click();
   await page.getByRole("button", { name: /저장하기/ }).click();
   await expect(page).toHaveURL(/\/brand\/kit\/complete$/);
   await expect(page.getByText("브랜드 키트가 저장됐어요")).toBeVisible();
+  await expect(page.getByText("연남 테스트 카페")).toBeVisible();
+  await expect(page.getByText("카페 · 연남동 · @test_cafe")).toBeVisible();
+
+  await page.goto("/");
+  await expect(page.getByText("브랜드 키트가 연결되어 있어요")).toBeVisible();
+  await expect(page.getByText(/연남 테스트 카페/)).toBeVisible();
 
   await page.getByRole("button", { name: /광고 만들기/ }).click();
   await expect(page).toHaveURL(/\/studio$/);
@@ -456,10 +470,10 @@ test("dashboard surfaces are directly addressable", async ({ page }) => {
   await expect(page.getByText("우리 가게는 어떤 느낌인가요?")).toBeVisible();
 
   await page.goto("/brand/kit/complete");
-  await expect(page.getByText("브랜드 키트가 저장됐어요")).toBeVisible();
+  await expect(page.getByText("브랜드 키트가 아직 저장되지 않았어요")).toBeVisible();
 
   await page.goto("/notifications");
-  await expect(page.getByRole("heading", { name: "알림" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "알림", exact: true })).toBeVisible();
 
   await page.goto("/notifications/complete");
   await expect(page.getByRole("heading", { name: "광고 시안이 완성됐어요!" })).toBeVisible();

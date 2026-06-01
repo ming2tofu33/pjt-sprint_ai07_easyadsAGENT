@@ -1,6 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { BRAND_KIT_STORAGE_KEY } from "@/lib/brand-kit-storage";
 
 const navigationMock = vi.hoisted(() => ({
   push: vi.fn(),
@@ -341,6 +342,36 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("내 사진으로 만들기")).toBeTruthy();
     expect(screen.getByText("사진과 광고 방향을 함께 보내주세요.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "사진 선택하기" })).toBeTruthy();
+  });
+
+  it("shows a saved brand kit on the home and my page surfaces", async () => {
+    window.sessionStorage.setItem(
+      BRAND_KIT_STORAGE_KEY,
+      JSON.stringify({
+        businessName: "연남 테스트 카페",
+        businessType: "카페",
+        region: "연남동",
+        sns: "@test_cafe",
+        tones: ["따뜻한"],
+        colors: ["#FFD7C9"],
+        phrases: ["예약은 DM 주세요"],
+        products: ["라떼"],
+        status: "saved",
+        updatedAt: "2026-06-01T00:00:00.000Z"
+      })
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    const { rerender } = render(<ChatGenerateClient />);
+
+    await waitFor(() => expect(screen.getByText("브랜드 키트가 연결되어 있어요")).toBeTruthy());
+    expect(screen.getByText(/연남 테스트 카페/)).toBeTruthy();
+
+    rerender(<ChatGenerateClient initialSurface="my" />);
+
+    await waitFor(() => expect(screen.getByText("브랜드 키트 사용 중")).toBeTruthy());
+    expect(screen.getByText(/연남 테스트 카페/)).toBeTruthy();
   });
 
   it("renders dashboard surfaces from route props", async () => {

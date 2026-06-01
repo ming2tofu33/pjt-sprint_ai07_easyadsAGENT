@@ -13,6 +13,8 @@ import {
   Sparkles,
   User
 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { brandKitMeta, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
 import styles from "./generate.module.css";
 
 type HomeStartStepProps = {
@@ -34,6 +36,12 @@ export function HomeStartStep({
   onOpenBrandKit,
   onOpenNotifications
 }: HomeStartStepProps) {
+  const [brandKit, setBrandKit] = useState<StoredBrandKit | null>(null);
+
+  useEffect(() => {
+    setBrandKit(readSavedBrandKit());
+  }, []);
+
   return (
     <>
       <header className={styles.dashboardHeader}>
@@ -95,8 +103,8 @@ export function HomeStartStep({
           <Grid3X3 size={22} aria-hidden="true" />
         </span>
         <div>
-          <strong>브랜드 키트를 연결해보세요</strong>
-          <small>가게 정보와 톤을 저장하면 광고 요청에 함께 반영돼요</small>
+          <strong>{brandKit ? "브랜드 키트가 연결되어 있어요" : "브랜드 키트를 연결해보세요"}</strong>
+          <small>{brandKit ? `${brandKit.businessName} · ${brandKitTone(brandKit)} · ${brandKitMeta(brandKit)}` : "가게 정보와 톤을 저장하면 광고 요청에 함께 반영돼요"}</small>
         </div>
         <ChevronRight size={18} aria-hidden="true" />
       </button>
