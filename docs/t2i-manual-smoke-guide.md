@@ -56,3 +56,14 @@ If env flags, dependency/model readiness, token, model path, or GPU readiness ar
 ## Report Safety
 
 Reports include credential presence booleans, prompt hash/preview, job id, latency, safe result payload fields, output paths, and error summaries. Reports must not include raw API keys, HF tokens, base64 image data, or image bytes.
+
+## GPT-image-2 Quality Batch
+
+Use `scripts/run_gpt_image2_quality_batch.py` when the goal is manual advertising quality review rather than a simple engine smoke check.
+
+```bash
+python scripts/run_gpt_image2_quality_batch.py --dry-run
+python scripts/run_gpt_image2_quality_batch.py --actual --max-cases 3 --confirm-cost
+```
+
+Actual quality batch requires `EASYADS_ENABLE_EXTERNAL_T2I=true`, `EASYADS_ENABLE_GPT_IMAGE_2=true`, `EASYADS_QUALITY_BATCH_CONFIRM=true`, and an existing `OPENAI_API_KEY` in the shell. The runner enforces one image per case and a hard cap of six cases. Reports are written to `data/logs/`; generated images are written to `data/outputs/`. Neither directory should be committed.

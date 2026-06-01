@@ -101,3 +101,7 @@ Generated reports under `data/logs/` and generated artifacts under `data/outputs
 ## Reference Template Flow
 
 `selectedReferenceTemplateId` is accepted by frontend/BFF camelCase payloads and normalized to `selected_reference_template_id` inside Orchestrator. Legacy chat/photo starts put the id into graph state before `ReferenceTemplateResolveNode`; GenerationJob starts preserve it in response and metadata. `ImagePromptPlanner` stores selected template metadata and visual template id in `image_prompt_spec.metadata`, and `T2IRequestBuilder` carries `selected_reference_template_id` plus `reference_template_selection` into `t2i_request.metadata`.
+
+## GPT-image-2 Quality Batch v1
+
+`scripts/run_gpt_image2_quality_batch.py` runs a guarded GenerationJob API batch for GPT-image-2 actual quality review. Dry-run mode records planned cafe, restaurant, and beauty cases without external calls. Actual mode is blocked unless explicit T2I/GPT-image-2 env flags, `OPENAI_API_KEY`, `EASYADS_QUALITY_BATCH_CONFIRM=true`, and `--confirm-cost` are all present. The runner enforces one image per case and a maximum of six cases, writes safe JSON/Markdown reports under `data/logs/`, and leaves generated images under `data/outputs/` for manual review. Reports must not include raw API keys, base64 image data, or image bytes.

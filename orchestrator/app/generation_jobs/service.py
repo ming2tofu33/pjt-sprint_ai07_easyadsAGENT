@@ -35,6 +35,18 @@ def _preview_user_input(value: str, max_length: int = 120) -> str:
     return f"{normalized[: max_length - 3]}..."
 
 
+def _safe_request_metadata(metadata: dict | None) -> dict:
+    if not metadata:
+        return {}
+    blocked = {"api_key", "openai_api_key", "hf_token", "huggingface_token", "token"}
+    reserved = {"requested_run_mode", "effective_run_mode", "execution_mode", "user_input_preview"}
+    return {
+        key: value
+        for key, value in metadata.items()
+        if key.lower() not in blocked and key not in reserved
+    }
+
+
 def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
     if run_mode == "mock_immediate":
         return "mock_immediate", "pending_deterministic_mock"
@@ -80,6 +92,7 @@ def create_generation_job(request: GenerationJobCreateRequest) -> GenerationJobR
             "user_plan": request.user_plan,
             "selected_reference_template_id": request.selected_reference_template_id,
             "ad_format": request.ad_format,
+            **_safe_request_metadata(request.metadata),
         },
     )
     _GENERATION_JOBS[job.job_id] = job
