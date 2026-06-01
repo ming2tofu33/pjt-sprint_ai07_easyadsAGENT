@@ -126,7 +126,11 @@ test("reference style flow reaches style-based start", async ({ page }) => {
   await page.getByRole("button", { name: "이 스타일로 내 광고 만들기" }).click();
   await expect(page).toHaveURL(/\/reference\/ref-strawberry-poster\/start$/);
   await expect(page.getByText("이 스타일로 시작하기")).toBeVisible();
+  await expect(page.getByLabel("가게 이름")).toHaveValue("");
+  await expect(page.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
 
+  await page.getByRole("button", { name: "카페" }).click();
+  await page.getByLabel("가게 이름").fill("연남 테스트 카페");
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page).toHaveURL(/\/generate\/chat$/);
   await expect(page.getByText("대화로 찰떡 만들기")).toBeVisible();
@@ -170,7 +174,7 @@ test("brand kit setup flow reaches completion", async ({ page }) => {
 
   await page.getByRole("button", { name: /따뜻한/ }).click();
   await page.getByRole("button", { name: /예약은 DM 주세요/ }).click();
-  await page.getByRole("button", { name: /딸기라떼/ }).click();
+  await page.getByRole("button", { name: /대표 메뉴/ }).click();
   await page.getByRole("button", { name: /저장하기/ }).click();
   await expect(page).toHaveURL(/\/brand\/kit\/complete$/);
   await expect(page.getByText("브랜드 키트가 저장됐어요")).toBeVisible();

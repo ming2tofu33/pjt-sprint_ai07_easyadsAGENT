@@ -50,7 +50,7 @@ const businessTypes = [
 
 const toneOptions = ["감성적인", "고급스러운", "귀여운", "깔끔한", "트렌디한", "따뜻한"];
 const phraseOptions = ["예약은 DM 주세요", "신메뉴 출시", "매일 한정 수량", "오늘만 할인", "감사합니다"];
-const productOptions = ["딸기라떼", "바닐라라떼", "크림라떼", "아메리카노"];
+const productOptions = ["대표 메뉴", "시그니처 상품", "예약 서비스", "이벤트 혜택"];
 const colorOptions = ["#FFD7C9", "#FFE4B5", "#BCEBE2", "#C8B8FF", "#111111"];
 
 export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
@@ -118,7 +118,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
 
         <label className={styles.brandInputField}>
           <span>가게 이름 *</span>
-          <input aria-label="가게 이름" value={businessName} placeholder="예) 도민 카페" onChange={(event) => setBusinessName(event.target.value)} />
+          <input aria-label="가게 이름" value={businessName} placeholder="가게 이름을 입력하세요" onChange={(event) => setBusinessName(event.target.value)} />
         </label>
 
         <h2 className={styles.sectionTitle}>업종 *</h2>
@@ -138,7 +138,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
 
         <label className={styles.brandInputField}>
           <span>SNS 계정</span>
-          <input aria-label="SNS 계정" value={sns} placeholder="예) @domin_cafe" onChange={(event) => setSns(event.target.value)} />
+          <input aria-label="SNS 계정" value={sns} placeholder="SNS 계정을 입력하세요" onChange={(event) => setSns(event.target.value)} />
         </label>
 
         <button className={styles.logoUploadCard} type="button">
