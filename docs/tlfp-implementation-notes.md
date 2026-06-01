@@ -91,3 +91,9 @@
 - `render_text_in_image=false` is preserved through prompt planning, T2I request metadata, validation, and result payloads.
 - `no_copy` means post-processing text overlay is skipped. It does not permit text inside the generated image.
 - Generated files under `data/outputs/` are runtime artifacts and must not be committed.
+
+## Manual T2I Smoke Reports
+
+`scripts/smoke_generation_job_t2i.py` creates JSON and Markdown reports under `data/logs/` for guarded GPT-image-2 and SD3.5 lanes. Dry-run mode never calls external APIs or loads local models. Non-dry-run smoke is blocked unless the explicit engine flags and credentials/model readiness are present. Reports store only boolean credential presence, prompt hash/preview, job id, safe result payload fields, and error summaries; raw API keys, HF tokens, base64 image data, and image bytes must not be written.
+
+Generated reports under `data/logs/` and generated artifacts under `data/outputs/` are runtime files and must not be committed.
