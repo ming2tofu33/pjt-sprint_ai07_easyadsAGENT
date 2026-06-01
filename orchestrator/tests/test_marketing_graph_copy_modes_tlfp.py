@@ -34,6 +34,8 @@ def test_no_copy_mode_runs_without_marketing_copy_to_mock():
     assert result["copy_spec"]["copy_mode"] == "no_copy"
     assert result["text_layout_spec"]["template"] == "no_text"
     assert result["t2i_request"]["metadata"]["text_overlay_pending"] is False
+    assert result["t2i_request"]["metadata"]["render_text_in_image"] is False
+    assert result["t2i_request"]["metadata"]["must_not_include_text"] is True
     assert result["t2i_result"]["engine"] == "mock"
 
 

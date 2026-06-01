@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.llm.metadata_builders import build_prompt_renderer_metadata
 from orchestrator.app.llm.prompt_renderer import render_prompt_for_engine, render_prompt_spec_for_engine
 from orchestrator.app.schemas.llm_marketing import ImagePrompt
 
@@ -19,14 +20,7 @@ def prompt_renderer_node(state: MarketingState) -> dict[str, Any]:
     engine = state.get("engine") if state.get("engine") in SUPPORTED_RENDER_ENGINES else "mock"
     # Local engines are still placeholders; only the API image lane is wired for real generation.
     effective_engine = "gpt_image_2" if engine == "gpt_image_2" else "mock"
-    metadata = {
-        "requested_engine": engine,
-        "ad_format": ad_format_spec.get("ad_format"),
-        "platform": ad_format_spec.get("platform"),
-        "aspect_ratio": ad_format_spec.get("aspect_ratio"),
-        "copy_space": layout_spec.get("copy_space"),
-        "render_text_in_image": False,
-    }
+    metadata = build_prompt_renderer_metadata(state, requested_engine=engine, effective_engine=effective_engine)
     if image_prompt_spec:
         output = render_prompt_spec_for_engine(
             image_prompt_spec=image_prompt_spec,

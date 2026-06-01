@@ -214,9 +214,7 @@ def build_copy_spec_parser_metadata(state: dict[str, Any] | None) -> dict[str, A
 
 def build_image_prompt_planner_metadata(state: dict[str, Any] | None) -> dict[str, Any]:
     source = state or {}
-    text_layout = _dict(source.get("text_layout_spec"))
-    image_prompt = _dict(source.get("image_prompt_spec"))
-    reserved_text_areas = text_layout.get("reserved_text_areas") or image_prompt.get("reserved_text_areas") or []
+    reserved_text_areas = _reserved_text_areas_from_state(source)
     return build_metadata_payload(
         source,
         node_name="image_prompt_planner",
@@ -244,6 +242,103 @@ def build_image_prompt_planner_metadata(state: dict[str, Any] | None) -> dict[st
             "reserved_text_areas": reserved_text_areas,
         },
     )
+
+
+def build_prompt_renderer_metadata(
+    state: dict[str, Any] | None,
+    requested_engine: str | None = None,
+    effective_engine: str | None = None,
+) -> dict[str, Any]:
+    source = state or {}
+    ad_format = _dict(source.get("ad_format_spec"))
+    layout = _dict(source.get("layout_spec"))
+    return sanitize_metadata(
+        {
+            "job_id": source.get("job_id"),
+            "thread_id": source.get("thread_id"),
+            "requested_engine": requested_engine or source.get("engine"),
+            "effective_engine": effective_engine or requested_engine or source.get("engine"),
+            "render_profile": source.get("render_profile"),
+            "ad_format": ad_format.get("ad_format"),
+            "platform": ad_format.get("platform"),
+            "aspect_ratio": ad_format.get("aspect_ratio"),
+            "copy_space": layout.get("copy_space"),
+            "reserved_text_areas": _reserved_text_areas_from_state(source),
+            "must_not_include_text": True,
+            "negative_prompt_required_terms": list(NEGATIVE_TEXT_TERMS),
+            "render_text_in_image": False,
+            "text_overlay_pending": bool(source.get("text_overlay_pending", True)),
+            "selected_reference_template_id": source.get("selected_reference_template_id"),
+            "source_node": "prompt_renderer",
+        }
+    )
+
+
+def build_t2i_request_metadata(
+    state: dict[str, Any] | None,
+    prompt_render_output: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    source = state or {}
+    prompt_render = _dict(prompt_render_output or source.get("prompt_render_output"))
+    context = _dict(source.get("context"))
+    current_brief = _dict(source.get("current_brief"))
+    reference_style_profile = source.get("reference_style_profile")
+    product_preserve_spec = source.get("product_preserve_spec")
+    selected_reference_template = source.get("selected_reference_template")
+    reference_template_selection = source.get("reference_template_selection")
+    template_style_hint = _dict(_dict(reference_template_selection).get("style_profile_hint"))
+    vision_pipeline_enabled = bool(
+        source.get("source_image_path")
+        or source.get("reference_image_path")
+        or source.get("vision_pipeline_results")
+        or reference_style_profile
+        or product_preserve_spec
+        or selected_reference_template
+    )
+    input_image_paths = [path for path in [source.get("source_image_path")] if path]
+    metadata = {
+        "job_id": source.get("job_id"),
+        "thread_id": source.get("thread_id"),
+        "entry_mode": source.get("entry_mode"),
+        "generation_route": source.get("generation_route"),
+        "copy_generation_mode": source.get("copy_generation_mode"),
+        "ad_format_spec": source.get("ad_format_spec"),
+        "layout_spec": source.get("layout_spec"),
+        "copy_spec": source.get("copy_spec"),
+        "text_layout_spec": source.get("text_layout_spec"),
+        "text_style_spec": source.get("text_style_spec"),
+        "image_prompt_spec": source.get("image_prompt_spec"),
+        "reserved_text_areas": _reserved_text_areas_from_state(source, prompt_render),
+        "business_type": context.get("business_type"),
+        "item_or_service": context.get("item_or_service"),
+        "engine": source.get("engine"),
+        "requested_engine": prompt_render.get("engine") or source.get("engine"),
+        "render_profile": source.get("render_profile"),
+        "must_not_include_text": True,
+        "negative_prompt_required_terms": list(NEGATIVE_TEXT_TERMS),
+        "render_text_in_image": False,
+        "text_overlay_pending": bool(source.get("text_overlay_pending", True)),
+        "tlfp_enabled": bool(source.get("image_prompt_spec")),
+        "vision_pipeline_enabled": vision_pipeline_enabled,
+        "source_image_path": source.get("source_image_path"),
+        "reference_image_path": source.get("reference_image_path"),
+        "reference_style_profile": reference_style_profile,
+        "product_preserve_spec": product_preserve_spec,
+        "selected_reference_template_id": source.get("selected_reference_template_id"),
+        "selected_reference_template": selected_reference_template,
+        "reference_template_selection": reference_template_selection,
+        "selected_channel_id": source.get("selected_channel_id") or current_brief.get("selected_channel_id"),
+        "selected_tone": source.get("selected_tone") or current_brief.get("selected_tone"),
+        "custom_direction": source.get("custom_direction") or current_brief.get("custom_direction"),
+        "reference_template_style_keywords": template_style_hint.get("style_keywords"),
+        "reference_template_color_palette": template_style_hint.get("color_palette"),
+        "reference_template_layout_hint": template_style_hint.get("layout_hint"),
+        "reference_template_typography_hint": template_style_hint.get("typography_hint"),
+        "source_node": "t2i_request_builder",
+    }
+    if input_image_paths:
+        metadata["input_image_paths"] = input_image_paths
+    return sanitize_metadata(metadata)
 
 
 def build_background_validation_metadata(state: dict[str, Any] | None) -> dict[str, Any]:
@@ -375,3 +470,18 @@ def _schema_name(output_schema: Any) -> str:
 def _dict(value: Any) -> dict[str, Any]:
     sanitized = sanitize_metadata(value or {})
     return sanitized if isinstance(sanitized, dict) else {}
+
+
+def _reserved_text_areas_from_state(
+    source: dict[str, Any],
+    prompt_render_output: dict[str, Any] | None = None,
+) -> list[Any]:
+    prompt_render_metadata = _dict(_dict(prompt_render_output).get("metadata"))
+    text_layout = _dict(source.get("text_layout_spec"))
+    image_prompt = _dict(source.get("image_prompt_spec"))
+    return (
+        text_layout.get("reserved_text_areas")
+        or prompt_render_metadata.get("reserved_text_areas")
+        or image_prompt.get("reserved_text_areas")
+        or []
+    )
