@@ -1,3 +1,5 @@
+import type { GenerationJob } from "@/lib/api-client";
+
 export type ChatFlowStep = 1 | 2 | 3 | 4;
 
 export type EntryMode = "chat_start";
@@ -86,6 +88,7 @@ export type ChatFlowState = {
   selectedChannelId: string;
   customDirection: string;
   brief: ChatBrief | null;
+  generationJob?: GenerationJob | null;
   currentQuestion: OptionQuestion | null;
   conversationMessages: ChatTranscriptMessage[];
   isLoading: boolean;
@@ -122,4 +125,7 @@ export type ChatFlowAction =
   | { type: "setCustomDirection"; value: string }
   | { type: "backendBriefSucceeded"; brief: ChatBrief }
   | { type: "continueToBrief" }
-  | { type: "back" };
+  | { type: "back" }
+  | { type: "generationJobRequested" }
+  | { type: "generationJobUpdated"; generationJob: GenerationJob }
+  | { type: "generationJobFailed"; message: string };

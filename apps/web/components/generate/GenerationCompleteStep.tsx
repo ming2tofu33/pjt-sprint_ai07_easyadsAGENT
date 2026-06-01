@@ -2,7 +2,7 @@
 
 import { CheckCircle2, Download, Home, ImageOff, Info, RotateCcw, Share2, Sparkles } from "lucide-react";
 import type { ChatBrief, ChatFlowState } from "@/types/marketing";
-import { buildGeneratedAssetUrl } from "@/lib/generated-assets";
+import { buildGenerationResultCopyText, isDownloadEnabled, resolveDownloadUrl, resolvePreviewImageUrl } from "@/lib/generation-result-utils";
 import type { CreativeTone } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { StepHeader } from "./StepHeader";
@@ -76,9 +76,20 @@ export function GenerationCompleteStep({
   onEditCreative,
   onSaveSelected
 }: GenerationCompleteStepProps) {
+  function isPublicImageUrl(value: string | null | undefined) {
+    return Boolean(value && (/^https?:\/\//.test(value) || value.startsWith("/")));
+  }
+
   const brief = state.brief;
-  const generatedImageUrl = buildGeneratedAssetUrl(brief?.finalImagePath);
-  const hasBrief = Boolean(brief);
+  const generatedJob = state.generationJob ?? null;
+
+  const generatedImageUrl =
+    resolvePreviewImageUrl(generatedJob) ??
+    (isPublicImageUrl(brief?.finalImagePath) ? brief?.finalImagePath ?? null : null);
+  const downloadUrl = resolveDownloadUrl(generatedJob);
+  const canDownload = isDownloadEnabled(generatedJob);
+  const debugFinalPath = generatedJob?.result_payload?.final_image_path ?? generatedJob?.output_path ?? brief?.finalImagePath ?? null;
+  const hasResultContext = Boolean(brief || generatedJob);
   const resultChips = brief
     ? [
         state.inferredContext.businessType,
@@ -89,24 +100,35 @@ export function GenerationCompleteStep({
       ].map(cleanLabel).filter(Boolean)
     : [];
   const editActions = brief ? buildEditActions(brief) : [];
-  const generatedCreative = brief
+  const resultTitle =
+    cleanLabel(brief?.copy) ||
+    cleanLabel(brief?.item) ||
+    generatedJob?.job_id ||
+    "생성 결과";
+
+  const resultSubtitle = brief
+    ? [cleanLabel(brief.item), cleanLabel(brief.channel)].filter(Boolean).join(" · ")
+    : generatedJob
+      ? `Status: ${generatedJob.status}`
+      : "";
+  const generatedCreative = brief || generatedJob
     ? {
-        id: state.jobId ? `generated-${state.jobId}` : "generated-current",
-        title: cleanLabel(brief.copy) || cleanLabel(brief.item) || "생성 결과",
-        subtitle: [cleanLabel(brief.item), cleanLabel(brief.channel)].filter(Boolean).join(" · "),
-        format: brief.channel.match(/\(([^)]+)\)/)?.[1] ?? cleanLabel(brief.channel),
+        id: state.jobId ? `generated-${state.jobId}` : generatedJob?.job_id ? `generated-${generatedJob.job_id}` : "generated-current",
+        title: resultTitle,
+        subtitle: resultSubtitle,
+        format: brief?.channel.match(/\(([^)]+)\)/)?.[1] ?? cleanLabel(brief?.channel) ?? "Generated",
         imageUrl: generatedImageUrl,
-        tone: creativeToneFromBrief(brief),
-        badge: generatedImageUrl ? "실제 생성" : "브리프 기준",
+        tone: brief ? creativeToneFromBrief(brief) : "cream",
+        badge: generatedImageUrl ? "실제 생성" : "결과 대기",
         status: "saved" as const,
-        channel: channelName(brief.channel),
-        fileName: "final_composite.png",
+        channel: brief ? channelName(brief.channel) : "Generated",
+        fileName: "final_0.png",
         fileType: "PNG" as const,
         storage: "세션 보관함",
         savedAt: "방금 생성",
-        tags: [state.inferredContext.businessType, brief.item, brief.purpose, channelName(brief.channel)]
-          .map(cleanLabel)
-          .filter(Boolean)
+        tags: brief
+          ? [state.inferredContext.businessType, brief.item, brief.purpose, channelName(brief.channel)].map(cleanLabel).filter(Boolean)
+          : [generatedJob?.status ?? "unknown"].filter(Boolean)
       }
     : null;
 
@@ -115,12 +137,12 @@ export function GenerationCompleteStep({
       <StepHeader title="GENERATED RESULTS" canGoBack onBack={onGoHome} />
 
       <header className={styles.resultsHeader}>
-        <h1>{hasBrief ? "찰떡 광고 시안이 완성됐어요" : "생성된 시안이 아직 없어요"}</h1>
+        <h1>{hasResultContext ? "찰떡 광고 시안이 완성됐어요" : "생성된 시안이 아직 없어요"}</h1>
         <p>
           {generatedImageUrl
             ? "실제 생성된 결과만 먼저 보여드려요."
-            : hasBrief
-              ? "이미지 생성이 완료되지 않아 백엔드 브리프 기준으로만 보여드려요."
+            : hasResultContext
+              ? "생성 결과는 준비되었지만 public preview URL은 아직 연결되지 않았어요."
               : "대화로 광고를 생성하면 실제 결과와 선택한 문구가 여기에 표시됩니다."}
         </p>
         {resultChips.length > 0 ? (
@@ -152,10 +174,14 @@ export function GenerationCompleteStep({
         {generatedImageUrl ? <CheckCircle2 size={18} aria-hidden="true" /> : <Info size={18} aria-hidden="true" />}
         {generatedImageUrl
           ? "이 결과는 이번 브라우저 세션의 보관함에 자동 저장됐어요."
-          : hasBrief
-            ? "아직 실제 생성 이미지가 없어 브리프 정보만 표시하고 있어요."
+          : hasResultContext
+            ? "생성 결과는 준비되었지만 public preview URL은 아직 연결되지 않았어요."
             : "아직 생성된 결과가 없어 보관함에 저장된 항목도 없어요."}
       </p>
+
+      {!generatedImageUrl && debugFinalPath ? (
+        <p className={styles.savedNotice}>생성 결과 경로는 준비되었습니다. Public download URL은 아직 연결되지 않았습니다: {debugFinalPath}</p>
+      ) : null}
 
       {editActions.length > 0 ? (
         <div className={styles.editActionGrid} aria-label="빠른 수정 요청">
@@ -195,6 +221,19 @@ export function GenerationCompleteStep({
               <Download size={16} aria-hidden="true" />
               세션 보관함에서 보기
             </button>
+          </>
+        ) : null}
+        {generatedCreative ? (
+          <>
+            <button className={styles.textButton} disabled={!canDownload} type="button" title={canDownload ? undefined : "이미지는 생성되었지만 public download URL은 아직 연결되지 않았습니다."} onClick={() => downloadUrl && window.open(downloadUrl, "_blank", "noopener,noreferrer")}>
+              <Download size={16} aria-hidden="true" />
+              다운로드
+            </button>
+            {generatedJob ? (
+              <button className={styles.textButton} type="button" onClick={() => navigator.clipboard?.writeText(buildGenerationResultCopyText(generatedJob))}>
+                결과 정보 복사
+              </button>
+            ) : null}
           </>
         ) : null}
       </div>

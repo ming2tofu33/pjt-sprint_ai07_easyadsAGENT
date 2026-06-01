@@ -64,6 +64,7 @@ export function createInitialChatFlowState(): ChatFlowState {
     selectedChannelId: "instagram-feed",
     customDirection: "",
     brief: null,
+    generationJob: null,
     currentQuestion: null,
     conversationMessages: [],
     isLoading: false,
@@ -199,6 +200,27 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       };
     default:
       return state;
+    case "generationJobRequested":
+      return {
+        ...state,
+        isLoading: true,
+        errorMessage: null
+      };
+
+    case "generationJobUpdated":
+      return {
+        ...state,
+        generationJob: action.generationJob,
+        isLoading: false,
+        errorMessage: null
+      };
+
+    case "generationJobFailed":
+      return {
+        ...state,
+        isLoading: false,
+        errorMessage: action.message
+      };
   }
 }
 

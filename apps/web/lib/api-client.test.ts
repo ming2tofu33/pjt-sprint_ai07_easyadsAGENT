@@ -125,14 +125,31 @@ describe("api-client backend contract routes", () => {
   });
 
   it("calls generation job endpoints through the BFF", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse({ success: true }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed" },
+          result_payload: {
+            schema_version: "result_artifact_v1",
+            final_image_path: "data/outputs/job_1/final_0.png",
+            download_url: null,
+            final_image_url: null
+          }
+        }
+      })
+    );
     vi.stubGlobal("fetch", fetchMock);
 
-    await createGenerationJob({ user_input: "Create an ad" });
-    await getGenerationJob("job_1");
+    const created = await createGenerationJob({ user_input: "Create an ad" });
+    const fetched = await getGenerationJob("job_1");
 
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/generation-jobs");
     expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "POST" }));
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/generation-jobs/job_1");
+    expect(created.job.result_payload?.schema_version).toBe("result_artifact_v1");
+    expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
   });
 });

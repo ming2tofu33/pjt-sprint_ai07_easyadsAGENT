@@ -150,6 +150,54 @@ export type ReferenceQueryParams = Record<string, string | number | boolean | st
 export type BrandKitPayload = Record<string, unknown>;
 export type GenerationJobPayload = Record<string, unknown>;
 
+export type GenerationJobStatus = "queued" | "running" | "done" | "failed" | string;
+
+export interface GenerationProgress {
+  progress_percent: number;
+  current_stage: string;
+  message?: string | null;
+}
+
+export interface ResultArtifactPayload {
+  schema_version?: string;
+  job_id?: string;
+  output_dir?: string | null;
+  background_image_path?: string | null;
+  final_image_path?: string | null;
+  metadata_path?: string | null;
+  prompt_path?: string | null;
+  validation_path?: string | null;
+  copy_path?: string | null;
+  layout_path?: string | null;
+  render_result_path?: string | null;
+  download_path?: string | null;
+  download_url?: string | null;
+  final_image_url?: string | null;
+  prompt_summary?: Record<string, unknown>;
+  validation_summary?: Record<string, unknown>;
+  copy_summary?: Record<string, unknown>;
+  layout_summary?: Record<string, unknown>;
+  has_text_overlay?: boolean;
+  engine?: string;
+  render_mode?: string;
+}
+
+export interface GenerationJob {
+  job_id: string;
+  thread_id?: string | null;
+  status: GenerationJobStatus;
+  progress: GenerationProgress;
+  output_path?: string | null;
+  result_payload?: ResultArtifactPayload | null;
+  error?: unknown;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GenerationJobResponse {
+  success: true;
+  job: GenerationJob;
+}
+
 export function fetchReferences(params?: ReferenceQueryParams): Promise<unknown> {
   return getJson("/api/references", params);
 }
@@ -178,10 +226,10 @@ export function updateBrandKit(brandKitId: string, payload: BrandKitPayload): Pr
   return patchJson(`/api/brand-kits/${encodeURIComponent(brandKitId)}`, payload);
 }
 
-export function createGenerationJob(payload: GenerationJobPayload): Promise<unknown> {
-  return postJson("/api/generation-jobs", payload);
+export function createGenerationJob(payload: GenerationJobPayload): Promise<GenerationJobResponse> {
+  return postJson<GenerationJobResponse>("/api/generation-jobs", payload);
 }
 
-export function getGenerationJob(jobId: string): Promise<unknown> {
-  return getJson(`/api/generation-jobs/${encodeURIComponent(jobId)}`);
+export function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
+  return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`);
 }
