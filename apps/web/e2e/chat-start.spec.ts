@@ -240,24 +240,85 @@ test("chat start has visible routes back to app navigation", async ({ page }) =>
 });
 
 test("photo upload flow reaches brief and generation", async ({ page }) => {
+  await page.route("**/api/generate/photo/upload", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        sourceImagePath: "data/uploads/e2e-photo.png",
+        fileName: "menu.png",
+        mimeType: "image/png",
+        sizeBytes: 67
+      })
+    });
+  });
+  await page.route("**/api/generate/photo/start", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        type: "copy_candidates",
+        jobId: "photo_e2e",
+        threadId: "photo_e2e_thread",
+        status: "generating_copy_candidates",
+        context: {
+          businessType: "카페",
+          itemOrService: "딸기라떼",
+          promotionGoal: "신메뉴 출시"
+        },
+        copyCandidates: [{ id: "copy_photo_1", headline: "사진 속 메뉴를 오늘의 신메뉴로" }],
+        recommendedCopyId: "copy_photo_1"
+      })
+    });
+  });
+  await page.route("**/api/generate/chat/brief", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        jobId: "photo_e2e",
+        threadId: "photo_e2e_thread",
+        status: "done",
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: "사진 속 메뉴를 오늘의 신메뉴로",
+          tone: "감성적인 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "사진 속 상품이 잘 보이도록 깔끔한 배경과 문구 여백을 구성해요.",
+          finalImagePath: null
+        }
+      })
+    });
+  });
   await page.goto("/");
 
   await page.getByRole("button", { name: /내 사진으로 만들기/ }).click();
   await expect(page).toHaveURL(/\/generate\/photo$/);
-  await expect(page.getByText("사진 한 장으로 광고를 시작해보세요.")).toBeVisible();
+  await expect(page.getByText("사진과 광고 방향을 함께 보내주세요.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "사진 선택하기" })).toBeVisible();
 
-  await page.getByRole("button", { name: "사진 분석 시작" }).click();
-  await expect(page.getByText("AI 분석 결과")).toBeVisible();
+  await page.getByLabel("광고 사진 선택").setInputFiles({
+    name: "menu.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64")
+  });
+  await expect(page.getByRole("button", { name: "다른 사진 선택" })).toBeVisible();
+  await page.getByLabel("사진 광고 요청 입력").fill("이 사진으로 신메뉴 광고 만들어줘");
+  await page.getByRole("button", { name: /사진 기반 생성 시작/ }).click();
 
-  await page.getByRole("button", { name: "문구와 분위기 선택하기" }).click();
-  await expect(page.getByText("추천 문구")).toBeVisible();
-
+  await expect(page).toHaveURL(/\/generate\/chat$/);
+  await expect(page.getByText("AI가 이렇게 이해했어요")).toBeVisible();
+  await expect(page.getByText("딸기라떼")).toBeVisible();
+  await page.getByRole("button", { name: "문구 고르기" }).click();
+  await expect(page.getByText("사진 속 메뉴를 오늘의 신메뉴로")).toBeVisible();
   await page.getByRole("button", { name: "브리프 확인하기" }).click();
   await expect(page.getByText("AI가 브리프를 정리했어요")).toBeVisible();
 
+  await page.reload();
+  await expect(page.getByText("AI가 브리프를 정리했어요")).toBeVisible();
+  await expect(page.getByText("대화로 찰떡 만들기")).not.toBeVisible();
+
   await page.getByRole("button", { name: /찰떡 광고 생성하기/ }).click();
   await expect(page).toHaveURL(/\/generate\/chat\/generating$/);
-  await expect(page.getByText("찰떡 광고를 만들고 있어요")).toBeVisible();
+  await expect(page.getByText("생성 결과를 준비하고 있어요")).toBeVisible();
 });
 
 test("exception state screens guide recovery actions", async ({ page }) => {
@@ -277,7 +338,7 @@ test("exception state screens guide recovery actions", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "사진을 업로드하지 못했어요" })).toBeVisible();
   await page.getByRole("button", { name: /다시 업로드하기/ }).click();
   await expect(page).toHaveURL(/\/generate\/photo$/);
-  await expect(page.getByText("사진으로 찰떡 만들기")).toBeVisible();
+  await expect(page.getByText("사진과 광고 방향을 함께 보내주세요.")).toBeVisible();
 
   await page.goto("/generate/chat/failed");
   await expect(page.getByRole("heading", { name: "광고 생성에 실패했어요" })).toBeVisible();
@@ -368,7 +429,7 @@ test("dashboard surfaces are directly addressable", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "알림 설정" })).toBeVisible();
 
   await page.goto("/generate/photo");
-  await expect(page.getByText("사진으로 찰떡 만들기")).toBeVisible();
+  await expect(page.getByText("사진과 광고 방향을 함께 보내주세요.")).toBeVisible();
 
   await page.goto("/generate/photo/upload-failed");
   await expect(page.getByRole("heading", { name: "사진을 업로드하지 못했어요" })).toBeVisible();

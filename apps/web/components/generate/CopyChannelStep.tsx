@@ -24,6 +24,11 @@ export function CopyChannelStep({
   onContinue,
   onBack
 }: CopyChannelStepProps) {
+  const hasBackendSession = Boolean(state.jobId && state.threadId);
+  const hasBackendCopyCandidates = state.copyCandidateSource === "backend";
+  const cannotContinue = state.isLoading || !hasBackendSession || !hasBackendCopyCandidates;
+  const copySourceLabel = hasBackendCopyCandidates ? "백엔드 생성" : "샘플 문구";
+
   return (
     <>
       <StepHeader title="문구와 채널을 골라주세요" canGoBack onBack={onBack} />
@@ -33,7 +38,15 @@ export function CopyChannelStep({
         <p className={styles.bubble}>분위기까지 좋습니다! 이제 어울리는 문구와 사용할 채널을 선택해볼까요?</p>
       </div>
 
-      <h2 className={styles.sectionTitle}>추천 문구</h2>
+      <div className={styles.copySectionHeader}>
+        <h2 className={styles.sectionTitle}>{hasBackendCopyCandidates ? "AI 추천 문구" : "샘플 문구"}</h2>
+        <span>{copySourceLabel}</span>
+      </div>
+      <p className={styles.copySourceNote}>
+        {hasBackendCopyCandidates
+          ? "백엔드가 이번 요청을 바탕으로 생성한 문구 후보예요."
+          : "백엔드 문구 후보를 아직 받지 못해 샘플을 표시하고 있어요."}
+      </p>
       <div className={styles.selectList}>
         {state.copyCandidates.map((copy, index) => {
           const selected = state.selectedCopyId === copy.id;
@@ -46,7 +59,10 @@ export function CopyChannelStep({
               onClick={() => onSelectCopy(copy.id)}
             >
               <span className={styles.copyNumber}>{index + 1}</span>
-              <span>{copy.headline}</span>
+              <span className={styles.copyContent}>
+                <span>{copy.headline}</span>
+                <small>{copySourceLabel}</small>
+              </span>
               {selected ? <Check size={19} aria-hidden="true" /> : <span />}
             </button>
           );
@@ -86,6 +102,13 @@ export function CopyChannelStep({
       </label>
 
       <div className={styles.stepFooter}>
+        {state.errorMessage ? <p className={styles.helperText}>{state.errorMessage}</p> : null}
+        {!state.errorMessage && !hasBackendSession ? (
+          <p className={styles.helperText}>백엔드 세션을 먼저 받아야 실제 이미지 생성을 요청할 수 있어요.</p>
+        ) : null}
+        {!state.errorMessage && hasBackendSession && !hasBackendCopyCandidates ? (
+          <p className={styles.helperText}>샘플 문구로는 실제 이미지 생성을 진행하지 않아요. 다시 요청해 백엔드 문구를 받아주세요.</p>
+        ) : null}
         <div className={styles.progressWrap}>
           <span>
             정보 입력 {state.progress.current}/{state.progress.total}
@@ -95,8 +118,8 @@ export function CopyChannelStep({
           </span>
         </div>
 
-        <button className={styles.primaryButton} type="button" onClick={onContinue}>
-          브리프 확인하기
+        <button className={styles.primaryButton} type="button" disabled={cannotContinue} onClick={onContinue}>
+          {state.isLoading ? "이미지 생성 준비 중..." : "브리프 확인하기"}
         </button>
       </div>
     </>

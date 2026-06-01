@@ -114,6 +114,10 @@ class MarketingState(TypedDict, total=False):
     copy_generation_mode: CopyGenerationMode | None
     copy_candidates: list[dict[str, Any] | CopyCandidate]
     selected_copy_id: str | None
+    selected_channel_id: str | None
+    selected_ad_format: str | None
+    selected_tone: str | None
+    custom_direction: str | None
     user_custom_headline: str | None
     user_custom_subcopy: str | None
     copy_required: bool
@@ -257,6 +261,10 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "copy_generation_mode": request.copy_generation_mode,
         "copy_candidates": [],
         "selected_copy_id": None,
+        "selected_channel_id": None,
+        "selected_ad_format": None,
+        "selected_tone": None,
+        "custom_direction": None,
         "user_custom_headline": request.user_custom_headline,
         "user_custom_subcopy": request.user_custom_subcopy,
         "copy_required": copy_required,

@@ -55,13 +55,19 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
     template_style_hint = reference_template_selection.get("style_profile_hint") or {}
     text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
     subject = context.item_or_service or "advertising subject"
+    visual_direction = selected_visual_direction(state)
+    selected_tone = selected_tone_label(state)
     reserved_text = " and ".join(bbox_to_natural_language(bbox) for bbox in text_layout.reserved_text_areas)
     scene = f"clean commercial advertising background for {subject}"
+    if visual_direction:
+        scene = f"{scene}; follow this user visual direction: {visual_direction}"
     composition = build_composition(reserved_text, getattr(text_layout, "template", None))
     style_hint = reference_style_profile.get("ad_style_prompt")
     template_hint = build_reference_template_hint(selected_reference_template, template_style_hint)
     product_hint = build_product_preserve_hint(product_preserve_spec)
-    extra_hints = " ".join(hint for hint in [style_hint, template_hint, product_hint] if hint)
+    user_tone_hint = f"Reflect this user-selected mood/tone: {selected_tone}." if selected_tone else None
+    user_direction_hint = f"Prioritize this user-provided visual direction: {visual_direction}." if visual_direction else None
+    extra_hints = " ".join(hint for hint in [style_hint, template_hint, product_hint, user_tone_hint, user_direction_hint] if hint)
     positive = (
         f"Create a {scene}. {composition} Do not place the main subject inside the reserved text zones. "
         "The image will receive Korean text overlay later."
@@ -89,6 +95,9 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
             "selected_reference_template": selected_reference_template or None,
             "reference_template_selection": reference_template_selection or None,
             "product_preserve_spec": product_preserve_spec or None,
+            "selected_channel_id": (state.get("current_brief") or {}).get("selected_channel_id") or context.extra.get("selected_channel_id"),
+            "selected_tone": selected_tone,
+            "custom_direction": visual_direction,
             "vision_pipeline_enabled": bool(reference_style_profile or product_preserve_spec or selected_reference_template),
         },
     )
@@ -109,6 +118,25 @@ def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> I
         metadata={"render_text_in_image": False, "tlfp_enabled": True},
     )
     return image_prompt
+
+
+def selected_visual_direction(state: MarketingState) -> str | None:
+    context = context_to_model(state.get("context"))
+    current_brief = state.get("current_brief") or {}
+    return clean_optional_text(current_brief.get("custom_direction") or context.extra.get("custom_direction") or state.get("custom_direction"))
+
+
+def selected_tone_label(state: MarketingState) -> str | None:
+    context = context_to_model(state.get("context"))
+    current_brief = state.get("current_brief") or {}
+    return clean_optional_text(current_brief.get("selected_tone") or context.extra.get("selected_tone") or state.get("selected_tone") or context.brand_tone)
+
+
+def clean_optional_text(value: object | None) -> str | None:
+    if value is None:
+        return None
+    stripped = str(value).strip()
+    return stripped or None
 
 
 def enforce_image_prompt_safety(state: MarketingState, spec: ImagePromptSpec) -> ImagePromptSpec:
@@ -138,9 +166,12 @@ def build_image_prompt_planner_prompt(state: MarketingState) -> str:
     reference_style_profile = state.get("reference_style_profile") or {}
     product_preserve_spec = state.get("product_preserve_spec") or {}
     selected_reference_template = state.get("selected_reference_template") or {}
+    visual_direction = selected_visual_direction(state)
+    selected_tone = selected_tone_label(state)
     return (
         "Create a structured ImagePromptSpec for a text-free advertising background. "
         f"subject={context.item_or_service}, business_type={context.business_type}, brand_tone={context.brand_tone}. "
+        f"user_selected_tone={selected_tone}, user_visual_direction={visual_direction}. "
         f"reserved_text_areas={text_layout.get('reserved_text_areas', [])}, style_profile={style.get('profile')}. "
         f"reference_style_stub={reference_style_profile.get('ad_style_prompt')}, "
         f"reference_template={selected_reference_template.get('title')}, product_preserve_stub={product_preserve_spec.get('product_bbox')}. "

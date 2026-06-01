@@ -11,9 +11,6 @@ from orchestrator.app.t2i.mock import MockT2IEngine
 
 
 _mock_engine = MockT2IEngine()
-_gpt_image_2_engine = GPTImage2Engine(allow_api_call=False)
-
-
 class NotImplementedT2IEngine(BaseT2IEngine):
     """Explicit placeholder for engines that are planned but not wired yet."""
 
@@ -44,7 +41,7 @@ def get_t2i_engine(name: str | None = None) -> BaseT2IEngine:
     if engine_name == "mock":
         return _mock_engine
     if engine_name == "gpt_image_2":
-        return _gpt_image_2_engine
+        return GPTImage2Engine(allow_api_call=settings.allow_api_calls)
     if engine_name == "sd35_large":
         return NotImplementedT2IEngine("sd35_large", "not implemented yet")
     if engine_name == "flux":
@@ -55,10 +52,15 @@ def get_t2i_engine(name: str | None = None) -> BaseT2IEngine:
 def get_t2i_health() -> dict[str, dict[str, Any]]:
     """Return health for all MVP T2I lanes."""
     settings = get_t2i_settings()
+    gpt_image_2_engine = get_t2i_engine("gpt_image_2")
+    gpt_image_2_health = gpt_image_2_engine.health()
     _mock_engine.load()
     return {
         "mock": _mock_engine.health(),
-        "gpt_image_2": {**_gpt_image_2_engine.health(), "model": settings.gpt_image_model},
+        "gpt_image_2": {
+            **gpt_image_2_health,
+            "configured_model": gpt_image_2_health.get("configured_model", settings.gpt_image_model),
+        },
         "sd35_large": {
             "available": False,
             "loaded": False,

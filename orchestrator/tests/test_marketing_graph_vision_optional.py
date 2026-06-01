@@ -49,6 +49,7 @@ def test_marketing_graph_with_source_image_runs_product_preprocess_to_result(tmp
     assert result["current_brief"]["product_preserve_ready"] is True
     assert metadata["vision_pipeline_enabled"] is True
     assert metadata["source_image_path"] == str(source)
+    assert result["t2i_request"]["input_image_paths"] == [str(source)]
     assert metadata["product_preserve_spec"]["metadata"]["sam_used"] is False
     assert result["result_payload"]["output_path"]
 

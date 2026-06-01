@@ -19,6 +19,16 @@ def test_state_update_applies_regular_context_value():
     assert update["revision"] == 2
 
 
+def test_state_update_maps_item_option_value_to_display_label():
+    state = _state_with_selection("item_or_service", "reservation_service")
+    update = state_update_node(state)
+
+    assert update["context"]["item_or_service"] == "예약 서비스"
+    assert update["context"]["extra"]["item_or_service_option_value"] == "reservation_service"
+    assert state["current_brief"]["item_or_service"] == "예약 서비스"
+    assert "item_or_service" not in update["missing_fields"]
+
+
 def test_state_update_applies_ad_format_to_extra_and_current_brief():
     state = _state_with_selection("ad_format", "instagram_feed")
     update = state_update_node(state)

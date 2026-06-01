@@ -11,6 +11,8 @@ from orchestrator.app.api.schemas.common import ApiMeta, ErrorResponse
 
 GenerationJobStatus = Literal[
     "queued",
+    "running",
+    "done",
     "briefing",
     "waiting_user_input",
     "planning",
@@ -21,7 +23,7 @@ GenerationJobStatus = Literal[
     "failed",
     "cancelled",
 ]
-GenerationRunMode = Literal["queued_only", "mock_immediate"]
+GenerationRunMode = Literal["queued_only", "mock_immediate", "graph_immediate"]
 
 
 class GenerationJobCreateRequest(BaseModel):

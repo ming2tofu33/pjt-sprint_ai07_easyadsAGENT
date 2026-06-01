@@ -6,11 +6,16 @@ from orchestrator.app.t2i.router import get_t2i_engine, get_t2i_health
 from orchestrator.app.t2i.schemas import T2IRequest, T2IResult
 
 
-def test_t2i_settings_reads_defaults():
+def test_t2i_settings_reads_defaults(monkeypatch):
+    monkeypatch.setenv("T2I_DEFAULT_ENGINE", "mock")
+    monkeypatch.setenv("T2I_ALLOW_API_CALLS", "false")
+    monkeypatch.setenv("T2I_GPT_IMAGE_MODEL", "gpt-image-1")
+
     settings = get_t2i_settings()
 
     assert settings.default_engine == "mock"
-    assert settings.gpt_image_model == "gpt-image-2"
+    assert settings.allow_api_calls is False
+    assert settings.gpt_image_model == "gpt-image-1"
     assert settings.sd35_model_id == "stabilityai/stable-diffusion-3.5-large"
     assert settings.flux_model_id == "black-forest-labs/FLUX.1-schnell"
 
@@ -46,7 +51,9 @@ def test_t2i_health_reports_mock_and_unimplemented_engines():
     assert "reason" in health["gpt_image_2"]
 
 
-def test_router_returns_default_mock_engine():
+def test_router_returns_default_mock_engine(monkeypatch):
+    monkeypatch.setenv("T2I_DEFAULT_ENGINE", "mock")
+
     engine = get_t2i_engine()
 
     assert engine.name == "mock"

@@ -56,12 +56,16 @@ export function createInitialChatFlowState(): ChatFlowState {
       itemOrService: "",
       promotionGoal: ""
     },
+    contextSource: "empty",
     copyCandidates: copyOptions,
+    copyCandidateSource: "sample",
     selectedTone: "감성적인",
     selectedCopyId: "spring-strawberry",
     selectedChannelId: "instagram-feed",
     customDirection: "",
     brief: null,
+    currentQuestion: null,
+    conversationMessages: [],
     isLoading: false,
     errorMessage: null
   };
@@ -77,11 +81,44 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         step: 2,
         progress: { current: 1, total: 4, label: "정보 입력" },
         userInput: action.prompt,
-        inferredContext: inferContextFromPrompt(action.prompt),
+        inferredContext: {
+          businessType: "",
+          itemOrService: "",
+          promotionGoal: ""
+        },
+        contextSource: "empty",
+        conversationMessages: [{ role: "user", text: action.prompt }],
         isLoading: true,
         errorMessage: null
       };
-    case "backendStartSucceeded":
+    case "backendQuestionReceived":
+      return {
+        ...state,
+        step: 2,
+        progress: { current: 1, total: 4, label: "정보 입력" },
+        jobId: action.jobId,
+        threadId: action.threadId,
+        inferredContext: {
+          businessType: action.context.businessType ?? state.inferredContext.businessType,
+          itemOrService: action.context.itemOrService ?? state.inferredContext.itemOrService,
+          promotionGoal: action.context.promotionGoal ?? state.inferredContext.promotionGoal
+        },
+        contextSource: "backend",
+        currentQuestion: action.question,
+        conversationMessages: [...state.conversationMessages, { role: "assistant", text: action.question.question }],
+        isLoading: false,
+        errorMessage: null
+      };
+    case "submitQuestionAnswer":
+      return {
+        ...state,
+        conversationMessages: [...state.conversationMessages, { role: "user", text: action.label }],
+        isLoading: true,
+        errorMessage: null
+      };
+    case "backendStartSucceeded": {
+      const hasBackendCopyCandidates = action.copyCandidates.length > 0;
+      const nextCopyCandidates = hasBackendCopyCandidates ? action.copyCandidates : state.copyCandidates;
       return {
         ...state,
         step: 2,
@@ -90,16 +127,30 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         jobId: action.jobId,
         threadId: action.threadId,
         inferredContext: action.context,
-        copyCandidates: action.copyCandidates.length > 0 ? action.copyCandidates : state.copyCandidates,
-        selectedCopyId: action.recommendedCopyId || action.copyCandidates[0]?.id || state.selectedCopyId,
+        contextSource: "backend",
+        copyCandidates: nextCopyCandidates,
+        copyCandidateSource: action.copyCandidateSource ?? (hasBackendCopyCandidates ? "backend" : "sample"),
+        selectedCopyId: action.recommendedCopyId || nextCopyCandidates[0]?.id || state.selectedCopyId,
+        currentQuestion: null,
+        conversationMessages: [
+          ...state.conversationMessages,
+          { role: "assistant", text: "좋아요. 필요한 정보를 모았어요. 이제 광고 문구와 분위기를 정리해볼게요." }
+        ],
         isLoading: false,
         errorMessage: null
       };
+    }
     case "backendRequestFailed":
       return {
         ...state,
         isLoading: false,
         errorMessage: action.message
+      };
+    case "beginBriefRequest":
+      return {
+        ...state,
+        isLoading: true,
+        errorMessage: null
       };
     case "selectTone":
       return {
@@ -160,6 +211,22 @@ export function selectedChannelLabel(state: ChatFlowState): string {
   return `${channel.label} (${channel.ratio})`;
 }
 
+export function selectedToneSummary(state: ChatFlowState): string {
+  return state.selectedTone ? `${state.selectedTone} 분위기` : "브랜드에 맞춘 분위기";
+}
+
+export function fallbackImageDirection(state: ChatFlowState): string {
+  if (state.customDirection) {
+    return state.customDirection;
+  }
+  const item = state.inferredContext.itemOrService || "상품/서비스";
+  const tonePrefix = state.selectedTone ? `${state.selectedTone} 분위기를 살려 ` : "";
+  if (item.includes("예약") || item.endsWith("서비스")) {
+    return `${tonePrefix}${item} 안내가 잘 보이도록 깔끔한 배경과 읽기 쉬운 여백을 구성해요.`;
+  }
+  return `${tonePrefix}${item} 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.`;
+}
+
 export function buildBrief(state: ChatFlowState): ChatBrief {
   if (state.brief) {
     return state.brief;
@@ -168,10 +235,8 @@ export function buildBrief(state: ChatFlowState): ChatBrief {
     purpose: state.inferredContext.promotionGoal,
     item: state.inferredContext.itemOrService,
     copy: selectedCopyLabel(state),
-    tone: `${state.selectedTone}이고 상큼한 카페 무드`,
+    tone: selectedToneSummary(state),
     channel: selectedChannelLabel(state),
-    imageDirection:
-      state.customDirection ||
-      "크림톤 배경, 딸기라떼를 중앙에 크게 배치하고 우측 여백에 카피 배치"
+    imageDirection: fallbackImageDirection(state)
   };
 }

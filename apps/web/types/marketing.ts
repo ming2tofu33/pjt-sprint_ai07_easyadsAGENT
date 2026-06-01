@@ -14,6 +14,30 @@ export type InferredContext = {
   promotionGoal: string;
 };
 
+export type PartialInferredContext = Partial<InferredContext>;
+
+export type ContextSource = "empty" | "backend" | "sample";
+
+export type OptionItem = {
+  id: number | string;
+  label: string;
+  value: string;
+  description?: string | null;
+};
+
+export type OptionQuestion = {
+  field: string;
+  question: string;
+  options: OptionItem[];
+  required?: boolean;
+  multi_select?: boolean;
+};
+
+export type ChatTranscriptMessage = {
+  role: "user" | "assistant";
+  text: string;
+};
+
 export type ToneOption = {
   id: string;
   label: string;
@@ -28,6 +52,8 @@ export type CopyOption = {
   selectedByDefault?: boolean;
 };
 
+export type CopyCandidateSource = "sample" | "backend";
+
 export type ChannelOption = {
   id: string;
   label: string;
@@ -41,6 +67,7 @@ export type ChatBrief = {
   tone: string;
   channel: string;
   imageDirection: string;
+  finalImagePath?: string | null;
 };
 
 export type ChatFlowState = {
@@ -51,12 +78,16 @@ export type ChatFlowState = {
   threadId: string;
   userInput: string;
   inferredContext: InferredContext;
+  contextSource: ContextSource;
   copyCandidates: CopyOption[];
+  copyCandidateSource: CopyCandidateSource;
   selectedTone: string;
   selectedCopyId: string;
   selectedChannelId: string;
   customDirection: string;
   brief: ChatBrief | null;
+  currentQuestion: OptionQuestion | null;
+  conversationMessages: ChatTranscriptMessage[];
   isLoading: boolean;
   errorMessage: string | null;
 };
@@ -72,8 +103,18 @@ export type ChatFlowAction =
       context: InferredContext;
       copyCandidates: CopyOption[];
       recommendedCopyId?: string | null;
+      copyCandidateSource?: CopyCandidateSource;
     }
+  | {
+      type: "backendQuestionReceived";
+      jobId: string;
+      threadId: string;
+      context: PartialInferredContext;
+      question: OptionQuestion;
+    }
+  | { type: "submitQuestionAnswer"; label: string }
   | { type: "backendRequestFailed"; message: string }
+  | { type: "beginBriefRequest" }
   | { type: "selectTone"; tone: string }
   | { type: "continueToCopy" }
   | { type: "selectCopy"; copyId: string }

@@ -15,6 +15,7 @@ type BriefConfirmStepProps = {
 
 export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStepProps) {
   const brief = buildBrief(state);
+  const hasGeneratedImage = Boolean(brief.finalImagePath);
 
   return (
     <>
@@ -22,7 +23,9 @@ export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStep
 
       <div className={styles.assistantBubble}>
         <span className={styles.assistantAvatar}>AI</span>
-        <p className={styles.bubble}>모든 정보가 준비됐어요. 이 내용으로 광고를 만들 준비가 완료됐어요.</p>
+        <p className={styles.bubble}>
+          {hasGeneratedImage ? "실제 광고 이미지 생성이 완료됐어요. 이제 결과 화면에서 확인할 수 있어요." : "모든 정보가 준비됐어요. 이 내용으로 광고를 만들 준비가 완료됐어요."}
+        </p>
       </div>
 
       <section className={styles.briefCard} aria-label="광고 브리프 요약">
@@ -39,7 +42,9 @@ export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStep
       </section>
 
       <div className={styles.stepFooter}>
-        <p className={styles.completeNote}>이 내용으로 광고 이미지를 생성할게요. 마음에 들지 않으면 언제든 수정할 수 있어요.</p>
+        <p className={styles.completeNote}>
+          {hasGeneratedImage ? "생성된 이미지를 결과 화면에서 바로 확인해보세요." : "이 내용으로 광고 이미지를 생성할게요. 마음에 들지 않으면 언제든 수정할 수 있어요."}
+        </p>
 
         <div className={`${styles.progressWrap} ${styles.finalProgress}`}>
           <span>
@@ -51,7 +56,7 @@ export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStep
         </div>
 
         <button className={styles.primaryButton} type="button" onClick={onGenerate}>
-          찰떡 광고 생성하기 <Sparkles size={18} aria-hidden="true" />
+          {hasGeneratedImage ? "생성 결과 확인하기" : "찰떡 광고 생성하기"} <Sparkles size={18} aria-hidden="true" />
         </button>
       </div>
     </>

@@ -17,6 +17,7 @@ from orchestrator.app.t2i.schemas import T2IRequest, T2IResult
 
 def generate_image_v1(
     prompt: str,
+    input_image_paths: list[str] | None = None,
     negative_prompt: str | None = None,
     engine_preference: str | None = None,
     width: int = 1024,
@@ -40,6 +41,7 @@ def generate_image_v1(
     resolved_business_type = resolve_industry_key(metadata.get("business_type"))
     request = T2IRequest(
         prompt=prompt,
+        input_image_paths=list(input_image_paths or []),
         negative_prompt=effective_negative_prompt,
         width=width,
         height=height,
