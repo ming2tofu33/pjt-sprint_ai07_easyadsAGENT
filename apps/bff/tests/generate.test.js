@@ -341,6 +341,78 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("passes auto-pilot mode through generation start requests", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        type: "brief_ready",
+        jobId: "job_auto_pilot",
+        threadId: "thread_auto_pilot",
+        status: "done",
+        context: { businessType: "카페", itemOrService: "딸기라떼", promotionGoal: "신메뉴 출시" },
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: "AI가 고른 딸기라떼 한 잔",
+          tone: "브랜드에 맞춘 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "딸기라떼 중심의 깔끔한 광고 배경",
+          finalImagePath: "data/outputs/job_auto_pilot/final_composite.png"
+        },
+        copyGenerationMode: "auto_pilot"
+      })
+    );
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/generate/chat/start",
+      payload: {
+        userInput: "딸기라떼 신메뉴 인스타 피드 광고",
+        adFormat: "instagram_feed",
+        renderProfile: "premium_api",
+        copyGenerationMode: "auto_pilot"
+      }
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/generate/photo/start",
+      payload: {
+        userInput: "이 사진으로 딸기라떼 신메뉴 인스타 피드 광고",
+        sourceImagePath: "data/uploads/photo_abc.png",
+        adFormat: "instagram_feed",
+        renderProfile: "premium_api",
+        copyGenerationMode: "auto_pilot"
+      }
+    });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://orchestrator/v1/marketing/chat/start",
+      expect.objectContaining({
+        body: JSON.stringify({
+          userInput: "딸기라떼 신메뉴 인스타 피드 광고",
+          adFormat: "instagram_feed",
+          renderProfile: "premium_api",
+          copyGenerationMode: "auto_pilot"
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/v1/marketing/photo/start",
+      expect.objectContaining({
+        body: JSON.stringify({
+          userInput: "이 사진으로 딸기라떼 신메뉴 인스타 피드 광고",
+          sourceImagePath: "data/uploads/photo_abc.png",
+          adFormat: "instagram_feed",
+          renderProfile: "premium_api",
+          copyGenerationMode: "auto_pilot"
+        })
+      })
+    );
+    await app.close();
+  });
+
   it("passes custom copy fields through generation start requests", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({

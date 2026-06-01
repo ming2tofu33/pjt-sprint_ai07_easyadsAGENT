@@ -44,6 +44,7 @@ export const CURRENT_UI_GRAPH_CAPABILITIES: UiGraphCapability[] = [
   "copy-selection.visual-direction",
   "photo.upload-source-image",
   "photo.start",
+  "copy-mode.auto-pilot",
   "copy-mode.no-copy",
   "copy-mode.custom-input",
   "copy.custom-headline-input",

@@ -65,24 +65,24 @@ describe("ui graph coverage matrix", () => {
       "chat-suggest-candidates",
       "photo-source-suggest-candidates",
       "custom-visual-direction",
+      "auto-pilot-copywriting",
       "custom-copy-input",
       "no-copy-image-only",
     ]);
     expect(report.uncoveredIds).toEqual([
-      "auto-pilot-copywriting",
       "reference-template",
       "reference-image",
       "validation-feedback",
     ]);
-    expect(report.coveredCount).toBe(6);
+    expect(report.coveredCount).toBe(7);
     expect(report.totalCount).toBe(10);
-    expect(report.coverageRatio).toBe(0.6);
+    expect(report.coverageRatio).toBe(0.7);
   });
 
   it("shows the exact UI capabilities missing for each uncovered branch", () => {
     const report = buildUiGraphCoverageReport();
 
-    expect(findUiGraphCoverageItem(report, "auto-pilot-copywriting")?.missingCapabilities).toEqual(["copy-mode.auto-pilot"]);
+    expect(findUiGraphCoverageItem(report, "auto-pilot-copywriting")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "custom-copy-input")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "no-copy-image-only")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "reference-template")?.missingCapabilities).toEqual(["reference.template-selection"]);

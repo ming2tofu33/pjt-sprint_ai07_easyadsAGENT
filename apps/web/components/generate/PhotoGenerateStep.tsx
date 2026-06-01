@@ -166,6 +166,10 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
             <MessageCircle size={16} aria-hidden="true" />
             <span>문구도 추천</span>
           </ChoiceChip>
+          <ChoiceChip selected={copyGenerationMode === "auto_pilot"} onClick={() => setCopyGenerationMode("auto_pilot")}>
+            <Sparkles size={16} aria-hidden="true" />
+            <span>AI 자동 완성</span>
+          </ChoiceChip>
           <ChoiceChip selected={copyGenerationMode === "no_copy"} onClick={() => setCopyGenerationMode("no_copy")}>
             <ImagePlus size={16} aria-hidden="true" />
             <span>이미지만 생성</span>

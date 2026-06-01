@@ -38,6 +38,29 @@ vi.mock("@/lib/api-client", () => ({
         copyGenerationMode: "no_copy"
       };
     }
+    if (options?.copyGenerationMode === "auto_pilot") {
+      return {
+        type: "brief_ready",
+        jobId: "job_auto_pilot",
+        threadId: "thread_auto_pilot",
+        status: "done",
+        context: {
+          businessType: "카페",
+          itemOrService: "딸기라떼",
+          promotionGoal: "신메뉴 출시"
+        },
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: "AI가 고른 딸기라떼 한 잔",
+          tone: "브랜드에 맞춘 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+          finalImagePath: "data/outputs/job_auto_pilot/final_composite.png"
+        },
+        copyGenerationMode: "auto_pilot"
+      };
+    }
     if (options?.copyGenerationMode === "custom_input") {
       return {
         type: "brief_ready",
@@ -165,10 +188,33 @@ vi.mock("@/lib/api-client", () => ({
           copy: "문구 없이 이미지로만",
           tone: "브랜드에 맞춘 분위기",
           channel: "인스타 피드 (1:1)",
-          imageDirection: "딸기라떨 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+          imageDirection: "딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
           finalImagePath: "data/outputs/photo_no_copy/final_composite.png"
         },
         copyGenerationMode: "no_copy"
+      };
+    }
+    if (input?.copyGenerationMode === "auto_pilot") {
+      return {
+        type: "brief_ready",
+        jobId: "photo_auto_pilot",
+        threadId: "photo_auto_pilot_thread",
+        status: "done",
+        context: {
+          businessType: "카페",
+          itemOrService: "딸기라떼",
+          promotionGoal: "신메뉴 출시"
+        },
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: "AI가 고른 딸기라떼 한 잔",
+          tone: "브랜드에 맞춘 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+          finalImagePath: "data/outputs/photo_auto_pilot/final_composite.png"
+        },
+        copyGenerationMode: "auto_pilot"
       };
     }
     if (input?.copyGenerationMode === "custom_input") {
@@ -320,6 +366,32 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("문구 없이 이미지로만")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+  });
+
+  it("skips copy selection when chat generation starts in auto-pilot mode", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.startChatGeneration).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "우리 카페 딸기라떼 신메뉴 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByText("AI 자동 완성"));
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() =>
+      expect(api.startChatGeneration).toHaveBeenCalledWith(expect.stringContaining("우리 카페 딸기라떼 신메뉴 광고 만들어줘"), {
+        copyGenerationMode: "auto_pilot",
+        userCustomHeadline: undefined,
+        userCustomSubcopy: undefined
+      })
+    );
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    expect(screen.getByText("AI가 고른 딸기라떼 한 잔")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
   });
 
@@ -839,6 +911,37 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("문구 없이 이미지로만")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+  });
+
+  it("routes photo generation directly to a backend brief in auto-pilot mode", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.uploadPhotoAsset).mockClear();
+    vi.mocked(api.startPhotoGeneration).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="photo" />);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "menu.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("광고 사진 선택"), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("사진 광고 요청 입력"), {
+      target: { value: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByText("AI 자동 완성"));
+    fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
+
+    await waitFor(() =>
+      expect(api.startPhotoGeneration).toHaveBeenCalledWith({
+        userInput: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘",
+        sourceImagePath: "data/uploads/photo_1.png",
+        copyGenerationMode: "auto_pilot",
+        userCustomHeadline: undefined,
+        userCustomSubcopy: undefined
+      })
+    );
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    expect(screen.getByText("AI가 고른 딸기라떼 한 잔")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
   });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, PenLine, Send, Utensils } from "lucide-react";
+import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, PenLine, Send, Sparkles, Utensils } from "lucide-react";
 import { useState } from "react";
 import type { CopyGenerationMode, CustomCopyFields } from "@/types/marketing";
 import { readGenerationDraftPrompt } from "@/lib/generation-request-context";
@@ -86,6 +86,10 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
         <ChoiceChip selected={copyGenerationMode === "suggest_candidates"} onClick={() => setCopyGenerationMode("suggest_candidates")}>
           <MessageCircle size={16} aria-hidden="true" />
           <span>문구도 추천</span>
+        </ChoiceChip>
+        <ChoiceChip selected={copyGenerationMode === "auto_pilot"} onClick={() => setCopyGenerationMode("auto_pilot")}>
+          <Sparkles size={16} aria-hidden="true" />
+          <span>AI 자동 완성</span>
         </ChoiceChip>
         <ChoiceChip selected={copyGenerationMode === "no_copy"} onClick={() => setCopyGenerationMode("no_copy")}>
           <ImageIcon size={16} aria-hidden="true" />
