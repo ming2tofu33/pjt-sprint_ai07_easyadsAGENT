@@ -15,10 +15,12 @@ import {
   Share2,
   Sparkles
 } from "lucide-react";
-import { useState } from "react";
+import Image from "next/image";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildAdHref, type AdSaveStep } from "@/lib/ad-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
+import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
 import { getAdCreativeById, resultCreatives, type MockCreative } from "@/lib/mock-dashboard-data";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
@@ -44,10 +46,44 @@ const formats = [
 
 export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
   const router = useRouter();
-  const creative = getAdCreativeById(creativeId) ?? resultCreatives[0];
+  const staticCreative = getAdCreativeById(creativeId);
+  const [sessionCreative, setSessionCreative] = useState<MockCreative | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [channel, setChannel] = useState("feed");
-  const [fileType, setFileType] = useState<"PNG" | "JPG">(creative.fileType ?? "PNG");
+  const [fileType, setFileType] = useState<"PNG" | "JPG">("PNG");
   const [storage, setStorage] = useState("archive");
+  const [downloadFeedback, setDownloadFeedback] = useState<string | null>(null);
+  const creative = staticCreative ?? sessionCreative;
+
+  useEffect(() => {
+    setSessionCreative(readGeneratedCreatives().find((item) => item.id === creativeId) ?? null);
+    setSessionChecked(true);
+  }, [creativeId]);
+
+  useEffect(() => {
+    if (creative?.fileType) {
+      setFileType(creative.fileType);
+    }
+  }, [creative?.fileType]);
+
+  if (!creative) {
+    return (
+      <>
+        <StepHeader title="찰떡 광고 시안" canGoBack onBack={() => router.push(buildDashboardHref("ads"))} onHome={goHome} />
+        <section className={styles.emptyResultPanel} aria-label="보관함 항목 없음">
+          <Sparkles size={24} aria-hidden="true" />
+          <strong>{creativeId.startsWith("generated-") && !sessionChecked ? "보관함 항목을 불러오는 중이에요" : "보관함에서 이 항목을 찾지 못했어요"}</strong>
+          <p>
+            {creativeId.startsWith("generated-")
+              ? "세션에 저장된 실제 생성 결과가 삭제됐거나 다른 브라우저 세션에서 만든 항목일 수 있어요."
+              : "보관함으로 돌아가 다시 확인해주세요."}
+          </p>
+        </section>
+      </>
+    );
+  }
+  const activeCreative = creative;
+  const isGeneratedCreative = activeCreative.id.startsWith("generated-") && Boolean(activeCreative.imageUrl);
 
   function goBack() {
     if (step === "detail") {
@@ -55,7 +91,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
       return;
     }
 
-    router.push(buildAdHref(creative.id, step === "saved" ? "save" : "detail"));
+    router.push(buildAdHref(activeCreative.id, step === "saved" ? "save" : "detail"));
   }
 
   function goHome() {
@@ -64,6 +100,54 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
 
   function goArchive() {
     router.push(buildDashboardHref("ads"));
+  }
+
+  function showMockDownloadFeedback() {
+    setDownloadFeedback("실제 파일 저장 연결 후 다운로드가 활성화돼요.");
+  }
+
+  if (isGeneratedCreative) {
+    return (
+      <>
+        <div className={styles.adDetailTopNav}>
+          <button aria-label="보관함으로" type="button" onClick={goArchive}>
+            <ChevronLeft size={22} aria-hidden="true" />
+          </button>
+          <h1>생성 이미지 보기</h1>
+          <span />
+        </div>
+
+        <section className={styles.generatedImageViewer} aria-label={`${activeCreative.title} 생성 이미지`}>
+          <AdPreview creative={activeCreative} showCaption={false} />
+        </section>
+
+        <section className={styles.generatedImageSummary} aria-label="생성 이미지 정보">
+          <span>실제 생성</span>
+          <h2>{activeCreative.title}</h2>
+          <p>생성된 이미지만 확인하고 다운로드할 수 있어요.</p>
+          <dl>
+            <div><dt>형식</dt><dd>{activeCreative.fileType ?? "PNG"}</dd></div>
+            <div><dt>채널</dt><dd>{activeCreative.channel ?? activeCreative.format}</dd></div>
+            <div><dt>저장 위치</dt><dd>{activeCreative.storage ?? "세션 보관함"}</dd></div>
+          </dl>
+        </section>
+
+        <div className={styles.stepFooter}>
+          <button className={styles.primaryButton} type="button" onClick={showMockDownloadFeedback}>
+            <Download size={18} aria-hidden="true" />
+            이미지 다운로드
+          </button>
+          {downloadFeedback ? (
+            <p className={styles.downloadMockNotice} role="status">
+              {downloadFeedback}
+            </p>
+          ) : null}
+          <button className={styles.secondaryButton} type="button" onClick={goArchive}>
+            보관함으로 돌아가기
+          </button>
+        </div>
+      </>
+    );
   }
 
   if (step === "save") {
@@ -115,7 +199,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
         </div>
 
         <div className={styles.stepFooter}>
-          <button className={styles.primaryButton} type="button" onClick={() => router.push(buildAdHref(creative.id, "saved"))}>
+          <button className={styles.primaryButton} type="button" onClick={() => router.push(buildAdHref(activeCreative.id, "saved"))}>
             <Download size={18} aria-hidden="true" />
             이미지 저장하기
           </button>
@@ -125,7 +209,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
   }
 
   if (step === "saved") {
-    const fileName = creative.fileName ?? `${creative.id}.${fileType.toLowerCase()}`;
+    const fileName = activeCreative.fileName ?? `${activeCreative.id}.${fileType.toLowerCase()}`;
     return (
       <>
         <section className={styles.savedCompleteHero}>
@@ -137,13 +221,13 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
         </section>
 
         <section className={styles.savedFileCard} aria-label="저장된 광고 정보">
-          <AdPreview creative={creative} compact />
+          <AdPreview creative={activeCreative} compact />
           <dl>
             <div><dt>파일명</dt><dd>{fileName}</dd></div>
-            <div><dt>크기</dt><dd>{creative.channel ?? "인스타 피드"} ({creative.format})</dd></div>
+            <div><dt>크기</dt><dd>{activeCreative.channel ?? "인스타 피드"} ({activeCreative.format})</dd></div>
             <div><dt>형식</dt><dd>{fileType}</dd></div>
             <div><dt>저장 위치</dt><dd>{storage === "archive" ? "내 광고 보관함" : "기기 저장"}</dd></div>
-            <div><dt>저장일</dt><dd>{creative.savedAt ?? "2024.05.29 14:30"}</dd></div>
+            <div><dt>저장일</dt><dd>{activeCreative.savedAt ?? "2024.05.29 14:30"}</dd></div>
           </dl>
         </section>
 
@@ -164,10 +248,10 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
 
         <section className={styles.nextUseCard}>
           <h2>다음에 활용해보세요</h2>
-          <button type="button" onClick={() => router.push(buildAdHref(creative.id))}>
+          <button type="button" onClick={() => router.push(buildAdHref(activeCreative.id))}>
             같은 스타일로 더 만들기 <ChevronRight size={17} aria-hidden="true" />
           </button>
-          <button type="button" onClick={() => router.push(buildAdHref(creative.id, "save"))}>
+          <button type="button" onClick={() => router.push(buildAdHref(activeCreative.id, "save"))}>
             스토리용으로 만들기 (9:16) <ChevronRight size={17} aria-hidden="true" />
           </button>
         </section>
@@ -196,17 +280,17 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
         </button>
       </div>
 
-      <section className={styles.adDetailPreview} aria-label={`${creative.title} 상세 시안`}>
+      <section className={styles.adDetailPreview} aria-label={`${activeCreative.title} 상세 시안`}>
         <span className={styles.adCountBadge}>1 / 4</span>
-        <button aria-label={`${creative.title} 북마크`} type="button">
+        <button aria-label={`${activeCreative.title} 북마크`} type="button">
           <Bookmark size={19} aria-hidden="true" />
         </button>
-        <AdPreview creative={creative} />
+        <AdPreview creative={activeCreative} />
       </section>
 
       <div className={styles.adThumbStrip} aria-label="시안 썸네일">
         {resultCreatives.map((item, index) => (
-          <button data-active={item.id === creative.id ? "true" : undefined} key={item.id} type="button" onClick={() => router.push(buildAdHref(item.id))}>
+          <button data-active={item.id === activeCreative.id ? "true" : undefined} key={item.id} type="button" onClick={() => router.push(buildAdHref(item.id))}>
             <span data-tone={item.tone} />
             <small>{index + 1}</small>
           </button>
@@ -215,7 +299,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
 
       <section className={styles.adDetailMeta}>
         <div className={styles.inlineTags}>
-          {(creative.tags ?? ["카페", "딸기라떼", "신메뉴"]).slice(0, 4).map((tag) => (
+          {(activeCreative.tags ?? ["카페", "딸기라떼", "신메뉴"]).slice(0, 4).map((tag) => (
             <span key={tag}>{tag}</span>
           ))}
         </div>
@@ -235,7 +319,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
       </div>
 
       <div className={styles.stepFooter}>
-        <button className={styles.primaryButton} type="button" onClick={() => router.push(buildAdHref(creative.id, "save"))}>
+        <button className={styles.primaryButton} type="button" onClick={() => router.push(buildAdHref(activeCreative.id, "save"))}>
           <Download size={18} aria-hidden="true" />
           이 시안 저장하기
         </button>
@@ -244,14 +328,42 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
   );
 }
 
-function AdPreview({ creative, compact = false }: { creative: MockCreative; compact?: boolean }) {
+function AdPreview({ creative, compact = false, showCaption = true }: { creative: MockCreative; compact?: boolean; showCaption?: boolean }) {
+  const hasImageFile = Boolean(creative.imageUrl);
+  const [imageFailed, setImageFailed] = useState(false);
+  const shouldShowImage = hasImageFile && !imageFailed;
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [creative.imageUrl]);
+
   return (
-    <div className={styles.adPreviewArt} data-compact={compact ? "true" : undefined} data-tone={creative.tone}>
-      <div>
-        <strong>{creative.title}</strong>
-        <small>{creative.subtitle}</small>
-      </div>
-      <span aria-hidden="true" />
+    <div className={styles.adPreviewArt} data-compact={compact ? "true" : undefined} data-has-image={hasImageFile ? "true" : undefined} data-tone={creative.tone}>
+      {shouldShowImage ? (
+        <Image
+          alt=""
+          className={styles.adPreviewImage}
+          fill
+          sizes={compact ? "180px" : "340px"}
+          src={creative.imageUrl!}
+          unoptimized
+          onError={() => setImageFailed(true)}
+        />
+      ) : null}
+      {hasImageFile && imageFailed ? (
+        <div className={styles.adPreviewImageFallback}>
+          <ImageDown size={22} aria-hidden="true" />
+          <strong>이미지를 불러올 수 없어요</strong>
+          <small>생성 파일 경로나 임시 보관 상태를 확인해주세요.</small>
+        </div>
+      ) : null}
+      {showCaption ? (
+        <div className={hasImageFile ? styles.adPreviewCaption : undefined}>
+          <strong>{creative.title}</strong>
+          <small>{creative.subtitle}</small>
+        </div>
+      ) : null}
+      {hasImageFile ? null : <span aria-hidden="true" />}
     </div>
   );
 }

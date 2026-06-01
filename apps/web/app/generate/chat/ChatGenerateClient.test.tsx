@@ -786,6 +786,148 @@ describe("ChatGenerateClient", () => {
     expect(navigationMock.push).toHaveBeenCalledWith("/ads");
   });
 
+  it("opens the selected generated archive item instead of the active complete result", async () => {
+    window.sessionStorage.setItem(
+      "easyads_generated_creatives_v1",
+      JSON.stringify([
+        {
+          id: "generated-job_latest",
+          title: "최근 생성 광고",
+          subtitle: "카페 · 인스타 피드",
+          format: "1:1",
+          imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_latest%2Ffinal_composite.png",
+          tone: "strawberry",
+          badge: "실제 생성",
+          status: "saved",
+          channel: "인스타 피드",
+          fileName: "final_composite.png",
+          fileType: "PNG",
+          storage: "세션 보관함",
+          savedAt: "방금 생성",
+          tags: ["카페", "딸기라떼"]
+        },
+        {
+          id: "generated-job_selected",
+          title: "직접 클릭한 생성 광고",
+          subtitle: "베이커리 · 포스터",
+          format: "4:5",
+          imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_selected%2Ffinal_composite.png",
+          tone: "cream",
+          badge: "실제 생성",
+          status: "saved",
+          channel: "포스터",
+          fileName: "final_composite.png",
+          fileType: "PNG",
+          storage: "세션 보관함",
+          savedAt: "방금 생성",
+          tags: ["베이커리", "포스터"]
+        }
+      ])
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="ads" />);
+
+    await waitFor(() => expect(screen.getByText("직접 클릭한 생성 광고")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "직접 클릭한 생성 광고 실제 생성 결과 보기" }));
+
+    expect(navigationMock.push).toHaveBeenCalledWith("/ads/generated-job_selected");
+    expect(navigationMock.push).not.toHaveBeenCalledWith("/generate/chat/complete");
+  });
+
+  it("renders the selected generated archive detail from session storage", async () => {
+    window.sessionStorage.setItem(
+      "easyads_generated_creatives_v1",
+      JSON.stringify([
+        {
+          id: "generated-job_latest",
+          title: "최근 생성 광고",
+          subtitle: "카페 · 인스타 피드",
+          format: "1:1",
+          imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_latest%2Ffinal_composite.png",
+          tone: "strawberry",
+          badge: "실제 생성",
+          status: "saved",
+          channel: "인스타 피드",
+          fileName: "final_composite.png",
+          fileType: "PNG",
+          storage: "세션 보관함",
+          savedAt: "방금 생성",
+          tags: ["카페", "딸기라떼"]
+        },
+        {
+          id: "generated-job_selected",
+          title: "직접 클릭한 생성 광고",
+          subtitle: "베이커리 · 포스터",
+          format: "4:5",
+          imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_selected%2Ffinal_composite.png",
+          tone: "cream",
+          badge: "실제 생성",
+          status: "saved",
+          channel: "포스터",
+          fileName: "final_composite.png",
+          fileType: "PNG",
+          storage: "세션 보관함",
+          savedAt: "방금 생성",
+          tags: ["베이커리", "포스터"]
+        }
+      ])
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { AdSaveFlowStep } = await import("@/components/generate/AdSaveFlowStep");
+
+    render(<AdSaveFlowStep creativeId="generated-job_selected" step="detail" />);
+
+    await waitFor(() => expect(screen.getByText("생성 이미지 보기")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("직접 클릭한 생성 광고")).toBeTruthy());
+    expect(screen.getByText("생성된 이미지만 확인하고 다운로드할 수 있어요.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /이미지 다운로드/ })).toBeTruthy();
+    expect(screen.queryByText("최근 생성 광고")).toBeNull();
+    expect(screen.queryByText("빠른 수정")).toBeNull();
+    expect(screen.queryByRole("button", { name: /이 시안 저장하기/ })).toBeNull();
+    expect(document.querySelector('img[src*="job_selected"]')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /이미지 다운로드/ }));
+    expect(screen.getByText("실제 파일 저장 연결 후 다운로드가 활성화돼요.")).toBeTruthy();
+  });
+
+  it("shows a mock download action for generated archive items", async () => {
+    window.sessionStorage.setItem(
+      "easyads_generated_creatives_v1",
+      JSON.stringify([
+        {
+          id: "generated-job_selected",
+          title: "직접 클릭한 생성 광고",
+          subtitle: "베이커리 · 포스터",
+          format: "4:5",
+          imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_selected%2Ffinal_composite.png",
+          tone: "cream",
+          badge: "실제 생성",
+          status: "saved",
+          channel: "포스터",
+          fileName: "final_composite.png",
+          fileType: "PNG",
+          storage: "세션 보관함",
+          savedAt: "방금 생성",
+          tags: ["베이커리", "포스터"]
+        }
+      ])
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="ads" />);
+
+    await waitFor(() => expect(screen.getByText("직접 클릭한 생성 광고")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "직접 클릭한 생성 광고 더보기" }));
+
+    expect(screen.getByRole("menuitem", { name: "다운로드" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "다운로드" }));
+
+    expect(screen.getByText("직접 클릭한 생성 광고 다운로드는 실제 파일 저장 연결 후 활성화돼요.")).toBeTruthy();
+  });
+
   it("pushes stable URLs when top-level tabs are selected", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");

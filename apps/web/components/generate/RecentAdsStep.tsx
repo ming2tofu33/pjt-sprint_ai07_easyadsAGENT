@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Bookmark, Briefcase, Eye, Home, MoreHorizontal, RefreshCcw, Search, SlidersHorizontal, Sparkles, Star, Trash2, User } from "lucide-react";
+import { Bell, Bookmark, Briefcase, Download, Eye, Home, MoreHorizontal, RefreshCcw, Search, SlidersHorizontal, Sparkles, Star, Trash2, User } from "lucide-react";
 import Image from "next/image";
 import { archivedCreatives, type CreativeTone, type MockCreative } from "@/lib/mock-dashboard-data";
 import styles from "./generate.module.css";
@@ -14,8 +14,9 @@ type RecentAdsStepProps = {
   onOpenBrandKit: () => void;
   onRegenerate: () => void;
   onShowProgress: () => void;
-  onOpenGeneratedAd: () => void;
+  onOpenGeneratedAd: (creativeId: string) => void;
   onOpenAd: (creativeId: string) => void;
+  onDownloadGeneratedAd: (title: string) => void;
   onDeleteGeneratedAd: (creativeId: string, title: string) => void;
   onDeleteSampleAd: (title: string) => void;
   onOpenNotifications: () => void;
@@ -54,6 +55,7 @@ export function RecentAdsStep({
   onShowProgress,
   onOpenGeneratedAd,
   onOpenAd,
+  onDownloadGeneratedAd,
   onDeleteGeneratedAd,
   onDeleteSampleAd,
   onOpenNotifications
@@ -102,7 +104,8 @@ export function RecentAdsStep({
                   closeMenu();
                   onDeleteGeneratedAd(ad.id, ad.title);
                 }}
-                onOpen={onOpenGeneratedAd}
+                onDownload={() => onDownloadGeneratedAd(ad.title)}
+                onOpen={() => onOpenGeneratedAd(ad.id)}
                 onRegenerate={onRegenerate}
                 onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
               />
@@ -181,6 +184,7 @@ function ArchiveCard({
   isGenerated = false,
   menuOpen,
   onDelete,
+  onDownload,
   onOpen,
   onRegenerate,
   onShowProgress,
@@ -190,6 +194,7 @@ function ArchiveCard({
   isGenerated?: boolean;
   menuOpen: boolean;
   onDelete: () => void;
+  onDownload?: () => void;
   onOpen: () => void;
   onRegenerate: () => void;
   onShowProgress?: () => void;
@@ -245,6 +250,12 @@ function ArchiveCard({
               <button role="menuitem" type="button" onClick={() => runMenuAction(onRegenerate)}>
                 <RefreshCcw size={15} aria-hidden="true" />
                 비슷하게 만들기
+              </button>
+            ) : null}
+            {isGenerated && !isGenerating && onDownload ? (
+              <button role="menuitem" type="button" onClick={() => runMenuAction(onDownload)}>
+                <Download size={15} aria-hidden="true" />
+                다운로드
               </button>
             ) : null}
             <button className={styles.archiveDangerAction} role="menuitem" type="button" onClick={() => runMenuAction(onDelete)}>
