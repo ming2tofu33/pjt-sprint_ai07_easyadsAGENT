@@ -95,8 +95,8 @@ export function HomeStartStep({
           <Grid3X3 size={22} aria-hidden="true" />
         </span>
         <div>
-          <strong>브랜드 키트가 설정되어 있어요!</strong>
-          <small>도민 카페 · 감성적인 · 크림/핑크톤</small>
+          <strong>브랜드 키트를 연결해보세요</strong>
+          <small>가게 정보와 톤을 저장하면 광고 요청에 함께 반영돼요</small>
         </div>
         <ChevronRight size={18} aria-hidden="true" />
       </button>

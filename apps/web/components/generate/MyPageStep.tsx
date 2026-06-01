@@ -13,17 +13,23 @@ import {
   User,
   Zap
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildBrandKitHref } from "@/lib/brand-kit-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
-import { archivedCreatives, brandFacts, myActivitySummary, myProfile } from "@/lib/mock-dashboard-data";
+import { myProfile } from "@/lib/mock-dashboard-data";
+import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
 import { buildMyHref } from "@/lib/my-navigation";
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import styles from "./generate.module.css";
 
 export function MyPageStep() {
   const router = useRouter();
-  const activeAd = archivedCreatives.find((creative) => creative.status === "generating");
+  const [sessionCreativeCount, setSessionCreativeCount] = useState(0);
+
+  useEffect(() => {
+    setSessionCreativeCount(readGeneratedCreatives().length);
+  }, []);
 
   return (
     <>
@@ -54,47 +60,30 @@ export function MyPageStep() {
       <button className={styles.myBrandBanner} type="button" onClick={() => router.push(buildBrandKitHref("complete"))}>
         <Store size={24} aria-hidden="true" />
         <strong>
-          브랜드 키트 사용 중
-          <small>
-            {brandFacts.name} · {brandFacts.tone} · 크림/핑크톤
-          </small>
+          브랜드 키트 연결 전
+          <small>현재는 입력 흐름만 확인할 수 있어요</small>
         </strong>
         <ChevronRight size={18} aria-hidden="true" />
       </button>
 
       <section className={styles.myStatsGrid} aria-label="활동 요약">
         <button type="button" onClick={() => router.push(buildDashboardHref("ads"))}>
-          <strong>{myActivitySummary.generatedAds}개</strong>
-          <span>생성한 광고</span>
+          <strong>{sessionCreativeCount}개</strong>
+          <span>이번 세션 결과</span>
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("ads"))}>
-          <strong>{myActivitySummary.savedAds}개</strong>
-          <span>저장된 광고</span>
+          <strong>{sessionCreativeCount}개</strong>
+          <span>저장 가능 결과</span>
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("chat", "generating"))}>
-          <strong>{myActivitySummary.activeJobs}개</strong>
+          <strong>0개</strong>
           <span>생성 중 작업</span>
         </button>
         <button type="button" onClick={() => router.push(buildMyHref("usage"))}>
-          <strong>{myActivitySummary.remainingCredits}회</strong>
+          <strong>연결 전</strong>
           <span>남은 생성 횟수</span>
         </button>
       </section>
-
-      {activeAd ? (
-        <button className={styles.myProgressCard} type="button" onClick={() => router.push(buildDashboardHref("chat", "generating"))}>
-          <span data-tone={activeAd.tone} aria-hidden="true" />
-          <strong>
-            {activeAd.title}
-            <small>{activeAd.subtitle}</small>
-          </strong>
-          <em>{activeAd.progress}%</em>
-          <i aria-hidden="true">
-            <b style={{ width: `${activeAd.progress}%` }} />
-          </i>
-          <small>진행 상황 보기</small>
-        </button>
-      ) : null}
 
       <section className={styles.myMenuList}>
         <div>

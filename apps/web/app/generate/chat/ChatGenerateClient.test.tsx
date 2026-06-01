@@ -138,6 +138,8 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("레퍼런스 보고 만들기")).toBeTruthy();
     fireEvent.click(screen.getByText("대화로 시작하기"));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
+    expect(screen.getByLabelText("요청 보내기").hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByText("우리 카페 딸기라떼 신메뉴 광고 만들어줘"));
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
@@ -185,6 +187,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="chat" />);
 
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), { target: { value: "우리 카페 딸기라떼 신메뉴 광고 만들어줘" } });
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     expect(screen.getAllByText("요청 분석 중").length).toBeGreaterThan(0);
@@ -263,6 +266,7 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient />);
 
     fireEvent.click(screen.getByText("대화로 시작하기"));
+    fireEvent.click(screen.getByText("우리 카페 딸기라떼 신메뉴 광고 만들어줘"));
     fireEvent.click(screen.getByLabelText("요청 보내기"));
     await waitFor(() => expect(screen.getByText("딸기라떼")).toBeTruthy());
     await waitFor(() => expect(screen.getByRole("button", { name: "문구 고르기" }).hasAttribute("disabled")).toBe(false));

@@ -76,6 +76,8 @@ test("chat start flow reaches final brief on mobile", async ({ page }) => {
   await page.getByRole("button", { name: /대화로 시작하기/ }).click();
 
   await expect(page.getByText("대화로 찰떡 만들기")).toBeVisible();
+  await expect(page.getByLabel("요청 보내기")).toBeDisabled();
+  await page.getByRole("button", { name: /우리 카페 딸기라떼 신메뉴 광고 만들어줘/ }).click();
   await page.getByLabel("요청 보내기").click();
 
   await expect(page.getByText("AI가 이렇게 이해했어요")).toBeVisible();
@@ -172,13 +174,16 @@ test("brand kit setup flow reaches completion", async ({ page }) => {
 
 test("notification flow opens details and settings", async ({ page }) => {
   await page.goto("/notifications");
-  await expect(page.getByRole("heading", { name: "알림" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "알림", exact: true })).toBeVisible();
+  await expect(page.getByText("아직 연결된 실제 알림이 없어요")).toBeVisible();
 
+  await page.getByRole("button", { name: "샘플 알림 보기" }).click();
   await page.getByRole("button", { name: "결과 확인하기" }).click();
   await expect(page).toHaveURL(/\/notifications\/complete$/);
   await expect(page.getByRole("heading", { name: "광고 시안이 완성됐어요!" })).toBeVisible();
 
   await page.goto("/notifications");
+  await page.getByRole("button", { name: "샘플 알림 보기" }).click();
   await page.getByRole("button", { name: "다시 시도" }).click();
   await expect(page).toHaveURL(/\/notifications\/failed$/);
   await expect(page.getByRole("heading", { name: "광고 생성에 실패했어요" })).toBeVisible();

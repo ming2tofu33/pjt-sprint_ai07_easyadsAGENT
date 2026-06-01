@@ -28,7 +28,8 @@ type ChatStartStepProps = {
 };
 
 export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps) {
-  const [value, setValue] = useState("우리 카페 딸기라떼 신메뉴 광고 만들어줘");
+  const [value, setValue] = useState("");
+  const canSubmit = value.trim().length > 0;
 
   function submitPrompt() {
     const prompt = value.trim();
@@ -74,10 +75,11 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
           className={`${styles.input} ${styles.promptTextarea}`}
           value={value}
           aria-label="광고 요청 입력"
+          placeholder="예: 우리 가게 신메뉴 인스타 광고 만들어줘"
           onChange={(event) => setValue(event.target.value)}
           onSubmit={submitPrompt}
         />
-        <button className={styles.sendButton} type="button" aria-label="요청 보내기" onClick={submitPrompt}>
+        <button className={styles.sendButton} type="button" aria-label="요청 보내기" disabled={!canSubmit} onClick={submitPrompt}>
           <Send size={18} aria-hidden="true" />
         </button>
       </div>

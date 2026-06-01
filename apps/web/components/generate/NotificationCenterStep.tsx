@@ -1,6 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { useState } from "react";
 import {
   Bell,
   Briefcase,
@@ -50,6 +51,7 @@ function NotificationThumb({ item }: { item: MockNotification }) {
 
 export function NotificationCenterStep() {
   const router = useRouter();
+  const [showSampleNotifications, setShowSampleNotifications] = useState(false);
 
   function openNotification(item: MockNotification) {
     if (item.target === "complete") {
@@ -84,30 +86,54 @@ export function NotificationCenterStep() {
         </div>
       </header>
 
-      <div className={styles.notificationFilterRow} aria-label="알림 필터">
-        {filters.map((filter) => (
-          <button className={filter === "전체" ? styles.categoryActive : undefined} key={filter} type="button">
-            {filter}
-          </button>
-        ))}
+      <div className={styles.sampleLibraryHeader}>
+        <h2 className={styles.archiveSectionTitle}>알림 목록</h2>
+        <button type="button" onClick={() => setShowSampleNotifications((current) => !current)}>
+          {showSampleNotifications ? "숨기기" : "보기"}
+        </button>
       </div>
 
-      <section className={styles.notificationList} aria-label="알림 목록">
-        {mockNotifications.map((item) => (
-          <article className={styles.notificationCard} data-type={item.type} key={item.id}>
-            <span className={styles.notificationUnread} aria-hidden="true" />
-            <NotificationThumb item={item} />
-            <div>
-              <h2>{item.title}</h2>
-              <p>{item.subtitle}</p>
-              <small>{item.time}</small>
-            </div>
-            <button type="button" onClick={() => openNotification(item)}>
-              {item.ctaLabel}
-            </button>
-          </article>
-        ))}
-      </section>
+      {showSampleNotifications ? (
+        <>
+          <p className={styles.sampleNotice}>
+            아래 항목은 실제 푸시/생성 이벤트가 아니라 화면 확인용 샘플 알림입니다.
+          </p>
+
+          <div className={styles.notificationFilterRow} aria-label="알림 필터">
+            {filters.map((filter) => (
+              <button className={filter === "전체" ? styles.categoryActive : undefined} key={filter} type="button">
+                {filter}
+              </button>
+            ))}
+          </div>
+
+          <section className={styles.notificationList} aria-label="샘플 알림 목록">
+            {mockNotifications.map((item) => (
+              <article className={styles.notificationCard} data-type={item.type} key={item.id}>
+                <span className={styles.notificationUnread} aria-hidden="true" />
+                <NotificationThumb item={item} />
+                <div>
+                  <h2>{item.title}</h2>
+                  <p>{item.subtitle}</p>
+                  <small>{item.time}</small>
+                </div>
+                <button type="button" onClick={() => openNotification(item)}>
+                  {item.ctaLabel}
+                </button>
+              </article>
+            ))}
+          </section>
+        </>
+      ) : (
+        <section className={styles.emptyResultPanel} aria-label="실제 알림 없음">
+          <Bell size={24} aria-hidden="true" />
+          <strong>아직 연결된 실제 알림이 없어요</strong>
+          <p>생성 완료, 실패, 브랜드 키트 이벤트가 연결되면 이곳에 표시됩니다.</p>
+          <button className={styles.secondaryButton} type="button" onClick={() => setShowSampleNotifications(true)}>
+            샘플 알림 보기
+          </button>
+        </section>
+      )}
 
       <p className={styles.pullHint}>위로 당기면 새로고침</p>
 
