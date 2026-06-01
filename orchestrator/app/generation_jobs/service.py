@@ -40,6 +40,10 @@ def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
         return "mock_immediate", "pending_deterministic_mock"
     if run_mode == "graph_immediate":
         return "queued_only", "degraded_no_graph_execution"
+    if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
+        return "gpt_image_2_actual", "pending_t2i_actual"
+    if run_mode in {"sd35_local", "sd35_local_smoke"}:
+        return "sd35_local", "pending_t2i_actual"
     return "queued_only", "queued_only"
 
 

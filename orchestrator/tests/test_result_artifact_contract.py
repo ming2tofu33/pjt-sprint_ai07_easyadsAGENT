@@ -32,6 +32,9 @@ def test_result_artifact_payload_dump_and_urls_null(tmp_path):
     assert data["final_image_url"] is None
     assert "data/outputs/job_contract" in data["final_image_path"]
     assert ResultArtifactPayload(**data)
+    assert payload.download_path == "data/outputs/job_contract/final_0.png"
+    assert payload.download_url is None
+    assert payload.final_image_url is None
 
     artifact = tmp_path / "artifact.json"
     write_json_artifact(artifact, data)
