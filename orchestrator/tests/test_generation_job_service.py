@@ -36,22 +36,54 @@ def test_create_generation_job_defaults_and_lookup():
     assert job.selected_reference_template_id == "seed_cafe_strawberry_feed_001"
     assert job.metadata["requested_run_mode"] == "queued_only"
     assert job.metadata["effective_run_mode"] == "queued_only"
+    assert job.metadata["execution_mode"] == "queued_only"
     assert get_generation_job(job.job_id) == job
 
 
-def test_create_generation_job_degrades_immediate_modes_to_queued_only():
-    for run_mode in ["mock_immediate", "graph_immediate"]:
-        job = create_generation_job(
-            GenerationJobCreateRequest(
-                user_input="Create an ad",
-                run_mode=run_mode,
-            )
+def test_create_generation_job_queued_only_metadata():
+    job = create_generation_job(
+        GenerationJobCreateRequest(
+            user_input="Create an ad",
+            run_mode="queued_only",
         )
-        assert job.status == "queued"
-        assert job.metadata["requested_run_mode"] == run_mode
-        assert job.metadata["effective_run_mode"] == "queued_only"
-        assert job.output_path is None
-        assert job.result_payload is None
+    )
+
+    assert job.status == "queued"
+    assert job.metadata["requested_run_mode"] == "queued_only"
+    assert job.metadata["effective_run_mode"] == "queued_only"
+    assert job.metadata["execution_mode"] == "queued_only"
+
+
+def test_create_generation_job_mock_immediate_pending_metadata():
+    job = create_generation_job(
+        GenerationJobCreateRequest(
+            user_input="Create an ad",
+            run_mode="mock_immediate",
+        )
+    )
+
+    assert job.status == "queued"
+    assert job.metadata["requested_run_mode"] == "mock_immediate"
+    assert job.metadata["effective_run_mode"] == "mock_immediate"
+    assert job.metadata["execution_mode"] == "pending_deterministic_mock"
+    assert job.output_path is None
+    assert job.result_payload is None
+
+
+def test_create_generation_job_graph_immediate_degrades_metadata():
+    job = create_generation_job(
+        GenerationJobCreateRequest(
+            user_input="Create an ad",
+            run_mode="graph_immediate",
+        )
+    )
+
+    assert job.status == "queued"
+    assert job.metadata["requested_run_mode"] == "graph_immediate"
+    assert job.metadata["effective_run_mode"] == "queued_only"
+    assert job.metadata["execution_mode"] == "degraded_no_graph_execution"
+    assert job.output_path is None
+    assert job.result_payload is None
 
 
 def test_get_missing_generation_job_returns_none_and_reset_clears_store():
