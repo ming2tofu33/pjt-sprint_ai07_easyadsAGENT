@@ -96,6 +96,46 @@ test("chat start flow reaches final brief on mobile", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "찰떡 광고 시안이 완성됐어요" })).toBeVisible();
 });
 
+test("context question direct input keeps a full-width answer field", async ({ page }) => {
+  await page.route("**/api/generate/chat/start", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        type: "option_question",
+        jobId: "chat_question_e2e",
+        threadId: "chat_question_thread",
+        status: "waiting_user_selection",
+        context: {
+          businessType: "카페",
+          promotionGoal: "할인 이벤트"
+        },
+        question: {
+          field: "item_or_service",
+          question: "홍보할 상품이나 서비스는 무엇인가요?",
+          options: [
+            { id: 1, label: "대표 메뉴", value: "signature_menu" },
+            { id: 2, label: "신상품", value: "new_product" },
+            { id: 9, label: "직접 입력", value: "custom" }
+          ]
+        },
+        missingFields: ["item_or_service"]
+      })
+    });
+  });
+
+  await page.goto("/generate/chat");
+  await page.getByLabel("광고 요청 입력").fill("인스타 광고 만들어줘");
+  await page.getByLabel("요청 보내기").click();
+
+  await expect(page.getByRole("heading", { name: "홍보할 상품이나 서비스는 무엇인가요?" })).toBeVisible();
+
+  const answerInputBox = await page.getByLabel("직접 답변 입력").boundingBox();
+  const sendButtonBox = await page.getByLabel("직접 답변 보내기").boundingBox();
+
+  expect(answerInputBox?.width).toBeGreaterThan(220);
+  expect(sendButtonBox?.width).toBeGreaterThanOrEqual(40);
+});
+
 test("home dashboard opens reference gallery and returns home", async ({ page }) => {
   await page.goto("/");
 

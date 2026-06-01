@@ -591,6 +591,10 @@
   gap: 8px;
 }
 
+.contextAnswerInputCard {
+  grid-template-columns: minmax(0, 1fr) 42px;
+}
+
 .input {
   border: 0;
   outline: 0;
