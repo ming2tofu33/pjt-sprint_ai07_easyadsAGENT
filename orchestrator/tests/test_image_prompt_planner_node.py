@@ -67,3 +67,18 @@ def test_image_prompt_planner_includes_frontend_visual_choices():
     assert spec["metadata"]["selected_channel_id"] == "poster"
     assert spec["metadata"]["selected_tone"] == "고급스러운"
     assert spec["metadata"]["custom_direction"] == "상품을 중앙에 더 크게 보여줘"
+
+
+def test_image_prompt_planner_strengthens_uploaded_product_reference():
+    state = _state()
+    state["product_preserve_spec"] = {
+        "product_bbox": {"x": 0.2, "y": 0.2, "w": 0.6, "h": 0.6},
+        "source_image_path": "data/uploads/menu.png",
+    }
+
+    update = image_prompt_planner_node(state)
+    spec = update["image_prompt_spec"]
+
+    assert "Use the uploaded source image as the product reference" in spec["positive_prompt_en"]
+    assert "Preserve the main product's visual identity" in spec["positive_prompt_en"]
+    assert spec["metadata"]["vision_pipeline_enabled"] is True

@@ -1,5 +1,5 @@
 import type { GenerationJob, ResultArtifactPayload } from "./api-client";
-
+import { buildGeneratedAssetUrl } from "./generated-assets";
 
 export function resolveResultArtifact(job: GenerationJob | null | undefined): ResultArtifactPayload | null {
   return job?.result_payload ?? null;
@@ -13,7 +13,7 @@ export function resolvePreviewImageUrl(job: GenerationJob | null | undefined): s
   if (artifact?.download_url) {
     return artifact.download_url;
   }
-  return null;
+  return buildGeneratedAssetUrl(artifact?.final_image_path ?? artifact?.download_path ?? job?.output_path);
 }
 
 export function resolveDownloadUrl(job: GenerationJob | null | undefined): string | null {

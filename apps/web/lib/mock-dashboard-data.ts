@@ -245,27 +245,9 @@ export function getAdCreativeById(id: string): MockCreative | undefined {
   return archivedCreatives.find((creative) => creative.id === id);
 }
 
-export const brandFacts = {
-  name: "도민 카페",
-  status: "사용 중",
-  businessType: "카페",
-  region: "성수동 감성 상권",
-  sns: "@domin_cafe",
-  logoUploaded: true,
-  meta: "카페 · 성수동 감성 상권 · @domin_cafe",
-  tone: "감성적인, 따뜻한",
-  toneList: ["감성적인", "따뜻한"],
-  colors: ["#D7B48B", "#FFD7C9", "#D8A29B"],
-  colorNames: ["피치", "크림", "민트"],
-  products: "딸기라떼, 바닐라라떼, 크림라떼",
-  productList: ["딸기라떼", "바닐라라떼", "크림라떼"],
-  phrases: "신메뉴 출시, 매일 한정 수량, 예약은 DM",
-  phraseList: ["예약은 DM 주세요", "신메뉴 출시", "매일 한정 수량"]
-};
-
 export const myProfile = {
-  ownerName: "도민 사장님",
-  email: "domincafe@naver.com",
+  ownerName: "로그인 사용자",
+  email: "이메일 연결 전",
   plan: "무료 플랜 사용 중",
   loginMethod: "이메일 로그인"
 };
@@ -431,7 +413,7 @@ export const mockNotifications: MockNotification[] = [
     id: "notice-brand",
     type: "brand",
     title: "브랜드 키트가 저장됐어요",
-    subtitle: "도민 카페 정보가 다음 광고에 적용돼요.",
+    subtitle: "저장된 브랜드 키트 정보가 다음 광고에 적용돼요.",
     time: "10분 전",
     ctaLabel: "브랜드 키트 보기",
     target: "brand-kit"

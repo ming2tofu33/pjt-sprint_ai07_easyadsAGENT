@@ -6,6 +6,8 @@ __pycache__/
 .worktrees/
 outputs/
 data/
+# Local-only temporary references. Do not commit unverified third-party assets.
+data/reference_templates/_temporary_unlicensed/
 models/
 *.safetensors
 *.ckpt

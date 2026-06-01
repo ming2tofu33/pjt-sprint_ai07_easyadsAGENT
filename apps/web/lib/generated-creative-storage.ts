@@ -56,6 +56,9 @@ export function readGeneratedCreatives(): MockCreative[] {
 }
 
 export function addGeneratedCreativeSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative[] {
+  if (!snapshot.brief.finalImagePath) {
+    return readGeneratedCreatives();
+  }
   const creative = creativeFromSnapshot(snapshot);
   const existing = readGeneratedCreatives().filter((item) => item.id !== creative.id);
   const nextCreatives = [creative, ...existing].slice(0, 5);

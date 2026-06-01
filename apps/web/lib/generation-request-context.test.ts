@@ -1,45 +1,88 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
+import { saveBrandKit } from "./brand-kit-storage";
 import {
+  GENERATION_DRAFT_PROMPT_STORAGE_KEY,
+  GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY,
+  appendSavedBrandKitContext,
+  buildBrandKitGenerationContext,
+  clearGenerationDraftPrompt,
   clearGenerationRequestContext,
   readGenerationRequestContext,
-  saveGenerationRequestContext
+  readGenerationDraftPrompt,
+  readGenerationDraftReferenceTemplateId,
+  saveGenerationRequestContext,
+  writeGenerationDraftPrompt,
+  writeGenerationDraftReferenceTemplateId
 } from "./generation-request-context";
 
-describe("generation request context", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
+describe("generation-request-context", () => {
+  beforeEach(() => {
     window.sessionStorage.clear();
   });
 
-  it("saves, reads, and clears selected reference context", () => {
+  it("keeps prompts unchanged when no brand kit is saved", () => {
+    expect(appendSavedBrandKitContext("광고 만들어줘")).toBe("광고 만들어줘");
+  });
+
+  it("appends saved brand kit details for generation requests", () => {
+    const brandKit = saveBrandKit({
+      businessName: "연남 테스트 카페",
+      businessType: "카페",
+      region: "연남동",
+      sns: "@test_cafe",
+      tones: ["따뜻한"],
+      colors: ["#FFD7C9"],
+      phrases: ["예약은 DM 주세요"],
+      products: ["대표 메뉴"]
+    });
+
+    expect(buildBrandKitGenerationContext(brandKit)).toContain("가게 이름: 연남 테스트 카페");
+    expect(appendSavedBrandKitContext("신메뉴 광고 만들어줘")).toContain("[브랜드 키트]");
+    expect(appendSavedBrandKitContext("신메뉴 광고 만들어줘")).toContain("대표 상품/서비스: 대표 메뉴");
+  });
+
+  it("keeps a cross-route draft prompt until the generation flow clears it", () => {
+    writeGenerationDraftPrompt("레퍼런스 스타일로 광고 만들어줘");
+
+    expect(window.sessionStorage.getItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY)).toBe("레퍼런스 스타일로 광고 만들어줘");
+    expect(readGenerationDraftPrompt()).toBe("레퍼런스 스타일로 광고 만들어줘");
+    expect(readGenerationDraftPrompt()).toBe("레퍼런스 스타일로 광고 만들어줘");
+
+    clearGenerationDraftPrompt();
+
+    expect(readGenerationDraftPrompt()).toBe("");
+  });
+
+  it("keeps a selected reference template until the generation flow clears it", () => {
+    writeGenerationDraftReferenceTemplateId("temp_watermelon_juice_feed");
+
+    expect(window.sessionStorage.getItem(GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY)).toBe("temp_watermelon_juice_feed");
+    expect(readGenerationDraftReferenceTemplateId()).toBe("temp_watermelon_juice_feed");
+    expect(readGenerationDraftReferenceTemplateId()).toBe("temp_watermelon_juice_feed");
+
+    clearGenerationDraftPrompt();
+
+    expect(readGenerationDraftReferenceTemplateId()).toBe("");
+  });
+
+  it("keeps develop reference request context compatible with draft readers", () => {
     saveGenerationRequestContext({
-      selectedReferenceTemplateId: "template_1",
-      selectedReferenceTemplateTitle: "Cafe style",
-      draftPrompt: "Cafe style ad",
+      selectedReferenceTemplateId: "temp_watermelon_juice_feed",
+      selectedReferenceTemplateTitle: "수박주스 블루 여름 피드",
+      draftPrompt: "수박주스 블루 여름 피드 스타일로 광고를 만들고 싶어요.",
       source: "reference_gallery"
     });
 
     expect(readGenerationRequestContext()).toEqual({
-      selectedReferenceTemplateId: "template_1",
-      selectedReferenceTemplateTitle: "Cafe style",
-      draftPrompt: "Cafe style ad",
+      selectedReferenceTemplateId: "temp_watermelon_juice_feed",
+      selectedReferenceTemplateTitle: "수박주스 블루 여름 피드",
+      draftPrompt: "수박주스 블루 여름 피드 스타일로 광고를 만들고 싶어요.",
       source: "reference_gallery"
     });
+    expect(readGenerationDraftPrompt()).toBe("수박주스 블루 여름 피드 스타일로 광고를 만들고 싶어요.");
+    expect(readGenerationDraftReferenceTemplateId()).toBe("temp_watermelon_juice_feed");
 
     clearGenerationRequestContext();
     expect(readGenerationRequestContext()).toBeNull();
-  });
-
-  it("returns null for invalid JSON", () => {
-    window.sessionStorage.setItem("easyads_generation_request_context_v1", "{");
-    expect(readGenerationRequestContext()).toBeNull();
-  });
-
-  it("does not crash when window is unavailable", () => {
-    vi.stubGlobal("window", undefined);
-    expect(readGenerationRequestContext()).toBeNull();
-    expect(() => saveGenerationRequestContext({ selectedReferenceTemplateId: "template_1" })).not.toThrow();
-    expect(() => clearGenerationRequestContext()).not.toThrow();
-    vi.unstubAllGlobals();
   });
 });

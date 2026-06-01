@@ -245,6 +245,29 @@ def test_result_node_no_copy_uses_background(tmp_path):
     assert output["result_payload"]["has_text_overlay"] is False
 
 
+def test_result_node_preserves_t2i_error_when_output_is_missing():
+    output = result_node(
+        {
+            "job_id": "result-error-test",
+            "thread_id": "result-error-test",
+            "copy_generation_mode": "auto_pilot",
+            "copy_required": True,
+            "text_overlay_pending": True,
+            "copy_spec": {"copy_mode": "auto_pilot"},
+            "t2i_result": {
+                "engine": "gpt_image_2",
+                "image_paths": [],
+                "error": "API call disabled; pass allow_api_call=True or --include-api",
+            },
+            "artifact_refs": [],
+        }
+    )
+
+    assert output["status"] == "failed"
+    assert output["error_message"] == "API call disabled; pass allow_api_call=True or --include-api"
+    assert output["result_payload"]["metadata"]["error"] == "API call disabled; pass allow_api_call=True or --include-api"
+
+
 def _graph_request(mode: str, job_id: str) -> dict:
     return {
         "user_input": "ready",

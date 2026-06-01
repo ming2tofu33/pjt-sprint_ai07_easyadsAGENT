@@ -30,12 +30,54 @@ test("first visit redirects to onboarding and stores completion", async ({ page 
 });
 
 test("chat start flow reaches final brief on mobile", async ({ page }) => {
+  await page.route("**/api/generate/chat/start", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        type: "copy_candidates",
+        jobId: "chat_e2e",
+        threadId: "chat_e2e_thread",
+        status: "generating_copy_candidates",
+        context: {
+          businessType: "카페",
+          itemOrService: "딸기라떼",
+          promotionGoal: "신메뉴 출시"
+        },
+        copyCandidates: [
+          { id: "copy_1", headline: "봄을 닮은 한 잔, 딸기라떼 출시" },
+          { id: "copy_2", headline: "오늘만 더 달콤하게, 신메뉴 딸기라떼" }
+        ],
+        recommendedCopyId: "copy_1"
+      })
+    });
+  });
+  await page.route("**/api/generate/chat/brief", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        jobId: "chat_e2e",
+        threadId: "chat_e2e_thread",
+        status: "done",
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: "봄을 닮은 한 잔, 딸기라떼 출시",
+          tone: "상큼한 분위기",
+          channel: "인스타 스토리 (9:16)",
+          imageDirection: "상큼한 분위기를 살려 딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+          finalImagePath: "data/outputs/chat_e2e/final_composite.png"
+        }
+      })
+    });
+  });
   await page.goto("/");
 
   await expect(page.getByText("레퍼런스 보고 만들기")).toBeVisible();
   await page.getByRole("button", { name: /대화로 시작하기/ }).click();
 
   await expect(page.getByText("대화로 찰떡 만들기")).toBeVisible();
+  await expect(page.getByLabel("요청 보내기")).toBeDisabled();
+  await page.getByRole("button", { name: /우리 카페 딸기라떼 신메뉴 광고 만들어줘/ }).click();
   await page.getByLabel("요청 보내기").click();
 
   await expect(page.getByText("AI가 이렇게 이해했어요")).toBeVisible();
@@ -47,17 +89,54 @@ test("chat start flow reaches final brief on mobile", async ({ page }) => {
   await page.getByRole("button", { name: "브리프 확인하기" }).click();
 
   await expect(page.getByText("AI가 브리프를 정리했어요")).toBeVisible();
-  await expect(page.getByText("찰떡 광고 생성하기")).toBeVisible();
+  await expect(page.getByRole("button", { name: /생성 결과 확인하기|결과 상태 확인하기/ })).toBeVisible();
 
-  await page.getByRole("button", { name: /찰떡 광고 생성하기/ }).click();
-  await expect(page.getByText("찰떡 광고를 만들고 있어요")).toBeVisible();
-
-  await page.getByRole("button", { name: "기다리는 동안 둘러보기" }).click();
-  await expect(page.getByText("찰떡 레퍼런스 둘러보기")).toBeVisible();
-  await expect(page.getByRole("button", { name: "진행 상황 보기" })).toBeVisible();
+  await page.getByRole("button", { name: /생성 결과 확인하기|결과 상태 확인하기/ }).click();
+  await expect(page).toHaveURL(/\/generate\/chat\/complete$/);
+  await expect(page.getByRole("heading", { name: "찰떡 광고 시안이 완성됐어요" })).toBeVisible();
 });
 
-test("home mock hub opens reference gallery and returns home", async ({ page }) => {
+test("context question direct input keeps a full-width answer field", async ({ page }) => {
+  await page.route("**/api/generate/chat/start", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        type: "option_question",
+        jobId: "chat_question_e2e",
+        threadId: "chat_question_thread",
+        status: "waiting_user_selection",
+        context: {
+          businessType: "카페",
+          promotionGoal: "할인 이벤트"
+        },
+        question: {
+          field: "item_or_service",
+          question: "홍보할 상품이나 서비스는 무엇인가요?",
+          options: [
+            { id: 1, label: "대표 메뉴", value: "signature_menu" },
+            { id: 2, label: "신상품", value: "new_product" },
+            { id: 9, label: "직접 입력", value: "custom" }
+          ]
+        },
+        missingFields: ["item_or_service"]
+      })
+    });
+  });
+
+  await page.goto("/generate/chat");
+  await page.getByLabel("광고 요청 입력").fill("인스타 광고 만들어줘");
+  await page.getByLabel("요청 보내기").click();
+
+  await expect(page.getByRole("heading", { name: "홍보할 상품이나 서비스는 무엇인가요?" })).toBeVisible();
+
+  const answerInputBox = await page.getByLabel("직접 답변 입력").boundingBox();
+  const sendButtonBox = await page.getByLabel("직접 답변 보내기").boundingBox();
+
+  expect(answerInputBox?.width).toBeGreaterThan(220);
+  expect(sendButtonBox?.width).toBeGreaterThanOrEqual(40);
+});
+
+test("home dashboard opens reference gallery and returns home", async ({ page }) => {
   await page.goto("/");
 
   await page.getByRole("button", { name: /레퍼런스 보고 만들기/ }).click();
@@ -71,6 +150,7 @@ test("home mock hub opens reference gallery and returns home", async ({ page }) 
 test("reference style flow reaches style-based start", async ({ page }) => {
   await page.goto("/reference");
 
+  await page.getByRole("button", { name: "샘플 레퍼런스 보기" }).click();
   await page.getByRole("button", { name: "감성 카페 신메뉴 포스터 상세 보기" }).click();
   await expect(page).toHaveURL(/\/reference\/ref-strawberry-poster$/);
   await expect(page.getByText("레퍼런스 상세")).toBeVisible();
@@ -86,17 +166,19 @@ test("reference style flow reaches style-based start", async ({ page }) => {
   await page.getByRole("button", { name: "이 스타일로 내 광고 만들기" }).click();
   await expect(page).toHaveURL(/\/reference\/ref-strawberry-poster\/start$/);
   await expect(page.getByText("이 스타일로 시작하기")).toBeVisible();
+  await expect(page.getByLabel("가게 이름")).toHaveValue("");
+  await expect(page.getByRole("button", { name: "다음", exact: true })).toBeDisabled();
 
+  await page.getByRole("button", { name: "카페" }).click();
+  await page.getByLabel("가게 이름").fill("연남 테스트 카페");
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page).toHaveURL(/\/generate\/chat$/);
   await expect(page.getByText("대화로 찰떡 만들기")).toBeVisible();
+  await expect(page.getByLabel("광고 요청 입력")).toHaveValue("감성 카페 신메뉴 포스터 스타일로 연남 테스트 카페의 카페 광고를 만들어줘");
 });
 
 test("ad save management flow reaches archive", async ({ page }) => {
-  await page.goto("/generate/chat/complete");
-
-  await expect(page.getByText("찰떡 광고 시안이 완성됐어요")).toBeVisible();
-  await page.getByRole("button", { name: "봄을 닮은 한 잔 상세 보기" }).click();
+  await page.goto("/ads/result-1");
   await expect(page).toHaveURL(/\/ads\/result-1$/);
   await expect(page.getByText("찰떡 광고 시안")).toBeVisible();
 
@@ -111,6 +193,7 @@ test("ad save management flow reaches archive", async ({ page }) => {
   await page.getByRole("button", { name: "내 광고 보관함 보기" }).click();
   await expect(page).toHaveURL(/\/ads$/);
   await expect(page.getByText("내 찰떡 광고")).toBeVisible();
+  await page.getByRole("button", { name: "보기" }).click();
   await expect(page.getByRole("button", { name: "봄을 닮은 한 잔 다시 보기" })).toBeVisible();
 });
 
@@ -120,14 +203,28 @@ test("brand kit setup flow reaches completion", async ({ page }) => {
   await page.getByRole("button", { name: /브랜드 키트 관리/ }).click();
   await expect(page).toHaveURL(/\/brand\/kit\/info$/);
   await expect(page.getByText("가게 정보를 알려주세요")).toBeVisible();
+  await expect(page.getByRole("button", { name: /다음/ })).toBeDisabled();
 
+  await page.getByLabel("가게 이름").fill("연남 테스트 카페");
+  await page.getByRole("button", { name: "카페" }).click();
+  await page.getByLabel("지역 또는 상권").fill("연남동");
+  await page.getByLabel("SNS 계정").fill("@test_cafe");
   await page.getByRole("button", { name: /다음/ }).click();
   await expect(page).toHaveURL(/\/brand\/kit\/tone$/);
   await expect(page.getByText("우리 가게는 어떤 느낌인가요?")).toBeVisible();
 
+  await page.getByRole("button", { name: /따뜻한/ }).click();
+  await page.getByRole("button", { name: /예약은 DM 주세요/ }).click();
+  await page.getByRole("button", { name: /대표 메뉴/ }).click();
   await page.getByRole("button", { name: /저장하기/ }).click();
   await expect(page).toHaveURL(/\/brand\/kit\/complete$/);
   await expect(page.getByText("브랜드 키트가 저장됐어요")).toBeVisible();
+  await expect(page.getByText("연남 테스트 카페")).toBeVisible();
+  await expect(page.getByText("카페 · 연남동 · @test_cafe")).toBeVisible();
+
+  await page.goto("/");
+  await expect(page.getByText("브랜드 키트가 연결되어 있어요")).toBeVisible();
+  await expect(page.getByText(/연남 테스트 카페/)).toBeVisible();
 
   await page.getByRole("button", { name: /광고 만들기/ }).click();
   await expect(page).toHaveURL(/\/studio$/);
@@ -136,13 +233,16 @@ test("brand kit setup flow reaches completion", async ({ page }) => {
 
 test("notification flow opens details and settings", async ({ page }) => {
   await page.goto("/notifications");
-  await expect(page.getByRole("heading", { name: "알림" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "알림", exact: true })).toBeVisible();
+  await expect(page.getByText("아직 연결된 실제 알림이 없어요")).toBeVisible();
 
+  await page.getByRole("button", { name: "샘플 알림 보기" }).click();
   await page.getByRole("button", { name: "결과 확인하기" }).click();
   await expect(page).toHaveURL(/\/notifications\/complete$/);
   await expect(page.getByRole("heading", { name: "광고 시안이 완성됐어요!" })).toBeVisible();
 
   await page.goto("/notifications");
+  await page.getByRole("button", { name: "샘플 알림 보기" }).click();
   await page.getByRole("button", { name: "다시 시도" }).click();
   await expect(page).toHaveURL(/\/notifications\/failed$/);
   await expect(page.getByRole("heading", { name: "광고 생성에 실패했어요" })).toBeVisible();
@@ -316,9 +416,10 @@ test("photo upload flow reaches brief and generation", async ({ page }) => {
   await expect(page.getByText("AI가 브리프를 정리했어요")).toBeVisible();
   await expect(page.getByText("대화로 찰떡 만들기")).not.toBeVisible();
 
-  await page.getByRole("button", { name: /찰떡 광고 생성하기/ }).click();
-  await expect(page).toHaveURL(/\/generate\/chat\/generating$/);
-  await expect(page.getByText("생성 결과를 준비하고 있어요")).toBeVisible();
+  await page.getByRole("button", { name: /결과 상태 확인하기/ }).click();
+  await expect(page).toHaveURL(/\/generate\/chat\/complete$/);
+  await expect(page.getByText("이미지 생성이 완료되지 않았어요")).toBeVisible();
+  await expect(page.getByText("실제 이미지 파일을 받지 못했어요")).toBeVisible();
 });
 
 test("exception state screens guide recovery actions", async ({ page }) => {
@@ -414,10 +515,10 @@ test("dashboard surfaces are directly addressable", async ({ page }) => {
   await expect(page.getByText("우리 가게는 어떤 느낌인가요?")).toBeVisible();
 
   await page.goto("/brand/kit/complete");
-  await expect(page.getByText("브랜드 키트가 저장됐어요")).toBeVisible();
+  await expect(page.getByText("브랜드 키트가 아직 저장되지 않았어요")).toBeVisible();
 
   await page.goto("/notifications");
-  await expect(page.getByRole("heading", { name: "알림" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "알림", exact: true })).toBeVisible();
 
   await page.goto("/notifications/complete");
   await expect(page.getByRole("heading", { name: "광고 시안이 완성됐어요!" })).toBeVisible();
@@ -438,7 +539,7 @@ test("dashboard surfaces are directly addressable", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "광고 생성에 실패했어요" })).toBeVisible();
 
   await page.goto("/generate/chat/complete");
-  await expect(page.getByText("찰떡 광고 시안이 완성됐어요")).toBeVisible();
+  await expect(page.getByText("생성된 시안이 아직 없어요")).toBeVisible();
 });
 
 test("keyboard focus is visible on dashboard controls", async ({ page }) => {

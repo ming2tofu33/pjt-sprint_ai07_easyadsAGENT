@@ -82,7 +82,6 @@ class GPTImage2Engine(BaseT2IEngine):
                         size=size,
                         quality=_map_quality(request.quality),
                         n=request.num_images,
-                        response_format="b64_json",
                         input_fidelity="high",
                     )
                 api_operation = "edit"
@@ -93,7 +92,6 @@ class GPTImage2Engine(BaseT2IEngine):
                     size=size,
                     quality=_map_quality(request.quality),
                     n=request.num_images,
-                    response_format="b64_json",
                 )
                 api_operation = "generate"
             image_paths = _save_openai_images(response, output_dir)

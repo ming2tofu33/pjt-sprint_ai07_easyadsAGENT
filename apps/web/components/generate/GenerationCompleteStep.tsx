@@ -3,6 +3,7 @@
 import { CheckCircle2, Download, Home, ImageOff, Info, RotateCcw, Share2, Sparkles } from "lucide-react";
 import type { ChatBrief, ChatFlowState } from "@/types/marketing";
 import { buildGenerationResultCopyText, isDownloadEnabled, resolveDownloadUrl, resolvePreviewImageUrl } from "@/lib/generation-result-utils";
+import { buildGeneratedAssetUrl } from "@/lib/generated-assets";
 import type { CreativeTone } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { StepHeader } from "./StepHeader";
@@ -35,6 +36,16 @@ function targetChannelAction(channel: string) {
     return "피드용 변환";
   }
   return "스토리용 변환";
+}
+
+function resolveBriefImageUrl(path: string | null | undefined) {
+  if (!path) {
+    return null;
+  }
+  if (/^https?:\/\//.test(path) || path.startsWith("/")) {
+    return path;
+  }
+  return buildGeneratedAssetUrl(path);
 }
 
 function creativeToneFromBrief(brief: ChatBrief): CreativeTone {
@@ -76,16 +87,11 @@ export function GenerationCompleteStep({
   onEditCreative,
   onSaveSelected
 }: GenerationCompleteStepProps) {
-  function isPublicImageUrl(value: string | null | undefined) {
-    return Boolean(value && (/^https?:\/\//.test(value) || value.startsWith("/")));
-  }
-
   const brief = state.brief;
   const generatedJob = state.generationJob ?? null;
-
   const generatedImageUrl =
     resolvePreviewImageUrl(generatedJob) ??
-    (isPublicImageUrl(brief?.finalImagePath) ? brief?.finalImagePath ?? null : null);
+    resolveBriefImageUrl(brief?.finalImagePath);
   const downloadUrl = resolveDownloadUrl(generatedJob);
   const canDownload = isDownloadEnabled(generatedJob);
   const debugFinalPath = generatedJob?.result_payload?.final_image_path ?? generatedJob?.output_path ?? brief?.finalImagePath ?? null;
@@ -99,19 +105,18 @@ export function GenerationCompleteStep({
         channelName(brief.channel)
       ].map(cleanLabel).filter(Boolean)
     : [];
-  const editActions = brief ? buildEditActions(brief) : [];
+  const editActions = brief && generatedImageUrl ? buildEditActions(brief) : [];
   const resultTitle =
     cleanLabel(brief?.copy) ||
     cleanLabel(brief?.item) ||
     generatedJob?.job_id ||
     "생성 결과";
-
   const resultSubtitle = brief
     ? [cleanLabel(brief.item), cleanLabel(brief.channel)].filter(Boolean).join(" · ")
     : generatedJob
       ? `Status: ${generatedJob.status}`
       : "";
-  const generatedCreative = brief || generatedJob
+  const generatedCreative = generatedImageUrl && (brief || generatedJob)
     ? {
         id: state.jobId ? `generated-${state.jobId}` : generatedJob?.job_id ? `generated-${generatedJob.job_id}` : "generated-current",
         title: resultTitle,
@@ -119,7 +124,7 @@ export function GenerationCompleteStep({
         format: brief?.channel.match(/\(([^)]+)\)/)?.[1] ?? cleanLabel(brief?.channel) ?? "Generated",
         imageUrl: generatedImageUrl,
         tone: brief ? creativeToneFromBrief(brief) : "cream",
-        badge: generatedImageUrl ? "실제 생성" : "결과 대기",
+        badge: "실제 생성",
         status: "saved" as const,
         channel: brief ? channelName(brief.channel) : "Generated",
         fileName: "final_0.png",
@@ -137,12 +142,12 @@ export function GenerationCompleteStep({
       <StepHeader title="GENERATED RESULTS" canGoBack onBack={onGoHome} />
 
       <header className={styles.resultsHeader}>
-        <h1>{hasResultContext ? "찰떡 광고 시안이 완성됐어요" : "생성된 시안이 아직 없어요"}</h1>
+        <h1>{generatedImageUrl ? "찰떡 광고 시안이 완성됐어요" : hasResultContext ? "이미지 생성이 완료되지 않았어요" : "생성된 시안이 아직 없어요"}</h1>
         <p>
           {generatedImageUrl
             ? "실제 생성된 결과만 먼저 보여드려요."
             : hasResultContext
-              ? "생성 결과는 준비되었지만 public preview URL은 아직 연결되지 않았어요."
+              ? "브리프나 생성 작업은 준비됐지만 표시할 실제 이미지가 없어요. public preview URL 연결 상태를 확인해주세요."
               : "대화로 광고를 생성하면 실제 결과와 선택한 문구가 여기에 표시됩니다."}
         </p>
         {resultChips.length > 0 ? (
@@ -159,14 +164,18 @@ export function GenerationCompleteStep({
           <AdCreativeCard
             creative={generatedCreative}
             index={0}
-            onSave={generatedImageUrl ? () => onSaveCreative?.(generatedCreative.title) : undefined}
+            onSave={() => onSaveCreative?.(generatedCreative.title)}
           />
         </section>
       ) : (
         <section className={styles.emptyResultPanel} aria-label="생성 결과 없음">
           <ImageOff size={24} aria-hidden="true" />
-          <strong>표시할 생성 결과가 없어요</strong>
-          <p>먼저 대화로 광고를 만들면 이 화면에 실제 이미지와 브리프가 함께 표시됩니다.</p>
+          <strong>{hasResultContext ? "실제 이미지 파일을 받지 못했어요" : "표시할 생성 결과가 없어요"}</strong>
+          <p>
+            {hasResultContext
+              ? "임의 카드로 대신 보여주지 않고, 실제 이미지가 준비된 경우에만 결과 카드를 표시합니다."
+              : "먼저 대화로 광고를 만들면 이 화면에 실제 이미지와 브리프가 함께 표시됩니다."}
+          </p>
         </section>
       )}
 
@@ -175,7 +184,7 @@ export function GenerationCompleteStep({
         {generatedImageUrl
           ? "이 결과는 이번 브라우저 세션의 보관함에 자동 저장됐어요."
           : hasResultContext
-            ? "생성 결과는 준비되었지만 public preview URL은 아직 연결되지 않았어요."
+            ? "이미지가 없어 이번 결과는 세션 보관함에 저장하지 않았어요."
             : "아직 생성된 결과가 없어 보관함에 저장된 항목도 없어요."}
       </p>
 
@@ -207,10 +216,10 @@ export function GenerationCompleteStep({
           </button>
           <button className={styles.secondaryButton} type="button" onClick={onBrowseSimilar}>
             <Share2 size={17} aria-hidden="true" />
-            샘플 레퍼런스 보기
+            레퍼런스 갤러리 보기
           </button>
         </div>
-        {generatedImageUrl && generatedCreative ? (
+        {generatedCreative ? (
           <>
             <div className={`${styles.actionGrid} ${styles.generatedResultActions}`}>
               <button className={styles.primaryButton} type="button" onClick={onEditCreative}>
@@ -221,20 +230,22 @@ export function GenerationCompleteStep({
               <Download size={16} aria-hidden="true" />
               세션 보관함에서 보기
             </button>
-          </>
-        ) : null}
-        {generatedCreative ? (
-          <>
-            <button className={styles.textButton} disabled={!canDownload} type="button" title={canDownload ? undefined : "이미지는 생성되었지만 public download URL은 아직 연결되지 않았습니다."} onClick={() => downloadUrl && window.open(downloadUrl, "_blank", "noopener,noreferrer")}>
+            <button
+              className={styles.textButton}
+              disabled={!canDownload}
+              type="button"
+              title={canDownload ? undefined : "이미지는 생성되었지만 public download URL은 아직 연결되지 않았습니다."}
+              onClick={() => downloadUrl && window.open(downloadUrl, "_blank", "noopener,noreferrer")}
+            >
               <Download size={16} aria-hidden="true" />
               다운로드
             </button>
-            {generatedJob ? (
-              <button className={styles.textButton} type="button" onClick={() => navigator.clipboard?.writeText(buildGenerationResultCopyText(generatedJob))}>
-                결과 정보 복사
-              </button>
-            ) : null}
           </>
+        ) : null}
+        {generatedJob ? (
+          <button className={styles.textButton} type="button" onClick={() => navigator.clipboard?.writeText(buildGenerationResultCopyText(generatedJob))}>
+            결과 정보 복사
+          </button>
         ) : null}
       </div>
     </>

@@ -59,7 +59,7 @@ describe("generation result utils", () => {
     expect(text).toContain("Final image path: data/outputs/job_1/final_0.png");
   });
 
-  it("does not use final_image_path or output_path as preview url when no public URL exists", () => {
-    expect(resolvePreviewImageUrl(baseJob)).toBeNull();
+  it("maps repo output paths to the generated asset preview route", () => {
+    expect(resolvePreviewImageUrl(baseJob)).toBe("/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal_0.png");
   });
 });

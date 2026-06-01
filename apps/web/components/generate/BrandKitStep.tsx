@@ -1,7 +1,16 @@
 "use client";
 
 import { Briefcase, Home, Palette, Search, Sparkles, Store, User } from "lucide-react";
-import { brandFacts, referenceCreatives } from "@/lib/mock-dashboard-data";
+import { useEffect, useState } from "react";
+import {
+  brandKitMeta,
+  brandKitPhrases,
+  brandKitProducts,
+  brandKitTone,
+  readSavedBrandKit,
+  type StoredBrandKit
+} from "@/lib/brand-kit-storage";
+import { referenceCreatives } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
 import styles from "./generate.module.css";
 
@@ -20,6 +29,12 @@ export function BrandKitStep({
   onOpenRecentAds,
   onEditBrandKit
 }: BrandKitStepProps) {
+  const [brandKit, setBrandKit] = useState<StoredBrandKit | null>(null);
+
+  useEffect(() => {
+    setBrandKit(readSavedBrandKit());
+  }, []);
+
   return (
     <>
       <header className={styles.brandKitHeader}>
@@ -48,38 +63,36 @@ export function BrandKitStep({
             <Store size={28} aria-hidden="true" />
           </span>
           <div>
-            <strong>{brandFacts.name}</strong>
-            <small>{brandFacts.status}</small>
-            <p>{brandFacts.meta}</p>
+            <strong>{brandKit?.businessName ?? "브랜드 키트 연결 전"}</strong>
+            <small>{brandKit ? "저장됨" : "등록 전"}</small>
+            <p>{brandKit ? brandKitMeta(brandKit) : "가게 정보를 입력하면 여기에 표시됩니다."}</p>
           </div>
         </div>
         <dl className={styles.brandFacts}>
           <div>
             <dt>브랜드 톤</dt>
-            <dd>{brandFacts.tone}</dd>
+            <dd>{brandKit ? brandKitTone(brandKit) : "브랜드 톤 선택 전"}</dd>
           </div>
           <div>
             <dt>브랜드 컬러</dt>
             <dd>
-              {brandFacts.colors.map((color) => (
-                <span key={color} style={{ background: color }} />
-              ))}
+              {brandKit?.colors.length ? brandKit.colors.map((color) => <span key={color} style={{ background: color }} />) : "선택 전"}
             </dd>
           </div>
           <div>
             <dt>대표 상품</dt>
-            <dd>{brandFacts.products}</dd>
+            <dd>{brandKit ? brandKitProducts(brandKit) : "대표 상품 선택 전"}</dd>
           </div>
           <div>
             <dt>자주 쓰는 문구</dt>
-            <dd>{brandFacts.phrases}</dd>
+            <dd>{brandKit ? brandKitPhrases(brandKit) : "자주 쓰는 문구 선택 전"}</dd>
           </div>
         </dl>
       </section>
 
       <p className={styles.brandKitNotice}>
         <Palette size={18} aria-hidden="true" />
-        브랜드 키트가 적용된 광고는 더 찰떡같은 결과를 보여드려요!
+        {brandKit ? "브랜드 키트가 적용된 광고는 더 찰떡같은 결과를 보여드려요!" : "브랜드 키트를 저장하면 다음 광고 흐름에서 바로 확인할 수 있어요."}
       </p>
 
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">

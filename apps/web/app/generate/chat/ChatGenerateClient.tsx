@@ -23,7 +23,9 @@ import {
   startChatGeneration,
   startPhotoGeneration,
   uploadPhotoAsset,
-  type ChatTurnResponse
+  type ChatTurnResponse,
+  type GenerationStartOptions,
+  type ReferenceTemplateCard
 } from "@/lib/api-client";
 import { buildAdHref } from "@/lib/ad-navigation";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
@@ -38,10 +40,17 @@ import {
   removeGeneratedCreative,
   type GeneratedCreativeSnapshot
 } from "@/lib/generated-creative-storage";
+import {
+  appendSavedBrandKitContext,
+  clearGenerationDraftPrompt,
+  readGenerationDraftReferenceTemplateId,
+  writeGenerationDraftPrompt,
+  writeGenerationDraftReferenceTemplateId
+} from "@/lib/generation-request-context";
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildReferenceStyleHref } from "@/lib/reference-navigation";
-import { clearGenerationRequestContext, readGenerationRequestContext } from "@/lib/generation-request-context";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
+import type { ChatBrief, CopyGenerationMode, InferredContext } from "@/types/marketing";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing";
 
@@ -113,10 +122,14 @@ function isQuestionResponse(response: ChatTurnResponse): response is Extract<Cha
   return response.type === "option_question";
 }
 
+function isBriefReadyResponse(response: ChatTurnResponse): response is Extract<ChatTurnResponse, { type: "brief_ready" }> {
+  return response.type === "brief_ready";
+}
+
 type PhotoGenerateInput = {
   file: File;
   prompt: string;
-};
+} & GenerationStartOptions;
 
 export function ChatGenerateClient({ initialSurface = "home", initialStage = "start" }: ChatGenerateClientProps) {
   const router = useRouter();
@@ -127,7 +140,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [generatedCreatives, setGeneratedCreatives] = useState<MockCreative[]>([]);
   const lastPrimedStageRef = useRef<DashboardStage | null>(null);
-  const requestContextRef = useRef(readGenerationRequestContext());
   const appSurface = optimisticSurface ?? initialSurface;
 
   const navigateTo = useCallback(
@@ -155,13 +167,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     dispatch({ type: "selectChannel", channelId: snapshot.selectedChannelId });
     dispatch({ type: "setCustomDirection", value: snapshot.customDirection });
     dispatch({ type: "backendBriefSucceeded", brief: snapshot.brief });
-    if (snapshot.selectedReferenceTemplateId) {
-      dispatch({
-        type: "referenceTemplateSelected",
-        selectedReferenceTemplateId: snapshot.selectedReferenceTemplateId,
-        selectedReferenceTemplateTitle: snapshot.selectedReferenceTemplateTitle ?? null
-      });
-    }
     dispatch({ type: "continueToBrief" });
     setGenerationProgress(stage === "generating" ? 68 : stage === "start" ? 0 : 100);
     setGenerationStage(
@@ -169,6 +174,53 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     );
     lastPrimedStageRef.current = stage;
   }, []);
+
+  const applyBriefReadyResponse = useCallback(
+    (
+      prompt: string,
+      response: {
+        jobId: string;
+        threadId: string;
+        context: InferredContext;
+        brief: ChatBrief;
+        copyGenerationMode?: CopyGenerationMode;
+      }
+    ) => {
+      const snapshot = {
+        prompt,
+        jobId: response.jobId,
+        threadId: response.threadId,
+        context: response.context,
+        copyCandidates: [],
+        copyCandidateSource: "empty" as const,
+        selectedCopyId: "",
+        selectedChannelId: "instagram-feed",
+        selectedTone: "",
+        customDirection: "",
+        brief: response.brief
+      };
+      dispatch({
+        type: "backendStartSucceeded",
+        prompt,
+        jobId: response.jobId,
+        threadId: response.threadId,
+        context: response.context,
+        copyCandidates: [],
+        recommendedCopyId: null,
+        copyCandidateSource: "empty",
+        copyGenerationMode: response.copyGenerationMode ?? "no_copy"
+      });
+      dispatch({ type: "backendBriefSucceeded", brief: response.brief });
+      dispatch({ type: "continueToBrief" });
+      writeChatFlowSnapshot(snapshot);
+      clearChatTurnSnapshot();
+      setGeneratedCreatives(response.brief.finalImagePath ? addGeneratedCreativeSnapshot(snapshot) : readGeneratedCreatives());
+      setGenerationProgress(100);
+      setGenerationStage("brief");
+      lastPrimedStageRef.current = "start";
+    },
+    []
+  );
 
   const applyTurnResponse = useCallback((prompt: string, response: ChatTurnResponse) => {
     if (isQuestionResponse(response)) {
@@ -181,6 +233,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       });
       return;
     }
+    if (isBriefReadyResponse(response)) {
+      applyBriefReadyResponse(prompt, response);
+      return;
+    }
 
     dispatch({
       type: "backendStartSucceeded",
@@ -189,26 +245,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       threadId: response.threadId,
       context: response.context,
       copyCandidates: response.copyCandidates,
-      recommendedCopyId: response.recommendedCopyId
+      recommendedCopyId: response.recommendedCopyId,
+      copyGenerationMode: response.copyGenerationMode
     });
-  }, []);
+  }, [applyBriefReadyResponse]);
 
   useEffect(() => {
     setOptimisticSurface(null);
   }, [initialSurface]);
-
-  useEffect(() => {
-    const context = requestContextRef.current;
-    if (!context?.selectedReferenceTemplateId) {
-      return;
-    }
-    dispatch({
-      type: "requestContextLoaded",
-      selectedReferenceTemplateId: context.selectedReferenceTemplateId,
-      selectedReferenceTemplateTitle: context.selectedReferenceTemplateTitle ?? null,
-      draftPrompt: context.draftPrompt ?? null
-    });
-  }, []);
 
   useEffect(() => {
     if (appSurface === "ads") {
@@ -264,13 +308,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     dispatch({ type: "reset" });
-    dispatch({ type: "submitPrompt", prompt: "삼겹살집 회식 손님 많이 오게 포스터 만들어줘" });
-    dispatch({ type: "continueToCopy" });
-    dispatch({ type: "continueToBrief" });
-    setGenerationProgress(initialStage === "generating" ? 68 : 100);
-    setGenerationStage(
-      initialStage === "generating" ? "generating" : initialStage === "similar" ? "similarBrowsing" : "complete"
-    );
+    dispatch({ type: "showResultShell" });
+    setGenerationProgress(0);
+    setGenerationStage("complete");
     lastPrimedStageRef.current = initialStage;
   }, [appSurface, applyTurnResponse, initialStage, restoreBriefSnapshot]);
 
@@ -295,40 +335,23 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     return () => window.clearInterval(timer);
   }, [generationStage, navigateTo]);
 
-  async function handleSubmitPrompt(prompt: string) {
+  async function handleSubmitPrompt(prompt: string, options: GenerationStartOptions = {}) {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
-    const latestRequestContext = readGenerationRequestContext();
-
-    if (latestRequestContext?.selectedReferenceTemplateId && !state.selectedReferenceTemplateId) {
-      dispatch({
-        type: "requestContextLoaded",
-        selectedReferenceTemplateId: latestRequestContext.selectedReferenceTemplateId,
-        selectedReferenceTemplateTitle: latestRequestContext.selectedReferenceTemplateTitle ?? null,
-        draftPrompt: latestRequestContext.draftPrompt ?? null
-      });
-    }
-
-    dispatch({ type: "submitPrompt", prompt });
-
+    const selectedReferenceTemplateId = (options.selectedReferenceTemplateId ?? readGenerationDraftReferenceTemplateId()) || undefined;
+    const startOptions = {
+      ...options,
+      selectedReferenceTemplateId
+    };
+    clearGenerationDraftPrompt();
+    dispatch({ type: "submitPrompt", prompt, copyGenerationMode: options.copyGenerationMode });
     try {
-      const selectedReferenceTemplateId =
-        state.selectedReferenceTemplateId ??
-        latestRequestContext?.selectedReferenceTemplateId ??
-        undefined;
-
-      const response = await startChatGeneration(prompt, {
-        selectedReferenceTemplateId,
-        adFormat: "instagram_feed",
-        renderProfile: "premium_api"
-      });
-
-      if (selectedReferenceTemplateId) {
-        clearGenerationRequestContext();
-      }
-
+      const response = await startChatGeneration(appendSavedBrandKitContext(prompt), startOptions);
       applyTurnResponse(prompt, response);
     } catch (error) {
+      if (selectedReferenceTemplateId) {
+        writeGenerationDraftReferenceTemplateId(selectedReferenceTemplateId);
+      }
       dispatch({
         type: "backendRequestFailed",
         message: error instanceof Error ? error.message : "백엔드 연결에 실패했습니다. 잠시 후 다시 시도해주세요."
@@ -365,24 +388,16 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     setGenerationProgress(0);
     setGenerationStage("brief");
 
-    const latestRequestContext = readGenerationRequestContext();
-    const selectedReferenceTemplateId =
-      state.selectedReferenceTemplateId ??
-      latestRequestContext?.selectedReferenceTemplateId ??
-      undefined;
-
     try {
       const upload = await uploadPhotoAsset(input.file);
       const response = await startPhotoGeneration({
-        userInput: input.prompt,
+        userInput: appendSavedBrandKitContext(input.prompt),
         sourceImagePath: upload.sourceImagePath,
-        selectedReferenceTemplateId
+        copyGenerationMode: input.copyGenerationMode,
+        userCustomHeadline: input.userCustomHeadline,
+        userCustomSubcopy: input.userCustomSubcopy,
+        selectedReferenceTemplateId: input.selectedReferenceTemplateId
       });
-
-      if (selectedReferenceTemplateId) {
-        clearGenerationRequestContext();
-      }
-
       writeChatTurnSnapshot({ prompt: input.prompt, response });
       lastPrimedStageRef.current = null;
       navigateTo("chat", "start");
@@ -421,13 +436,11 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         selectedChannelId: state.selectedChannelId,
         selectedTone: state.selectedTone,
         customDirection: state.customDirection,
-        brief: response.brief,
-        selectedReferenceTemplateId: state.selectedReferenceTemplateId ?? null,
-        selectedReferenceTemplateTitle: state.selectedReferenceTemplateTitle ?? null
+        brief: response.brief
       };
       writeChatFlowSnapshot(snapshot);
       clearChatTurnSnapshot();
-      setGeneratedCreatives(addGeneratedCreativeSnapshot(snapshot));
+      setGeneratedCreatives(response.brief.finalImagePath ? addGeneratedCreativeSnapshot(snapshot) : readGeneratedCreatives());
       dispatch({ type: "backendBriefSucceeded", brief: response.brief });
       dispatch({ type: "continueToBrief" });
     } catch (error) {
@@ -439,50 +452,37 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }
 
   function handleOpenGeneratedResult() {
-    if (state.brief?.finalImagePath) {
-      setGenerationProgress(100);
-      setGenerationStage("complete");
-      lastPrimedStageRef.current = "complete";
-      navigateTo("chat", "complete");
-      return;
-    }
-
-    setGenerationProgress(12);
-    setGenerationStage("generating");
-    lastPrimedStageRef.current = "generating";
-    navigateTo("chat", "generating");
+    setGenerationProgress(100);
+    setGenerationStage("complete");
+    lastPrimedStageRef.current = "complete";
+    navigateTo("chat", "complete");
   }
 
   function handleOpenFreshChat() {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
-    const latestRequestContext = readGenerationRequestContext();
-
+    clearGenerationDraftPrompt();
     dispatch({ type: "reset" });
-
-    if (latestRequestContext?.selectedReferenceTemplateId) {
-      dispatch({
-        type: "requestContextLoaded",
-        selectedReferenceTemplateId: latestRequestContext.selectedReferenceTemplateId,
-        selectedReferenceTemplateTitle: latestRequestContext.selectedReferenceTemplateTitle ?? null,
-        draftPrompt: latestRequestContext.draftPrompt ?? null
-      });
-    }
-
     setGenerationProgress(0);
     setGenerationStage("brief");
     navigateTo("chat", "start");
   }
 
-  function handleRegenerateFromRecent() {
+  function handleUseReferenceTemplate(template: ReferenceTemplateCard) {
+    clearChatFlowSnapshot();
+    clearChatTurnSnapshot();
     dispatch({ type: "reset" });
-    dispatch({ type: "submitPrompt", prompt: "딸기라떼 신메뉴 광고 비슷하게 다시 만들어줘" });
-    dispatch({ type: "continueToCopy" });
-    dispatch({ type: "continueToBrief" });
-    setGenerationProgress(12);
-    setGenerationStage("generating");
-    lastPrimedStageRef.current = "generating";
-    navigateTo("chat", "generating");
+    setGenerationProgress(0);
+    setGenerationStage("brief");
+    writeGenerationDraftPrompt(`${template.title} 스타일로 광고 만들어줘`);
+    writeGenerationDraftReferenceTemplateId(template.templateId);
+    showToast(`${template.title} 스타일을 다음 요청에 연결했어요.`);
+    navigateTo("chat", "start");
+  }
+
+  function handleRegenerateFromRecent() {
+    showToast("새 요청 화면에서 비슷하게 만들 광고를 입력해주세요.");
+    handleOpenFreshChat();
   }
 
   function handleDeleteGeneratedAd(creativeId: string, title: string) {
@@ -538,6 +538,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onShowProgress={() => navigateTo("studio")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onUseTemplate={handleUseReferenceTemplate}
         />
       ) : null}
 
@@ -550,8 +551,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenBrandKit={() => navigateTo("my")}
           onRegenerate={handleRegenerateFromRecent}
           onShowProgress={() => showToast("광고 생성 상태를 확인합니다.")}
-          onOpenGeneratedAd={() => navigateTo("chat", "complete")}
+          onOpenGeneratedAd={(creativeId) => router.push(buildAdHref(creativeId))}
           onOpenAd={(creativeId) => router.push(buildAdHref(creativeId))}
+          onDownloadGeneratedAd={(title) => showToast(`${title} 다운로드는 실제 파일 저장 연결 후 활성화돼요.`)}
           onDeleteGeneratedAd={handleDeleteGeneratedAd}
           onDeleteSampleAd={(title) => showToast(`${title} 항목을 보관함에서 삭제했어요.`)}
           onOpenNotifications={() => router.push(buildNotificationHref())}
@@ -627,6 +629,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenBrandKit={() => navigateTo("my")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onUseTemplate={handleUseReferenceTemplate}
         />
       ) : null}
 
@@ -661,6 +664,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenBrandKit={() => navigateTo("my")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onUseTemplate={handleUseReferenceTemplate}
         />
       ) : null}
       <DashboardToast message={toastMessage} />

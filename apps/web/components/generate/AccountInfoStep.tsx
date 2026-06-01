@@ -1,15 +1,22 @@
 "use client";
 
 import { ArrowLeft, Briefcase, ChevronRight, Home, Mail, MapPin, Search, Sparkles, Store, User } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildBrandKitHref } from "@/lib/brand-kit-navigation";
+import { brandKitMeta, brandKitProducts, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
-import { brandFacts, myProfile } from "@/lib/mock-dashboard-data";
+import { myProfile } from "@/lib/mock-dashboard-data";
 import { buildMyHref } from "@/lib/my-navigation";
 import styles from "./generate.module.css";
 
 export function AccountInfoStep() {
   const router = useRouter();
+  const [brandKit, setBrandKit] = useState<StoredBrandKit | null>(null);
+
+  useEffect(() => {
+    setBrandKit(readSavedBrandKit());
+  }, []);
 
   return (
     <>
@@ -53,32 +60,32 @@ export function AccountInfoStep() {
               <Store size={17} aria-hidden="true" />
               가게 이름
             </dt>
-            <dd>{brandFacts.name}</dd>
+            <dd>{brandKit?.businessName ?? "등록 전"}</dd>
           </div>
           <div>
             <dt>업종</dt>
-            <dd>{brandFacts.businessType} / 디저트</dd>
+            <dd>{brandKit?.businessType ?? "등록 전"}</dd>
           </div>
           <div>
             <dt>
               <MapPin size={17} aria-hidden="true" />
               지역 / 상권
             </dt>
-            <dd>서울 마포구 연남동</dd>
+            <dd>{brandKit?.region || "등록 전"}</dd>
           </div>
           <div>
             <dt>SNS 계정</dt>
-            <dd>{brandFacts.sns}</dd>
+            <dd>{brandKit?.sns || "등록 전"}</dd>
           </div>
         </dl>
       </section>
 
-      <button className={styles.myLinkedBrandCard} type="button" onClick={() => router.push(buildBrandKitHref("complete"))}>
+      <button className={styles.myLinkedBrandCard} type="button" onClick={() => router.push(buildBrandKitHref(brandKit ? "complete" : "info"))}>
         <Store size={24} aria-hidden="true" />
         <strong>
-          {brandFacts.name}
+          {brandKit?.businessName ?? "브랜드 키트 연결 전"}
           <small>
-            {brandFacts.tone} · 대표 상품: {brandFacts.products}
+            {brandKit ? `${brandKitTone(brandKit)} · 대표 상품: ${brandKitProducts(brandKit)} · ${brandKitMeta(brandKit)}` : "가게 정보를 입력하면 여기에 표시됩니다."}
           </small>
         </strong>
         <ChevronRight size={18} aria-hidden="true" />

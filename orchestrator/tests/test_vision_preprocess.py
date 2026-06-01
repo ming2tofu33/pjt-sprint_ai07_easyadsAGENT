@@ -62,6 +62,24 @@ def test_invalid_extension_and_missing_file_raise(tmp_path):
         preprocess_image(ImageInputSpec(image_path=str(tmp_path / "missing.png")), "vision-missing", settings=_settings(tmp_path))
 
 
+def test_relative_input_paths_resolve_from_project_root(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    upload_dir = project_root / "data" / "uploads"
+    upload_dir.mkdir(parents=True)
+    path = _image(upload_dir / "source.png", size=(40, 40))
+    monkeypatch.setattr("orchestrator.app.vision.preprocess.PROJECT_ROOT", project_root)
+    monkeypatch.chdir(tmp_path)
+
+    result = preprocess_image(
+        ImageInputSpec(image_path="data/uploads/source.png"),
+        "vision-relative",
+        settings=_settings(tmp_path),
+    )
+
+    assert result.metadata.original_path == str(path.resolve())
+    assert Path(result.preprocessed_artifact_path).exists()
+
+
 def test_center_crop_and_fit_with_padding(tmp_path):
     path = _image(tmp_path / "wide.png", size=(200, 100))
     settings = _settings(tmp_path)

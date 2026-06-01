@@ -91,6 +91,7 @@ def test_gpt_image2_uses_edit_when_input_image_is_present(monkeypatch, tmp_path)
     assert called["operation"] == "edit"
     assert called["kwargs"]["model"] == "gpt-image-1"
     assert called["kwargs"]["input_fidelity"] == "high"
+    assert "response_format" not in called["kwargs"]
     assert called["kwargs"]["image"][0].name == str(source)
     assert result.error is None
     assert result.image_paths == [str(tmp_path / "out" / "gpt_image_2_0.png")]
