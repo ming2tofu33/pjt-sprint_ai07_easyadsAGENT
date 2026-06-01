@@ -158,3 +158,27 @@ def test_create_generation_job_accepts_snake_case_reference_id(client):
     assert response.status_code == 201
     job = response.json()["job"]
     assert job["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+
+
+def test_generation_job_actual_payload_preserves_quality_batch_metadata(client):
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={
+            "user_input": "Create a quality batch ad background",
+            "run_mode": "gpt_image_2_actual",
+            "selected_reference_template_id": "seed_cafe_strawberry_feed_001",
+            "ad_format": "instagram_feed",
+            "metadata": {
+                "quality_batch_id": "gpt_image2_quality_batch_v1",
+                "case_id": "cafe_dessert_001",
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    job = response.json()["job"]
+    assert job["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+    assert job["metadata"]["quality_batch_id"] == "gpt_image2_quality_batch_v1"
+    assert job["metadata"]["case_id"] == "cafe_dessert_001"
+    assert job["status"] == "failed"
+    assert job["error"]["error_code"] == "t2i_engine_not_enabled"
