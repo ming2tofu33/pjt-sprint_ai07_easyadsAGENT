@@ -60,6 +60,10 @@ export type CustomCopyFields = {
   userCustomSubcopy?: string;
 };
 
+export type ReferenceTemplateFields = {
+  selectedReferenceTemplateId?: string;
+};
+
 export type ChannelOption = {
   id: string;
   label: string;

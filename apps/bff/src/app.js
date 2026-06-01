@@ -12,13 +12,17 @@ const customCopyFieldsSchema = {
   userCustomHeadline: z.string().trim().min(1).optional(),
   userCustomSubcopy: z.string().trim().optional()
 };
+const referenceTemplateFieldsSchema = {
+  selectedReferenceTemplateId: z.string().trim().min(1).optional()
+};
 
 const chatStartSchema = z.object({
   userInput: z.string().min(1),
   adFormat: z.string().optional(),
   renderProfile: z.string().optional(),
   copyGenerationMode: z.enum(copyGenerationModes).optional(),
-  ...customCopyFieldsSchema
+  ...customCopyFieldsSchema,
+  ...referenceTemplateFieldsSchema
 }).superRefine((data, context) => {
   if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
     context.addIssue({
@@ -62,7 +66,8 @@ const photoStartSchema = z.object({
   adFormat: z.string().optional(),
   renderProfile: z.string().optional(),
   copyGenerationMode: z.enum(copyGenerationModes).optional(),
-  ...customCopyFieldsSchema
+  ...customCopyFieldsSchema,
+  ...referenceTemplateFieldsSchema
 }).superRefine((data, context) => {
   if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
     context.addIssue({
@@ -87,6 +92,39 @@ async function proxyJson({ fetchImpl, url, body }) {
     throw error;
   }
   return payload;
+}
+
+async function proxyGetJson({ fetchImpl, url }) {
+  const response = await fetchImpl(url, {
+    method: "GET",
+    headers: { accept: "application/json" }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
+    const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
+    error.statusCode = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function proxyBinary({ fetchImpl, url, reply }) {
+  const response = await fetchImpl(url, {
+    method: "GET"
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
+    const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
+    error.statusCode = response.status;
+    throw error;
+  }
+  const contentType = response.headers.get("content-type");
+  if (contentType) {
+    reply.header("content-type", contentType);
+  }
+  return Buffer.from(await response.arrayBuffer());
 }
 
 function extensionForMimeType(mimeType) {
@@ -124,6 +162,29 @@ export function buildApp(options = {}) {
   });
 
   app.get("/health", async () => ({ status: "ok" }));
+
+  app.get("/api/references", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    return proxyGetJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/references${queryString}`
+    });
+  });
+
+  app.get("/api/references/temp-assets/:removalGroup/:filename", async (request, reply) =>
+    proxyBinary({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/references/temp-assets/${encodeURIComponent(request.params.removalGroup)}/${encodeURIComponent(request.params.filename)}`,
+      reply
+    })
+  );
+
+  app.get("/api/references/:templateId", async (request) =>
+    proxyGetJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/references/${encodeURIComponent(request.params.templateId)}`
+    })
+  );
 
   app.post("/api/generate/chat/start", async (request, reply) => {
     const parsed = chatStartSchema.safeParse(request.body);

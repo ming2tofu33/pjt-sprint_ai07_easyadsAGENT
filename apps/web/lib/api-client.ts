@@ -5,7 +5,8 @@ import type {
   CustomCopyFields,
   InferredContext,
   OptionQuestion,
-  PartialInferredContext
+  PartialInferredContext,
+  ReferenceTemplateFields
 } from "@/types/marketing";
 
 const BFF_BASE_URL = process.env.NEXT_PUBLIC_BFF_BASE_URL || "http://127.0.0.1:4000";
@@ -50,8 +51,38 @@ export type ChatBriefResponse = {
   brief: ChatBrief;
 };
 
-export type GenerationStartOptions = CustomCopyFields & {
+export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & {
   copyGenerationMode?: CopyGenerationMode;
+};
+
+export type ReferenceTemplateCard = {
+  templateId: string;
+  title: string;
+  description?: string | null;
+  category: string;
+  tags: string[];
+  businessTypes: string[];
+  adFormats: string[];
+  platforms: string[];
+  aspectRatio?: string | null;
+  thumbnailUrl?: string | null;
+  previewUrl?: string | null;
+  styleKeywords: string[];
+  colorPalette: string[];
+  layoutHint?: string | null;
+  typographyHint?: string | null;
+  popularityScore: number;
+  isSaved: boolean;
+};
+
+export type ReferenceTemplateListResponse = {
+  items: ReferenceTemplateCard[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasMore: boolean;
+  };
 };
 
 export type PhotoUploadResponse = {
@@ -66,6 +97,18 @@ async function postJson<TResponse>(path: string, body: unknown): Promise<TRespon
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(normalizeApiErrorMessage(payload?.message || payload?.error || "API request failed"));
+  }
+  return payload as TResponse;
+}
+
+async function getJson<TResponse>(path: string): Promise<TResponse> {
+  const response = await fetch(`${BFF_BASE_URL}${path}`, {
+    method: "GET",
+    headers: { accept: "application/json" }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -103,7 +146,8 @@ export function startChatGeneration(userInput: string, options: GenerationStartO
     renderProfile: "premium_api",
     copyGenerationMode: options.copyGenerationMode,
     userCustomHeadline: options.userCustomHeadline,
-    userCustomSubcopy: options.userCustomSubcopy
+    userCustomSubcopy: options.userCustomSubcopy,
+    selectedReferenceTemplateId: options.selectedReferenceTemplateId
   });
 }
 
@@ -145,6 +189,7 @@ export function startPhotoGeneration(input: {
   copyGenerationMode?: CopyGenerationMode;
   userCustomHeadline?: string;
   userCustomSubcopy?: string;
+  selectedReferenceTemplateId?: string;
 }): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/photo/start", {
     userInput: input.userInput,
@@ -153,6 +198,97 @@ export function startPhotoGeneration(input: {
     renderProfile: input.renderProfile ?? "premium_api",
     copyGenerationMode: input.copyGenerationMode,
     userCustomHeadline: input.userCustomHeadline,
-    userCustomSubcopy: input.userCustomSubcopy
+    userCustomSubcopy: input.userCustomSubcopy,
+    selectedReferenceTemplateId: input.selectedReferenceTemplateId
   });
+}
+
+type RawReferenceTemplateCard = {
+  template_id: string;
+  title: string;
+  description?: string | null;
+  category: string;
+  tags?: string[];
+  business_types?: string[];
+  ad_formats?: string[];
+  platforms?: string[];
+  aspect_ratio?: string | null;
+  thumbnail_url?: string | null;
+  preview_url?: string | null;
+  style_keywords?: string[];
+  color_palette?: string[];
+  layout_hint?: string | null;
+  typography_hint?: string | null;
+  popularity_score?: number;
+  is_saved?: boolean;
+};
+
+type RawReferenceTemplateListResponse = {
+  items?: RawReferenceTemplateCard[];
+  pagination?: {
+    limit?: number;
+    offset?: number;
+    total?: number;
+    has_more?: boolean;
+  };
+};
+
+export function listReferenceTemplates(params: {
+  keyword?: string;
+  category?: string;
+  limit?: number;
+} = {}): Promise<ReferenceTemplateListResponse> {
+  const search = new URLSearchParams();
+  if (params.keyword?.trim()) {
+    search.set("keyword", params.keyword.trim());
+  }
+  if (params.category?.trim()) {
+    search.set("category", params.category.trim());
+  }
+  search.set("limit", String(params.limit ?? 40));
+  const query = search.toString();
+  return getJson<RawReferenceTemplateListResponse>(`/api/references${query ? `?${query}` : ""}`).then((payload) => ({
+    items: (payload.items ?? []).map(mapReferenceTemplateCard),
+    pagination: {
+      limit: payload.pagination?.limit ?? params.limit ?? 40,
+      offset: payload.pagination?.offset ?? 0,
+      total: payload.pagination?.total ?? payload.items?.length ?? 0,
+      hasMore: payload.pagination?.has_more ?? false
+    }
+  }));
+}
+
+function mapReferenceTemplateCard(item: RawReferenceTemplateCard): ReferenceTemplateCard {
+  return {
+    templateId: item.template_id,
+    title: item.title,
+    description: item.description,
+    category: item.category,
+    tags: item.tags ?? [],
+    businessTypes: item.business_types ?? [],
+    adFormats: item.ad_formats ?? [],
+    platforms: item.platforms ?? [],
+    aspectRatio: item.aspect_ratio,
+    thumbnailUrl: normalizeReferenceAssetUrl(item.thumbnail_url),
+    previewUrl: normalizeReferenceAssetUrl(item.preview_url),
+    styleKeywords: item.style_keywords ?? [],
+    colorPalette: item.color_palette ?? [],
+    layoutHint: item.layout_hint,
+    typographyHint: item.typography_hint,
+    popularityScore: item.popularity_score ?? 0,
+    isSaved: item.is_saved ?? false
+  };
+}
+
+function normalizeReferenceAssetUrl(url?: string | null): string | null {
+  if (!url) {
+    return null;
+  }
+  if (url.startsWith("/api/v1/references/temp-assets/")) {
+    return `${BFF_BASE_URL}${url.replace("/api/v1/references", "/api/references")}`;
+  }
+  if (url.startsWith("/api/references/")) {
+    return `${BFF_BASE_URL}${url}`;
+  }
+  return url;
 }

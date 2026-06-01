@@ -24,7 +24,8 @@ import {
   startPhotoGeneration,
   uploadPhotoAsset,
   type ChatTurnResponse,
-  type GenerationStartOptions
+  type GenerationStartOptions,
+  type ReferenceTemplateCard
 } from "@/lib/api-client";
 import { buildAdHref } from "@/lib/ad-navigation";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
@@ -41,7 +42,10 @@ import {
 } from "@/lib/generated-creative-storage";
 import {
   appendSavedBrandKitContext,
-  clearGenerationDraftPrompt
+  clearGenerationDraftPrompt,
+  readGenerationDraftReferenceTemplateId,
+  writeGenerationDraftPrompt,
+  writeGenerationDraftReferenceTemplateId
 } from "@/lib/generation-request-context";
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildReferenceStyleHref } from "@/lib/reference-navigation";
@@ -334,11 +338,20 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   async function handleSubmitPrompt(prompt: string, options: GenerationStartOptions = {}) {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
+    const selectedReferenceTemplateId = (options.selectedReferenceTemplateId ?? readGenerationDraftReferenceTemplateId()) || undefined;
+    const startOptions = {
+      ...options,
+      selectedReferenceTemplateId
+    };
+    clearGenerationDraftPrompt();
     dispatch({ type: "submitPrompt", prompt, copyGenerationMode: options.copyGenerationMode });
     try {
-      const response = await startChatGeneration(appendSavedBrandKitContext(prompt), options);
+      const response = await startChatGeneration(appendSavedBrandKitContext(prompt), startOptions);
       applyTurnResponse(prompt, response);
     } catch (error) {
+      if (selectedReferenceTemplateId) {
+        writeGenerationDraftReferenceTemplateId(selectedReferenceTemplateId);
+      }
       dispatch({
         type: "backendRequestFailed",
         message: error instanceof Error ? error.message : "백엔드 연결에 실패했습니다. 잠시 후 다시 시도해주세요."
@@ -382,7 +395,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         sourceImagePath: upload.sourceImagePath,
         copyGenerationMode: input.copyGenerationMode,
         userCustomHeadline: input.userCustomHeadline,
-        userCustomSubcopy: input.userCustomSubcopy
+        userCustomSubcopy: input.userCustomSubcopy,
+        selectedReferenceTemplateId: input.selectedReferenceTemplateId
       });
       writeChatTurnSnapshot({ prompt: input.prompt, response });
       lastPrimedStageRef.current = null;
@@ -454,6 +468,18 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     navigateTo("chat", "start");
   }
 
+  function handleUseReferenceTemplate(template: ReferenceTemplateCard) {
+    clearChatFlowSnapshot();
+    clearChatTurnSnapshot();
+    dispatch({ type: "reset" });
+    setGenerationProgress(0);
+    setGenerationStage("brief");
+    writeGenerationDraftPrompt(`${template.title} 스타일로 광고 만들어줘`);
+    writeGenerationDraftReferenceTemplateId(template.templateId);
+    showToast(`${template.title} 스타일을 다음 요청에 연결했어요.`);
+    navigateTo("chat", "start");
+  }
+
   function handleRegenerateFromRecent() {
     showToast("새 요청 화면에서 비슷하게 만들 광고를 입력해주세요.");
     handleOpenFreshChat();
@@ -512,6 +538,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onShowProgress={() => navigateTo("studio")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onUseTemplate={handleUseReferenceTemplate}
         />
       ) : null}
 
@@ -601,6 +628,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenBrandKit={() => navigateTo("my")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onUseTemplate={handleUseReferenceTemplate}
         />
       ) : null}
 
@@ -635,6 +663,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenBrandKit={() => navigateTo("my")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onUseTemplate={handleUseReferenceTemplate}
         />
       ) : null}
       <DashboardToast message={toastMessage} />

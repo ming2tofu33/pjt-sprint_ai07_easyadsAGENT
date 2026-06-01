@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startChatGeneration, startPhotoGeneration, uploadPhotoAsset } from "./api-client";
+import { listReferenceTemplates, startChatGeneration, startPhotoGeneration, uploadPhotoAsset } from "./api-client";
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(payload), {
@@ -161,6 +161,100 @@ describe("api-client photo generation", () => {
       renderProfile: "premium_api",
       copyGenerationMode: "auto_pilot"
     });
+  });
+
+  it("sends selected reference template ids for chat and photo generation starts", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        type: "brief_ready",
+        jobId: "job_reference_template",
+        threadId: "thread_reference_template",
+        status: "done",
+        context: { businessType: "카페", itemOrService: "수박주스", promotionGoal: "신메뉴 출시" },
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "수박주스",
+          copy: "여름엔 수박주스",
+          tone: "브랜드에 맞춘 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "선택한 레퍼런스 템플릿을 반영한 여름 음료 광고",
+          finalImagePath: "data/outputs/job_reference_template/final_composite.png"
+        },
+        copyGenerationMode: "auto_pilot"
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await startChatGeneration("수박주스 신메뉴 광고", {
+      copyGenerationMode: "auto_pilot",
+      selectedReferenceTemplateId: "temp_watermelon_juice_feed"
+    });
+    await startPhotoGeneration({
+      userInput: "이 사진으로 수박주스 신메뉴 광고",
+      sourceImagePath: "data/uploads/photo_1.png",
+      copyGenerationMode: "auto_pilot",
+      selectedReferenceTemplateId: "temp_watermelon_juice_feed"
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      userInput: "수박주스 신메뉴 광고",
+      adFormat: "instagram_feed",
+      renderProfile: "premium_api",
+      copyGenerationMode: "auto_pilot",
+      selectedReferenceTemplateId: "temp_watermelon_juice_feed"
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      userInput: "이 사진으로 수박주스 신메뉴 광고",
+      sourceImagePath: "data/uploads/photo_1.png",
+      adFormat: "instagram_feed",
+      renderProfile: "premium_api",
+      copyGenerationMode: "auto_pilot",
+      selectedReferenceTemplateId: "temp_watermelon_juice_feed"
+    });
+  });
+
+  it("loads reference templates through the BFF and rewrites temporary asset URLs", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        items: [
+          {
+            template_id: "temp_watermelon_juice_feed",
+            title: "수박주스 블루 여름 피드",
+            description: "파란 배경과 큼직한 음료 중심의 여름 음료 레퍼런스",
+            category: "cafe",
+            tags: ["수박", "여름"],
+            business_types: ["cafe"],
+            ad_formats: ["instagram_feed"],
+            platforms: ["instagram"],
+            aspect_ratio: "4:3",
+            thumbnail_url: "/api/v1/references/temp-assets/2026-06-user-refs/watermelon-juice.png",
+            preview_url: "/api/v1/references/temp-assets/2026-06-user-refs/watermelon-juice.png",
+            style_keywords: ["summer", "blue"],
+            color_palette: ["#5AB4F2", "#EF3B3B"],
+            layout_hint: "top_large_headline_center_product_bottom_copy",
+            typography_hint: "extra_bold_condensed_headline",
+            popularity_score: 0.5,
+            is_saved: false
+          }
+        ],
+        pagination: { limit: 40, offset: 0, total: 1, has_more: false }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await listReferenceTemplates({ keyword: "수박", limit: 40 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:4000/api/references?keyword=%EC%88%98%EB%B0%95&limit=40",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(result.items[0]).toMatchObject({
+      templateId: "temp_watermelon_juice_feed",
+      title: "수박주스 블루 여름 피드",
+      thumbnailUrl: "http://127.0.0.1:4000/api/references/temp-assets/2026-06-user-refs/watermelon-juice.png",
+      previewUrl: "http://127.0.0.1:4000/api/references/temp-assets/2026-06-user-refs/watermelon-juice.png"
+    });
+    expect(result.pagination.total).toBe(1);
   });
 
   it("sends custom copy fields for chat and photo generation starts", async () => {

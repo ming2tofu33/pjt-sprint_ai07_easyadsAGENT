@@ -92,6 +92,7 @@ class ChatStartRequest(CamelModel):
     copy_generation_mode: CopyGenerationMode = Field(default="suggest_candidates", alias="copyGenerationMode")
     user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
     user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
+    selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
 
 
 class ChatStartResponse(CamelModel):
@@ -343,6 +344,7 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
             request.copy_generation_mode,
             _clean_optional_text(request.user_custom_headline) or "",
             _clean_optional_text(request.user_custom_subcopy) or "",
+            _clean_optional_text(request.selected_reference_template_id) or "",
         ]
     )
     job_id = f"chat_{abs(hash(job_seed))}"
@@ -356,6 +358,7 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
         "copy_generation_mode": request.copy_generation_mode,
         "user_custom_headline": _clean_optional_text(request.user_custom_headline),
         "user_custom_subcopy": _clean_optional_text(request.user_custom_subcopy),
+        "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
         "context": {"extra": {"ad_format": request.ad_format}},
     }
     result = _GRAPH.invoke(state, config=_thread_config(thread_id))

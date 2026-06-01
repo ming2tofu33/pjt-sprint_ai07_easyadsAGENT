@@ -48,6 +48,7 @@ export const CURRENT_UI_GRAPH_CAPABILITIES: UiGraphCapability[] = [
   "copy-mode.no-copy",
   "copy-mode.custom-input",
   "copy.custom-headline-input",
+  "reference.template-selection",
 ];
 
 export const UI_GRAPH_COVERAGE_MATRIX: UiGraphCoverageExpectation[] = [

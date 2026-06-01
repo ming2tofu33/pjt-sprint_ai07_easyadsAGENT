@@ -2,10 +2,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { saveBrandKit } from "./brand-kit-storage";
 import {
   GENERATION_DRAFT_PROMPT_STORAGE_KEY,
+  GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY,
   appendSavedBrandKitContext,
   buildBrandKitGenerationContext,
+  clearGenerationDraftPrompt,
   readGenerationDraftPrompt,
-  writeGenerationDraftPrompt
+  readGenerationDraftReferenceTemplateId,
+  writeGenerationDraftPrompt,
+  writeGenerationDraftReferenceTemplateId
 } from "./generation-request-context";
 
 describe("generation-request-context", () => {
@@ -34,11 +38,27 @@ describe("generation-request-context", () => {
     expect(appendSavedBrandKitContext("신메뉴 광고 만들어줘")).toContain("대표 상품/서비스: 대표 메뉴");
   });
 
-  it("uses a one-time draft prompt for cross-route starts", () => {
+  it("keeps a cross-route draft prompt until the generation flow clears it", () => {
     writeGenerationDraftPrompt("레퍼런스 스타일로 광고 만들어줘");
 
     expect(window.sessionStorage.getItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY)).toBe("레퍼런스 스타일로 광고 만들어줘");
     expect(readGenerationDraftPrompt()).toBe("레퍼런스 스타일로 광고 만들어줘");
+    expect(readGenerationDraftPrompt()).toBe("레퍼런스 스타일로 광고 만들어줘");
+
+    clearGenerationDraftPrompt();
+
     expect(readGenerationDraftPrompt()).toBe("");
+  });
+
+  it("keeps a selected reference template until the generation flow clears it", () => {
+    writeGenerationDraftReferenceTemplateId("temp_watermelon_juice_feed");
+
+    expect(window.sessionStorage.getItem(GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY)).toBe("temp_watermelon_juice_feed");
+    expect(readGenerationDraftReferenceTemplateId()).toBe("temp_watermelon_juice_feed");
+    expect(readGenerationDraftReferenceTemplateId()).toBe("temp_watermelon_juice_feed");
+
+    clearGenerationDraftPrompt();
+
+    expect(readGenerationDraftReferenceTemplateId()).toBe("");
   });
 });

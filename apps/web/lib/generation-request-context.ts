@@ -8,6 +8,7 @@ import {
 } from "@/lib/brand-kit-storage";
 
 export const GENERATION_DRAFT_PROMPT_STORAGE_KEY = "easyads_generation_draft_prompt_v1";
+export const GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY = "easyads_generation_draft_reference_template_v1";
 
 function storage(): Storage | null {
   try {
@@ -51,11 +52,25 @@ export function writeGenerationDraftPrompt(prompt: string) {
   }
 }
 
+export function writeGenerationDraftReferenceTemplateId(templateId: string) {
+  try {
+    storage()?.setItem(GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY, templateId.trim());
+  } catch {
+    // The generation flow can still continue without a reference template.
+  }
+}
+
 export function readGenerationDraftPrompt(): string {
   try {
-    const prompt = storage()?.getItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY) ?? "";
-    storage()?.removeItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY);
-    return prompt;
+    return storage()?.getItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function readGenerationDraftReferenceTemplateId(): string {
+  try {
+    return storage()?.getItem(GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY) ?? "";
   } catch {
     return "";
   }
@@ -64,6 +79,7 @@ export function readGenerationDraftPrompt(): string {
 export function clearGenerationDraftPrompt() {
   try {
     storage()?.removeItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY);
+    storage()?.removeItem(GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY);
   } catch {
     // Ignore storage failures; a fresh chat can still continue.
   }

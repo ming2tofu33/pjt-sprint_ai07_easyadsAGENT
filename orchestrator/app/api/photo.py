@@ -36,6 +36,7 @@ class PhotoStartRequest(CamelModel):
     copy_generation_mode: CopyGenerationMode = Field(default="suggest_candidates", alias="copyGenerationMode")
     user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
     user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
+    selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
 
 
 @router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse, response_model_by_alias=True)
@@ -49,6 +50,7 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
             request.copy_generation_mode,
             _clean_optional_text(request.user_custom_headline) or "",
             _clean_optional_text(request.user_custom_subcopy) or "",
+            _clean_optional_text(request.selected_reference_template_id) or "",
         ]
     )
     job_id = f"photo_{abs(hash(job_seed))}"
@@ -64,6 +66,7 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
         "copy_generation_mode": request.copy_generation_mode,
         "user_custom_headline": _clean_optional_text(request.user_custom_headline),
         "user_custom_subcopy": _clean_optional_text(request.user_custom_subcopy),
+        "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
         "context": {
             "extra": {
                 "ad_format": request.ad_format,

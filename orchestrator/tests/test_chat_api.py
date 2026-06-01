@@ -53,6 +53,45 @@ def test_chat_start_returns_option_question_when_context_is_missing():
     assert payload["question"]["question"] == "어떤 업종의 광고인가요?"
 
 
+def test_chat_start_passes_reference_template_to_graph(monkeypatch):
+    captured = {}
+
+    class FakeGraph:
+        def invoke(self, state, config):
+            captured["state"] = state
+            captured["config"] = config
+            return {
+                "job_id": state["job_id"],
+                "thread_id": state["thread_id"],
+                "status": "generating_copy_candidates",
+                "copy_generation_mode": "suggest_candidates",
+                "context": {
+                    "business_type": "cafe",
+                    "item_or_service": "수박주스",
+                    "promotion_goal": "new_launch",
+                    "extra": {"ad_format": "instagram_feed"},
+                },
+                "copy_candidates": [{"id": "copy_1", "headline": "여름엔 수박주스"}],
+            }
+
+    monkeypatch.setattr(chat_api, "_GRAPH", FakeGraph())
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/start",
+        json={
+            "userInput": "우리 카페 수박주스 신메뉴 광고 만들어줘",
+            "adFormat": "instagram_feed",
+            "selectedReferenceTemplateId": "temp_watermelon_juice_feed",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["state"]["entry_mode"] == "chat_start"
+    assert captured["state"]["selected_reference_template_id"] == "temp_watermelon_juice_feed"
+    assert captured["config"]["configurable"]["thread_id"] == response.json()["threadId"]
+
+
 def test_photo_start_invokes_graph_with_photo_entry(monkeypatch):
     captured = {}
 
@@ -85,6 +124,7 @@ def test_photo_start_invokes_graph_with_photo_entry(monkeypatch):
             "sourceImagePath": "data/uploads/menu.png",
             "adFormat": "instagram_feed",
             "renderProfile": "premium_api",
+            "selectedReferenceTemplateId": "temp_watermelon_juice_feed",
         },
     )
 
@@ -98,6 +138,7 @@ def test_photo_start_invokes_graph_with_photo_entry(monkeypatch):
     assert captured["state"]["source_image_path"] == "data/uploads/menu.png"
     assert captured["state"]["render_profile"] == "premium_api"
     assert captured["state"]["copy_generation_mode"] == "suggest_candidates"
+    assert captured["state"]["selected_reference_template_id"] == "temp_watermelon_juice_feed"
     assert captured["state"]["context"]["extra"]["ad_format"] == "instagram_feed"
     assert captured["state"]["context"]["extra"]["source_image_path"] == "data/uploads/menu.png"
     assert captured["config"]["configurable"]["thread_id"] == payload["threadId"]

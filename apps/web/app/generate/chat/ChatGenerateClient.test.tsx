@@ -13,7 +13,7 @@ vi.mock("@/lib/api-client", () => ({
   startChatGeneration: vi.fn(
     async (
       userInput: string,
-      options?: { copyGenerationMode?: string; userCustomHeadline?: string; userCustomSubcopy?: string }
+      options?: { copyGenerationMode?: string; userCustomHeadline?: string; userCustomSubcopy?: string; selectedReferenceTemplateId?: string }
     ) => {
     if (options?.copyGenerationMode === "no_copy") {
       return {
@@ -253,7 +253,31 @@ vi.mock("@/lib/api-client", () => ({
       copyCandidates: [{ id: "copy_photo_1", headline: "사진 속 메뉴를 오늘의 신메뉴로" }],
       recommendedCopyId: "copy_photo_1"
     };
-  })
+  }),
+  listReferenceTemplates: vi.fn(async () => ({
+    items: [
+      {
+        templateId: "temp_watermelon_juice_feed",
+        title: "수박주스 블루 여름 피드",
+        description: "파란 배경과 큼직한 음료 중심의 여름 음료 레퍼런스",
+        category: "cafe",
+        tags: ["수박", "여름"],
+        businessTypes: ["cafe"],
+        adFormats: ["instagram_feed"],
+        platforms: ["instagram"],
+        aspectRatio: "4:3",
+        thumbnailUrl: "http://127.0.0.1:4000/api/references/temp-assets/2026-06-user-refs/watermelon-juice.png",
+        previewUrl: "http://127.0.0.1:4000/api/references/temp-assets/2026-06-user-refs/watermelon-juice.png",
+        styleKeywords: ["summer", "blue"],
+        colorPalette: ["#5AB4F2", "#EF3B3B", "#FFFFFF"],
+        layoutHint: "top_large_headline_center_product_bottom_copy",
+        typographyHint: "extra_bold_condensed_headline",
+        popularityScore: 0.5,
+        isSaved: false
+      }
+    ],
+    pagination: { limit: 40, offset: 0, total: 1, hasMore: false }
+  }))
 }));
 
 vi.mock("next/navigation", () => ({
@@ -528,16 +552,27 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("레퍼런스 보고 만들기")).toBeTruthy();
   });
 
-  it("opens a reference style detail from the gallery", async () => {
+  it("starts chat generation with a selected reference template", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.startChatGeneration).mockClear();
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
     render(<ChatGenerateClient initialSurface="reference" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "샘플 레퍼런스 보기" }));
-    fireEvent.click(screen.getByRole("button", { name: "감성 카페 신메뉴 포스터 상세 보기" }));
+    await waitFor(() => expect(screen.getByText("수박주스 블루 여름 피드")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "수박주스 블루 여름 피드 스타일로 시작" }));
 
-    expect(navigationMock.push).toHaveBeenCalledWith("/reference/ref-strawberry-poster");
+    expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat");
+    await waitFor(() => expect(screen.getByLabelText("광고 요청 입력")).toBeTruthy());
+    expect(screen.getByDisplayValue("수박주스 블루 여름 피드 스타일로 광고 만들어줘")).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() => expect(api.startChatGeneration).toHaveBeenCalled());
+    expect(vi.mocked(api.startChatGeneration).mock.calls[0][1]).toMatchObject({
+      selectedReferenceTemplateId: "temp_watermelon_juice_feed"
+    });
   });
 
   it("opens the studio entry and dashboard tabs from the home dashboard", async () => {
@@ -783,25 +818,22 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="reference" />);
 
-    expect(screen.getByText("아직 연결된 레퍼런스 결과가 없어요")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("수박주스 블루 여름 피드")).toBeTruthy());
+    expect(screen.getByText("임시 레퍼런스")).toBeTruthy();
+    expect(screen.getByText("파란 배경과 큼직한 음료 중심의 여름 음료 레퍼런스")).toBeTruthy();
     expect(screen.queryByText("SPRING SALE")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "샘플 레퍼런스 보기" }));
-
-    expect(screen.getByText("SPRING SALE")).toBeTruthy();
-    expect(screen.getByText("SUMMER SALE")).toBeTruthy();
   });
 
-  it("shows feedback when a sample reference creative is saved", async () => {
+  it("shows feedback when a reference template is saved", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
     render(<ChatGenerateClient initialSurface="reference" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "샘플 레퍼런스 보기" }));
-    fireEvent.click(screen.getByLabelText("감성 카페 신메뉴 포스터 저장"));
+    await waitFor(() => expect(screen.getByText("수박주스 블루 여름 피드")).toBeTruthy());
+    fireEvent.click(screen.getByLabelText("수박주스 블루 여름 피드 저장"));
 
-    expect(screen.getByText("감성 카페 신메뉴 포스터를 보관함에 저장했어요.")).toBeTruthy();
+    expect(screen.getByText("수박주스 블루 여름 피드를 보관함에 저장했어요.")).toBeTruthy();
   });
 
   it("shows feedback for recent ad and brand kit actions", async () => {
