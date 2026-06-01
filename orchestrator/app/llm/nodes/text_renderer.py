@@ -3,28 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, load_font as load_resolved_font, resolve_font_path
 from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, RenderResult, TextLayoutSpec, TextSlot, TextStyleSpec
 
-
-SYSTEM_FONT_CANDIDATES = [
-    "C:/Windows/Fonts/malgun.ttf",
-    "C:/Windows/Fonts/malgunbd.ttf",
-    "C:/Windows/Fonts/arial.ttf",
-    "/System/Library/Fonts/AppleSDGothicNeo.ttc",
-    "/Library/Fonts/AppleGothic.ttf",
-    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-    "/usr/share/fonts/opentype/unifont/unifont.otf",
-]
+if TYPE_CHECKING:
+    from orchestrator.app.graph.state import MarketingState
 
 
-def text_renderer_node(state: MarketingState) -> dict[str, Any]:
+SYSTEM_FONT_CANDIDATES = FONT_CANDIDATES
+
+
+def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
     result = state.get("t2i_result") or {}
     image_paths = result.get("image_paths") or []
     background_path = image_paths[0] if image_paths else None
@@ -63,6 +56,8 @@ def text_renderer_node(state: MarketingState) -> dict[str, Any]:
             if font_warning:
                 warnings.append(font_warning)
             lines = wrap_text(copy_item.text, max_chars=max(4, int(w / max(font_size * 0.55, 1))), max_lines=slot.max_lines)
+            if len(lines) >= slot.max_lines and len(copy_item.text) > len(" ".join(lines)):
+                warnings.append(f"slot {slot.slot_id} clipping risk: text truncated to {slot.max_lines} lines")
             draw_overlay(draw, slot, x, y, w, h, style)
             draw_wrapped_text(draw, lines, slot, font, x, y, w, h)
             rendered_count += 1
@@ -107,21 +102,34 @@ def estimate_font_size(slot: TextSlot, canvas_w: int, canvas_h: int) -> int:
     if slot.effective_font_size_px:
         return slot.effective_font_size_px
     base = int(min(canvas_w, canvas_h) * slot.font_metric.base_size_ratio)
+    role_multiplier = {
+        "headline": 1.12,
+        "subheadline": 0.86,
+        "body": 0.74,
+        "promotion": 0.82,
+        "badge": 0.78,
+        "cta": 0.72,
+        "store_info": 0.66,
+        "disclaimer": 0.55,
+    }.get(slot.role, 1.0)
+    base = int(base * role_multiplier)
     minimum = int(min(canvas_w, canvas_h) * slot.font_metric.min_size_ratio)
     maximum = int(min(canvas_w, canvas_h) * slot.font_metric.max_size_ratio)
     return max(18, min(maximum, max(minimum, base)))
 
 
 def load_font(slot: TextSlot, size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, str | None]:
-    candidates = [slot.font_metric.font_path] if slot.font_metric.font_path else []
-    candidates.extend(SYSTEM_FONT_CANDIDATES)
-    for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            try:
-                return ImageFont.truetype(candidate, size=size), None
-            except Exception:
-                continue
-    return ImageFont.load_default(), f"slot {slot.slot_id} used default PIL font fallback"
+    weight = "bold" if slot.font_metric.weight >= 700 else None
+    preferred = slot.font_metric.font_path or resolve_font_path()
+    font = load_resolved_font(
+    size=size,
+    weight=weight,
+    preferred=slot.font_metric.font_path,)
+    if preferred and Path(preferred).exists() and hasattr(font, "path"):
+        return font, None
+    if not resolve_font_path(preferred):
+        return font, f"slot {slot.slot_id} used default PIL font fallback"
+    return font, None
 
 
 def wrap_text(text: str, max_chars: int, max_lines: int) -> list[str]:
@@ -151,13 +159,20 @@ def wrap_text(text: str, max_chars: int, max_lines: int) -> list[str]:
 
 def draw_overlay(draw: ImageDraw.ImageDraw, slot: TextSlot, x: int, y: int, w: int, h: int, style: TextStyleSpec) -> None:
     treatment = slot.overlay_treatment
+    if slot.role == "cta" and treatment in {"plain", "drop_shadow", "stroke"}:
+        treatment = "solid_panel"
+    if slot.role in {"promotion", "badge"} and treatment == "plain":
+        treatment = "sticker_badge"
+    if style.typography.use_text_plate and treatment == "plain":
+        treatment = "solid_panel"
     if treatment not in {"solid_panel", "gradient_panel", "sticker_badge", "blur_backdrop"}:
         return
-    color = slot.overlay_color or style.typography.primary_color
+    color = slot.overlay_color or (style.typography.accent_color if slot.role == "cta" else style.typography.primary_color)
     r, g, b = hex_to_rgb(color)
-    alpha = int(255 * max(slot.overlay_opacity, 0.65))
-    pad = int(min(w, h) * slot.inner_padding_ratio)
-    draw.rounded_rectangle((x - pad, y - pad, x + w + pad, y + h + pad), radius=max(8, pad), fill=(r, g, b, alpha))
+    alpha = int(255 * max(slot.overlay_opacity, 0.72))
+    pad = max(10, int(min(w, h) * max(slot.inner_padding_ratio, 0.08 if slot.role == "cta" else 0.05)))
+    radius = max(10, pad * (2 if slot.role == "cta" else 1))
+    draw.rounded_rectangle((x - pad, y - pad, x + w + pad, y + h + pad), radius=radius, fill=(r, g, b, alpha))
 
 
 def draw_wrapped_text(draw: ImageDraw.ImageDraw, lines: list[str], slot: TextSlot, font: ImageFont.ImageFont, x: int, y: int, w: int, h: int) -> None:

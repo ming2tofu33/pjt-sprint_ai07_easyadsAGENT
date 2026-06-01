@@ -92,6 +92,58 @@ export type PhotoUploadResponse = {
   sizeBytes: number;
 };
 
+export type ReferenceQueryParams = Record<string, string | number | boolean | string[] | undefined | null>;
+export type BrandKitPayload = Record<string, unknown>;
+export type GenerationJobPayload = Record<string, unknown>;
+
+export type GenerationJobStatus = "queued" | "running" | "done" | "failed" | string;
+
+export interface GenerationProgress {
+  progress_percent: number;
+  current_stage: string;
+  message?: string | null;
+}
+
+export interface ResultArtifactPayload {
+  schema_version?: string;
+  job_id?: string;
+  output_dir?: string | null;
+  background_image_path?: string | null;
+  final_image_path?: string | null;
+  metadata_path?: string | null;
+  prompt_path?: string | null;
+  validation_path?: string | null;
+  copy_path?: string | null;
+  layout_path?: string | null;
+  render_result_path?: string | null;
+  download_path?: string | null;
+  download_url?: string | null;
+  final_image_url?: string | null;
+  prompt_summary?: Record<string, unknown>;
+  validation_summary?: Record<string, unknown>;
+  copy_summary?: Record<string, unknown>;
+  layout_summary?: Record<string, unknown>;
+  has_text_overlay?: boolean;
+  engine?: string;
+  render_mode?: string;
+}
+
+export interface GenerationJob {
+  job_id: string;
+  thread_id?: string | null;
+  status: GenerationJobStatus;
+  progress: GenerationProgress;
+  output_path?: string | null;
+  result_payload?: ResultArtifactPayload | null;
+  error?: unknown;
+  metadata?: Record<string, unknown>;
+}
+
+export interface GenerationJobResponse {
+  success: true;
+  job: GenerationJob;
+}
+
 async function postJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
   const response = await fetch(`${BFF_BASE_URL}${path}`, {
     method: "POST",
@@ -105,10 +157,35 @@ async function postJson<TResponse>(path: string, body: unknown): Promise<TRespon
   return payload as TResponse;
 }
 
-async function getJson<TResponse>(path: string): Promise<TResponse> {
-  const response = await fetch(`${BFF_BASE_URL}${path}`, {
+async function getJson<TResponse>(path: string, params?: ReferenceQueryParams): Promise<TResponse> {
+  const url = new URL(`${BFF_BASE_URL}${path}`);
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => url.searchParams.append(key, item));
+      return;
+    }
+    url.searchParams.set(key, String(value));
+  });
+
+  const response = await fetch(url.toString(), {
     method: "GET",
     headers: { accept: "application/json" }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(normalizeApiErrorMessage(payload?.message || payload?.error || "API request failed"));
+  }
+  return payload as TResponse;
+}
+
+async function patchJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
+  const response = await fetch(`${BFF_BASE_URL}${path}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -291,4 +368,40 @@ function normalizeReferenceAssetUrl(url?: string | null): string | null {
     return `${BFF_BASE_URL}${url}`;
   }
   return url;
+}
+
+export function fetchReferences(params?: ReferenceQueryParams): Promise<unknown> {
+  return getJson("/api/references", params);
+}
+
+export function fetchReferenceDetail(templateId: string): Promise<unknown> {
+  return getJson(`/api/references/${encodeURIComponent(templateId)}`);
+}
+
+export function fetchSimilarReferences(templateId: string, params?: ReferenceQueryParams): Promise<unknown> {
+  return getJson(`/api/references/${encodeURIComponent(templateId)}/similar`, params);
+}
+
+export function getCurrentBrandKit(params?: { userId?: string }): Promise<unknown> {
+  return getJson("/api/brand-kits/current", params?.userId ? { user_id: params.userId } : undefined);
+}
+
+export function createBrandKit(payload: BrandKitPayload): Promise<unknown> {
+  return postJson("/api/brand-kits", payload);
+}
+
+export function getBrandKit(brandKitId: string): Promise<unknown> {
+  return getJson(`/api/brand-kits/${encodeURIComponent(brandKitId)}`);
+}
+
+export function updateBrandKit(brandKitId: string, payload: BrandKitPayload): Promise<unknown> {
+  return patchJson(`/api/brand-kits/${encodeURIComponent(brandKitId)}`, payload);
+}
+
+export function createGenerationJob(payload: GenerationJobPayload): Promise<GenerationJobResponse> {
+  return postJson<GenerationJobResponse>("/api/generation-jobs", payload);
+}
+
+export function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
+  return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`);
 }

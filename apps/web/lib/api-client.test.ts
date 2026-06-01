@@ -1,5 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { listReferenceTemplates, startChatGeneration, startPhotoGeneration, uploadPhotoAsset } from "./api-client";
+import {
+  createBrandKit,
+  createGenerationJob,
+  fetchReferenceDetail,
+  fetchReferences,
+  fetchSimilarReferences,
+  getBrandKit,
+  getCurrentBrandKit,
+  getGenerationJob,
+  listReferenceTemplates,
+  startChatGeneration,
+  startPhotoGeneration,
+  updateBrandKit,
+  uploadPhotoAsset
+} from "./api-client";
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(payload), {
@@ -323,5 +337,71 @@ describe("api-client photo generation", () => {
         sourceImagePath: "data/uploads/photo_1.png"
       })
     ).rejects.toThrow("T2I_ALLOW_API_CALLS=true");
+  });
+});
+
+describe("api-client backend contract routes", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches reference catalog endpoints through the BFF", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({ success: true, items: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchReferences({ category: "cafe", tags: ["CTA", "warm"], limit: 2 });
+    await fetchReferenceDetail("template_1");
+    await fetchSimilarReferences("template_1", { limit: 3 });
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/references?category=cafe&tags=CTA&tags=warm&limit=2");
+    expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/references/template_1");
+    expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/references/template_1/similar?limit=3");
+  });
+
+  it("calls brand kit endpoints through the BFF", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({ success: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getCurrentBrandKit({ userId: "user_1" });
+    await createBrandKit({ store_name: "Moon Cafe", business_type: "cafe" });
+    await getBrandKit("bk_1");
+    await updateBrandKit("bk_1", { store_name: "Sun Cafe" });
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/brand-kits/current?user_id=user_1");
+    expect(fetchMock.mock.calls[1][0]).toBe("http://127.0.0.1:4000/api/brand-kits");
+    expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({ method: "POST" }));
+    expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/brand-kits/bk_1");
+    expect(fetchMock.mock.calls[3][0]).toBe("http://127.0.0.1:4000/api/brand-kits/bk_1");
+    expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({ method: "PATCH" }));
+  });
+
+  it("calls generation job endpoints through the BFF", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed" },
+          result_payload: {
+            schema_version: "result_artifact_v1",
+            final_image_path: "data/outputs/job_1/final_0.png",
+            download_url: null,
+            final_image_url: null
+          }
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const created = await createGenerationJob({ user_input: "Create an ad" });
+    const fetched = await getGenerationJob("job_1");
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/generation-jobs");
+    expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "POST" }));
+    expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/generation-jobs/job_1");
+    expect(created.job.result_payload?.schema_version).toBe("result_artifact_v1");
+    expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
   });
 });

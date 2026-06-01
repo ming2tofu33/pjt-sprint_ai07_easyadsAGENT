@@ -34,7 +34,16 @@
   - `ResultNode`
 - `no_copy` still runs background and safe-area checks, then bypasses `TextRendererNode` and `ReadabilityGate`.
 - Copy-present flows render Korean copy after image generation using the deterministic PIL-based `TextRendererNode`.
+- `TextRendererNode` now resolves cross-platform Korean fonts through `EASYADS_FONT_PATH` and system candidates, then falls back to PIL default without crashing.
+- Headline, subheadline/body, promotion/badge, and CTA roles use separate sizing/treatment rules; CTA can render as a clearer rounded plate/button.
+- Rule-based Copy Quality Policy trims excessive punctuation, removes overused promotional phrases from generated copy, and keeps `custom_input` copy unchanged except for warnings/quality metadata.
+- ImagePromptPlanner v2 selects deterministic visual templates for cafe/dessert, restaurant/BBQ, beauty/salon, or a generic fallback template.
+- Visual templates add business-aware composition, lighting, color palette hints, reserved text area guidance, and negative prompt additions while preserving `must_not_include_text=true`.
 - `ResultNode` writes the final `result_payload`, including `output_path`, validation summary, and artifact references.
+- GenerationJob `mock_immediate` uses Result Artifact Contract v1 with `background_0.png`, `final_0.png`, `metadata.json`, `prompt.json`, `validation.json`, `copy.json`, `layout.json`, and `render_result.json`.
+- GenerationJob actual T2I lanes are guarded and disabled by default. `gpt_image_2_actual`/`gpt_image_2_smoke` require explicit external T2I and GPT-image-2 env flags plus an OpenAI API key. `sd35_local`/`sd35_local_smoke` require the SD3.5 local env flag and local dependency/model availability.
+- CI/default tests do not call GPT-image-2, load SD3.5, download HF models, or require GPU.
+- `download_url` and `final_image_url` remain `null` because static serving/object storage is not implemented.
 - Vision Pipeline MVP preprocessing is available before validation when `source_image_path` or `reference_image_path` is supplied.
 - `ReferenceStyleProfile` can inform `ImagePromptPlannerNode` with deterministic palette and style hints.
 - `ProductPreserveSpec` is currently a `center_bbox_stub` only; no real product-preserving edit is performed.
@@ -68,9 +77,10 @@
 - Actual product detection or segmentation.
 - Actual product-preserving image edit.
 - Actual reference-guided image generation beyond metadata prompt hints.
+- Unguarded actual GPT-image-2, SD3.5, or FLUX generation.
+- Static artifact serving or signed download URLs.
 - Automatic regeneration loops.
-- Advanced Korean typography/font management.
-- Production-grade font loading.
+- Production-grade font packaging.
 - Real product occlusion detection.
 - Actual text artifact detection by OCR/VLM.
 - `LLMAdapter`, structured output adapters, and `ModelRouter` are planned for a later model-integration milestone.
@@ -81,3 +91,9 @@
 - `render_text_in_image=false` is preserved through prompt planning, T2I request metadata, validation, and result payloads.
 - `no_copy` means post-processing text overlay is skipped. It does not permit text inside the generated image.
 - Generated files under `data/outputs/` are runtime artifacts and must not be committed.
+
+## Manual T2I Smoke Reports
+
+`scripts/smoke_generation_job_t2i.py` creates JSON and Markdown reports under `data/logs/` for guarded GPT-image-2 and SD3.5 lanes. Dry-run mode never calls external APIs or loads local models. Non-dry-run smoke is blocked unless the explicit engine flags and credentials/model readiness are present. Reports store only boolean credential presence, prompt hash/preview, job id, safe result payload fields, and error summaries; raw API keys, HF tokens, base64 image data, and image bytes must not be written.
+
+Generated reports under `data/logs/` and generated artifacts under `data/outputs/` are runtime files and must not be committed.

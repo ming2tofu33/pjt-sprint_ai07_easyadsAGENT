@@ -2,9 +2,11 @@
 
 ## 1. Purpose
 
-This document defines backend API request and response contracts for frontend integration. It is not a frontend implementation guide. This milestone does not add Next.js `route.ts` files, React hooks, frontend API clients, or frontend mock data.
+This document defines backend API request and response contracts for frontend integration. It is not a frontend screen implementation guide. BFF route handlers and API client helpers may exist in `apps/web`, but screen-level frontend implementation, query hooks, and frontend mock data are out of scope for this contract.
 
-Reference Catalog and BrandKit FastAPI routes are implemented in v1.
+## 2. Current Scope
+
+Reference Catalog, BrandKit, and GenerationJob FastAPI routes are implemented in v1.
 
 Implemented routes:
 
@@ -15,8 +17,10 @@ Implemented routes:
 - `POST /api/v1/brand-kits`
 - `GET /api/v1/brand-kits/{brand_kit_id}`
 - `PATCH /api/v1/brand-kits/{brand_kit_id}`
+- `POST /api/v1/generation-jobs`
+- `GET /api/v1/generation-jobs/{job_id}`
 
-GenerationJob, Archive, Usage, and Settings routers are still out of scope. Persistence, object storage, background queues, and real image/model calls also remain out of scope.
+Archive skeleton support is partially prepared for MVP generated-result flows, but production persistence and complete frontend archive integration are not implemented. Usage and Settings routers are still out of scope. Persistence, object storage, background queues, unguarded image/model calls, and production serving remain out of scope. Guarded GPT-image-2 and SD3.5 lanes exist but are disabled by default and are not executed in CI/default tests.
 
 ## 3. Common Response Format
 
@@ -91,11 +95,12 @@ The `detail` object may include style hints such as `style_keywords`, `color_pal
 Purpose: return deterministic similar templates based on the seed catalog scoring rules. Query param `limit` accepts values from 1 to 50. The response schema is `ReferenceTemplateSimilarResponse`. Missing templates return a structured `ErrorResponse` with `reference_template_not_found`.
 
 Current limitations:
-- `thumbnail_url` and `preview_url` are `null` while asset serving is not implemented.
+- `thumbnail_url` and `preview_url` may be backend-controlled public URLs when reference asset serving is enabled.
 - Internal local paths are not exposed through the public API response.
 - The catalog is seed metadata based, not database backed.
 - Saved reference state is not implemented.
-- Static file serving and object storage are not implemented.
+- Object storage is not implemented.
+- Generated result static serving is separate from reference asset serving and remains a later milestone.
 
 ## 6. BrandKit API Contract
 
@@ -160,7 +165,7 @@ Current limitations:
 
 ## 7. GenerationJob API Contract
 
-Generation jobs start in `queued_only` mode by default. This contract carries reference template selection, optional image paths, copy mode, user plan, status, progress, output path, and result payload. The API contract does not imply immediate image generation or external model calls.
+Generation jobs start in `queued_only` mode by default. This contract carries reference template selection, optional image paths, copy mode, user plan, status, progress, output path, and result payload. The API contract does not imply real image generation or external model calls.
 
 Contracts:
 - `GenerationJobCreateRequest`
@@ -168,6 +173,92 @@ Contracts:
 - `GenerationJobResponse`
 - `GenerationJobCreateResponse`
 - `GenerationJobGetResponse`
+
+### Generation Job Routes
+
+#### `POST /api/v1/generation-jobs`
+
+Purpose: create a generation job record that the frontend can poll.
+
+Request body: `GenerationJobCreateRequest`.
+
+Response schema: `GenerationJobCreateResponse`.
+
+Run mode policy:
+- `queued_only`: create a queued job only.
+- `mock_immediate`: run deterministic mock execution, write local mock artifacts, and return a completed job.
+- `graph_immediate`: currently degrades to `queued_only`; no graph execution happens.
+- `gpt_image_2_actual` / `gpt_image_2_smoke`: request the guarded GPT-image-2 lane.
+- `sd35_local` / `sd35_local_smoke`: request the guarded SD3.5 local lane.
+
+Actual generation lane policy:
+- All actual generation lanes are disabled by default.
+- GPT-image-2 requires `EASYADS_ENABLE_EXTERNAL_T2I=true`, `EASYADS_ENABLE_GPT_IMAGE_2=true`, and an `OPENAI_API_KEY`.
+- SD3.5 requires `EASYADS_ENABLE_SD35_LOCAL=true` plus local dependency/model availability.
+- CI/default tests do not call external APIs, load local models, download HF models, or require GPU.
+- If an actual lane is requested without the required guard conditions, the job returns `status: "failed"` with `error.error_code: "t2i_engine_not_enabled"` or `t2i_engine_unavailable`.
+
+`mock_immediate` result:
+- `status: "done"`
+- `progress.progress_percent: 100`
+- `progress.current_stage: "completed"`
+- `output_path: "data/outputs/{job_id}/final_0.png"`
+- `result_payload.schema_version: "result_artifact_v1"`
+- `result_payload` includes background, final, metadata, prompt, validation, copy, layout, and render result artifact paths.
+- FE-readable summaries are available at `result_payload.prompt_summary`, `result_payload.validation_summary`, `result_payload.copy_summary`, and `result_payload.layout_summary`.
+- `result_payload.download_url` and `result_payload.final_image_url` are `null` until static serving or object storage is implemented.
+
+Result fields FE can safely bind:
+- `job.status`
+- `job.progress`
+- `job.output_path`
+- `job.result_payload.final_image_path`
+- `job.result_payload.download_url`
+- `job.result_payload.final_image_url`
+- `job.result_payload.prompt_summary`
+- `job.result_payload.validation_summary`
+- `job.result_payload.copy_summary`
+- `job.result_payload.layout_summary`
+
+
+### FE Result Binding Policy
+
+Frontend result screens should read `GenerationJob.result_payload` before falling back to legacy mock data. Preview and download handling must distinguish public URLs from local development paths:
+
+- Use `result_payload.final_image_url` first when present.
+- Use `result_payload.download_url` as the next public URL fallback.
+- Treat `result_payload.final_image_path`, `result_payload.download_path`, and `job.output_path` as repo-relative development paths, not browser-safe public URLs.
+- Do not render `<img src="data/outputs/...">` or `<a href="data/outputs/...">`.
+- If public URLs are `null`, disable the download action and show that the artifact exists but public serving is not connected yet.
+- Copy actions may include `job_id`, `status`, engine/render mode, repo-relative final path, and prompt/validation/copy/layout summaries because they do not require a public URL.
+
+Polling policy: FE may poll `GET /api/v1/generation-jobs/{job_id}` while `status` is `queued` or `running`, then stop on `done` or `failed`.
+
+#### `GET /api/v1/generation-jobs/{job_id}`
+
+Purpose: fetch a generation job for polling.
+
+Path params: `job_id`.
+
+Response schema: `GenerationJobGetResponse`.
+
+Error responses:
+- Missing job returns `generation_job_not_found`.
+- Missing selected reference template during create returns `reference_template_not_found`.
+- Invalid create payload returns `invalid_generation_job_request`.
+
+Current limitations:
+- GenerationJob storage is in-memory only.
+- Job state is not retained after server restart.
+- Worker and queue execution are not implemented.
+- `build_marketing_graph()` is not executed.
+- GPT-image-2 and SD3.5 lanes exist but are guarded and disabled by default; FLUX is still not implemented here.
+- LLM/VLM/OCR calls are not made.
+- Output URL/static serving is not implemented.
+- `download_url` is `null`.
+- `result_payload.download_path` is a repo-relative development path and is not a public URL.
+- `result_payload.download_url` and `result_payload.final_image_url` remain `null` until static serving or object storage is implemented.
+- The mock artifact contract is local-path based for development tracing only; public URL serving is a later milestone.
 
 ## 8. Archive Response Contract
 
@@ -196,16 +287,19 @@ Contracts:
 
 ## 11. Not Implemented Yet
 
-- GenerationJob, Archive, Usage, and Settings routers
-- Database persistence
+- Usage and Settings routers
+- Production database persistence
 - Redis, Celery, or queue execution
 - Object storage and signed URLs
-- Static asset serving for reference thumbnails/previews
+- Static asset serving for generated results
 - Saved reference state
 - Logo upload and object storage integration for BrandKit
 - Authenticated user extraction for BrandKit
-- Frontend gallery, hooks, API clients, or mock data files
-- Real GPT-image-2, SD3.5, FLUX, LLM, VLM, OCR, rembg, or SAM calls
+- Production archive persistence and full archive frontend integration
+- Unguarded or default GPT-image-2 / SD3.5 calls
+- FLUX generation lane
+- LLM, VLM, OCR, rembg, or SAM calls
+- Production-grade manual smoke validation for GPT-image-2 / SD3.5
 
 ## 12. FE/BFF vs Backend Responsibilities
 

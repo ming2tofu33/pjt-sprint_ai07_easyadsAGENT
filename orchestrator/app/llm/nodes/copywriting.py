@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from orchestrator.app.graph.state import MarketingState, context_to_model
+from orchestrator.app.llm.copy_quality import apply_copy_quality_policy
 from orchestrator.app.llm.copy_tone import get_copy_tone_profile
 from orchestrator.app.schemas.llm_marketing import CopywritingOutput, MarketingCopy
 
@@ -13,7 +14,7 @@ def copywriting_node(state: MarketingState) -> dict[str, Any]:
     context = context_to_model(state.get("context"))
     ad_format_spec = state.get("ad_format_spec") or {}
     tone_profile = get_copy_tone_profile(context.business_type, context.target_persona)
-    copy = build_marketing_copy(context, tone_profile)
+    copy = apply_copy_quality_policy(build_marketing_copy(context, tone_profile))
     output = CopywritingOutput(
         marketing_copy=copy,
         tone_profile=tone_profile,
