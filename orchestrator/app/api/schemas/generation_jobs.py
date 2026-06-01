@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from orchestrator.app.api.schemas.common import ApiMeta, ErrorResponse
 
@@ -35,17 +35,19 @@ GenerationRunMode = Literal[
 
 
 class GenerationJobCreateRequest(BaseModel):
-    user_id: str | None = None
-    brand_kit_id: str | None = None
-    entry_mode: str = "chat_start"
-    user_input: str
-    selected_reference_template_id: str | None = None
-    source_image_path: str | None = None
-    reference_image_path: str | None = None
-    copy_generation_mode: str | None = None
-    user_plan: str = "free"
-    ad_format: str | None = None
-    run_mode: GenerationRunMode = "queued_only"
+    model_config = ConfigDict(populate_by_name=True)
+
+    user_id: str | None = Field(default=None, alias="userId")
+    brand_kit_id: str | None = Field(default=None, alias="brandKitId")
+    entry_mode: str = Field(default="chat_start", alias="entryMode")
+    user_input: str = Field(alias="userInput")
+    selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
+    source_image_path: str | None = Field(default=None, alias="sourceImagePath")
+    reference_image_path: str | None = Field(default=None, alias="referenceImagePath")
+    copy_generation_mode: str | None = Field(default=None, alias="copyGenerationMode")
+    user_plan: str = Field(default="free", alias="userPlan")
+    ad_format: str | None = Field(default=None, alias="adFormat")
+    run_mode: GenerationRunMode = Field(default="queued_only", alias="runMode")
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("user_input")

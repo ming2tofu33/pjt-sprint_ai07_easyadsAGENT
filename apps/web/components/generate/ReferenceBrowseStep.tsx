@@ -1,11 +1,31 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { Briefcase, CheckCircle2, ChevronLeft, Home, Search, Sparkles, User } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
+import { fetchReferences } from "@/lib/api-client";
+import { saveGenerationRequestContext } from "@/lib/generation-request-context";
 import { referenceCreatives } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
 import styles from "./generate.module.css";
+
+type ReferenceTemplateCard = {
+  template_id: string;
+  title: string;
+  description?: string | null;
+  category?: string | null;
+  ad_formats?: string[];
+  thumbnail_url?: string | null;
+  preview_url?: string | null;
+  style_keywords?: string[];
+  tags?: string[];
+};
+
+type ReferenceListResponse = {
+  success?: boolean;
+  items?: ReferenceTemplateCard[];
+};
 
 type ReferenceBrowseStepProps = {
   state: ChatFlowState;
@@ -40,6 +60,63 @@ export function ReferenceBrowseStep({
 }: ReferenceBrowseStepProps) {
   const brief = buildBrief(state);
   const safeProgress = isGenerationComplete ? 100 : Math.max(12, Math.min(progress, 99));
+  const [referenceTemplates, setReferenceTemplates] = useState<ReferenceTemplateCard[]>([]);
+  const [referenceStatus, setReferenceStatus] = useState<"idle" | "loading" | "error">("idle");
+
+  useEffect(() => {
+    let cancelled = false;
+    setReferenceStatus("loading");
+    fetchReferences({ limit: 12 })
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+        const items = (response as ReferenceListResponse).items ?? [];
+        setReferenceTemplates(items);
+        setReferenceStatus("idle");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setReferenceStatus("error");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const referenceCards = useMemo(() => {
+    if (!referenceTemplates.length) {
+      return referenceCreatives.map((item) => ({ creative: item, template: null as ReferenceTemplateCard | null }));
+    }
+    return referenceTemplates.map((template, index) => ({
+      template,
+      creative: {
+        id: template.template_id,
+        title: template.title,
+        subtitle: template.description || template.style_keywords?.join(" · ") || template.category || "Reference template",
+        format: template.ad_formats?.[0] || "instagram_feed",
+        imageUrl: template.thumbnail_url || template.preview_url || null,
+        tone: (["strawberry", "mint", "cream", "sunny", "peach"] as const)[index % 5],
+        badge: template.category || "Reference",
+        tags: template.tags || template.style_keywords || []
+      }
+    }));
+  }, [referenceTemplates]);
+
+  function selectReferenceTemplate(template: ReferenceTemplateCard | null, fallbackTitle: string) {
+    if (template) {
+      saveGenerationRequestContext({
+        selectedReferenceTemplateId: template.template_id,
+        selectedReferenceTemplateTitle: template.title,
+        draftPrompt: `${template.title} 스타일로 광고를 만들고 싶어요.`,
+        source: "reference_gallery"
+      });
+      onOpenStudio?.();
+      return;
+    }
+    onOpenCreative?.(fallbackTitle);
+  }
 
   return (
     <>
@@ -77,9 +154,14 @@ export function ReferenceBrowseStep({
       </header>
 
       <p className={styles.sampleNotice}>
-        아직 레퍼런스 API와 연결되지 않은 샘플 목록이에요. 실제 생성 결과와 섞이지 않도록 샘플로 표시합니다.
+        {referenceStatus === "loading"
+          ? "레퍼런스 템플릿을 불러오는 중이에요."
+          : referenceStatus === "error"
+            ? "레퍼런스 API 연결에 실패해 샘플 목록을 표시합니다."
+            : referenceTemplates.length
+              ? "원하는 레퍼런스를 선택하면 해당 스타일이 생성 요청에 반영됩니다."
+              : "사용 가능한 레퍼런스가 없어 샘플 목록을 표시합니다."}
       </p>
-
       <label className={styles.searchField}>
         <Search size={17} aria-hidden="true" />
         <input aria-label="레퍼런스 검색어" placeholder="검색어를 입력하세요" />
@@ -94,8 +176,13 @@ export function ReferenceBrowseStep({
       </div>
 
       <section className={styles.referenceGrid} aria-label="광고 레퍼런스 목록">
-        {referenceCreatives.map((item) => (
-          <AdCreativeCard creative={item} key={item.id} onOpen={() => onOpenCreative?.(item.id)} onSave={() => onSaveCreative?.(item.title)} />
+        {referenceCards.map(({ creative, template }) => (
+          <AdCreativeCard
+            creative={creative}
+            key={creative.id}
+            onOpen={() => selectReferenceTemplate(template, String(creative.id))}
+            onSave={() => onSaveCreative?.(creative.title)}
+          />
         ))}
       </section>
 

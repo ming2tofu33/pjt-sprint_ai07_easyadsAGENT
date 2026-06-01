@@ -22,6 +22,23 @@ export type ChatQuestionResponse = {
   missingFields?: string[];
 };
 
+export type ReferenceTemplateCard = {
+  template_id: string;
+  title: string;
+  description?: string | null;
+  category?: string | null;
+  ad_formats?: string[];
+  thumbnail_url?: string | null;
+  preview_url?: string | null;
+  style_keywords?: string[];
+  tags?: string[];
+};
+
+export type ReferenceListResponse = {
+  success?: boolean;
+  items?: ReferenceTemplateCard[];
+};
+
 export type ChatTurnResponse = ChatStartResponse | ChatQuestionResponse;
 
 export type ChatBriefResponse = {
@@ -94,11 +111,20 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-export function startChatGeneration(userInput: string): Promise<ChatTurnResponse> {
+export type GenerationStartOptions = {
+  selectedReferenceTemplateId?: string | null;
+  copyGenerationMode?: string | null;
+  adFormat?: string | null;
+  renderProfile?: string | null;
+};
+
+export function startChatGeneration(userInput: string, options: GenerationStartOptions = {}): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/chat/start", {
     userInput,
-    adFormat: "instagram_feed",
-    renderProfile: "premium_api"
+    adFormat: options.adFormat ?? "instagram_feed",
+    renderProfile: options.renderProfile ?? "premium_api",
+    selectedReferenceTemplateId: options.selectedReferenceTemplateId ?? undefined,
+    copyGenerationMode: options.copyGenerationMode ?? undefined
   });
 }
 
@@ -137,18 +163,38 @@ export function startPhotoGeneration(input: {
   sourceImagePath: string;
   adFormat?: string;
   renderProfile?: string;
+  selectedReferenceTemplateId?: string | null;
+  copyGenerationMode?: string | null;
 }): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/photo/start", {
     userInput: input.userInput,
     sourceImagePath: input.sourceImagePath,
     adFormat: input.adFormat ?? "instagram_feed",
-    renderProfile: input.renderProfile ?? "premium_api"
+    renderProfile: input.renderProfile ?? "premium_api",
+    selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? undefined,
+    copyGenerationMode: input.copyGenerationMode ?? undefined
   });
 }
 
 export type ReferenceQueryParams = Record<string, string | number | boolean | string[] | undefined | null>;
 export type BrandKitPayload = Record<string, unknown>;
-export type GenerationJobPayload = Record<string, unknown>;
+export type GenerationJobPayload = {
+  user_input?: string;
+  userInput?: string;
+  selected_reference_template_id?: string | null;
+  selectedReferenceTemplateId?: string | null;
+  source_image_path?: string | null;
+  sourceImagePath?: string | null;
+  reference_image_path?: string | null;
+  referenceImagePath?: string | null;
+  copy_generation_mode?: string | null;
+  copyGenerationMode?: string | null;
+  ad_format?: string | null;
+  adFormat?: string | null;
+  run_mode?: string;
+  runMode?: string;
+  [key: string]: unknown;
+};
 
 export type GenerationJobStatus = "queued" | "running" | "done" | "failed" | string;
 
@@ -198,8 +244,8 @@ export interface GenerationJobResponse {
   job: GenerationJob;
 }
 
-export function fetchReferences(params?: ReferenceQueryParams): Promise<unknown> {
-  return getJson("/api/references", params);
+export function fetchReferences(params?: ReferenceQueryParams): Promise<ReferenceListResponse> {
+  return getJson<ReferenceListResponse>("/api/references", params);
 }
 
 export function fetchReferenceDetail(templateId: string): Promise<unknown> {

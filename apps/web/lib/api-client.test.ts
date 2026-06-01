@@ -8,6 +8,7 @@ import {
   getBrandKit,
   getCurrentBrandKit,
   getGenerationJob,
+  startChatGeneration,
   startPhotoGeneration,
   updateBrandKit,
   uploadPhotoAsset
@@ -21,6 +22,25 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}) {
 }
 
 describe("api-client photo generation", () => {
+
+  it("starts chat generation with selected reference template context", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        jobId: "job_1",
+        threadId: "thread_1",
+        status: "generating_copy_candidates",
+        context: { businessType: "cafe", itemOrService: "latte", promotionGoal: "launch" },
+        copyCandidates: [{ id: "copy_1", headline: "Latte" }]
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await startChatGeneration("Create an ad", { selectedReferenceTemplateId: "template_1", copyGenerationMode: "auto_pilot" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.selectedReferenceTemplateId).toBe("template_1");
+    expect(body.copyGenerationMode).toBe("auto_pilot");
+  });
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -81,11 +101,30 @@ describe("api-client photo generation", () => {
           userInput: "이 사진으로 신메뉴 광고 만들어줘",
           sourceImagePath: "data/uploads/photo_1.png",
           adFormat: "instagram_feed",
-          renderProfile: "premium_api"
+          renderProfile: "premium_api",
+          selectedReferenceTemplateId: undefined,
+          copyGenerationMode: undefined
         })
       })
     );
   });
+
+  it("starts photo generation with selected reference template context", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ jobId: "photo_1", threadId: "thread_1", status: "ok", context: {}, copyCandidates: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await startPhotoGeneration({
+      userInput: "Create from photo",
+      sourceImagePath: "data/uploads/photo_1.png",
+      selectedReferenceTemplateId: "template_1",
+      copyGenerationMode: "auto_pilot"
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.selectedReferenceTemplateId).toBe("template_1");
+    expect(body.copyGenerationMode).toBe("auto_pilot");
+  });
+
 });
 
 describe("api-client backend contract routes", () => {
@@ -143,11 +182,12 @@ describe("api-client backend contract routes", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const created = await createGenerationJob({ user_input: "Create an ad" });
+    const created = await createGenerationJob({ userInput: "Create an ad", selectedReferenceTemplateId: "template_1" });
     const fetched = await getGenerationJob("job_1");
 
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/generation-jobs");
     expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "POST" }));
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).selectedReferenceTemplateId).toBe("template_1");
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/generation-jobs/job_1");
     expect(created.job.result_payload?.schema_version).toBe("result_artifact_v1");
     expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
