@@ -193,7 +193,22 @@ Run mode policy:
 - `progress.progress_percent: 100`
 - `progress.current_stage: "completed"`
 - `output_path: "data/outputs/{job_id}/final_0.png"`
-- `result_payload` includes background, final, metadata, prompt, and validation artifact paths.
+- `result_payload.schema_version: "result_artifact_v1"`
+- `result_payload` includes background, final, metadata, prompt, validation, copy, layout, and render result artifact paths.
+- FE-readable summaries are available at `result_payload.prompt_summary`, `result_payload.validation_summary`, `result_payload.copy_summary`, and `result_payload.layout_summary`.
+- `result_payload.download_url` and `result_payload.final_image_url` are `null` until static serving or object storage is implemented.
+
+Result fields FE can safely bind:
+- `job.status`
+- `job.progress`
+- `job.output_path`
+- `job.result_payload.final_image_path`
+- `job.result_payload.download_url`
+- `job.result_payload.final_image_url`
+- `job.result_payload.prompt_summary`
+- `job.result_payload.validation_summary`
+- `job.result_payload.copy_summary`
+- `job.result_payload.layout_summary`
 
 #### `GET /api/v1/generation-jobs/{job_id}`
 
@@ -217,6 +232,9 @@ Current limitations:
 - LLM/VLM/OCR calls are not made.
 - Output URL/static serving is not implemented.
 - `download_url` is `null`.
+- `result_payload.download_path` is a repo-relative development path and is not a public URL.
+- `result_payload.download_url` and `result_payload.final_image_url` remain `null` until static serving or object storage is implemented.
+- The mock artifact contract is local-path based for development tracing only; public URL serving is a later milestone.
 
 ## 8. Archive Response Contract
 

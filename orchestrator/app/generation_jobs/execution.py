@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+from orchestrator.app.artifacts.service import (
+    build_result_artifact_payload,
+    ensure_job_output_dir,
+    get_job_output_dir,
+    write_json_artifact,
+)
 from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest, GenerationJobResponse
 from orchestrator.app.generation_jobs.service import (
     get_generation_job,
@@ -15,18 +20,8 @@ from orchestrator.app.generation_jobs.service import (
     mark_generation_job_running,
 )
 
-OUTPUTS_ROOT = Path("data") / "outputs"
-
-
 def get_generation_job_output_dir(job_id: str) -> Path:
-    if not job_id.startswith("job_") or ".." in job_id or "/" in job_id or "\\" in job_id:
-        raise ValueError("invalid generation job id")
-    path = OUTPUTS_ROOT / job_id
-    resolved_outputs = OUTPUTS_ROOT.resolve()
-    resolved_path = path.resolve()
-    if resolved_path != resolved_outputs and resolved_outputs not in resolved_path.parents:
-        raise ValueError("generation job output path escaped outputs root")
-    return path
+    return get_job_output_dir(job_id)
 
 
 def execute_generation_job_immediate(job_id: str, request: GenerationJobCreateRequest) -> GenerationJobResponse:
@@ -36,20 +31,36 @@ def execute_generation_job_immediate(job_id: str, request: GenerationJobCreateRe
 
     try:
         mark_generation_job_running(job_id, stage="rendering")
-        output_dir = get_generation_job_output_dir(job_id)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = ensure_job_output_dir(job_id)
 
         background_path = output_dir / "background_0.png"
         final_path = output_dir / "final_0.png"
         metadata_path = output_dir / "metadata.json"
         prompt_path = output_dir / "prompt.json"
         validation_path = output_dir / "validation.json"
+        copy_path = output_dir / "copy.json"
+        layout_path = output_dir / "layout.json"
+        render_result_path = output_dir / "render_result.json"
 
         _write_mock_images(background_path, final_path, request)
-        _write_json(
+        prompt_summary = {"user_input_preview": " ".join(request.user_input.split())[:120]}
+        validation_summary = {"overall_pass": True, "checks": ["mock_artifacts_written"]}
+        copy_summary = {
+            "schema_version": "mock_copy_v1",
+            "headline": "EasyAds Mock Result",
+            "subcopy": "deterministic mock output",
+            "cta": "미리보기",
+        }
+        layout_summary = {
+            "schema_version": "mock_layout_v1",
+            "canvas": {"width": 1024, "height": 1024},
+            "reserved_text_areas": [],
+        }
+        render_summary = {"schema_version": "mock_render_result_v1", "rendered_slot_count": 2, "warnings": []}
+        write_json_artifact(
             metadata_path,
             {
-                "schema_version": "generation_result_mock_v1",
+                "schema_version": "result_artifact_metadata_v1",
                 "job_id": job_id,
                 "engine": "mock",
                 "render_mode": "deterministic_mock",
@@ -58,23 +69,30 @@ def execute_generation_job_immediate(job_id: str, request: GenerationJobCreateRe
                 "execution_mode": "deterministic_mock",
             },
         )
-        _write_json(prompt_path, {"user_input_preview": " ".join(request.user_input.split())[:120]})
-        _write_json(validation_path, {"overall_pass": True, "checks": ["mock_artifacts_written"]})
+        write_json_artifact(prompt_path, prompt_summary)
+        write_json_artifact(validation_path, validation_summary)
+        write_json_artifact(copy_path, copy_summary)
+        write_json_artifact(layout_path, layout_summary)
+        write_json_artifact(render_result_path, render_summary)
 
-        result_payload = {
-            "schema_version": "generation_result_mock_v1",
-            "job_id": job_id,
-            "output_dir": _as_posix(output_dir),
-            "background_image_path": _as_posix(background_path),
-            "final_image_path": _as_posix(final_path),
-            "metadata_path": _as_posix(metadata_path),
-            "prompt_path": _as_posix(prompt_path),
-            "validation_path": _as_posix(validation_path),
-            "has_text_overlay": True,
-            "engine": "mock",
-            "render_mode": "deterministic_mock",
-            "download_url": None,
-        }
+        result_payload = build_result_artifact_payload(
+            job_id=job_id,
+            background_image_path=background_path,
+            final_image_path=final_path,
+            metadata_path=metadata_path,
+            prompt_path=prompt_path,
+            validation_path=validation_path,
+            copy_path=copy_path,
+            layout_path=layout_path,
+            render_result_path=render_result_path,
+            prompt_summary=prompt_summary,
+            validation_summary=validation_summary,
+            copy_summary=copy_summary,
+            layout_summary=layout_summary,
+            has_text_overlay=True,
+            engine="mock",
+            render_mode="deterministic_mock",
+        ).model_dump(mode="json")
         done = mark_generation_job_done(
             job_id,
             result_payload=result_payload,
@@ -119,11 +137,6 @@ def _write_mock_images(background_path: Path, final_path: Path, request: Generat
     draw.text((128, 800), f"EasyAds Mock Result - {label}", fill="#FFFFFF")
     draw.text((128, 850), "deterministic mock output", fill="#FDE68A")
     final.save(final_path)
-
-
-def _write_json(path: Path, payload: dict) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
 
 def _as_posix(path: Path) -> str:
     return path.as_posix()

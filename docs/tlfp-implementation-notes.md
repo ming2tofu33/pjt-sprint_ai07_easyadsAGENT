@@ -34,7 +34,14 @@
   - `ResultNode`
 - `no_copy` still runs background and safe-area checks, then bypasses `TextRendererNode` and `ReadabilityGate`.
 - Copy-present flows render Korean copy after image generation using the deterministic PIL-based `TextRendererNode`.
+- `TextRendererNode` now resolves cross-platform Korean fonts through `EASYADS_FONT_PATH` and system candidates, then falls back to PIL default without crashing.
+- Headline, subheadline/body, promotion/badge, and CTA roles use separate sizing/treatment rules; CTA can render as a clearer rounded plate/button.
+- Rule-based Copy Quality Policy trims excessive punctuation, removes overused promotional phrases from generated copy, and keeps `custom_input` copy unchanged except for warnings/quality metadata.
+- ImagePromptPlanner v2 selects deterministic visual templates for cafe/dessert, restaurant/BBQ, beauty/salon, or a generic fallback template.
+- Visual templates add business-aware composition, lighting, color palette hints, reserved text area guidance, and negative prompt additions while preserving `must_not_include_text=true`.
 - `ResultNode` writes the final `result_payload`, including `output_path`, validation summary, and artifact references.
+- GenerationJob `mock_immediate` uses Result Artifact Contract v1 with `background_0.png`, `final_0.png`, `metadata.json`, `prompt.json`, `validation.json`, `copy.json`, `layout.json`, and `render_result.json`.
+- `download_url` and `final_image_url` remain `null` because static serving/object storage is not implemented.
 - Vision Pipeline MVP preprocessing is available before validation when `source_image_path` or `reference_image_path` is supplied.
 - `ReferenceStyleProfile` can inform `ImagePromptPlannerNode` with deterministic palette and style hints.
 - `ProductPreserveSpec` is currently a `center_bbox_stub` only; no real product-preserving edit is performed.
@@ -68,9 +75,10 @@
 - Actual product detection or segmentation.
 - Actual product-preserving image edit.
 - Actual reference-guided image generation beyond metadata prompt hints.
+- Actual GPT-image-2, SD3.5, or FLUX generation from the GenerationJob mock bridge.
+- Static artifact serving or signed download URLs.
 - Automatic regeneration loops.
-- Advanced Korean typography/font management.
-- Production-grade font loading.
+- Production-grade font packaging.
 - Real product occlusion detection.
 - Actual text artifact detection by OCR/VLM.
 - `LLMAdapter`, structured output adapters, and `ModelRouter` are planned for a later model-integration milestone.

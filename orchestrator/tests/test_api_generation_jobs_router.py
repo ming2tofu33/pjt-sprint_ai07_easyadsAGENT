@@ -65,7 +65,12 @@ def test_create_generation_job_mock_immediate_completes(client):
     assert job["progress"]["progress_percent"] == 100
     assert job["progress"]["current_stage"] == "completed"
     assert job["output_path"].endswith("/final_0.png")
+    assert job["result_payload"]["schema_version"] == "result_artifact_v1"
     assert job["result_payload"]["final_image_path"] == job["output_path"]
+    assert job["result_payload"]["download_url"] is None
+    assert job["result_payload"]["final_image_url"] is None
+    assert job["result_payload"]["prompt_summary"]
+    assert job["result_payload"]["validation_summary"]["overall_pass"] is True
     assert job["metadata"]["effective_run_mode"] == "mock_immediate"
     assert job["metadata"]["execution_mode"] == "deterministic_mock"
 

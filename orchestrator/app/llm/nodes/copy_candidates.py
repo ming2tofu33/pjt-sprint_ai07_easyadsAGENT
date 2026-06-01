@@ -8,6 +8,7 @@ from langgraph.types import interrupt
 
 from orchestrator.app.graph.state import MarketingState, context_to_model
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
+from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.nodes.format_planner import build_layout_spec
 from orchestrator.app.llm.option_registry import option_label_for_value
@@ -38,7 +39,7 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
         output = build_rule_based_candidate_output(state)
         llm_metadata = {**llm_metadata, "fallback_used": True, "fallback_reason": "invalid_candidate_output"}
     max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
-    candidates = normalize_candidate_ids(output.candidates[: max(1, max_candidates)])
+    candidates = [apply_candidate_quality_policy(candidate) for candidate in normalize_candidate_ids(output.candidates[: max(1, max_candidates)])]
     output = CopyCandidateListOutput(
         candidates=candidates,
         recommended_candidate_id=output.recommended_candidate_id or candidates[0].id,
@@ -327,13 +328,13 @@ def state_update_selected_copy_node(state: MarketingState) -> dict[str, Any]:
         warnings.append("Invalid selected_copy_id; recommended candidate fallback applied.")
     if candidate is None:
         return {"status": "failed", "error_message": "No copy candidate available for selection."}
-    copy = MarketingCopy(
+    copy = apply_copy_quality_policy(MarketingCopy(
         headline=candidate["headline"],
         subcopy=candidate.get("subcopy"),
         cta=candidate.get("cta"),
         hashtags=candidate.get("hashtags", []),
         metadata={"selected_copy_id": selected_id, "warnings": warnings, "source_node": "state_update_selected_copy"},
-    )
+    ))
     selection_update = build_frontend_selection_state_update(state, selection)
     return {
         "marketing_copy": copy.model_dump(),
