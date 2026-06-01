@@ -3,6 +3,7 @@
 import { CheckCircle2, Download, Home, ImageOff, Info, RotateCcw, Share2, Sparkles } from "lucide-react";
 import type { ChatBrief, ChatFlowState } from "@/types/marketing";
 import { buildGenerationResultCopyText, isDownloadEnabled, resolveDownloadUrl, resolvePreviewImageUrl } from "@/lib/generation-result-utils";
+import { buildGeneratedAssetUrl } from "@/lib/generated-assets";
 import type { CreativeTone } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { StepHeader } from "./StepHeader";
@@ -35,6 +36,16 @@ function targetChannelAction(channel: string) {
     return "피드용 변환";
   }
   return "스토리용 변환";
+}
+
+function resolveBriefImageUrl(path: string | null | undefined) {
+  if (!path) {
+    return null;
+  }
+  if (/^https?:\/\//.test(path) || path.startsWith("/")) {
+    return path;
+  }
+  return buildGeneratedAssetUrl(path);
 }
 
 function creativeToneFromBrief(brief: ChatBrief): CreativeTone {
@@ -76,15 +87,11 @@ export function GenerationCompleteStep({
   onEditCreative,
   onSaveSelected
 }: GenerationCompleteStepProps) {
-  function isPublicImageUrl(value: string | null | undefined) {
-    return Boolean(value && (/^https?:\/\//.test(value) || value.startsWith("/")));
-  }
-
   const brief = state.brief;
   const generatedJob = state.generationJob ?? null;
   const generatedImageUrl =
     resolvePreviewImageUrl(generatedJob) ??
-    (isPublicImageUrl(brief?.finalImagePath) ? brief?.finalImagePath ?? null : null);
+    resolveBriefImageUrl(brief?.finalImagePath);
   const downloadUrl = resolveDownloadUrl(generatedJob);
   const canDownload = isDownloadEnabled(generatedJob);
   const debugFinalPath = generatedJob?.result_payload?.final_image_path ?? generatedJob?.output_path ?? brief?.finalImagePath ?? null;

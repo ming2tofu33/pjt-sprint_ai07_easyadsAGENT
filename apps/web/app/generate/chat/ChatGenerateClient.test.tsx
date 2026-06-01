@@ -340,9 +340,9 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("인스타 스토리 (9:16)")).toBeTruthy();
 
     fireEvent.click(screen.getByText(/생성 결과 확인하기/));
-    expect(screen.getByText("이미지 생성이 완료되지 않았어요")).toBeTruthy();
-    expect(screen.getByText("실제 이미지 파일을 받지 못했어요")).toBeTruthy();
-    expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeNull();
+    expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy();
+    expect(screen.getByText("실제 생성")).toBeTruthy();
+    expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeTruthy();
 
     fireEvent.click(screen.getByText("레퍼런스 갤러리 보기"));
     expect(screen.getByText("찰떡 레퍼런스 둘러보기")).toBeTruthy();
@@ -529,9 +529,9 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
 
     fireEvent.click(screen.getByText(/생성 결과 확인하기/));
-    expect(screen.getByText("이미지 생성이 완료되지 않았어요")).toBeTruthy();
-    expect(screen.getByText("실제 이미지 파일을 받지 못했어요")).toBeTruthy();
-    expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeNull();
+    expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy();
+    expect(screen.getByText("실제 생성")).toBeTruthy();
+    expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeTruthy();
 
     fireEvent.click(screen.getByText("레퍼런스 갤러리 보기"));
 
