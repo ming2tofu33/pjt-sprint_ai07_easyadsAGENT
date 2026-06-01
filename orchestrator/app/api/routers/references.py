@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from typing import Annotated, NoReturn
+from urllib.parse import quote
 
 from fastapi import APIRouter, Query
+from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
 from orchestrator.app.api.errors import raise_api_error
@@ -19,6 +21,9 @@ from orchestrator.app.reference_catalog.service import (
     find_similar_templates,
     get_reference_template,
     search_reference_templates,
+    temporary_reference_asset_path,
+    temporary_reference_asset_url,
+    temporary_references_enabled,
 )
 from orchestrator.app.schemas.reference_catalog import ReferenceTemplate, ReferenceTemplateSearchQuery
 
@@ -27,8 +32,8 @@ router = APIRouter()
 
 def to_reference_card_response(template: ReferenceTemplate) -> ReferenceTemplateCardResponse:
     card = ReferenceTemplateCardResponse.from_template(template)
-    card.thumbnail_url = None
-    card.preview_url = None
+    card.thumbnail_url = temporary_reference_asset_url(template, "thumbnail")
+    card.preview_url = temporary_reference_asset_url(template, "preview")
     return card
 
 
@@ -63,6 +68,27 @@ def _not_found(template_id: str) -> NoReturn:
         message="Reference template was not found.",
         detail=f"template_id={template_id}",
     )
+
+
+@router.get("/references/temp-assets/{removal_group}/{filename}")
+def get_temporary_reference_asset(removal_group: str, filename: str) -> FileResponse:
+    if not temporary_references_enabled():
+        raise_api_error(
+            status_code=404,
+            error_code="temporary_reference_assets_disabled",
+            message="Temporary reference assets are disabled.",
+            detail=f"removal_group={quote(removal_group, safe='')}",
+        )
+
+    asset_path = temporary_reference_asset_path(removal_group, filename)
+    if not asset_path or not asset_path.is_file():
+        raise_api_error(
+            status_code=404,
+            error_code="temporary_reference_asset_not_found",
+            message="Temporary reference asset was not found.",
+            detail=f"filename={quote(filename, safe='')}",
+        )
+    return FileResponse(asset_path)
 
 
 @router.get("/references", response_model=ReferenceTemplateListResponse)
