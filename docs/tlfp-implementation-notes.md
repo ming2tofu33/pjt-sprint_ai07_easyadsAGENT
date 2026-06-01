@@ -41,6 +41,8 @@
 - Visual templates add business-aware composition, lighting, color palette hints, reserved text area guidance, and negative prompt additions while preserving `must_not_include_text=true`.
 - `ResultNode` writes the final `result_payload`, including `output_path`, validation summary, and artifact references.
 - GenerationJob `mock_immediate` uses Result Artifact Contract v1 with `background_0.png`, `final_0.png`, `metadata.json`, `prompt.json`, `validation.json`, `copy.json`, `layout.json`, and `render_result.json`.
+- GenerationJob actual T2I lanes are guarded and disabled by default. `gpt_image_2_actual`/`gpt_image_2_smoke` require explicit external T2I and GPT-image-2 env flags plus an OpenAI API key. `sd35_local`/`sd35_local_smoke` require the SD3.5 local env flag and local dependency/model availability.
+- CI/default tests do not call GPT-image-2, load SD3.5, download HF models, or require GPU.
 - `download_url` and `final_image_url` remain `null` because static serving/object storage is not implemented.
 - Vision Pipeline MVP preprocessing is available before validation when `source_image_path` or `reference_image_path` is supplied.
 - `ReferenceStyleProfile` can inform `ImagePromptPlannerNode` with deterministic palette and style hints.
@@ -75,7 +77,7 @@
 - Actual product detection or segmentation.
 - Actual product-preserving image edit.
 - Actual reference-guided image generation beyond metadata prompt hints.
-- Actual GPT-image-2, SD3.5, or FLUX generation from the GenerationJob mock bridge.
+- Unguarded actual GPT-image-2, SD3.5, or FLUX generation.
 - Static artifact serving or signed download URLs.
 - Automatic regeneration loops.
 - Production-grade font packaging.
