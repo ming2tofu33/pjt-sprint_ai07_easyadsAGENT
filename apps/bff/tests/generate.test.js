@@ -226,7 +226,8 @@ describe("generate chat routes", () => {
         userInput: "이 사진으로 신메뉴 광고 만들어줘",
         sourceImagePath: "data/uploads/photo_abc.png",
         adFormat: "instagram_feed",
-        renderProfile: "premium_api"
+        renderProfile: "premium_api",
+        selectedReferenceTemplateId: "template_1"
       }
     });
 
@@ -240,8 +241,30 @@ describe("generate chat routes", () => {
           userInput: "이 사진으로 신메뉴 광고 만들어줘",
           sourceImagePath: "data/uploads/photo_abc.png",
           adFormat: "instagram_feed",
-          renderProfile: "premium_api"
+          renderProfile: "premium_api",
+          selectedReferenceTemplateId: "template_1"
         })
+      })
+    );
+    await app.close();
+  });
+
+  it("proxies generation job selected reference as snake case", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ success: true, job: { job_id: "job_1" } }));
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs",
+      payload: { userInput: "Create an ad", selectedReferenceTemplateId: "template_1" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/generation-jobs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ userInput: "Create an ad", selected_reference_template_id: "template_1" })
       })
     );
     await app.close();

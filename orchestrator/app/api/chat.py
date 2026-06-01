@@ -85,6 +85,8 @@ class ChatStartRequest(CamelModel):
     user_input: str = Field(alias="userInput", min_length=1)
     ad_format: str = Field(default="instagram_feed", alias="adFormat")
     render_profile: str = Field(default="fast", alias="renderProfile")
+    selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
+    copy_generation_mode: str | None = Field(default=None, alias="copyGenerationMode")
 
 
 class ChatStartResponse(CamelModel):
@@ -274,8 +276,14 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
         "job_id": job_id,
         "thread_id": thread_id,
         "render_profile": request.render_profile,
-        "copy_generation_mode": "suggest_candidates",
-        "context": {"extra": {"ad_format": request.ad_format}},
+        "selected_reference_template_id": request.selected_reference_template_id,
+        "copy_generation_mode": request.copy_generation_mode or "suggest_candidates",
+        "context": {
+            "extra": {
+                "ad_format": request.ad_format,
+                "selected_reference_template_id": request.selected_reference_template_id,
+            }
+        },
     }
     result = _GRAPH.invoke(state, config=_thread_config(thread_id))
     interrupt = _interrupt_value(result)

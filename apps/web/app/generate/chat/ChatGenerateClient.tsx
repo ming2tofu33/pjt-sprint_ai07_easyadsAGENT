@@ -40,6 +40,7 @@ import {
 } from "@/lib/generated-creative-storage";
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildReferenceStyleHref } from "@/lib/reference-navigation";
+import { clearGenerationRequestContext, readGenerationRequestContext } from "@/lib/generation-request-context";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing";
@@ -126,6 +127,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [generatedCreatives, setGeneratedCreatives] = useState<MockCreative[]>([]);
   const lastPrimedStageRef = useRef<DashboardStage | null>(null);
+  const requestContextRef = useRef(readGenerationRequestContext());
   const appSurface = optimisticSurface ?? initialSurface;
 
   const navigateTo = useCallback(
@@ -153,6 +155,13 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     dispatch({ type: "selectChannel", channelId: snapshot.selectedChannelId });
     dispatch({ type: "setCustomDirection", value: snapshot.customDirection });
     dispatch({ type: "backendBriefSucceeded", brief: snapshot.brief });
+    if (snapshot.selectedReferenceTemplateId) {
+      dispatch({
+        type: "referenceTemplateSelected",
+        selectedReferenceTemplateId: snapshot.selectedReferenceTemplateId,
+        selectedReferenceTemplateTitle: snapshot.selectedReferenceTemplateTitle ?? null
+      });
+    }
     dispatch({ type: "continueToBrief" });
     setGenerationProgress(stage === "generating" ? 68 : stage === "start" ? 0 : 100);
     setGenerationStage(
@@ -187,6 +196,19 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   useEffect(() => {
     setOptimisticSurface(null);
   }, [initialSurface]);
+
+  useEffect(() => {
+    const context = requestContextRef.current;
+    if (!context?.selectedReferenceTemplateId) {
+      return;
+    }
+    dispatch({
+      type: "requestContextLoaded",
+      selectedReferenceTemplateId: context.selectedReferenceTemplateId,
+      selectedReferenceTemplateTitle: context.selectedReferenceTemplateTitle ?? null,
+      draftPrompt: context.draftPrompt ?? null
+    });
+  }, []);
 
   useEffect(() => {
     if (appSurface === "ads") {
@@ -276,9 +298,35 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   async function handleSubmitPrompt(prompt: string) {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
+    const latestRequestContext = readGenerationRequestContext();
+
+    if (latestRequestContext?.selectedReferenceTemplateId && !state.selectedReferenceTemplateId) {
+      dispatch({
+        type: "requestContextLoaded",
+        selectedReferenceTemplateId: latestRequestContext.selectedReferenceTemplateId,
+        selectedReferenceTemplateTitle: latestRequestContext.selectedReferenceTemplateTitle ?? null,
+        draftPrompt: latestRequestContext.draftPrompt ?? null
+      });
+    }
+
     dispatch({ type: "submitPrompt", prompt });
+
     try {
-      const response = await startChatGeneration(prompt);
+      const selectedReferenceTemplateId =
+        state.selectedReferenceTemplateId ??
+        latestRequestContext?.selectedReferenceTemplateId ??
+        undefined;
+
+      const response = await startChatGeneration(prompt, {
+        selectedReferenceTemplateId,
+        adFormat: "instagram_feed",
+        renderProfile: "premium_api"
+      });
+
+      if (selectedReferenceTemplateId) {
+        clearGenerationRequestContext();
+      }
+
       applyTurnResponse(prompt, response);
     } catch (error) {
       dispatch({
@@ -317,12 +365,24 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     setGenerationProgress(0);
     setGenerationStage("brief");
 
+    const latestRequestContext = readGenerationRequestContext();
+    const selectedReferenceTemplateId =
+      state.selectedReferenceTemplateId ??
+      latestRequestContext?.selectedReferenceTemplateId ??
+      undefined;
+
     try {
       const upload = await uploadPhotoAsset(input.file);
       const response = await startPhotoGeneration({
         userInput: input.prompt,
-        sourceImagePath: upload.sourceImagePath
+        sourceImagePath: upload.sourceImagePath,
+        selectedReferenceTemplateId
       });
+
+      if (selectedReferenceTemplateId) {
+        clearGenerationRequestContext();
+      }
+
       writeChatTurnSnapshot({ prompt: input.prompt, response });
       lastPrimedStageRef.current = null;
       navigateTo("chat", "start");
@@ -361,7 +421,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         selectedChannelId: state.selectedChannelId,
         selectedTone: state.selectedTone,
         customDirection: state.customDirection,
-        brief: response.brief
+        brief: response.brief,
+        selectedReferenceTemplateId: state.selectedReferenceTemplateId ?? null,
+        selectedReferenceTemplateTitle: state.selectedReferenceTemplateTitle ?? null
       };
       writeChatFlowSnapshot(snapshot);
       clearChatTurnSnapshot();
@@ -394,7 +456,19 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   function handleOpenFreshChat() {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
+    const latestRequestContext = readGenerationRequestContext();
+
     dispatch({ type: "reset" });
+
+    if (latestRequestContext?.selectedReferenceTemplateId) {
+      dispatch({
+        type: "requestContextLoaded",
+        selectedReferenceTemplateId: latestRequestContext.selectedReferenceTemplateId,
+        selectedReferenceTemplateTitle: latestRequestContext.selectedReferenceTemplateTitle ?? null,
+        draftPrompt: latestRequestContext.draftPrompt ?? null
+      });
+    }
+
     setGenerationProgress(0);
     setGenerationStage("brief");
     navigateTo("chat", "start");

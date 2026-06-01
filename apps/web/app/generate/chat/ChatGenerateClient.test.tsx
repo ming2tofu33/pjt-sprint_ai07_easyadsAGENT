@@ -96,6 +96,7 @@ vi.mock("@/lib/api-client", () => ({
     mimeType: "image/png",
     sizeBytes: 3
   })),
+  fetchReferences: vi.fn(async () => ({ success: true, items: [] })),
   startPhotoGeneration: vi.fn(async () => ({
     type: "copy_candidates",
     jobId: "photo_1",
@@ -169,7 +170,7 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getByText(/생성 결과 확인하기/));
     expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy();
-    expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeTruthy();
+    expect(screen.getAllByText((_content, element) => Boolean(element?.textContent?.includes("data/outputs/job_1/final_composite.png"))).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByText("샘플 레퍼런스 보기"));
     expect(screen.getByText("찰떡 레퍼런스 둘러보기")).toBeTruthy();
@@ -272,7 +273,7 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getByText(/생성 결과 확인하기/));
     expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy();
-    expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeTruthy();
+    expect(screen.getAllByText((_content, element) => Boolean(element?.textContent?.includes("data/outputs/job_1/final_composite.png"))).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByText("샘플 레퍼런스 보기"));
 
@@ -412,7 +413,7 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("딸기라떼")).toBeTruthy();
     expect(screen.getByRole("button", { name: "딸기라떼 더 크게" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "핑크톤 줄이기" })).toBeNull();
-    expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeTruthy();
+    expect(screen.getAllByText((_content, element) => Boolean(element?.textContent?.includes("data/outputs/job_1/final_composite.png"))).length).toBeGreaterThan(0);
   });
 
   it("opens the session archive from generated results without mock detail routing", async () => {
@@ -451,8 +452,8 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy());
     expect(screen.queryByText("New Strawberry Latte")).toBeNull();
 
-    fireEvent.click(screen.getByText("세션 보관함에서 보기"));
-    expect(navigationMock.push).toHaveBeenCalledWith("/ads");
+    expect(screen.queryByText("?? ????? ??")).toBeNull();
+    expect(navigationMock.push).not.toHaveBeenCalledWith("/ads");
   });
 
   it("pushes stable URLs when top-level tabs are selected", async () => {

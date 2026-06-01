@@ -127,3 +127,34 @@ def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
     assert sd35.status_code == 201
     assert sd35.json()["job"]["status"] == "failed"
     assert sd35.json()["job"]["error"]["error_code"] == "t2i_engine_not_enabled"
+
+
+def test_create_generation_job_accepts_camel_case_reference_alias(client):
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={
+            "userInput": "Create a cafe launch ad",
+            "selectedReferenceTemplateId": "seed_cafe_strawberry_feed_001",
+            "runMode": "queued_only",
+        },
+    )
+
+    assert response.status_code == 201
+    job = response.json()["job"]
+    assert job["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+    assert job["metadata"]["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+
+
+def test_create_generation_job_accepts_snake_case_reference_id(client):
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={
+            "user_input": "Create a cafe launch ad",
+            "selected_reference_template_id": "seed_cafe_strawberry_feed_001",
+            "run_mode": "queued_only",
+        },
+    )
+
+    assert response.status_code == 201
+    job = response.json()["job"]
+    assert job["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"

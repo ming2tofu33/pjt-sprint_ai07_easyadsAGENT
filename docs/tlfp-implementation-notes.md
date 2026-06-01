@@ -97,3 +97,7 @@
 `scripts/smoke_generation_job_t2i.py` creates JSON and Markdown reports under `data/logs/` for guarded GPT-image-2 and SD3.5 lanes. Dry-run mode never calls external APIs or loads local models. Non-dry-run smoke is blocked unless the explicit engine flags and credentials/model readiness are present. Reports store only boolean credential presence, prompt hash/preview, job id, safe result payload fields, and error summaries; raw API keys, HF tokens, base64 image data, and image bytes must not be written.
 
 Generated reports under `data/logs/` and generated artifacts under `data/outputs/` are runtime files and must not be committed.
+
+## Reference Template Flow
+
+`selectedReferenceTemplateId` is accepted by frontend/BFF camelCase payloads and normalized to `selected_reference_template_id` inside Orchestrator. Legacy chat/photo starts put the id into graph state before `ReferenceTemplateResolveNode`; GenerationJob starts preserve it in response and metadata. `ImagePromptPlanner` stores selected template metadata and visual template id in `image_prompt_spec.metadata`, and `T2IRequestBuilder` carries `selected_reference_template_id` plus `reference_template_selection` into `t2i_request.metadata`.

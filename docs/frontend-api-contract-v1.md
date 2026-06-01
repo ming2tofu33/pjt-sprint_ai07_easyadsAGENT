@@ -301,7 +301,27 @@ Contracts:
 - LLM, VLM, OCR, rembg, or SAM calls
 - Production-grade manual smoke validation for GPT-image-2 / SD3.5
 
-## 12. FE/BFF vs Backend Responsibilities
+## 12. Reference Template Selection Flow
+
+Frontend and BFF payloads may send `selectedReferenceTemplateId`. Orchestrator DTOs also accept this camelCase alias but store the canonical field as `selected_reference_template_id`.
+
+Supported paths:
+
+- `POST /api/generate/chat/start` forwards `selectedReferenceTemplateId` to `/v1/marketing/chat/start`.
+- `POST /api/generate/photo/start` forwards `selectedReferenceTemplateId` to `/v1/marketing/photo/start`.
+- `POST /api/generation-jobs` converts `selectedReferenceTemplateId` to `selected_reference_template_id` before calling `/api/v1/generation-jobs`.
+- `GenerationJobCreateRequest` accepts both camelCase and snake_case field names.
+
+Graph metadata expectations:
+
+- `MarketingState.selected_reference_template_id` contains the selected id.
+- `selected_reference_template` and `reference_template_selection` are populated after template resolution when the id is valid.
+- `image_prompt_spec.metadata.selected_reference_template` and `image_prompt_spec.metadata.visual_template_id` are available for prompt planning traceability.
+- `t2i_request.metadata.selected_reference_template_id` and `t2i_request.metadata.reference_template_selection` preserve the selection for downstream engines.
+
+Reference asset proxy/static serving is independent from generated result serving. Do not use generated artifact local paths as reference asset URLs.
+
+## 13. FE/BFF vs Backend Responsibilities
 
 Backend owns DTO validation, stable response shapes, domain service integration, and safe public asset references. FE/BFF owns screen composition, query hooks, caching strategy, frontend mock data during UI prototyping, and route-level presentation logic.
 

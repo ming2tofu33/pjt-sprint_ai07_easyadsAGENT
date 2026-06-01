@@ -14,6 +14,8 @@ export type GeneratedCreativeSnapshot = {
   selectedTone: string;
   customDirection: string;
   brief: ChatBrief;
+  selectedReferenceTemplateId?: string | null;
+  selectedReferenceTemplateTitle?: string | null;
 };
 
 const GENERATED_CREATIVES_STORAGE_KEY = "easyads_generated_creatives_v1";

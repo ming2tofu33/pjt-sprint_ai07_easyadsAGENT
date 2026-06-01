@@ -26,6 +26,8 @@ class PhotoStartRequest(CamelModel):
     ad_format: str = Field(default="instagram_feed", alias="adFormat")
     render_profile: str = Field(default="premium_api", alias="renderProfile")
     vision_preprocess_mode: str = Field(default="resize_only", alias="visionPreprocessMode")
+    selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
+    copy_generation_mode: str | None = Field(default=None, alias="copyGenerationMode")
 
 
 @router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse, response_model_by_alias=True)
@@ -41,11 +43,13 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
         "thread_id": thread_id,
         "render_profile": request.render_profile,
         "vision_preprocess_mode": request.vision_preprocess_mode,
-        "copy_generation_mode": "suggest_candidates",
+        "selected_reference_template_id": request.selected_reference_template_id,
+        "copy_generation_mode": request.copy_generation_mode or "suggest_candidates",
         "context": {
             "extra": {
                 "ad_format": request.ad_format,
                 "source_image_path": request.source_image_path,
+                "selected_reference_template_id": request.selected_reference_template_id,
             }
         },
     }

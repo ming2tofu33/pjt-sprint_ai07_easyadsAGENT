@@ -378,3 +378,70 @@ def test_chat_brief_hides_internal_image_prompt_from_user_summary(monkeypatch):
     assert payload["brief"]["tone"] == "고급스러운 분위기"
     assert payload["brief"]["imageDirection"] == "고급스러운 분위기를 살려 예약 서비스 안내가 잘 보이도록 깔끔한 배경과 읽기 쉬운 여백을 구성해요."
     assert "clean commercial" not in payload["brief"]["imageDirection"]
+
+
+def test_chat_start_accepts_selected_reference_template_id(monkeypatch):
+    captured = {}
+
+    class FakeGraph:
+        def invoke(self, state, config):
+            captured["state"] = state
+            return {
+                "job_id": state["job_id"],
+                "thread_id": state["thread_id"],
+                "status": "generating_copy_candidates",
+                "context": {"business_type": "cafe", "item_or_service": "latte", "promotion_goal": "new_launch", "extra": {}},
+                "copy_candidates": [{"id": "copy_1", "headline": "Latte"}],
+            }
+
+    monkeypatch.setattr(chat_api, "_GRAPH", FakeGraph())
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/start",
+        json={
+            "userInput": "Create a cafe ad",
+            "selectedReferenceTemplateId": "seed_cafe_strawberry_feed_001",
+            "copyGenerationMode": "auto_pilot",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["state"]["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+    assert captured["state"]["copy_generation_mode"] == "auto_pilot"
+    assert captured["state"]["context"]["extra"]["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+
+
+def test_photo_start_accepts_selected_reference_template_id(monkeypatch):
+    captured = {}
+
+    class FakeGraph:
+        def invoke(self, state, config):
+            captured["state"] = state
+            return {
+                "job_id": state["job_id"],
+                "thread_id": state["thread_id"],
+                "status": "generating_copy_candidates",
+                "context": {"business_type": "cafe", "item_or_service": "latte", "promotion_goal": "new_launch", "extra": {}},
+                "copy_candidates": [{"id": "copy_1", "headline": "Latte"}],
+            }
+
+    from orchestrator.app.api import photo as photo_api
+
+    monkeypatch.setattr(photo_api, "_GRAPH", FakeGraph())
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/photo/start",
+        json={
+            "userInput": "Create a photo ad",
+            "sourceImagePath": "data/uploads/menu.png",
+            "selectedReferenceTemplateId": "seed_cafe_strawberry_feed_001",
+            "copyGenerationMode": "auto_pilot",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["state"]["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+    assert captured["state"]["copy_generation_mode"] == "auto_pilot"
+    assert captured["state"]["context"]["extra"]["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
