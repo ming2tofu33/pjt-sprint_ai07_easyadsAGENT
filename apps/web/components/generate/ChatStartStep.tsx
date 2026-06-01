@@ -2,6 +2,7 @@
 
 import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, Send, Utensils } from "lucide-react";
 import { useState } from "react";
+import type { CopyGenerationMode } from "@/types/marketing";
 import { readGenerationDraftPrompt } from "@/lib/generation-request-context";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
@@ -23,19 +24,20 @@ const quickStarts = [
 ];
 
 type ChatStartStepProps = {
-  onSubmit: (prompt: string) => void;
+  onSubmit: (prompt: string, options?: { copyGenerationMode?: CopyGenerationMode }) => void;
   onBack: () => void;
   onGoHome: () => void;
 };
 
 export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps) {
   const [value, setValue] = useState(() => readGenerationDraftPrompt());
+  const [copyGenerationMode, setCopyGenerationMode] = useState<CopyGenerationMode>("suggest_candidates");
   const canSubmit = value.trim().length > 0;
 
   function submitPrompt() {
     const prompt = value.trim();
     if (prompt.length > 0) {
-      onSubmit(prompt);
+      onSubmit(prompt, { copyGenerationMode });
     }
   }
 
@@ -68,6 +70,18 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
             <span>{label}</span>
           </ChoiceChip>
         ))}
+      </div>
+
+      <h2 className={styles.sectionTitle}>문구 포함 여부</h2>
+      <div className={styles.chipGrid}>
+        <ChoiceChip selected={copyGenerationMode === "suggest_candidates"} onClick={() => setCopyGenerationMode("suggest_candidates")}>
+          <MessageCircle size={16} aria-hidden="true" />
+          <span>문구도 추천</span>
+        </ChoiceChip>
+        <ChoiceChip selected={copyGenerationMode === "no_copy"} onClick={() => setCopyGenerationMode("no_copy")}>
+          <ImageIcon size={16} aria-hidden="true" />
+          <span>이미지만 생성</span>
+        </ChoiceChip>
       </div>
 
       <div className={styles.inputCard}>

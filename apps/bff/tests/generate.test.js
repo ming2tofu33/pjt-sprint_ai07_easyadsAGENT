@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildApp } from "../src/app.js";
+import { buildApp, DEFAULT_UPLOAD_DIR } from "../src/app.js";
 
 function jsonResponse(payload, init = {}) {
   return new Response(JSON.stringify(payload), {
@@ -188,6 +188,28 @@ describe("generate chat routes", () => {
     await fs.rm(uploadDir, { recursive: true, force: true });
   });
 
+  it("uses the repo data/uploads directory by default", async () => {
+    const app = buildApp({ fetchImpl: vi.fn() });
+    const dataUrl = `data:image/png;base64,${Buffer.from("fake image bytes").toString("base64")}`;
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/photo/upload",
+      payload: {
+        filename: "menu photo.png",
+        mimeType: "image/png",
+        dataUrl
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    const savedPath = path.join(DEFAULT_UPLOAD_DIR, path.basename(payload.sourceImagePath));
+    await expect(fs.readFile(savedPath)).resolves.toEqual(Buffer.from("fake image bytes"));
+    await app.close();
+    await fs.rm(savedPath, { force: true });
+  });
+
   it("validates JSON photo upload payloads", async () => {
     const app = buildApp({ fetchImpl: vi.fn() });
 
@@ -241,6 +263,78 @@ describe("generate chat routes", () => {
           sourceImagePath: "data/uploads/photo_abc.png",
           adFormat: "instagram_feed",
           renderProfile: "premium_api"
+        })
+      })
+    );
+    await app.close();
+  });
+
+  it("passes no-copy mode through generation start requests", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        type: "brief_ready",
+        jobId: "job_no_copy",
+        threadId: "thread_no_copy",
+        status: "done",
+        context: { businessType: "카페", itemOrService: "딸기라떼", promotionGoal: "광고 홍보" },
+        brief: {
+          purpose: "광고 홍보",
+          item: "딸기라떼",
+          copy: "문구 없이 이미지로만",
+          tone: "브랜드에 맞춘 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "딸기라떼 중심의 깔끔한 광고 배경",
+          finalImagePath: "data/outputs/job_no_copy/final_composite.png"
+        },
+        copyGenerationMode: "no_copy"
+      })
+    );
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/generate/chat/start",
+      payload: {
+        userInput: "딸기라떼 이미지만 만들어줘",
+        adFormat: "instagram_feed",
+        renderProfile: "premium_api",
+        copyGenerationMode: "no_copy"
+      }
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/generate/photo/start",
+      payload: {
+        userInput: "이 사진으로 이미지만 만들어줘",
+        sourceImagePath: "data/uploads/photo_abc.png",
+        adFormat: "instagram_feed",
+        renderProfile: "premium_api",
+        copyGenerationMode: "no_copy"
+      }
+    });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://orchestrator/v1/marketing/chat/start",
+      expect.objectContaining({
+        body: JSON.stringify({
+          userInput: "딸기라떼 이미지만 만들어줘",
+          adFormat: "instagram_feed",
+          renderProfile: "premium_api",
+          copyGenerationMode: "no_copy"
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/v1/marketing/photo/start",
+      expect.objectContaining({
+        body: JSON.stringify({
+          userInput: "이 사진으로 이미지만 만들어줘",
+          sourceImagePath: "data/uploads/photo_abc.png",
+          adFormat: "instagram_feed",
+          renderProfile: "premium_api",
+          copyGenerationMode: "no_copy"
         })
       })
     );

@@ -45,6 +45,7 @@ import {
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildReferenceStyleHref } from "@/lib/reference-navigation";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
+import type { ChatBrief, CopyGenerationMode, InferredContext } from "@/types/marketing";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing";
 
@@ -116,9 +117,14 @@ function isQuestionResponse(response: ChatTurnResponse): response is Extract<Cha
   return response.type === "option_question";
 }
 
+function isBriefReadyResponse(response: ChatTurnResponse): response is Extract<ChatTurnResponse, { type: "brief_ready" }> {
+  return response.type === "brief_ready";
+}
+
 type PhotoGenerateInput = {
   file: File;
   prompt: string;
+  copyGenerationMode?: CopyGenerationMode;
 };
 
 export function ChatGenerateClient({ initialSurface = "home", initialStage = "start" }: ChatGenerateClientProps) {
@@ -165,6 +171,53 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     lastPrimedStageRef.current = stage;
   }, []);
 
+  const applyBriefReadyResponse = useCallback(
+    (
+      prompt: string,
+      response: {
+        jobId: string;
+        threadId: string;
+        context: InferredContext;
+        brief: ChatBrief;
+        copyGenerationMode?: CopyGenerationMode;
+      }
+    ) => {
+      const snapshot = {
+        prompt,
+        jobId: response.jobId,
+        threadId: response.threadId,
+        context: response.context,
+        copyCandidates: [],
+        copyCandidateSource: "empty" as const,
+        selectedCopyId: "",
+        selectedChannelId: "instagram-feed",
+        selectedTone: "",
+        customDirection: "",
+        brief: response.brief
+      };
+      dispatch({
+        type: "backendStartSucceeded",
+        prompt,
+        jobId: response.jobId,
+        threadId: response.threadId,
+        context: response.context,
+        copyCandidates: [],
+        recommendedCopyId: null,
+        copyCandidateSource: "empty",
+        copyGenerationMode: response.copyGenerationMode ?? "no_copy"
+      });
+      dispatch({ type: "backendBriefSucceeded", brief: response.brief });
+      dispatch({ type: "continueToBrief" });
+      writeChatFlowSnapshot(snapshot);
+      clearChatTurnSnapshot();
+      setGeneratedCreatives(response.brief.finalImagePath ? addGeneratedCreativeSnapshot(snapshot) : readGeneratedCreatives());
+      setGenerationProgress(100);
+      setGenerationStage("brief");
+      lastPrimedStageRef.current = "start";
+    },
+    []
+  );
+
   const applyTurnResponse = useCallback((prompt: string, response: ChatTurnResponse) => {
     if (isQuestionResponse(response)) {
       dispatch({
@@ -176,6 +229,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       });
       return;
     }
+    if (isBriefReadyResponse(response)) {
+      applyBriefReadyResponse(prompt, response);
+      return;
+    }
 
     dispatch({
       type: "backendStartSucceeded",
@@ -184,9 +241,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       threadId: response.threadId,
       context: response.context,
       copyCandidates: response.copyCandidates,
-      recommendedCopyId: response.recommendedCopyId
+      recommendedCopyId: response.recommendedCopyId,
+      copyGenerationMode: response.copyGenerationMode
     });
-  }, []);
+  }, [applyBriefReadyResponse]);
 
   useEffect(() => {
     setOptimisticSurface(null);
@@ -273,12 +331,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     return () => window.clearInterval(timer);
   }, [generationStage, navigateTo]);
 
-  async function handleSubmitPrompt(prompt: string) {
+  async function handleSubmitPrompt(prompt: string, options: { copyGenerationMode?: CopyGenerationMode } = {}) {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
-    dispatch({ type: "submitPrompt", prompt });
+    dispatch({ type: "submitPrompt", prompt, copyGenerationMode: options.copyGenerationMode });
     try {
-      const response = await startChatGeneration(appendSavedBrandKitContext(prompt));
+      const response = await startChatGeneration(appendSavedBrandKitContext(prompt), {
+        copyGenerationMode: options.copyGenerationMode
+      });
       applyTurnResponse(prompt, response);
     } catch (error) {
       dispatch({
@@ -321,7 +381,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const upload = await uploadPhotoAsset(input.file);
       const response = await startPhotoGeneration({
         userInput: appendSavedBrandKitContext(input.prompt),
-        sourceImagePath: upload.sourceImagePath
+        sourceImagePath: upload.sourceImagePath,
+        copyGenerationMode: input.copyGenerationMode
       });
       writeChatTurnSnapshot({ prompt: input.prompt, response });
       lastPrimedStageRef.current = null;

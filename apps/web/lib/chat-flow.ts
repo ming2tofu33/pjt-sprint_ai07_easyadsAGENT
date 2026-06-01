@@ -53,6 +53,7 @@ export function createInitialChatFlowState(): ChatFlowState {
     contextSource: "empty",
     copyCandidates: [],
     copyCandidateSource: "empty",
+    copyGenerationMode: "suggest_candidates",
     selectedTone: "감성적인",
     selectedCopyId: "",
     selectedChannelId: "instagram-feed",
@@ -75,6 +76,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         step: 2,
         progress: { current: 1, total: 4, label: "정보 입력" },
         userInput: action.prompt,
+        copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
         inferredContext: {
           businessType: "",
           itemOrService: "",
@@ -124,6 +126,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         contextSource: "backend",
         copyCandidates: nextCopyCandidates,
         copyCandidateSource: action.copyCandidateSource ?? (hasBackendCopyCandidates ? "backend" : "empty"),
+        copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
         selectedCopyId: action.recommendedCopyId || nextCopyCandidates[0]?.id || "",
         currentQuestion: null,
         conversationMessages: [
@@ -150,6 +153,11 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         selectedTone: action.tone
+      };
+    case "setCopyGenerationMode":
+      return {
+        ...state,
+        copyGenerationMode: action.copyGenerationMode
       };
     case "continueToCopy":
       return {

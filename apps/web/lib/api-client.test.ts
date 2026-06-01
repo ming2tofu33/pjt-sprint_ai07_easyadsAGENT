@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startPhotoGeneration, uploadPhotoAsset } from "./api-client";
+import { startChatGeneration, startPhotoGeneration, uploadPhotoAsset } from "./api-client";
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(payload), {
@@ -15,7 +15,7 @@ describe("api-client photo generation", () => {
   });
 
   it("uploads a photo file as a JSON data URL", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         sourceImagePath: "data/uploads/photo_1.png",
         fileName: "menu.png",
@@ -43,7 +43,7 @@ describe("api-client photo generation", () => {
   });
 
   it("starts photo generation with the uploaded source image path", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         jobId: "photo_1",
         threadId: "photo_1_thread",
@@ -75,8 +75,52 @@ describe("api-client photo generation", () => {
     );
   });
 
+  it("sends no-copy mode for chat and photo generation starts", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        type: "brief_ready",
+        jobId: "job_no_copy",
+        threadId: "thread_no_copy",
+        status: "done",
+        context: { businessType: "카페", itemOrService: "딸기라떼", promotionGoal: "광고 홍보" },
+        brief: {
+          purpose: "광고 홍보",
+          item: "딸기라떼",
+          copy: "문구 없이 이미지로만",
+          tone: "브랜드에 맞춘 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+          finalImagePath: "data/outputs/job_no_copy/final_composite.png"
+        },
+        copyGenerationMode: "no_copy"
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await startChatGeneration("딸기라떼 이미지만 만들어줘", { copyGenerationMode: "no_copy" });
+    await startPhotoGeneration({
+      userInput: "이 사진으로 이미지만 만들어줘",
+      sourceImagePath: "data/uploads/photo_1.png",
+      copyGenerationMode: "no_copy"
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      userInput: "딸기라떼 이미지만 만들어줘",
+      adFormat: "instagram_feed",
+      renderProfile: "premium_api",
+      copyGenerationMode: "no_copy"
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      userInput: "이 사진으로 이미지만 만들어줘",
+      sourceImagePath: "data/uploads/photo_1.png",
+      adFormat: "instagram_feed",
+      renderProfile: "premium_api",
+      copyGenerationMode: "no_copy"
+    });
+  });
+
   it("maps image generation configuration errors to actionable messages", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({ message: "API call disabled; pass allow_api_call=True or --include-api" }, { status: 502 })
     );
     vi.stubGlobal("fetch", fetchMock);

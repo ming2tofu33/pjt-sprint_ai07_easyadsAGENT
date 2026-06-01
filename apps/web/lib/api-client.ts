@@ -1,4 +1,4 @@
-import type { ChatBrief, CopyOption, InferredContext, OptionQuestion, PartialInferredContext } from "@/types/marketing";
+import type { ChatBrief, CopyGenerationMode, CopyOption, InferredContext, OptionQuestion, PartialInferredContext } from "@/types/marketing";
 
 const BFF_BASE_URL = process.env.NEXT_PUBLIC_BFF_BASE_URL || "http://127.0.0.1:4000";
 
@@ -10,6 +10,7 @@ export type ChatStartResponse = {
   context: InferredContext;
   copyCandidates: CopyOption[];
   recommendedCopyId?: string | null;
+  copyGenerationMode?: CopyGenerationMode;
 };
 
 export type ChatQuestionResponse = {
@@ -22,7 +23,17 @@ export type ChatQuestionResponse = {
   missingFields?: string[];
 };
 
-export type ChatTurnResponse = ChatStartResponse | ChatQuestionResponse;
+export type ChatBriefReadyResponse = {
+  type: "brief_ready";
+  jobId: string;
+  threadId: string;
+  status: string;
+  context: InferredContext;
+  brief: ChatBrief;
+  copyGenerationMode: CopyGenerationMode;
+};
+
+export type ChatTurnResponse = ChatStartResponse | ChatQuestionResponse | ChatBriefReadyResponse;
 
 export type ChatBriefResponse = {
   jobId: string;
@@ -73,11 +84,12 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-export function startChatGeneration(userInput: string): Promise<ChatTurnResponse> {
+export function startChatGeneration(userInput: string, options: { copyGenerationMode?: CopyGenerationMode } = {}): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/chat/start", {
     userInput,
     adFormat: "instagram_feed",
-    renderProfile: "premium_api"
+    renderProfile: "premium_api",
+    copyGenerationMode: options.copyGenerationMode
   });
 }
 
@@ -116,11 +128,13 @@ export function startPhotoGeneration(input: {
   sourceImagePath: string;
   adFormat?: string;
   renderProfile?: string;
+  copyGenerationMode?: CopyGenerationMode;
 }): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/photo/start", {
     userInput: input.userInput,
     sourceImagePath: input.sourceImagePath,
     adFormat: input.adFormat ?? "instagram_feed",
-    renderProfile: input.renderProfile ?? "premium_api"
+    renderProfile: input.renderProfile ?? "premium_api",
+    copyGenerationMode: input.copyGenerationMode
   });
 }

@@ -2,13 +2,16 @@
 
 import { FileImage, ImagePlus, MessageCircle, Send, Sparkles, UploadCloud } from "lucide-react";
 import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { CopyGenerationMode } from "@/types/marketing";
 import { AutosizeTextarea } from "./AutosizeTextarea";
+import { ChoiceChip } from "./ChoiceChip";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
 type PhotoGenerateInput = {
   file: File;
   prompt: string;
+  copyGenerationMode?: CopyGenerationMode;
 };
 
 type PhotoGenerateStepProps = {
@@ -36,6 +39,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [copyGenerationMode, setCopyGenerationMode] = useState<CopyGenerationMode>("suggest_candidates");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -85,7 +89,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
     setIsSubmitting(true);
     setErrorMessage(null);
     try {
-      await onGenerate({ file: selectedFile, prompt: promptText });
+      await onGenerate({ file: selectedFile, prompt: promptText, copyGenerationMode });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "사진 기반 생성 요청에 실패했습니다.");
       setIsSubmitting(false);
@@ -140,6 +144,18 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
             <UploadCloud size={16} aria-hidden="true" />
             {selectedFile ? "다른 사진 선택" : "사진 선택하기"}
           </button>
+        </div>
+
+        <h2 className={styles.sectionTitle}>문구 포함 여부</h2>
+        <div className={styles.chipGrid}>
+          <ChoiceChip selected={copyGenerationMode === "suggest_candidates"} onClick={() => setCopyGenerationMode("suggest_candidates")}>
+            <MessageCircle size={16} aria-hidden="true" />
+            <span>문구도 추천</span>
+          </ChoiceChip>
+          <ChoiceChip selected={copyGenerationMode === "no_copy"} onClick={() => setCopyGenerationMode("no_copy")}>
+            <ImagePlus size={16} aria-hidden="true" />
+            <span>이미지만 생성</span>
+          </ChoiceChip>
         </div>
 
         <label className={styles.photoPromptCard}>

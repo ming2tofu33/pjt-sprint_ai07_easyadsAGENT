@@ -7,11 +7,15 @@ from pydantic import Field
 
 from orchestrator.app.api.chat import (
     CamelModel,
+    ChatBriefReadyResponse,
     ChatOptionQuestionResponse,
     ChatStartResponse,
+    CopyGenerationMode,
+    _brief_ready_response,
     _copy_candidates_response,
     _interrupt_value,
     _option_question_response,
+    _selected_channel_id_for_ad_format,
     _thread_config,
 )
 from orchestrator.app.api.marketing_graph import MARKETING_GRAPH
@@ -26,10 +30,11 @@ class PhotoStartRequest(CamelModel):
     ad_format: str = Field(default="instagram_feed", alias="adFormat")
     render_profile: str = Field(default="premium_api", alias="renderProfile")
     vision_preprocess_mode: str = Field(default="resize_only", alias="visionPreprocessMode")
+    copy_generation_mode: CopyGenerationMode = Field(default="suggest_candidates", alias="copyGenerationMode")
 
 
-@router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse, response_model_by_alias=True)
-def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQuestionResponse:
+@router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse, response_model_by_alias=True)
+def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse:
     job_seed = f"{request.source_image_path}:{request.user_input}"
     job_id = f"photo_{abs(hash(job_seed))}"
     thread_id = f"{job_id}_thread"
@@ -41,7 +46,7 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
         "thread_id": thread_id,
         "render_profile": request.render_profile,
         "vision_preprocess_mode": request.vision_preprocess_mode,
-        "copy_generation_mode": "suggest_candidates",
+        "copy_generation_mode": request.copy_generation_mode,
         "context": {
             "extra": {
                 "ad_format": request.ad_format,
@@ -54,5 +59,7 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
 
     if interrupt and interrupt.get("type") == "option_question":
         return _option_question_response(result, interrupt)
+    if result.get("copy_generation_mode") == "no_copy" and result.get("status") == "done":
+        return _brief_ready_response(result, job_id=job_id, thread_id=thread_id, selected_channel_id=_selected_channel_id_for_ad_format(request.ad_format))
 
     return _copy_candidates_response(result, job_id=job_id, thread_id=thread_id, interrupt=interrupt)

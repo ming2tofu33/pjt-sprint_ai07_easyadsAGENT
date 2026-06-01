@@ -1,15 +1,19 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
 
+const copyGenerationModes = ["suggest_candidates", "auto_pilot", "custom_input", "no_copy"];
+
 const chatStartSchema = z.object({
   userInput: z.string().min(1),
   adFormat: z.string().optional(),
-  renderProfile: z.string().optional()
+  renderProfile: z.string().optional(),
+  copyGenerationMode: z.enum(copyGenerationModes).optional()
 });
 
 const chatBriefSchema = z.object({
@@ -30,6 +34,8 @@ const chatAnswerSchema = z.object({
 });
 
 const supportedPhotoMimeTypes = ["image/png", "image/jpeg", "image/webp"];
+const BFF_SRC_DIR = path.dirname(fileURLToPath(import.meta.url));
+export const DEFAULT_UPLOAD_DIR = path.resolve(BFF_SRC_DIR, "..", "..", "..", "data", "uploads");
 
 const photoUploadSchema = z.object({
   filename: z.string().min(1),
@@ -41,7 +47,8 @@ const photoStartSchema = z.object({
   userInput: z.string().min(1),
   sourceImagePath: z.string().min(1),
   adFormat: z.string().optional(),
-  renderProfile: z.string().optional()
+  renderProfile: z.string().optional(),
+  copyGenerationMode: z.enum(copyGenerationModes).optional()
 });
 
 async function proxyJson({ fetchImpl, url, body }) {
@@ -88,7 +95,7 @@ export function buildApp(options = {}) {
   const app = Fastify({ logger: options.logger ?? false });
   const orchestratorBaseUrl = options.orchestratorBaseUrl ?? process.env.ORCHESTRATOR_BASE_URL ?? "http://127.0.0.1:8000";
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-  const uploadDir = options.uploadDir ?? process.env.BFF_UPLOAD_DIR ?? path.resolve(process.cwd(), "../../data/uploads");
+  const uploadDir = options.uploadDir ?? process.env.BFF_UPLOAD_DIR ?? DEFAULT_UPLOAD_DIR;
 
   app.register(cors, {
     origin: options.corsOrigin ?? process.env.CORS_ORIGIN ?? true

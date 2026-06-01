@@ -1,7 +1,11 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from orchestrator.app.api import chat as chat_api
 from orchestrator.app.main import app
+from orchestrator.app.t2i.schemas import T2IResult
 
 
 PNG_1X1 = (
@@ -174,6 +178,142 @@ def test_photo_start_option_question_can_resume_via_chat_answer(tmp_path):
     assert payload["type"] == "option_question"
     assert payload["context"]["businessType"] == "카페"
     assert payload["question"]["field"] == "item_or_service"
+
+
+def test_photo_flow_passes_uploaded_image_to_final_t2i_request(monkeypatch, tmp_path):
+    from orchestrator.app.llm.nodes import t2i_generation as t2i_generation_module
+
+    source = tmp_path / "uploaded-menu.png"
+    Image.new("RGB", (96, 96), (230, 80, 120)).save(source)
+    captured = {}
+
+    def fake_generate_image_v1(
+        prompt,
+        input_image_paths=None,
+        negative_prompt=None,
+        engine_preference=None,
+        width=1024,
+        height=1024,
+        seed=None,
+        num_images=1,
+        output_dir=None,
+        metadata=None,
+    ):
+        captured["prompt"] = prompt
+        captured["input_image_paths"] = input_image_paths
+        captured["engine_preference"] = engine_preference
+        captured["metadata"] = metadata or {}
+        output_path = Path(output_dir or tmp_path) / "uploaded-source-used.png"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (width, height), (245, 220, 225)).save(output_path)
+        return T2IResult(
+            engine="gpt_image_2",
+            image_paths=[str(output_path)],
+            seed=seed,
+            latency_ms=1,
+            width=width,
+            height=height,
+            prompt=prompt,
+            negative_prompt=negative_prompt or "",
+            metadata={**(metadata or {}), "api_operation": "edit", "input_image_paths": input_image_paths or []},
+            error=None,
+        )
+
+    monkeypatch.setattr(t2i_generation_module, "generate_image_v1", fake_generate_image_v1)
+    client = TestClient(app)
+
+    payload = client.post(
+        "/v1/marketing/photo/start",
+        json={
+            "userInput": "이 사진으로 할인 이벤트 광고 만들어줘",
+            "sourceImagePath": str(source),
+            "adFormat": "instagram_feed",
+            "renderProfile": "premium_api",
+        },
+    ).json()
+
+    answers = {
+        "business_type": "cafe",
+        "item_or_service": "new_item",
+        "promotion_goal": "discount_event",
+    }
+    while payload.get("type") == "option_question":
+        field = payload["question"]["field"]
+        response = client.post(
+            "/v1/marketing/chat/answer",
+            json={
+                "jobId": payload["jobId"],
+                "threadId": payload["threadId"],
+                "field": field,
+                "value": answers[field],
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+
+    brief_response = client.post(
+        "/v1/marketing/chat/brief",
+        json={
+            "jobId": payload["jobId"],
+            "threadId": payload["threadId"],
+            "selectedCopyId": payload["recommendedCopyId"],
+            "selectedChannelId": "instagram_feed",
+            "selectedTone": "감성적인",
+            "customDirection": "",
+        },
+    )
+
+    assert brief_response.status_code == 200
+    assert captured["input_image_paths"] == [str(source)]
+    assert captured["engine_preference"] == "gpt_image_2"
+    assert captured["metadata"]["source_image_path"] == str(source)
+    assert captured["metadata"]["vision_pipeline_enabled"] is True
+    assert brief_response.json()["brief"]["finalImagePath"].endswith("final_composite.png")
+
+
+def test_chat_start_no_copy_returns_brief_ready_response():
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/start",
+        json={
+            "userInput": "우리 카페 딸기라떼 신메뉴 인스타 피드 이미지만 만들어줘",
+            "adFormat": "instagram_feed",
+            "renderProfile": "fast",
+            "copyGenerationMode": "no_copy",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "brief_ready"
+    assert payload["copyGenerationMode"] == "no_copy"
+    assert payload["brief"]["copy"] == "문구 없이 이미지로만"
+    assert payload["brief"]["finalImagePath"]
+
+
+def test_photo_start_no_copy_returns_brief_ready_response(tmp_path):
+    source = tmp_path / "menu.png"
+    source.write_bytes(PNG_1X1)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/photo/start",
+        json={
+            "userInput": "우리 카페 딸기라떼 신메뉴 인스타 피드 이미지만 만들어줘",
+            "sourceImagePath": str(source),
+            "adFormat": "instagram_feed",
+            "renderProfile": "fast",
+            "copyGenerationMode": "no_copy",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "brief_ready"
+    assert payload["copyGenerationMode"] == "no_copy"
+    assert payload["brief"]["copy"] == "문구 없이 이미지로만"
+    assert payload["brief"]["finalImagePath"]
 
 
 def test_chat_answer_resumes_to_next_turn():

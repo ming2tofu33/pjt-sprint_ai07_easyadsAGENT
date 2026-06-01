@@ -53,6 +53,7 @@ export type CopyOption = {
 };
 
 export type CopyCandidateSource = "empty" | "sample" | "backend";
+export type CopyGenerationMode = "suggest_candidates" | "auto_pilot" | "custom_input" | "no_copy";
 
 export type ChannelOption = {
   id: string;
@@ -81,6 +82,7 @@ export type ChatFlowState = {
   contextSource: ContextSource;
   copyCandidates: CopyOption[];
   copyCandidateSource: CopyCandidateSource;
+  copyGenerationMode: CopyGenerationMode;
   selectedTone: string;
   selectedCopyId: string;
   selectedChannelId: string;
@@ -94,7 +96,7 @@ export type ChatFlowState = {
 
 export type ChatFlowAction =
   | { type: "reset" }
-  | { type: "submitPrompt"; prompt: string }
+  | { type: "submitPrompt"; prompt: string; copyGenerationMode?: CopyGenerationMode }
   | {
       type: "backendStartSucceeded";
       prompt: string;
@@ -104,6 +106,7 @@ export type ChatFlowAction =
       copyCandidates: CopyOption[];
       recommendedCopyId?: string | null;
       copyCandidateSource?: CopyCandidateSource;
+      copyGenerationMode?: CopyGenerationMode;
     }
   | {
       type: "backendQuestionReceived";
@@ -116,6 +119,7 @@ export type ChatFlowAction =
   | { type: "backendRequestFailed"; message: string }
   | { type: "beginBriefRequest" }
   | { type: "selectTone"; tone: string }
+  | { type: "setCopyGenerationMode"; copyGenerationMode: CopyGenerationMode }
   | { type: "continueToCopy" }
   | { type: "selectCopy"; copyId: string }
   | { type: "selectChannel"; channelId: string }
