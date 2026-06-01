@@ -2,6 +2,7 @@
 
 import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, Send, Utensils } from "lucide-react";
 import { useState } from "react";
+import { readGenerationDraftPrompt } from "@/lib/generation-request-context";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { StepHeader } from "./StepHeader";
@@ -28,7 +29,7 @@ type ChatStartStepProps = {
 };
 
 export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(() => readGenerationDraftPrompt());
   const canSubmit = value.trim().length > 0;
 
   function submitPrompt() {

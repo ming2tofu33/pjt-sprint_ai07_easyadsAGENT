@@ -374,6 +374,38 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText(/연남 테스트 카페/)).toBeTruthy();
   });
 
+  it("sends saved brand kit context with chat generation requests", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.startChatGeneration).mockClear();
+    window.sessionStorage.setItem(
+      BRAND_KIT_STORAGE_KEY,
+      JSON.stringify({
+        businessName: "연남 테스트 카페",
+        businessType: "카페",
+        region: "연남동",
+        sns: "@test_cafe",
+        tones: ["따뜻한"],
+        colors: ["#FFD7C9"],
+        phrases: ["예약은 DM 주세요"],
+        products: ["대표 메뉴"],
+        status: "saved",
+        updatedAt: "2026-06-01T00:00:00.000Z"
+      })
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), { target: { value: "광고 만들어줘" } });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() => expect(api.startChatGeneration).toHaveBeenCalled());
+    expect(vi.mocked(api.startChatGeneration).mock.calls[0][0]).toContain("광고 만들어줘");
+    expect(vi.mocked(api.startChatGeneration).mock.calls[0][0]).toContain("가게 이름: 연남 테스트 카페");
+    expect(vi.mocked(api.startChatGeneration).mock.calls[0][0]).toContain("브랜드 톤: 따뜻한");
+  });
+
   it("renders dashboard surfaces from route props", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
@@ -623,6 +655,46 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "문구 고르기" }));
     expect(screen.getByText("사진 속 메뉴를 오늘의 신메뉴로")).toBeTruthy();
+  });
+
+  it("sends saved brand kit context with photo generation requests", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.uploadPhotoAsset).mockClear();
+    vi.mocked(api.startPhotoGeneration).mockClear();
+    window.sessionStorage.setItem(
+      BRAND_KIT_STORAGE_KEY,
+      JSON.stringify({
+        businessName: "연남 테스트 카페",
+        businessType: "카페",
+        region: "연남동",
+        sns: "@test_cafe",
+        tones: ["깔끔한"],
+        colors: ["#FFD7C9"],
+        phrases: ["예약은 DM 주세요"],
+        products: ["대표 메뉴"],
+        status: "saved",
+        updatedAt: "2026-06-01T00:00:00.000Z"
+      })
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="photo" />);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "menu.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("광고 사진 선택"), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("사진 광고 요청 입력"), {
+      target: { value: "이 사진으로 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
+
+    await waitFor(() => expect(api.startPhotoGeneration).toHaveBeenCalled());
+    expect(vi.mocked(api.startPhotoGeneration).mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        sourceImagePath: "data/uploads/photo_1.png",
+        userInput: expect.stringContaining("가게 이름: 연남 테스트 카페")
+      })
+    );
   });
 
   it("restores a pending photo turn after the chat route remounts", async () => {

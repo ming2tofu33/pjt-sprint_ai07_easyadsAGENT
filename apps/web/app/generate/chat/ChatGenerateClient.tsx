@@ -38,6 +38,10 @@ import {
   removeGeneratedCreative,
   type GeneratedCreativeSnapshot
 } from "@/lib/generated-creative-storage";
+import {
+  appendSavedBrandKitContext,
+  clearGenerationDraftPrompt
+} from "@/lib/generation-request-context";
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildReferenceStyleHref } from "@/lib/reference-navigation";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
@@ -274,7 +278,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     clearChatTurnSnapshot();
     dispatch({ type: "submitPrompt", prompt });
     try {
-      const response = await startChatGeneration(prompt);
+      const response = await startChatGeneration(appendSavedBrandKitContext(prompt));
       applyTurnResponse(prompt, response);
     } catch (error) {
       dispatch({
@@ -316,7 +320,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     try {
       const upload = await uploadPhotoAsset(input.file);
       const response = await startPhotoGeneration({
-        userInput: input.prompt,
+        userInput: appendSavedBrandKitContext(input.prompt),
         sourceImagePath: upload.sourceImagePath
       });
       writeChatTurnSnapshot({ prompt: input.prompt, response });
@@ -382,6 +386,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   function handleOpenFreshChat() {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
+    clearGenerationDraftPrompt();
     dispatch({ type: "reset" });
     setGenerationProgress(0);
     setGenerationStage("brief");

@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readSavedBrandKit } from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
+import { clearGenerationDraftPrompt, writeGenerationDraftPrompt } from "@/lib/generation-request-context";
 import { getReferenceCreativeById, getSimilarReferenceCreatives, referenceCreatives } from "@/lib/mock-dashboard-data";
 import { buildReferenceStyleHref, type ReferenceStyleStep } from "@/lib/reference-navigation";
 import { AdCreativeCard } from "./AdCreativeCard";
@@ -81,7 +82,21 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
     router.push(buildReferenceStyleHref(creative.id, nextStep));
   }
 
+  function buildStyleDraftPrompt(): string {
+    return `${creative.title} 스타일로 ${businessName.trim()}의 ${businessType} 광고를 만들어줘`;
+  }
+
   function startChatFlow() {
+    if (!canContinue) {
+      return;
+    }
+
+    writeGenerationDraftPrompt(buildStyleDraftPrompt());
+    router.push(buildDashboardHref("chat"));
+  }
+
+  function startBlankChatFlow() {
+    clearGenerationDraftPrompt();
     router.push(buildDashboardHref("chat"));
   }
 
@@ -211,7 +226,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
           <button className={styles.primaryButton} disabled={!canContinue} type="button" onClick={startChatFlow}>
             다음
           </button>
-          <button className={styles.secondaryButton} type="button" onClick={startChatFlow}>
+          <button className={styles.secondaryButton} type="button" onClick={startBlankChatFlow}>
             대화로 직접 입력하기 <PenLine size={17} aria-hidden="true" />
           </button>
         </div>

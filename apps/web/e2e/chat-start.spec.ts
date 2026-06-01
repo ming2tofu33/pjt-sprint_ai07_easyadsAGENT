@@ -134,6 +134,7 @@ test("reference style flow reaches style-based start", async ({ page }) => {
   await page.getByRole("button", { name: "다음", exact: true }).click();
   await expect(page).toHaveURL(/\/generate\/chat$/);
   await expect(page.getByText("대화로 찰떡 만들기")).toBeVisible();
+  await expect(page.getByLabel("광고 요청 입력")).toHaveValue("감성 카페 신메뉴 포스터 스타일로 연남 테스트 카페의 카페 광고를 만들어줘");
 });
 
 test("ad save management flow reaches archive", async ({ page }) => {
