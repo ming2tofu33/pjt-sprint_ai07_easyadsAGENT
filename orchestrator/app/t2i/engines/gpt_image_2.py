@@ -36,7 +36,6 @@ class GPTImage2ActualEngine:
             prompt=request.prompt,
             size=_size(request.width, request.height),
             n=min(request.num_images, settings.max_images_per_job),
-            response_format="b64_json",
         )
         image_paths = _save_response_images(response, output_dir)
         return T2IGenerationOutput(
@@ -57,11 +56,18 @@ def _size(width: int, height: int) -> str:
 
 def _save_response_images(response: Any, output_dir: Path) -> list[str]:
     paths: list[str] = []
-    for index, item in enumerate(getattr(response, "data", []) or []):
+    data = getattr(response, "data", []) or []
+
+    for index, item in enumerate(data):
         path = output_dir / f"gpt_image_2_{index}.png"
         b64_json = getattr(item, "b64_json", None)
-        if b64_json:
-            path.write_bytes(base64.b64decode(b64_json))
-            paths.append(path.as_posix())
+        if not b64_json:
+            continue
+        path.write_bytes(base64.b64decode(b64_json))
+        paths.append(path.as_posix())
+
+    if not paths:
+        raise T2IEngineUnavailableError("GPT-image-2 response did not include b64_json image data.")
+
     return paths
 
