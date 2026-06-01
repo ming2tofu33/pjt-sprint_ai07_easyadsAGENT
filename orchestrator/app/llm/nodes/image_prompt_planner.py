@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-from orchestrator.app.graph.state import MarketingState, context_to_model
+from typing import TYPE_CHECKING, Any
+
 from orchestrator.app.llm.node_runner import run_structured_node
-from orchestrator.app.schemas.llm_marketing import ImagePrompt
+from orchestrator.app.llm.visual_templates import select_visual_template
+from orchestrator.app.schemas.llm_marketing import ImagePrompt, MarketingContext
 from orchestrator.app.schemas.text_layout import ImagePromptSpec, NormalizedBBox, TextLayoutSpec
 from orchestrator.app.t2i.prompts import COMMON_NEGATIVE_PROMPT
+
+if TYPE_CHECKING:
+    from orchestrator.app.graph.state import MarketingState
 
 
 TEXT_NEGATIVE = (
@@ -16,7 +21,7 @@ TEXT_NEGATIVE = (
 )
 
 
-def image_prompt_planner_node(state: MarketingState) -> dict[str, object]:
+def image_prompt_planner_node(state: "MarketingState") -> dict[str, object]:
     deterministic = lambda: build_deterministic_image_prompt_spec(state)
     spec_output, llm_metadata = run_structured_node(
         state,
@@ -57,11 +62,13 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
     subject = context.item_or_service or "advertising subject"
     visual_direction = selected_visual_direction(state)
     selected_tone = selected_tone_label(state)
+    style_profile = (state.get("text_style_spec") or {}).get("profile")
+    visual_template = select_visual_template(context.business_type, ad_format_spec.get("ad_format"), style_profile or selected_tone, selected_reference_template)
     reserved_text = " and ".join(bbox_to_natural_language(bbox) for bbox in text_layout.reserved_text_areas)
-    scene = f"clean commercial advertising background for {subject}"
+    scene = f"clean commercial advertising background for {subject}; {visual_template.background_style}"
     if visual_direction:
         scene = f"{scene}; follow this user visual direction: {visual_direction}"
-    composition = build_composition(reserved_text)
+    composition = f"{visual_template.composition}. {build_composition(reserved_text)} Main subject zone: {visual_template.main_subject_zone}."
     style_hint = reference_style_profile.get("ad_style_prompt")
     template_hint = build_reference_template_hint(selected_reference_template, template_style_hint)
     product_hint = build_product_preserve_hint(product_preserve_spec)
@@ -69,18 +76,24 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
     user_direction_hint = f"Prioritize this user-provided visual direction: {visual_direction}." if visual_direction else None
     extra_hints = " ".join(hint for hint in [style_hint, template_hint, product_hint, user_tone_hint, user_direction_hint] if hint)
     positive = (
-        f"Create a {scene}. {composition} Do not place the main subject inside the reserved text zones. "
-        "The image will receive Korean text overlay later."
+        f"Create a {scene}. {composition} "
+        "Create a clean advertising background. "
+        "Reserve clean negative space for Korean text overlay in post-processing. "
+        "Keep reserved text areas uncluttered and low contrast. "
+        "Place the main subject away from reserved text areas. "
+        "Do not place the main subject inside the reserved text zones. "
+        "The image will receive Korean text overlay later. "
+        f"Use visual template {visual_template.template_id}: {', '.join(visual_template.prompt_phrases)}."
     )
     if extra_hints:
         positive = f"{positive} Use this additional visual guidance: {extra_hints}"
-    negative = f"{TEXT_NEGATIVE}, {COMMON_NEGATIVE_PROMPT}"
+    negative = f"{TEXT_NEGATIVE}, {', '.join(visual_template.negative_prompt_additions)}, {COMMON_NEGATIVE_PROMPT}"
     spec = ImagePromptSpec(
         scene_description=scene,
         product_subject=subject,
-        color_palette=reference_style_profile.get("color_palette") or template_style_hint.get("color_palette") or [],
+        color_palette=reference_style_profile.get("color_palette") or template_style_hint.get("color_palette") or visual_template.color_palette_hint,
         composition=composition,
-        lighting=lighting_for_business(context.business_type),
+        lighting=visual_template.lighting or lighting_for_business(context.business_type),
         reserved_text_areas=text_layout.reserved_text_areas,
         positive_prompt_en=positive,
         negative_prompt_en=negative,
@@ -98,6 +111,13 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
             "selected_channel_id": (state.get("current_brief") or {}).get("selected_channel_id") or context.extra.get("selected_channel_id"),
             "selected_tone": selected_tone,
             "custom_direction": visual_direction,
+            "visual_template_id": visual_template.template_id,
+            "visual_template": {
+                "main_subject_zone": visual_template.main_subject_zone,
+                "reserved_text_area_policy": visual_template.reserved_text_area_policy,
+                "background_style": visual_template.background_style,
+                "color_palette_hint": visual_template.color_palette_hint,
+            },
             "vision_pipeline_enabled": bool(reference_style_profile or product_preserve_spec or selected_reference_template),
         },
     )
@@ -143,7 +163,7 @@ def enforce_image_prompt_safety(state: MarketingState, spec: ImagePromptSpec) ->
     ad_format_spec = state.get("ad_format_spec") or {}
     text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
     negative = spec.negative_prompt_en or ""
-    required_terms = ["text", "letters", "numbers", "hangul", "watermark", "logo"]
+    required_terms = ["text", "letters", "numbers", "hangul", "korean characters", "watermark", "logo", "typography", "caption", "signage"]
     missing_terms = [term for term in required_terms if term not in negative.lower()]
     if missing_terms:
         negative = f"{negative}, {TEXT_NEGATIVE}".strip(", ")
@@ -246,3 +266,9 @@ def lighting_for_business(business_type: str | None) -> str:
     if business_type == "cafe":
         return "soft daylight with cozy warm accents"
     return "clean commercial lighting"
+
+
+def context_to_model(context: dict[str, Any] | MarketingContext | None) -> MarketingContext:
+    if isinstance(context, MarketingContext):
+        return context
+    return MarketingContext(**(context or {}))
