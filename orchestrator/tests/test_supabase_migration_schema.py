@@ -65,6 +65,8 @@ def test_core_schema_assets_usage_and_events_are_workspace_scoped():
     assert "provider text" in sql
     assert "model_name text" in sql
     assert "cost_usd numeric" in sql
+    assert "thumbnail_asset_id uuid references assets(id) on delete set null" in sql
+    assert "variant_index integer not null default 0" in sql
 
 
 def test_core_schema_generation_jobs_has_future_execution_columns():

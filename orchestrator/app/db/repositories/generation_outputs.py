@@ -11,7 +11,9 @@ def create_generation_output(
     workspace_id: str,
     thread_id: str,
     job_id: str | None = None,
-    asset_id: str | None = None,
+    asset_id: str,
+    thumbnail_asset_id: str | None = None,
+    variant_index: int = 0,
     output_type: str = "final_image",
     result_payload: dict | None = None,
     is_final: bool = False,
@@ -23,12 +25,24 @@ def create_generation_output(
             cur.execute(
                 """
                 insert into generation_outputs (
-                  workspace_id, thread_id, job_id, asset_id, output_type, result_payload, is_final, metadata
+                  workspace_id, thread_id, job_id, asset_id, thumbnail_asset_id, variant_index,
+                  output_type, result_payload, is_final, metadata
                 )
-                values (%s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb)
+                values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb)
                 returning *
                 """,
-                (workspace_id, thread_id, job_id, asset_id, output_type, jsonb_param(result_payload or {}), is_final, jsonb_param(metadata or {})),
+                (
+                    workspace_id,
+                    thread_id,
+                    job_id,
+                    asset_id,
+                    thumbnail_asset_id,
+                    variant_index,
+                    output_type,
+                    jsonb_param(result_payload or {}),
+                    is_final,
+                    jsonb_param(metadata or {}),
+                ),
             )
             return cur.fetchone()
 

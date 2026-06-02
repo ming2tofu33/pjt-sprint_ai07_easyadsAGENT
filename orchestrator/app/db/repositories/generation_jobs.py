@@ -98,12 +98,23 @@ def update_generation_job_row(job_id: str, connection: object | None = None, **f
         "result_payload",
         "error",
         "metadata",
+        "started_at",
+        "finished_at",
     }
     updates = {key: value for key, value in fields.items() if key in allowed}
     if not updates:
         return get_generation_job_row(job_id, connection=connection)
-    assignments = [f"{key} = %s::jsonb" if key in JSONB_FIELDS else f"{key} = %s" for key in updates]
-    values = [jsonb_param(value) if key in JSONB_FIELDS else value for key, value in updates.items()]
+    assignments = []
+    values = []
+    for key, value in updates.items():
+        if key == "started_at" and value == "__now_if_null__":
+            assignments.append("started_at = coalesce(started_at, now())")
+            continue
+        if key == "finished_at" and value == "__now__":
+            assignments.append("finished_at = now()")
+            continue
+        assignments.append(f"{key} = %s::jsonb" if key in JSONB_FIELDS else f"{key} = %s")
+        values.append(jsonb_param(value) if key in JSONB_FIELDS else value)
     values.append(job_id)
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
@@ -125,6 +136,7 @@ def mark_generation_job_running_row(job_id: str, current_stage: str | None = Non
         status="running",
         current_stage=current_stage or "running",
         progress_percent=50,
+        started_at="__now_if_null__",
         connection=connection,
     )
 
@@ -142,6 +154,7 @@ def mark_generation_job_done_row(
         "progress_percent": 100,
         "result_payload": result_payload,
         "error": None,
+        "finished_at": "__now__",
     }
     if output_path is not None:
         fields["output_path"] = output_path
@@ -156,7 +169,7 @@ def mark_generation_job_failed_row(
     metadata: dict | None = None,
     connection: object | None = None,
 ) -> dict | None:
-    fields = {"status": "failed", "current_stage": "failed", "error": error}
+    fields = {"status": "failed", "current_stage": "failed", "error": error, "finished_at": "__now__"}
     if metadata is not None:
         fields["metadata"] = metadata
     return update_generation_job_row(job_id, connection=connection, **fields)

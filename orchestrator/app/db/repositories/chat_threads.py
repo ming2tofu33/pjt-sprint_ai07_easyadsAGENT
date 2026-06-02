@@ -53,7 +53,7 @@ def update_chat_thread_status(
                 """
                 update chat_threads
                 set status = %s,
-                    active_job_id = coalesce(%s, active_job_id),
+                    active_job_id = %s,
                     final_output_id = coalesce(%s, final_output_id),
                     updated_at = now()
                 where public_thread_id = %s or id::text = %s

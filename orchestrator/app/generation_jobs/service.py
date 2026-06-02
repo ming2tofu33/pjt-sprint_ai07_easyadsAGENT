@@ -13,8 +13,11 @@ from orchestrator.app.api.schemas.generation_jobs import (
 )
 from orchestrator.app.api.schemas.common import ErrorResponse
 from orchestrator.app.db import settings as db_settings
+from orchestrator.app.db.repositories import assets as asset_repo
 from orchestrator.app.db.repositories import chat_threads as chat_thread_repo
+from orchestrator.app.db.repositories import generation_job_events as generation_job_event_repo
 from orchestrator.app.db.repositories import generation_jobs as generation_job_repo
+from orchestrator.app.db.repositories import generation_outputs as generation_output_repo
 from orchestrator.app.db.repositories import workspaces as workspace_repo
 from orchestrator.app.db.session import db_transaction
 
@@ -155,19 +158,13 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
 
 def get_generation_job(job_id: str) -> GenerationJobResponse | None:
     if _use_postgres_backend():
-        row = generation_job_repo.get_generation_job_row(job_id)
-        return _job_response_from_db_row(row)
+        return _get_generation_job_db(job_id)
     return _GENERATION_JOBS.get(job_id)
 
 
 def update_generation_job(job_id: str, **fields) -> GenerationJobResponse | None:
     if _use_postgres_backend():
-        existing = get_generation_job(job_id)
-        if not existing:
-            return None
-        row_fields = _db_update_fields(existing, fields)
-        row = generation_job_repo.update_generation_job_row(job_id, **row_fields)
-        return _job_response_from_db_row(row)
+        return _update_generation_job_db(job_id, **fields)
 
     existing = get_generation_job(job_id)
     if not existing:
@@ -178,6 +175,8 @@ def update_generation_job(job_id: str, **fields) -> GenerationJobResponse | None
 
 
 def mark_generation_job_running(job_id: str, stage: str = "running") -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        return _mark_generation_job_running_db(job_id, stage)
     existing = get_generation_job(job_id)
     if not existing:
         return None
@@ -191,6 +190,8 @@ def mark_generation_job_done(
     output_path: str | None = None,
     metadata: dict | None = None,
 ) -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        return _mark_generation_job_done_db(job_id, result_payload, output_path=output_path, metadata=metadata)
     existing = get_generation_job(job_id)
     if not existing:
         return None
@@ -208,6 +209,8 @@ def mark_generation_job_done(
 
 
 def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None = None) -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        return _mark_generation_job_failed_db(job_id, error, metadata=metadata)
     existing = get_generation_job(job_id)
     if not existing:
         return None
@@ -239,6 +242,18 @@ def _engine_preference(run_mode: str) -> str | None:
         return "flux"
     return None
 
+def _model_provider_for_run_mode(run_mode: str) -> str | None:
+    if run_mode in {"mock_immediate"}:
+        return "mock"
+    if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
+        return "openai"
+    if run_mode in {"sd35_local", "sd35_local_smoke", "flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
+        return "local"
+    return None
+
+
+def _model_name_for_run_mode(run_mode: str) -> str | None:
+    return _engine_preference(run_mode)
 
 def _use_postgres_backend() -> bool:
     return db_settings.get_db_backend() == "postgres"
@@ -293,12 +308,20 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             metadata=metadata,
             run_mode=request.run_mode,
             engine=_engine_preference(request.run_mode),
-            model_provider=_engine_preference(request.run_mode),
+            model_provider=_model_provider_for_run_mode(request.run_mode),
+            model_name=_model_name_for_run_mode(request.run_mode),
             prompt_hash=hashlib.sha256(request.user_input.encode("utf-8")).hexdigest(),
             prompt_preview=prompt_preview,
             request_payload=request_payload,
             connection=conn,
         )
+        chat_thread_repo.update_chat_thread_status(
+            thread.get("public_thread_id") or str(thread["id"]),
+            status="generating",
+            active_job_id=str(row["id"]) if row.get("id") else None,
+            connection=conn,
+        )
+        _record_generation_job_event_db(row, "queued", payload={"run_mode": request.run_mode}, connection=conn)
     response = _job_response_from_db_row(row)
     if response:
         return response
@@ -336,6 +359,167 @@ def _db_update_fields(existing: GenerationJobResponse, fields: dict) -> dict:
     }
 
 
+def _get_generation_job_db(job_id: str) -> GenerationJobResponse | None:
+    row = generation_job_repo.get_generation_job_row(job_id)
+    return _job_response_from_db_row(row)
+
+
+def _update_generation_job_db(job_id: str, **fields) -> GenerationJobResponse | None:
+    existing = get_generation_job(job_id)
+    if not existing:
+        return None
+    row_fields = _db_update_fields(existing, fields)
+    row = generation_job_repo.update_generation_job_row(job_id, **row_fields)
+    return _job_response_from_db_row(row)
+
+
+def _mark_generation_job_running_db(job_id: str, stage: str) -> GenerationJobResponse | None:
+    with db_transaction() as conn:
+        row = generation_job_repo.mark_generation_job_running_row(job_id, current_stage=stage, connection=conn)
+        if not row:
+            return None
+        _record_generation_job_event_db(row, "running", message=stage, payload={"current_stage": stage}, connection=conn)
+        if row.get("thread_id"):
+            chat_thread_repo.update_chat_thread_status(
+                _thread_public_or_internal(row),
+                status="generating",
+                active_job_id=str(row["id"]) if row.get("id") else None,
+                connection=conn,
+            )
+    return _job_response_from_db_row(row)
+
+
+def _mark_generation_job_done_db(
+    job_id: str,
+    result_payload: dict,
+    output_path: str | None = None,
+    metadata: dict | None = None,
+) -> GenerationJobResponse | None:
+    with db_transaction() as conn:
+        existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if not existing:
+            return None
+        merged_metadata = {**(existing.get("metadata") or {}), **(metadata or {})}
+        final_path = output_path or (result_payload or {}).get("final_image_path")
+        row = generation_job_repo.mark_generation_job_done_row(
+            job_id,
+            result_payload=result_payload,
+            output_path=final_path,
+            metadata=merged_metadata,
+            connection=conn,
+        )
+        if not row:
+            return None
+        _record_generation_job_event_db(row, "done", payload={"output_path": final_path}, connection=conn)
+        output = _create_output_records_for_done_job_db(row, result_payload, final_path, connection=conn)
+
+        chat_thread_repo.update_chat_thread_status(
+            _thread_public_or_internal(row),
+            status="completed",
+            active_job_id=None,
+            final_output_id=str(output["id"]) if output and output.get("id") else None,
+            connection=conn,
+        )
+
+        if output:
+            _record_generation_job_event_db(
+                row,
+                "output_created",
+                payload={
+                    "output_id": _string_or_none(output.get("id")),
+                    "asset_id": _string_or_none(output.get("asset_id")),
+                },
+                connection=conn,
+            )
+    return _job_response_from_db_row(row)
+
+
+def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | None = None) -> GenerationJobResponse | None:
+    error_payload = {
+        "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
+        "message": str(error.get("message") or "Generation job execution failed."),
+        "detail": error.get("detail"),
+    }
+    with db_transaction() as conn:
+        existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if not existing:
+            return None
+        merged_metadata = {**(existing.get("metadata") or {}), **(metadata or {})}
+        row = generation_job_repo.mark_generation_job_failed_row(job_id, error_payload, metadata=merged_metadata, connection=conn)
+        if not row:
+            return None
+        _record_generation_job_event_db(
+            row,
+            "failed",
+            message=error_payload["message"],
+            payload={"error_code": error_payload["error_code"], "message": error_payload["message"]},
+            connection=conn,
+        )
+        chat_thread_repo.update_chat_thread_status(
+            _thread_public_or_internal(row),
+            status="failed",
+            active_job_id=None,
+            connection=conn,
+        )
+    return _job_response_from_db_row(row)
+
+
+def _create_output_records_for_done_job_db(row: dict, result_payload: dict, final_path: str | None, connection: object) -> dict | None:
+    if not final_path or not row.get("workspace_id") or not row.get("thread_id") or not row.get("id"):
+        return None
+    asset = asset_repo.create_asset(
+        workspace_id=str(row["workspace_id"]),
+        thread_id=str(row["thread_id"]),
+        created_by=row.get("requested_by"),
+        bucket="local-dev",
+        object_key=final_path,
+        kind="result",
+        storage_provider="local_dev",
+        metadata={
+            "source": "generation_job_done",
+            "serving_status": "not_public",
+            "public_serving": False,
+        },
+        connection=connection,
+    )
+    output = generation_output_repo.create_generation_output(
+        workspace_id=str(row["workspace_id"]),
+        thread_id=str(row["thread_id"]),
+        job_id=str(row["id"]),
+        asset_id=str(asset["id"]),
+        variant_index=0,
+        is_final=False,
+        result_payload=result_payload,
+        metadata={"result_payload_summary": _result_payload_summary(result_payload)},
+        connection=connection,
+    )
+    final_output = generation_output_repo.mark_output_final(str(output["id"]), connection=connection)
+
+    if final_output:
+        return {**output, **final_output}
+    return output
+
+
+def _record_generation_job_event_db(
+    row: dict,
+    event_type: str,
+    message: str | None = None,
+    payload: dict | None = None,
+    connection: object | None = None,
+) -> dict | None:
+    if not row.get("workspace_id") or not row.get("thread_id") or not row.get("id"):
+        return None
+    return generation_job_event_repo.record_generation_job_event(
+        workspace_id=str(row["workspace_id"]),
+        thread_id=str(row["thread_id"]),
+        job_id=str(row["id"]),
+        event_type=event_type,
+        message=message,
+        payload=payload or {},
+        connection=connection,
+    )
+
+
 def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
     if not row:
         return None
@@ -356,7 +540,7 @@ def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
         selected_reference_template_id=row.get("selected_reference_template_id"),
         output_path=row.get("output_path"),
         result_payload=row.get("result_payload"),
-        error=ErrorResponse(**error) if isinstance(error, dict) else None,
+        error=ErrorResponse(**error) if isinstance(error, dict) and error.get("error_code") else None,
         created_at=_iso(row.get("created_at")),
         updated_at=_iso(row.get("updated_at")),
         metadata=metadata,
@@ -371,6 +555,22 @@ def _iso(value) -> str:
 
 def _string_or_none(value) -> str | None:
     return str(value) if value is not None else None
+
+
+def _thread_public_or_internal(row: dict) -> str:
+    metadata = row.get("metadata") or {}
+    return str(metadata.get("public_thread_id") or row.get("thread_id"))
+
+
+def _result_payload_summary(result_payload: dict) -> dict:
+    return {
+        "schema_version": result_payload.get("schema_version"),
+        "final_image_path": result_payload.get("final_image_path"),
+        "final_image_url": result_payload.get("final_image_url"),
+        "download_url": result_payload.get("download_url"),
+        "engine": result_payload.get("engine"),
+        "render_mode": result_payload.get("render_mode"),
+    }
 
 
 def _request_payload_summary(request: GenerationJobCreateRequest) -> dict:

@@ -103,6 +103,14 @@ Status values are stored as `text` with lightweight check constraints instead of
 - `generation_job_events_job_created_idx`
 - `generation_job_events_thread_created_idx`
 
+## Persistence Flow
+
+`generation_job_events` records lifecycle transitions such as `queued`, `running`, `done`, `failed`, and `output_created`.
+
+`generation_outputs` stores result versions per thread and links each output to a job and asset. `generation_outputs_one_final_per_thread_idx` keeps one final output per thread.
+
+Completed local artifacts can be represented by `assets` rows with `storage_provider=local_dev` and `bucket=local-dev` until R2 upload/static serving is implemented.
+
 ## Scope Limits
 
 - RLS policy design is not included in this migration.
