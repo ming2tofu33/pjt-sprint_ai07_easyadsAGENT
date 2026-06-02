@@ -139,6 +139,12 @@ def test_background_validation_node_checks_image_and_artifacts(tmp_path):
     assert report["width"] == 320
     assert report["reserved_text_area_count"] == 1
     assert report["text_artifact_check"] == "not_run"
+    vlm_contract = report["metadata"]["vlm_metadata_contract"]
+    assert vlm_contract["available_state"]["image_paths"] == [image_path]
+    assert vlm_contract["available_state"]["reserved_text_areas"] == state["text_layout_spec"]["reserved_text_areas"]
+    assert vlm_contract["constraints"]["ocr_or_vlm_called"] is False
+    assert vlm_contract["constraints"]["vlm_call_allowed"] is False
+    assert report["metadata"]["validation_questions"]
     assert output["artifact_refs"][-1]["type"] == "background_image"
 
 
@@ -221,7 +227,14 @@ def test_final_validation_and_result_nodes(tmp_path):
     }
     _image(Path(state["final_image_path"]))
     final_output = final_validation_node(state)
-    assert final_output["final_validation_report"]["overall_pass"] is True
+    final_report = final_output["final_validation_report"]
+    assert final_report["overall_pass"] is True
+    vlm_contract = final_report["metadata"]["vlm_metadata_contract"]
+    assert vlm_contract["available_state"]["final_image_path"] == state["final_image_path"]
+    assert vlm_contract["available_state"]["expected_copy"] == [{"role": "headline", "text": "Hello BBQ"}]
+    assert vlm_contract["constraints"]["ocr_or_vlm_called"] is False
+    assert vlm_contract["constraints"]["vlm_call_allowed"] is False
+    assert final_report["metadata"]["validation_questions"]
 
     result_output = result_node({**state, **final_output, "text_overlay_pending": False})
     assert result_output["result_payload"]["status"] == "done"
@@ -275,6 +288,9 @@ def test_marketing_graph_final_result_auto_pilot_and_no_copy():
     assert no_copy["result_payload"]["output_path"] == no_copy["t2i_result"]["image_paths"][0]
     assert no_copy["result_payload"]["has_text_overlay"] is False
     assert no_copy.get("readability_report") is None
+    no_copy_vlm_contract = no_copy["background_validation_report"]["metadata"]["vlm_metadata_contract"]
+    assert no_copy_vlm_contract["constraints"]["render_text_in_image"] is False
+    assert no_copy_vlm_contract["constraints"]["ocr_or_vlm_called"] is False
 
 
 def test_marketing_graph_final_result_suggest_and_custom():

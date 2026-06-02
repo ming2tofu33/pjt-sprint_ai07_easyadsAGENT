@@ -345,7 +345,15 @@ def build_background_validation_metadata(state: dict[str, Any] | None) -> dict[s
     source = state or {}
     t2i_result = _dict(source.get("t2i_result"))
     t2i_request = _dict(source.get("t2i_request"))
+    t2i_request_metadata = _dict(t2i_request.get("metadata"))
     text_layout = _dict(source.get("text_layout_spec"))
+    image_prompt = _dict(source.get("image_prompt_spec"))
+    reserved_text_areas = (
+        text_layout.get("reserved_text_areas")
+        or t2i_request_metadata.get("reserved_text_areas")
+        or image_prompt.get("reserved_text_areas")
+        or []
+    )
     return build_metadata_payload(
         source,
         node_name="background_validation",
@@ -353,9 +361,9 @@ def build_background_validation_metadata(state: dict[str, Any] | None) -> dict[s
         output_schema="BackgroundValidationReport",
         available_state={
             "image_paths": t2i_result.get("image_paths", []),
-            "t2i_request_metadata": _dict(t2i_request.get("metadata")),
+            "t2i_request_metadata": t2i_request_metadata,
             "image_prompt_spec": source.get("image_prompt_spec"),
-            "reserved_text_areas": text_layout.get("reserved_text_areas", []),
+            "reserved_text_areas": reserved_text_areas,
             "ad_format_spec": source.get("ad_format_spec"),
             "copy_generation_mode": source.get("copy_generation_mode"),
             "copy_required": source.get("copy_required"),
@@ -377,6 +385,7 @@ def build_background_validation_metadata(state: dict[str, Any] | None) -> dict[s
 def build_final_validation_metadata(state: dict[str, Any] | None) -> dict[str, Any]:
     source = state or {}
     tone = _dict(source.get("tone_binding_output"))
+    expected_copy = _expected_copy_from_state(source)
     return build_metadata_payload(
         source,
         node_name="final_validation",
@@ -387,6 +396,7 @@ def build_final_validation_metadata(state: dict[str, Any] | None) -> dict[str, A
             "render_result": source.get("render_result"),
             "copy_spec": source.get("copy_spec"),
             "marketing_copy": source.get("marketing_copy"),
+            "expected_copy": expected_copy,
             "text_layout_spec": source.get("text_layout_spec"),
             "text_style_spec": source.get("text_style_spec"),
             "ad_format_spec": source.get("ad_format_spec"),
@@ -470,6 +480,26 @@ def _schema_name(output_schema: Any) -> str:
 def _dict(value: Any) -> dict[str, Any]:
     sanitized = sanitize_metadata(value or {})
     return sanitized if isinstance(sanitized, dict) else {}
+
+
+def _expected_copy_from_state(source: dict[str, Any]) -> list[dict[str, Any]]:
+    copy_spec = _dict(source.get("copy_spec"))
+    items = copy_spec.get("items")
+    if isinstance(items, list):
+        expected = [
+            {"role": item.get("role"), "text": item.get("text")}
+            for item in items
+            if isinstance(item, dict) and item.get("text")
+        ]
+        if expected:
+            return expected
+
+    marketing_copy = _dict(source.get("marketing_copy"))
+    return [
+        {"role": role, "text": marketing_copy.get(role)}
+        for role in ("headline", "subcopy", "cta")
+        if marketing_copy.get(role)
+    ]
 
 
 def _reserved_text_areas_from_state(

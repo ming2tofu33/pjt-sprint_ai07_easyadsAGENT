@@ -208,6 +208,11 @@ def test_image_and_validation_builders_include_future_vlm_contract_inputs():
     assert image_payload["constraints"]["reserved_text_areas"]
     assert "Hangul" in image_payload["constraints"]["negative_prompt_required_terms"]
     assert background_payload["available_state"]["image_paths"] == ["data/outputs/job-1/mock.png"]
+    assert background_payload["available_state"]["reserved_text_areas"] == [{"x": 0.05, "y": 0.1, "w": 0.9, "h": 0.2}]
     assert background_payload["constraints"]["ocr_or_vlm_called"] is False
+    assert background_payload["constraints"]["vlm_call_allowed"] is False
     assert final_payload["available_state"]["final_image_path"] == "data/outputs/job-1/final.png"
+    assert final_payload["available_state"]["expected_copy"] == [{"role": "headline", "text": "Fresh latte"}]
     assert final_payload["available_state"]["forbidden_claims"] == ["no phone"]
+    assert final_payload["constraints"]["ocr_or_vlm_called"] is False
+    assert final_payload["constraints"]["vlm_call_allowed"] is False
