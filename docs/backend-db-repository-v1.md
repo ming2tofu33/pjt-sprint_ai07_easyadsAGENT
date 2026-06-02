@@ -12,6 +12,8 @@ When `postgres` is selected, `DATABASE_URL` is required. The app does not open a
 
 Postgres repository path requires `psycopg` at runtime. This milestone keeps `psycopg` as an optional lazy dependency for CI safety and does not change `pyproject.toml` or `uv.lock`. Actual Supabase smoke requires installing `psycopg` or adding it to project dependencies in the deployment PR.
 
+R2 upload path also remains lazy and optional. `boto3` is not added to project dependencies in this milestone; actual R2 smoke or deployment needs a runtime `boto3` installation.
+
 ## Environment
 
 ```env
@@ -72,15 +74,14 @@ The postgres backend supports create/get/running/done/failed lifecycle operation
 
 - create records a `queued` event and sets the thread active job.
 - running records a `running` event and updates progress/current stage.
-- done records a `done` event, creates a local-dev asset placeholder, creates a generation output row, marks it final, updates the thread final output, and records `output_created`.
+- done records a `done` event, optionally uploads the final artifact to R2, creates either an R2 asset row or a local-dev placeholder, creates a generation output row, marks it final, updates the thread final output, and records `output_created`.
 - failed records a `failed` event and marks the thread failed.
 
-Local artifact assets use `storage_provider=local_dev`, `bucket=local-dev`, and `metadata.public_serving=false`. R2 upload is still a follow-up milestone.
+When R2 is enabled, upload lifecycle events `r2_upload_started`, `r2_upload_completed`, and `r2_upload_failed` may be recorded. Local artifact assets still use `storage_provider=local_dev`, `bucket=local-dev`, and `metadata.public_serving=false` when fallback is used.
 
 ## Not Included
 
 - Remote Supabase migration execution.
-- R2 upload or object storage writes.
 - Modal execution.
 - Supabase Auth/RLS enforcement.
 - Frontend changes.

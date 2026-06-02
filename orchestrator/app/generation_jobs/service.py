@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from orchestrator.app.api.schemas.generation_jobs import (
@@ -20,6 +21,10 @@ from orchestrator.app.db.repositories import generation_jobs as generation_job_r
 from orchestrator.app.db.repositories import generation_outputs as generation_output_repo
 from orchestrator.app.db.repositories import workspaces as workspace_repo
 from orchestrator.app.db.session import db_transaction
+from orchestrator.app.storage import settings as storage_settings
+from orchestrator.app.storage.errors import AssetStorageError
+from orchestrator.app.storage.object_keys import build_generation_object_key
+from orchestrator.app.storage.r2_service import upload_file_to_r2
 
 _GENERATION_JOBS: dict[str, GenerationJobResponse] = {}
 _BLOCKED_METADATA_KEYS = {
@@ -400,7 +405,7 @@ def _mark_generation_job_done_db(
         if not existing:
             return None
         merged_metadata = {**(existing.get("metadata") or {}), **(metadata or {})}
-        final_path = output_path or (result_payload or {}).get("final_image_path")
+        final_path = _resolve_final_artifact_path(result_payload, output_path)
         row = generation_job_repo.mark_generation_job_done_row(
             job_id,
             result_payload=result_payload,
@@ -410,9 +415,32 @@ def _mark_generation_job_done_db(
         )
         if not row:
             return None
-        _record_generation_job_event_db(row, "done", payload={"output_path": final_path}, connection=conn)
-        output = _create_output_records_for_done_job_db(row, result_payload, final_path, connection=conn)
 
+        try:
+            output, row = _create_output_records_for_done_job_db(row, result_payload, final_path, connection=conn)
+        except AssetStorageError as exc:
+            return _mark_generation_job_failed_from_row_db(
+                row,
+                {
+                    "error_code": "r2_upload_failed",
+                    "message": "R2 upload failed.",
+                    "detail": str(exc),
+                },
+                metadata={**merged_metadata, "storage_warning": "r2_upload_failed_required"},
+                connection=conn,
+            )
+
+        _record_generation_job_event_db(
+            row,
+            "done",
+            payload={
+                "output_path": final_path,
+                "storage_provider": (row.get("result_payload") or {}).get("storage_provider"),
+                "final_image_url_present": bool((row.get("result_payload") or {}).get("final_image_url")),
+                "download_url_present": bool((row.get("result_payload") or {}).get("download_url")),
+            },
+            connection=conn,
+        )
         chat_thread_repo.update_chat_thread_status(
             _thread_public_or_internal(row),
             status="completed",
@@ -464,24 +492,101 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
     return _job_response_from_db_row(row)
 
 
-def _create_output_records_for_done_job_db(row: dict, result_payload: dict, final_path: str | None, connection: object) -> dict | None:
+def _create_output_records_for_done_job_db(
+    row: dict,
+    result_payload: dict,
+    final_path: str | None,
+    connection: object,
+) -> tuple[dict | None, dict]:
     if not final_path or not row.get("workspace_id") or not row.get("thread_id") or not row.get("id"):
-        return None
-    asset = asset_repo.create_asset(
-        workspace_id=str(row["workspace_id"]),
-        thread_id=str(row["thread_id"]),
-        created_by=row.get("requested_by"),
-        bucket="local-dev",
-        object_key=final_path,
-        kind="result",
-        storage_provider="local_dev",
-        metadata={
-            "source": "generation_job_done",
-            "serving_status": "not_public",
-            "public_serving": False,
-        },
-        connection=connection,
-    )
+        return None, row
+
+    effective_result_payload = dict(result_payload or {})
+    asset = None
+    if _should_attempt_r2_upload():
+        _record_generation_job_event_db(
+            row,
+            "r2_upload_started",
+            payload={"final_path": final_path, "upload_required": storage_settings.is_r2_upload_required()},
+            connection=connection,
+        )
+        try:
+            asset, effective_result_payload, row = _upload_final_asset_to_r2(
+                row,
+                effective_result_payload,
+                final_path,
+                connection=connection,
+            )
+            _record_generation_job_event_db(
+                row,
+                "r2_upload_completed",
+                payload={
+                    "bucket": asset.get("bucket"),
+                    "object_key": asset.get("object_key"),
+                    "url_mode": effective_result_payload.get("url_mode"),
+                    "final_image_url_present": bool(effective_result_payload.get("final_image_url")),
+                    "download_url_present": bool(effective_result_payload.get("download_url")),
+                },
+                connection=connection,
+            )
+        except AssetStorageError:
+            _record_generation_job_event_db(
+                row,
+                "r2_upload_failed",
+                payload={
+                    "error_code": "r2_upload_failed",
+                    "message": "R2 upload failed.",
+                    "fallback": "local_dev",
+                    "upload_required": storage_settings.is_r2_upload_required(),
+                },
+                connection=connection,
+            )
+            if storage_settings.is_r2_upload_required():
+                raise
+            asset = None
+            effective_result_payload["final_image_url"] = None
+            effective_result_payload["download_url"] = None
+            row = generation_job_repo.update_generation_job_row(
+                str(row["public_job_id"]),
+                result_payload=effective_result_payload,
+                metadata={**(row.get("metadata") or {}), "storage_warning": "r2_upload_failed_local_dev_fallback"},
+                connection=connection,
+            ) or row
+
+    if asset is None:
+        asset = asset_repo.create_asset(
+            workspace_id=str(row["workspace_id"]),
+            thread_id=str(row["thread_id"]),
+            created_by=row.get("requested_by"),
+            bucket="local-dev",
+            object_key=final_path,
+            kind="result",
+            storage_provider="local_dev",
+            metadata={
+                "source": "generation_job_done",
+                "serving_status": "not_public",
+                "public_serving": False,
+            },
+            connection=connection,
+        )
+
+    if asset:
+        effective_result_payload = {
+            **effective_result_payload,
+            "final_asset_id": _string_or_none(asset.get("id")),
+            "storage_provider": asset.get("storage_provider") or "local_dev",
+            "bucket": asset.get("bucket"),
+            "object_key": asset.get("object_key"),
+            "url_mode": effective_result_payload.get("url_mode"),
+            "final_image_url": effective_result_payload.get("final_image_url"),
+            "download_url": effective_result_payload.get("download_url"),
+        }
+        row = generation_job_repo.update_generation_job_row(
+            str(row["public_job_id"]),
+            result_payload=effective_result_payload,
+            connection=connection,
+        ) or row
+
     output = generation_output_repo.create_generation_output(
         workspace_id=str(row["workspace_id"]),
         thread_id=str(row["thread_id"]),
@@ -489,15 +594,77 @@ def _create_output_records_for_done_job_db(row: dict, result_payload: dict, fina
         asset_id=str(asset["id"]),
         variant_index=0,
         is_final=False,
-        result_payload=result_payload,
-        metadata={"result_payload_summary": _result_payload_summary(result_payload)},
+        result_payload=effective_result_payload,
+        metadata={"result_payload_summary": _result_payload_summary(effective_result_payload)},
         connection=connection,
     )
     final_output = generation_output_repo.mark_output_final(str(output["id"]), connection=connection)
 
     if final_output:
-        return {**output, **final_output}
-    return output
+        return {**output, **final_output}, row
+    return output, row
+
+
+def _upload_final_asset_to_r2(
+    row: dict,
+    result_payload: dict,
+    final_path: str,
+    connection: object,
+) -> tuple[dict, dict, dict]:
+    workspace_id = str(row["workspace_id"])
+    public_thread_id = _thread_public_or_internal(row)
+    public_job_id = str(row["public_job_id"])
+    filename = Path(final_path).name or "final_0.png"
+    object_key = build_generation_object_key(
+        workspace_id=workspace_id,
+        thread_id=public_thread_id,
+        job_id=public_job_id,
+        filename=filename,
+    )
+    uploaded = upload_file_to_r2(
+        local_path=final_path,
+        object_key=object_key,
+        metadata={
+            "job_id": public_job_id,
+            "workspace_id": workspace_id,
+            "thread_id": public_thread_id,
+            "asset_kind": "result",
+        },
+    )
+    asset = asset_repo.create_asset(
+        workspace_id=workspace_id,
+        thread_id=str(row["thread_id"]),
+        created_by=row.get("requested_by"),
+        bucket=uploaded.bucket,
+        object_key=uploaded.object_key,
+        kind="result",
+        storage_provider=uploaded.storage_provider,
+        mime_type=uploaded.mime_type,
+        size_bytes=uploaded.size_bytes,
+        width=uploaded.width,
+        height=uploaded.height,
+        public_url=uploaded.public_url,
+        signed_url_expires_at=uploaded.signed_url_expires_at,
+        metadata=uploaded.metadata,
+        connection=connection,
+    )
+    effective_result_payload = {
+        **result_payload,
+        "final_asset_id": _string_or_none(asset.get("id")),
+        "storage_provider": uploaded.storage_provider,
+        "bucket": uploaded.bucket,
+        "object_key": uploaded.object_key,
+        "url_mode": uploaded.metadata.get("url_mode"),
+        "final_image_url": uploaded.final_image_url,
+        "download_url": uploaded.download_url,
+        "signed_url_expires_at": uploaded.signed_url_expires_at,
+    }
+    updated_row = generation_job_repo.update_generation_job_row(
+        public_job_id,
+        result_payload=effective_result_payload,
+        connection=connection,
+    ) or row
+    return asset, effective_result_payload, updated_row
 
 
 def _record_generation_job_event_db(
@@ -560,6 +727,55 @@ def _string_or_none(value) -> str | None:
 def _thread_public_or_internal(row: dict) -> str:
     metadata = row.get("metadata") or {}
     return str(metadata.get("public_thread_id") or row.get("thread_id"))
+
+
+def _should_attempt_r2_upload() -> bool:
+    return storage_settings.is_r2_upload_enabled()
+
+
+def _resolve_final_artifact_path(result_payload: dict, output_path: str | None) -> str | None:
+    if output_path:
+        return output_path
+    for key in ("final_image_path", "download_path"):
+        value = (result_payload or {}).get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _mark_generation_job_failed_from_row_db(
+    row: dict,
+    error: dict,
+    metadata: dict,
+    connection: object,
+) -> GenerationJobResponse | None:
+    error_payload = {
+        "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
+        "message": str(error.get("message") or "Generation job execution failed."),
+        "detail": error.get("detail"),
+    }
+    failed_row = generation_job_repo.mark_generation_job_failed_row(
+        str(row["public_job_id"]),
+        error_payload,
+        metadata=metadata,
+        connection=connection,
+    )
+    if not failed_row:
+        return None
+    _record_generation_job_event_db(
+        failed_row,
+        "failed",
+        message=error_payload["message"],
+        payload={"error_code": error_payload["error_code"], "message": error_payload["message"]},
+        connection=connection,
+    )
+    chat_thread_repo.update_chat_thread_status(
+        _thread_public_or_internal(failed_row),
+        status="failed",
+        active_job_id=None,
+        connection=connection,
+    )
+    return _job_response_from_db_row(failed_row)
 
 
 def _result_payload_summary(result_payload: dict) -> dict:
