@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from orchestrator.app.reference_catalog.seed_templates import SEED_REFERENCE_TEMPLATES
 from orchestrator.app.schemas.reference_catalog import (
@@ -13,8 +17,132 @@ from orchestrator.app.schemas.reference_catalog import (
 )
 
 
-def load_reference_templates() -> list[ReferenceTemplate]:
-    return [ReferenceTemplate(**item) for item in SEED_REFERENCE_TEMPLATES]
+TEMP_REFERENCE_FLAG_ENV = "EASYADS_ENABLE_TEMP_REFERENCES"
+TEMP_REFERENCE_ROOT_ENV = "EASYADS_TEMP_REFERENCE_ROOT"
+TEMP_REFERENCE_MANIFEST_NAME = "catalog.local.json"
+DEFAULT_TEMP_REFERENCE_ROOT = Path("data/reference_templates/_temporary_unlicensed")
+TEMP_REFERENCE_LICENSE_NOTE = "temporary local reference only; remove before release"
+
+
+def temporary_references_enabled() -> bool:
+    value = os.environ.get(TEMP_REFERENCE_FLAG_ENV, "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def temporary_reference_root(root: str | Path | None = None) -> Path:
+    if root is not None:
+        return Path(root)
+    return Path(os.environ.get(TEMP_REFERENCE_ROOT_ENV, DEFAULT_TEMP_REFERENCE_ROOT))
+
+
+def load_reference_templates(include_temporary: bool | None = None) -> list[ReferenceTemplate]:
+    templates = [ReferenceTemplate(**item) for item in SEED_REFERENCE_TEMPLATES]
+    should_include_temporary = temporary_references_enabled() if include_temporary is None else include_temporary
+    if should_include_temporary:
+        templates.extend(load_temporary_reference_templates())
+    return unique_templates_by_id(templates)
+
+
+def load_temporary_reference_templates(root: str | Path | None = None) -> list[ReferenceTemplate]:
+    root_path = temporary_reference_root(root)
+    if not root_path.exists():
+        return []
+
+    templates: list[ReferenceTemplate] = []
+    for manifest_path in temporary_reference_manifest_paths(root_path):
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        templates.extend(temporary_templates_from_manifest(payload, manifest_path))
+    return templates
+
+
+def temporary_reference_manifest_paths(root_path: Path) -> list[Path]:
+    direct_manifest = root_path / TEMP_REFERENCE_MANIFEST_NAME
+    manifests = [direct_manifest] if direct_manifest.is_file() else []
+    manifests.extend(sorted(root_path.glob(f"*/{TEMP_REFERENCE_MANIFEST_NAME}")))
+    return manifests
+
+
+def temporary_templates_from_manifest(payload: Any, manifest_path: Path) -> list[ReferenceTemplate]:
+    manifest_dir = manifest_path.parent
+    if isinstance(payload, list):
+        items = payload
+        manifest_meta: dict[str, Any] = {}
+    elif isinstance(payload, dict):
+        items = payload.get("items") or payload.get("templates") or []
+        manifest_meta = payload
+    else:
+        return []
+
+    removal_group = str(manifest_meta.get("removal_group") or manifest_dir.name)
+    return [temporary_template_from_item(item, manifest_dir=manifest_dir, removal_group=removal_group) for item in items]
+
+
+def temporary_template_from_item(item: dict[str, Any], *, manifest_dir: Path, removal_group: str) -> ReferenceTemplate:
+    data = dict(item)
+    assets = dict(data.get("assets") or {})
+    for field in ("thumbnail_path", "preview_path", "source_image_path"):
+        if assets.get(field):
+            assets[field] = normalize_temporary_asset_path(str(assets[field]), manifest_dir)
+    if assets.get("thumbnail_path") and not assets.get("preview_path"):
+        assets["preview_path"] = assets["thumbnail_path"]
+    if (assets.get("preview_path") or assets.get("thumbnail_path")) and not assets.get("source_image_path"):
+        assets["source_image_path"] = assets.get("preview_path") or assets.get("thumbnail_path")
+
+    metadata = dict(data.get("metadata") or {})
+    metadata.setdefault("temporary", True)
+    metadata.setdefault("copyright_status", "unverified")
+    metadata.setdefault("removal_group", removal_group)
+    metadata.setdefault("local_only", True)
+
+    data["assets"] = assets
+    data["metadata"] = metadata
+    data.setdefault("source", "external_placeholder")
+    data.setdefault("status", "active")
+    data.setdefault("license_note", TEMP_REFERENCE_LICENSE_NOTE)
+    return ReferenceTemplate(**data)
+
+
+def normalize_temporary_asset_path(value: str, manifest_dir: Path) -> str:
+    asset_path = Path(value)
+    if asset_path.is_absolute():
+        return str(asset_path)
+    return str(manifest_dir / asset_path)
+
+
+def unique_templates_by_id(templates: list[ReferenceTemplate]) -> list[ReferenceTemplate]:
+    seen: set[str] = set()
+    result: list[ReferenceTemplate] = []
+    for template in templates:
+        if template.template_id in seen:
+            continue
+        seen.add(template.template_id)
+        result.append(template)
+    return result
+
+
+def temporary_reference_asset_url(template: ReferenceTemplate, asset_kind: str) -> str | None:
+    if not template.metadata.get("temporary"):
+        return None
+    removal_group = template.metadata.get("removal_group")
+    if not removal_group:
+        return None
+    asset_path = getattr(template.assets, f"{asset_kind}_path", None)
+    if not asset_path:
+        return None
+    filename = Path(asset_path).name
+    if not filename:
+        return None
+    return f"/api/v1/references/temp-assets/{quote(str(removal_group), safe='')}/{quote(filename, safe='')}"
+
+
+def temporary_reference_asset_path(removal_group: str, filename: str, root: str | Path | None = None) -> Path | None:
+    root_path = temporary_reference_root(root).resolve()
+    candidate = (root_path / Path(removal_group).name / Path(filename).name).resolve()
+    try:
+        candidate.relative_to(root_path)
+    except ValueError:
+        return None
+    return candidate
 
 
 def list_reference_templates(query: ReferenceTemplateSearchQuery | dict[str, Any] | None = None) -> ReferenceTemplateSearchResult:

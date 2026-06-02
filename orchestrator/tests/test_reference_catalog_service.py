@@ -1,3 +1,5 @@
+import json
+
 from orchestrator.app.reference_catalog.service import (
     find_similar_templates,
     get_reference_template,
@@ -57,3 +59,51 @@ def test_detail_similar_and_selection():
     assert "reference_template_has_no_source_image_path" in selection.warnings
     assert invalid.resolved_template is None
     assert "reference_template_not_found" in invalid.warnings
+
+
+def test_temporary_references_require_local_flag(monkeypatch, tmp_path):
+    manifest_dir = tmp_path / "2026-06-user-refs"
+    manifest_dir.mkdir()
+    image_path = manifest_dir / "watermelon-juice.png"
+    image_path.write_bytes(b"temporary image")
+    manifest = {
+        "removal_group": "2026-06-user-refs",
+        "items": [
+            {
+                "template_id": "temp_watermelon_juice_feed",
+                "title": "수박주스 블루 여름 피드",
+                "category": "cafe",
+                "tags": ["수박", "여름"],
+                "business_types": ["cafe"],
+                "ad_formats": ["instagram_feed"],
+                "platforms": ["instagram"],
+                "assets": {
+                    "thumbnail_path": "watermelon-juice.png",
+                    "preview_path": "watermelon-juice.png",
+                },
+                "style_keywords": ["summer", "blue"],
+                "color_palette": ["#5AB4F2", "#EF3B3B"],
+                "layout_hint": "top_large_headline_center_product_bottom_copy",
+                "background_style": "bright blue summer beverage poster",
+                "popularity_score": 0.5,
+            }
+        ],
+    }
+    (manifest_dir / "catalog.local.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("EASYADS_TEMP_REFERENCE_ROOT", str(tmp_path))
+    monkeypatch.delenv("EASYADS_ENABLE_TEMP_REFERENCES", raising=False)
+
+    assert get_reference_template("temp_watermelon_juice_feed") is None
+
+    monkeypatch.setenv("EASYADS_ENABLE_TEMP_REFERENCES", "true")
+
+    template = get_reference_template("temp_watermelon_juice_feed")
+    selection = resolve_reference_template_selection("temp_watermelon_juice_feed")
+
+    assert template is not None
+    assert template.metadata["temporary"] is True
+    assert template.metadata["copyright_status"] == "unverified"
+    assert template.metadata["removal_group"] == "2026-06-user-refs"
+    assert template.assets.source_image_path == str(image_path)
+    assert selection.reference_image_path == str(image_path)
+    assert "reference_template_has_no_source_image_path" not in selection.warnings

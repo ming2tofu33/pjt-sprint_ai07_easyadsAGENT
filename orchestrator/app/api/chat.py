@@ -47,6 +47,10 @@ AD_FORMAT_BY_CHANNEL = {
     "flyer": "flyer",
 }
 
+CHANNEL_BY_AD_FORMAT = {value: key for key, value in AD_FORMAT_BY_CHANNEL.items()}
+CopyGenerationMode = Literal["suggest_candidates", "auto_pilot", "custom_input", "no_copy"]
+BRIEF_READY_COPY_MODES = {"auto_pilot", "custom_input", "no_copy"}
+
 
 class CamelModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -85,6 +89,10 @@ class ChatStartRequest(CamelModel):
     user_input: str = Field(alias="userInput", min_length=1)
     ad_format: str = Field(default="instagram_feed", alias="adFormat")
     render_profile: str = Field(default="fast", alias="renderProfile")
+    copy_generation_mode: CopyGenerationMode = Field(default="suggest_candidates", alias="copyGenerationMode")
+    user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
+    user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
+    selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
 
 
 class ChatStartResponse(CamelModel):
@@ -95,6 +103,7 @@ class ChatStartResponse(CamelModel):
     context: ChatContext
     copy_candidates: list[CopyCandidate] = Field(alias="copyCandidates")
     recommended_copy_id: str | None = Field(default=None, alias="recommendedCopyId")
+    copy_generation_mode: CopyGenerationMode | None = Field(default=None, alias="copyGenerationMode")
 
 
 class ChatBriefRequest(CamelModel):
@@ -119,6 +128,16 @@ class ChatBriefResponse(CamelModel):
     thread_id: str = Field(alias="threadId")
     status: str
     brief: ChatBrief
+
+
+class ChatBriefReadyResponse(CamelModel):
+    type: Literal["brief_ready"] = "brief_ready"
+    job_id: str = Field(alias="jobId")
+    thread_id: str = Field(alias="threadId")
+    status: str
+    context: ChatContext
+    brief: ChatBrief
+    copy_generation_mode: CopyGenerationMode = Field(alias="copyGenerationMode")
 
 
 class ChatOptionQuestionResponse(CamelModel):
@@ -244,7 +263,58 @@ def _copy_candidates_response(
         context=_context_from_state(result),
         copyCandidates=[_candidate_from_raw(candidate) for candidate in candidates],
         recommendedCopyId=recommended_copy_id or candidates[0].get("id"),
+        copyGenerationMode=result.get("copy_generation_mode"),
     )
+
+
+def _selected_channel_id_for_ad_format(ad_format: str | None) -> str:
+    if not ad_format:
+        return "instagram-feed"
+    return CHANNEL_BY_AD_FORMAT.get(ad_format, ad_format.replace("_", "-"))
+
+
+def _brief_from_result(
+    result: dict[str, Any],
+    *,
+    selected_channel_id: str,
+    selected_tone: str | None = None,
+    custom_direction: str | None = None,
+) -> ChatBrief:
+    context = _context_from_state(result)
+    marketing_copy = result.get("marketing_copy") or {}
+    current_brief = result.get("current_brief") or {}
+    final_channel_id = current_brief.get("selected_channel_id") or selected_channel_id
+    final_tone = current_brief.get("selected_tone") or selected_tone
+    final_custom_direction = current_brief.get("custom_direction") or _clean_optional_text(custom_direction)
+    image_direction = _image_direction_summary(context, final_tone, final_custom_direction)
+    copy_text = marketing_copy.get("headline") or (
+        "문구 없이 이미지로만" if result.get("copy_generation_mode") == "no_copy" else "봄을 닮은 한 잔, 딸기라떼 출시"
+    )
+    return ChatBrief(
+        purpose=context.promotion_goal,
+        item=context.item_or_service,
+        copy=copy_text,
+        tone=_tone_summary(final_tone),
+        channel=CHANNEL_LABELS.get(final_channel_id, final_channel_id),
+        imageDirection=image_direction,
+        finalImagePath=result.get("final_image_path"),
+    )
+
+
+def _brief_ready_response(result: dict[str, Any], *, job_id: str, thread_id: str, selected_channel_id: str) -> ChatBriefReadyResponse:
+    return ChatBriefReadyResponse(
+        jobId=result.get("job_id") or job_id,
+        threadId=result.get("thread_id") or thread_id,
+        status=result.get("status") or "done",
+        context=_context_from_state(result),
+        brief=_brief_from_result(result, selected_channel_id=selected_channel_id),
+        copyGenerationMode=result.get("copy_generation_mode") or "no_copy",
+    )
+
+
+def _require_custom_copy_headline(copy_generation_mode: str | None, user_custom_headline: str | None) -> None:
+    if copy_generation_mode == "custom_input" and not _clean_optional_text(user_custom_headline):
+        raise HTTPException(status_code=400, detail={"message": "userCustomHeadline is required for custom_input"})
 
 
 def _brief_resume_payload(request: ChatBriefRequest) -> dict[str, str]:
@@ -264,9 +334,20 @@ def _brief_resume_payload(request: ChatBriefRequest) -> dict[str, str]:
     return payload
 
 
-@router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse, response_model_by_alias=True)
-def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuestionResponse:
-    job_id = f"chat_{abs(hash(request.user_input))}"
+@router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse, response_model_by_alias=True)
+def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse:
+    _require_custom_copy_headline(request.copy_generation_mode, request.user_custom_headline)
+    job_seed = ":".join(
+        [
+            request.user_input,
+            request.ad_format,
+            request.copy_generation_mode,
+            _clean_optional_text(request.user_custom_headline) or "",
+            _clean_optional_text(request.user_custom_subcopy) or "",
+            _clean_optional_text(request.selected_reference_template_id) or "",
+        ]
+    )
+    job_id = f"chat_{abs(hash(job_seed))}"
     thread_id = f"{job_id}_thread"
     state = {
         "entry_mode": "chat_start",
@@ -274,20 +355,30 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
         "job_id": job_id,
         "thread_id": thread_id,
         "render_profile": request.render_profile,
-        "copy_generation_mode": "suggest_candidates",
-        "context": {"extra": {"ad_format": request.ad_format}},
+        "copy_generation_mode": request.copy_generation_mode,
+        "user_custom_headline": _clean_optional_text(request.user_custom_headline),
+        "user_custom_subcopy": _clean_optional_text(request.user_custom_subcopy),
+        "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
+        "context": {
+            "extra": {
+                "ad_format": request.ad_format,
+                "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
+            }
+        },
     }
     result = _GRAPH.invoke(state, config=_thread_config(thread_id))
     interrupt = _interrupt_value(result)
 
     if interrupt and interrupt.get("type") == "option_question":
         return _option_question_response(result, interrupt)
+    if result.get("copy_generation_mode") in BRIEF_READY_COPY_MODES and result.get("status") == "done":
+        return _brief_ready_response(result, job_id=job_id, thread_id=thread_id, selected_channel_id=_selected_channel_id_for_ad_format(request.ad_format))
 
     return _copy_candidates_response(result, job_id=job_id, thread_id=thread_id, interrupt=interrupt)
 
 
-@router.post("/answer", response_model=ChatStartResponse | ChatOptionQuestionResponse, response_model_by_alias=True)
-def answer_chat_question(request: ChatAnswerRequest) -> ChatStartResponse | ChatOptionQuestionResponse:
+@router.post("/answer", response_model=ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse, response_model_by_alias=True)
+def answer_chat_question(request: ChatAnswerRequest) -> ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse:
     resume_payload = {
         "job_id": request.job_id,
         "thread_id": request.thread_id,
@@ -301,6 +392,14 @@ def answer_chat_question(request: ChatAnswerRequest) -> ChatStartResponse | Chat
     interrupt = _interrupt_value(result)
     if interrupt and interrupt.get("type") == "option_question":
         return _option_question_response(result, interrupt)
+    if result.get("copy_generation_mode") in BRIEF_READY_COPY_MODES and result.get("status") == "done":
+        current_brief = result.get("current_brief") or {}
+        return _brief_ready_response(
+            result,
+            job_id=request.job_id,
+            thread_id=request.thread_id,
+            selected_channel_id=_selected_channel_id_for_ad_format(current_brief.get("requested_ad_format")),
+        )
 
     return _copy_candidates_response(result, job_id=request.job_id, thread_id=request.thread_id, interrupt=interrupt)
 
@@ -311,21 +410,11 @@ def create_brief(request: ChatBriefRequest) -> ChatBriefResponse:
     if result.get("status") == "failed":
         raise HTTPException(status_code=422, detail=result.get("error_message") or "graph failed")
 
-    context = _context_from_state(result)
-    marketing_copy = result.get("marketing_copy") or {}
-    current_brief = result.get("current_brief") or {}
-    selected_channel_id = current_brief.get("selected_channel_id") or request.selected_channel_id
-    selected_tone = current_brief.get("selected_tone") or request.selected_tone or "감성적인"
-    custom_direction = current_brief.get("custom_direction") or _clean_optional_text(request.custom_direction)
-    image_direction = _image_direction_summary(context, selected_tone, custom_direction)
-    brief = ChatBrief(
-        purpose=context.promotion_goal,
-        item=context.item_or_service,
-        copy=marketing_copy.get("headline") or "봄을 닮은 한 잔, 딸기라떼 출시",
-        tone=_tone_summary(selected_tone),
-        channel=CHANNEL_LABELS.get(selected_channel_id, selected_channel_id),
-        imageDirection=image_direction,
-        finalImagePath=result.get("final_image_path"),
+    brief = _brief_from_result(
+        result,
+        selected_channel_id=request.selected_channel_id,
+        selected_tone=request.selected_tone or "감성적인",
+        custom_direction=request.custom_direction,
     )
     return ChatBriefResponse(
         jobId=result.get("job_id") or request.job_id,

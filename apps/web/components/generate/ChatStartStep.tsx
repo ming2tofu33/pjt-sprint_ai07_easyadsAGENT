@@ -1,7 +1,9 @@
 "use client";
 
-import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, Send, Utensils } from "lucide-react";
+import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, PenLine, Send, Sparkles, Utensils } from "lucide-react";
 import { useState } from "react";
+import type { CopyGenerationMode, CustomCopyFields } from "@/types/marketing";
+import { readGenerationDraftPrompt } from "@/lib/generation-request-context";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { StepHeader } from "./StepHeader";
@@ -22,18 +24,29 @@ const quickStarts = [
 ];
 
 type ChatStartStepProps = {
-  onSubmit: (prompt: string) => void;
+  onSubmit: (prompt: string, options?: CustomCopyFields & { copyGenerationMode?: CopyGenerationMode }) => void;
   onBack: () => void;
   onGoHome: () => void;
 };
 
 export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps) {
-  const [value, setValue] = useState("우리 카페 딸기라떼 신메뉴 광고 만들어줘");
+  const [value, setValue] = useState(() => readGenerationDraftPrompt());
+  const [copyGenerationMode, setCopyGenerationMode] = useState<CopyGenerationMode>("suggest_candidates");
+  const [customHeadline, setCustomHeadline] = useState("");
+  const [customSubcopy, setCustomSubcopy] = useState("");
+  const usesCustomCopy = copyGenerationMode === "custom_input";
+  const customHeadlineText = customHeadline.trim();
+  const customSubcopyText = customSubcopy.trim();
+  const canSubmit = value.trim().length > 0 && (!usesCustomCopy || customHeadlineText.length > 0);
 
   function submitPrompt() {
     const prompt = value.trim();
-    if (prompt.length > 0) {
-      onSubmit(prompt);
+    if (prompt.length > 0 && (!usesCustomCopy || customHeadlineText.length > 0)) {
+      onSubmit(prompt, {
+        copyGenerationMode,
+        userCustomHeadline: usesCustomCopy ? customHeadlineText : undefined,
+        userCustomSubcopy: usesCustomCopy && customSubcopyText ? customSubcopyText : undefined
+      });
     }
   }
 
@@ -59,7 +72,7 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
       </div>
 
       <h2 className={styles.sectionTitle}>빠른 시작</h2>
-      <div className={styles.chipGrid}>
+      <div className={`${styles.chipGrid} ${styles.quickStartGrid}`}>
         {quickStarts.map(({ label, icon: Icon }) => (
           <ChoiceChip key={label} onClick={() => setValue(`${label} 광고 만들어줘`)}>
             <Icon size={16} aria-hidden="true" />
@@ -68,16 +81,65 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
         ))}
       </div>
 
-      <div className={styles.inputCard}>
+      <h2 className={styles.sectionTitle}>문구 포함 여부</h2>
+      <div className={`${styles.chipGrid} ${styles.copyModeGrid}`}>
+        <ChoiceChip selected={copyGenerationMode === "suggest_candidates"} onClick={() => setCopyGenerationMode("suggest_candidates")}>
+          <MessageCircle size={16} aria-hidden="true" />
+          <span>문구도 추천</span>
+        </ChoiceChip>
+        <ChoiceChip selected={copyGenerationMode === "auto_pilot"} onClick={() => setCopyGenerationMode("auto_pilot")}>
+          <Sparkles size={16} aria-hidden="true" />
+          <span>AI 자동 완성</span>
+        </ChoiceChip>
+        <ChoiceChip selected={copyGenerationMode === "no_copy"} onClick={() => setCopyGenerationMode("no_copy")}>
+          <ImageIcon size={16} aria-hidden="true" />
+          <span>이미지만 생성</span>
+        </ChoiceChip>
+        <ChoiceChip selected={copyGenerationMode === "custom_input"} onClick={() => setCopyGenerationMode("custom_input")}>
+          <PenLine size={16} aria-hidden="true" />
+          <span>직접 문구</span>
+        </ChoiceChip>
+      </div>
+
+      {usesCustomCopy ? (
+        <div className={styles.customCopyFields}>
+          <label className={styles.customCopyField}>
+            <span>메인 문구</span>
+            <AutosizeTextarea
+              className={styles.customCopyTextarea}
+              value={customHeadline}
+              aria-label="직접 메인 문구 입력"
+              placeholder="광고에 넣을 메인 문구"
+              onChange={(event) => setCustomHeadline(event.target.value)}
+              onSubmit={submitPrompt}
+            />
+          </label>
+          <label className={styles.customCopyField}>
+            <span>보조 문구</span>
+            <AutosizeTextarea
+              className={styles.customCopyTextarea}
+              value={customSubcopy}
+              aria-label="직접 보조 문구 입력"
+              placeholder="이벤트 상세나 안내 문구"
+              onChange={(event) => setCustomSubcopy(event.target.value)}
+              onSubmit={submitPrompt}
+            />
+          </label>
+        </div>
+      ) : null}
+
+      <h2 className={styles.sectionTitle}>광고 요청</h2>
+      <div className={`${styles.inputCard} ${styles.startInputCard}`}>
         <ImageIcon size={19} aria-hidden="true" />
         <AutosizeTextarea
           className={`${styles.input} ${styles.promptTextarea}`}
           value={value}
           aria-label="광고 요청 입력"
+          placeholder="예: 우리 가게 신메뉴 인스타 광고 만들어줘"
           onChange={(event) => setValue(event.target.value)}
           onSubmit={submitPrompt}
         />
-        <button className={styles.sendButton} type="button" aria-label="요청 보내기" onClick={submitPrompt}>
+        <button className={styles.sendButton} type="button" aria-label="요청 보내기" disabled={!canSubmit} onClick={submitPrompt}>
           <Send size={18} aria-hidden="true" />
         </button>
       </div>

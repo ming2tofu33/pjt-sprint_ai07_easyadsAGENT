@@ -17,10 +17,12 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { brandFacts, getReferenceCreativeById, getSimilarReferenceCreatives, referenceCreatives } from "@/lib/mock-dashboard-data";
+import { readSavedBrandKit } from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
+import { clearGenerationDraftPrompt, writeGenerationDraftPrompt } from "@/lib/generation-request-context";
+import { getReferenceCreativeById, getSimilarReferenceCreatives, referenceCreatives } from "@/lib/mock-dashboard-data";
 import { buildReferenceStyleHref, type ReferenceStyleStep } from "@/lib/reference-navigation";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { StepHeader } from "./StepHeader";
@@ -46,11 +48,22 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
   const router = useRouter();
   const creative = getReferenceCreativeById(creativeId) ?? referenceCreatives[0];
   const similarCreatives = useMemo(() => getSimilarReferenceCreatives(creative.id), [creative.id]);
-  const [businessType, setBusinessType] = useState("카페");
-  const [businessName, setBusinessName] = useState(brandFacts.name);
+  const [businessType, setBusinessType] = useState("");
+  const [businessName, setBusinessName] = useState("");
+  const canContinue = Boolean(businessType && businessName.trim());
 
   const styleProfile = creative.styleProfile ?? referenceCreatives[0].styleProfile!;
   const tags = creative.tags ?? [creative.format, creative.badge ?? "추천 스타일"];
+
+  useEffect(() => {
+    const savedBrandKit = readSavedBrandKit();
+    if (!savedBrandKit) {
+      return;
+    }
+
+    setBusinessType(savedBrandKit.businessType);
+    setBusinessName(savedBrandKit.businessName);
+  }, []);
 
   function goBack() {
     if (step === "detail") {
@@ -69,7 +82,21 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
     router.push(buildReferenceStyleHref(creative.id, nextStep));
   }
 
+  function buildStyleDraftPrompt(): string {
+    return `${creative.title} 스타일로 ${businessName.trim()}의 ${businessType} 광고를 만들어줘`;
+  }
+
   function startChatFlow() {
+    if (!canContinue) {
+      return;
+    }
+
+    writeGenerationDraftPrompt(buildStyleDraftPrompt());
+    router.push(buildDashboardHref("chat"));
+  }
+
+  function startBlankChatFlow() {
+    clearGenerationDraftPrompt();
     router.push(buildDashboardHref("chat"));
   }
 
@@ -192,14 +219,14 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
 
         <label className={styles.styleInputField}>
           <span>가게 이름</span>
-          <input aria-label="가게 이름" placeholder="예) 도민 카페" value={businessName} onChange={(event) => setBusinessName(event.target.value)} />
+          <input aria-label="가게 이름" placeholder="가게 이름을 입력하세요" value={businessName} onChange={(event) => setBusinessName(event.target.value)} />
         </label>
 
         <div className={styles.stepFooter}>
-          <button className={styles.primaryButton} type="button" onClick={startChatFlow}>
+          <button className={styles.primaryButton} disabled={!canContinue} type="button" onClick={startChatFlow}>
             다음
           </button>
-          <button className={styles.secondaryButton} type="button" onClick={startChatFlow}>
+          <button className={styles.secondaryButton} type="button" onClick={startBlankChatFlow}>
             대화로 직접 입력하기 <PenLine size={17} aria-hidden="true" />
           </button>
         </div>

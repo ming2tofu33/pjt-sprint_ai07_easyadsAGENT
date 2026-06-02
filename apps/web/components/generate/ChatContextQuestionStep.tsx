@@ -92,7 +92,7 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack }: ChatContext
       </div>
 
       {hasCustomOption ? (
-        <label className={styles.inputCard}>
+        <label className={`${styles.inputCard} ${styles.contextAnswerInputCard}`}>
           <AutosizeTextarea
             className={`${styles.input} ${styles.promptTextarea}`}
             value={customText}

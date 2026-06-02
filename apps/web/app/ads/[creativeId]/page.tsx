@@ -14,7 +14,7 @@ export function generateStaticParams() {
 }
 
 export default function AdDetailPage({ params }: AdDetailPageProps) {
-  if (!getAdCreativeById(params.creativeId)) {
+  if (!params.creativeId.startsWith("generated-") && !getAdCreativeById(params.creativeId)) {
     notFound();
   }
 

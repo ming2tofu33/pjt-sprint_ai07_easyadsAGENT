@@ -40,7 +40,11 @@ def test_mock_immediate_writes_artifacts_under_job_output_dir():
     assert done.progress.current_stage == "completed"
     assert done.output_path == f"data/outputs/{job.job_id}/final_0.png"
     assert done.result_payload is not None
-    assert done.result_payload["schema_version"] == "generation_result_mock_v1"
+    assert done.result_payload["schema_version"] == "result_artifact_v1"
+    assert done.result_payload["download_url"] is None
+    assert done.result_payload["final_image_url"] is None
+    assert done.result_payload["prompt_summary"]
+    assert done.result_payload["validation_summary"]["overall_pass"] is True
     assert done.metadata["requested_run_mode"] == "mock_immediate"
     assert done.metadata["effective_run_mode"] == "mock_immediate"
     assert done.metadata["execution_mode"] == "deterministic_mock"
@@ -52,6 +56,9 @@ def test_mock_immediate_writes_artifacts_under_job_output_dir():
         output_dir / "metadata.json",
         output_dir / "prompt.json",
         output_dir / "validation.json",
+        output_dir / "copy.json",
+        output_dir / "layout.json",
+        output_dir / "render_result.json",
     ]
     for path in expected:
         assert path.exists()

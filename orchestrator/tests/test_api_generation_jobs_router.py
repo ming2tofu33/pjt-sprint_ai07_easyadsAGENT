@@ -65,7 +65,12 @@ def test_create_generation_job_mock_immediate_completes(client):
     assert job["progress"]["progress_percent"] == 100
     assert job["progress"]["current_stage"] == "completed"
     assert job["output_path"].endswith("/final_0.png")
+    assert job["result_payload"]["schema_version"] == "result_artifact_v1"
     assert job["result_payload"]["final_image_path"] == job["output_path"]
+    assert job["result_payload"]["download_url"] is None
+    assert job["result_payload"]["final_image_url"] is None
+    assert job["result_payload"]["prompt_summary"]
+    assert job["result_payload"]["validation_summary"]["overall_pass"] is True
     assert job["metadata"]["effective_run_mode"] == "mock_immediate"
     assert job["metadata"]["execution_mode"] == "deterministic_mock"
 
@@ -106,3 +111,87 @@ def test_graph_immediate_degrades_to_queued_only(client):
     assert job["metadata"]["requested_run_mode"] == "graph_immediate"
     assert job["metadata"]["effective_run_mode"] == "queued_only"
     assert job["metadata"]["execution_mode"] == "degraded_no_graph_execution"
+
+
+def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
+    monkeypatch.delenv("EASYADS_ENABLE_EXTERNAL_T2I", raising=False)
+    monkeypatch.delenv("EASYADS_ENABLE_GPT_IMAGE_2", raising=False)
+    monkeypatch.delenv("EASYADS_ENABLE_SD35_LOCAL", raising=False)
+
+    gpt = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "gpt_image_2_smoke"})
+    sd35 = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "sd35_local_smoke"})
+
+    assert gpt.status_code == 201
+    assert gpt.json()["job"]["status"] == "failed"
+    assert gpt.json()["job"]["error"]["error_code"] == "t2i_engine_not_enabled"
+    assert sd35.status_code == 201
+    assert sd35.json()["job"]["status"] == "failed"
+    assert sd35.json()["job"]["error"]["error_code"] == "t2i_engine_not_enabled"
+
+
+def test_create_generation_job_accepts_camel_case_reference_alias(client):
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={
+            "userInput": "Create a cafe launch ad",
+            "selectedReferenceTemplateId": "seed_cafe_strawberry_feed_001",
+            "runMode": "queued_only",
+        },
+    )
+
+    assert response.status_code == 201
+    job = response.json()["job"]
+    assert job["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+    assert job["metadata"]["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+
+
+def test_create_generation_job_accepts_snake_case_reference_id(client):
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={
+            "user_input": "Create a cafe launch ad",
+            "selected_reference_template_id": "seed_cafe_strawberry_feed_001",
+            "run_mode": "queued_only",
+        },
+    )
+
+    assert response.status_code == 201
+    job = response.json()["job"]
+    assert job["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+
+
+def test_generation_job_actual_payload_preserves_quality_batch_metadata(client, monkeypatch):
+    monkeypatch.delenv("EASYADS_ENABLE_EXTERNAL_T2I", raising=False)
+    monkeypatch.delenv("EASYADS_ENABLE_GPT_IMAGE_2", raising=False)
+    monkeypatch.delenv("EASYADS_QUALITY_BATCH_CONFIRM", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={
+            "user_input": "Create a quality batch ad background",
+            "run_mode": "gpt_image_2_actual",
+            "selected_reference_template_id": "seed_cafe_strawberry_feed_001",
+            "ad_format": "instagram_feed",
+            "metadata": {
+                "quality_batch_id": "gpt_image2_quality_batch_v1",
+                "case_id": "cafe_dessert_001",
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    job = response.json()["job"]
+    assert job["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+    assert job["metadata"]["quality_batch_id"] == "gpt_image2_quality_batch_v1"
+    assert job["metadata"]["case_id"] == "cafe_dessert_001"
+    assert job["status"] == "failed"
+    assert job["error"]["error_code"] == "t2i_engine_not_enabled"
+
+    assert response.status_code == 201
+    job = response.json()["job"]
+    assert job["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+    assert job["metadata"]["quality_batch_id"] == "gpt_image2_quality_batch_v1"
+    assert job["metadata"]["case_id"] == "cafe_dessert_001"
+    assert job["status"] == "failed"
+    assert job["error"]["error_code"] == "t2i_engine_not_enabled"

@@ -9,17 +9,18 @@ type AdCreativeCardProps = {
   creative: MockCreative;
   index?: number;
   compact?: boolean;
+  openLabel?: string;
   onSave?: () => void;
   onOpen?: () => void;
 };
 
-export function AdCreativeCard({ creative, index, compact = false, onSave, onOpen }: AdCreativeCardProps) {
+export function AdCreativeCard({ creative, index, compact = false, openLabel, onSave, onOpen }: AdCreativeCardProps) {
   const hasImage = Boolean(creative.imageUrl);
 
   return (
     <article className={styles.adCreativeCard} data-tone={creative.tone} data-compact={compact}>
       {onOpen ? (
-        <button aria-label={`${creative.title} 상세 보기`} className={styles.adCreativeOpenButton} type="button" onClick={onOpen} />
+        <button aria-label={openLabel ?? `${creative.title} 상세 보기`} className={styles.adCreativeOpenButton} type="button" onClick={onOpen} />
       ) : null}
       {typeof index === "number" ? <strong className={styles.adCreativeNumber}>{index + 1}</strong> : null}
       {onSave ? (
