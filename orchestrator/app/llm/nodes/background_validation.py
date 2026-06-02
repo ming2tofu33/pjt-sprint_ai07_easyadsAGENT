@@ -8,6 +8,7 @@ from typing import Any
 from PIL import Image
 
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.llm.metadata_builders import build_background_validation_metadata
 from orchestrator.app.schemas.text_layout import BackgroundValidationReport
 
 
@@ -36,6 +37,7 @@ def background_validation_node(state: MarketingState) -> dict[str, Any]:
     metadata = _metadata_from_t2i_request(state)
     render_text_in_image = bool(metadata.get("render_text_in_image", False))
     reserved_areas = _reserved_text_areas(state)
+    vlm_metadata_contract = build_background_validation_metadata(state)
 
     warnings: list[str] = []
     issues: list[str] = []
@@ -76,7 +78,13 @@ def background_validation_node(state: MarketingState) -> dict[str, Any]:
         watermark_check="not_run",
         warnings=warnings,
         issues=issues,
-        metadata={"source_node": "background_validation", "ocr_or_vlm_called": False},
+        metadata={
+            "source_node": "background_validation",
+            "ocr_or_vlm_called": False,
+            "vlm_call_allowed": False,
+            "vlm_metadata_contract": vlm_metadata_contract,
+            "validation_questions": vlm_metadata_contract["available_state"].get("validation_questions", []),
+        },
     )
     artifacts = list(state.get("artifact_refs") or [])
     if image_path:

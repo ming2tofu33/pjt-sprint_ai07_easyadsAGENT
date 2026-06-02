@@ -9,6 +9,7 @@ from langgraph.types import interrupt
 from orchestrator.app.graph.state import MarketingState, context_to_model
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
+from orchestrator.app.llm.metadata_builders import build_copy_generation_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.nodes.format_planner import build_layout_spec
 from orchestrator.app.llm.option_registry import option_label_for_value
@@ -24,16 +25,21 @@ CHANNEL_TO_AD_FORMAT = {
 
 
 def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
+    metadata_contract = build_copy_generation_metadata(
+        state,
+        node_name="copy_candidate_generation",
+        output_schema=CopyCandidateListOutput,
+    )
     output, llm_metadata = run_structured_node(
         state,
         node_name="copy_candidate_generation",
         output_schema=CopyCandidateListOutput,
-        prompt=build_candidate_prompt(state),
+        prompt=build_candidate_prompt(state, metadata_contract),
         fallback_fn=lambda: build_rule_based_candidate_output(state),
         risk_level="medium",
         confidence=0.5,
         latency_budget="interactive",
-        metadata={"prompt_summary": "copy candidate generation"},
+        metadata=metadata_contract,
     )
     if not isinstance(output, CopyCandidateListOutput) or not output.candidates:
         output = build_rule_based_candidate_output(state)
@@ -291,15 +297,21 @@ def normalize_candidate_ids(candidates: list[CopyCandidate]) -> list[CopyCandida
     return normalized
 
 
-def build_candidate_prompt(state: MarketingState) -> str:
+def build_candidate_prompt(state: MarketingState, metadata_contract: dict[str, Any] | None = None) -> str:
     context = context_to_model(state.get("context"))
     tone = state.get("tone_binding_output") or {}
+    metadata_contract = metadata_contract or build_copy_generation_metadata(
+        state,
+        node_name="copy_candidate_generation",
+        output_schema=CopyCandidateListOutput,
+    )
     return (
         "Generate structured Korean ad copy candidates. "
         f"business_type={context.business_type}, item_or_service={context.item_or_service}, "
         f"promotion_goal={context.promotion_goal}, brand_tone={context.brand_tone}, "
         f"forbidden_claims={tone.get('forbidden_claims', [])}. "
-        "Do not invent phone numbers, addresses, prices, discounts, or event periods."
+        "Do not invent phone numbers, addresses, prices, discounts, or event periods. "
+        f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}."
     )
 
 

@@ -17,6 +17,7 @@ from orchestrator.app.graph.state import (
     update_current_brief,
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
+from orchestrator.app.llm.metadata_builders import build_copy_mode_inference_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.option_registry import get_next_missing_field, get_option_question, option_label_for_value
 from orchestrator.app.schemas.llm_marketing import CopyModeInferenceOutput, InitialMarketingRequest, MarketingContext, ProgressState, UserSelectionRequest, ValidatorOutput
@@ -219,16 +220,17 @@ def resolve_copy_generation_mode(state: MarketingState, text: str):
             source="heuristic",
             reasoning_summary="Copy generation mode inferred from user wording.",
         )
+    metadata_contract = build_copy_mode_inference_metadata(state, text)
     output, metadata = run_structured_node(
         state,
         node_name="copy_mode_inference",
         output_schema=CopyModeInferenceOutput,
-        prompt=build_copy_mode_prompt(text, state),
+        prompt=build_copy_mode_prompt(text, state, metadata_contract),
         fallback_fn=lambda: None,
         risk_level="low",
         confidence=0.3,
         latency_budget="interactive",
-        metadata={"prompt_summary": "copy_generation_mode classification"},
+        metadata=metadata_contract,
     )
     if isinstance(output, CopyModeInferenceOutput) and output.confidence >= 0.6:
         output.metadata.update({"llm_metadata": metadata})
@@ -236,13 +238,15 @@ def resolve_copy_generation_mode(state: MarketingState, text: str):
     return None, None
 
 
-def build_copy_mode_prompt(text: str, state: MarketingState) -> str:
+def build_copy_mode_prompt(text: str, state: MarketingState, metadata_contract: dict[str, Any] | None = None) -> str:
     context = state.get("context") or {}
+    metadata_contract = metadata_contract or build_copy_mode_inference_metadata(state, text)
     return (
         "Classify the requested copy generation mode for a Korean small-business ad. "
         "Available modes: suggest_candidates, auto_pilot, no_copy, custom_input. "
         f"User input: {text[:500]}. "
-        f"Context summary: business_type={context.get('business_type')}, item_or_service={context.get('item_or_service')}."
+        f"Context summary: business_type={context.get('business_type')}, item_or_service={context.get('item_or_service')}. "
+        f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}."
     )
 
 

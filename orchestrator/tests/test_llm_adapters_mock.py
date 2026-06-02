@@ -11,12 +11,25 @@ def _selection() -> ModelSelection:
 
 
 def test_mock_adapter_invoke_text():
-    result = MockLLMAdapter().invoke_text("hello", _selection())
+    result = MockLLMAdapter().invoke_text(
+        "hello",
+        _selection(),
+        metadata={
+            "prompt": "secret",
+            "hf_token": "secret-token",
+            "raw_image_bytes": b"secret-bytes",
+            "chain_of_thought": "private reasoning",
+            "token_usage": {"prompt_tokens": 1},
+        },
+    )
 
     assert result.success is True
     assert result.output == "mock text response"
     assert result.cost_estimate == 0.0
     assert result.metadata["mock"] is True
+    assert result.metadata["token_usage"]["prompt_tokens"] == 1
+    assert "secret" not in str(result.metadata)
+    assert "chain_of_thought" not in result.metadata
 
 
 def test_mock_adapter_invoke_structured():

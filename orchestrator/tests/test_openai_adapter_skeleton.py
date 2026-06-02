@@ -15,12 +15,25 @@ def _selection(model_class: str = "api_mini") -> ModelSelection:
 
 
 def test_openai_adapter_disabled_returns_error_without_import():
-    result = OpenAIAdapter(LLMSettings(enable_api_call=False)).invoke_text("hello", _selection(), metadata={"prompt": "secret", "openai_api_key": "secret"})
+    result = OpenAIAdapter(LLMSettings(enable_api_call=False)).invoke_text(
+        "hello",
+        _selection(),
+        metadata={
+            "prompt": "secret",
+            "openai_api_key": "secret",
+            "hf_token": "secret-token",
+            "raw_image_bytes": b"secret-bytes",
+            "chain_of_thought": "private reasoning",
+            "token_usage": {"prompt_tokens": 1},
+        },
+    )
 
     assert result.success is False
     assert result.error == "api_call_disabled"
     assert result.metadata["api_key_present"] is False
+    assert result.metadata["token_usage"]["prompt_tokens"] == 1
     assert "secret" not in str(result.metadata)
+    assert "chain_of_thought" not in result.metadata
 
 
 def test_openai_adapter_key_missing_returns_error():
