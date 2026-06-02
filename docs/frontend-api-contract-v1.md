@@ -6,7 +6,7 @@ This document defines backend API request and response contracts for frontend in
 
 ## 2. Current Scope
 
-Reference Catalog, BrandKit, and GenerationJob FastAPI routes are implemented in v1.
+Reference Catalog, BrandKit, and GenerationJob FastAPI routes are implemented in v1. GenerationJob can use either the default in-memory backend or the Postgres repository foundation when `EASYADS_DB_BACKEND=postgres`.
 
 Implemented routes:
 
@@ -157,6 +157,7 @@ Missing ids return `brand_kit_not_found`. Invalid update payloads return `invali
 
 Current limitations:
 - BrandKit storage is in-memory only.
+- A `brand_kits` table exists in the Supabase schema foundation, but BrandKit API persistence is not wired to Postgres in this milestone.
 - Data is not retained after server restart.
 - Real database persistence is planned for a later milestone.
 - Logo upload and object storage are not implemented.
@@ -254,7 +255,7 @@ Error responses:
 - Invalid create payload returns `invalid_generation_job_request`.
 
 Current limitations:
-- GenerationJob storage is in-memory only.
+- GenerationJob storage defaults to in-memory. A Postgres repository foundation is available behind `EASYADS_DB_BACKEND=postgres`, but production persistence rollout is still pending.
 - Job state is not retained after server restart.
 - Worker and queue execution are not implemented.
 - `build_marketing_graph()` is not executed.
