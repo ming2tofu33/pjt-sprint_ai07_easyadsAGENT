@@ -9,6 +9,9 @@ from orchestrator.app.llm.visual_templates import select_visual_template
 from orchestrator.app.schemas.llm_marketing import ImagePrompt, MarketingContext
 from orchestrator.app.schemas.text_layout import ImagePromptSpec, NormalizedBBox, TextLayoutSpec
 from orchestrator.app.t2i.prompts import COMMON_NEGATIVE_PROMPT
+from orchestrator.app.llm.scene_planner import build_scene_plan, build_prompt_quality_policy
+from orchestrator.app.llm.prompt_adapters import render_engine_prompt
+from orchestrator.app.llm.visual_presets import select_visual_preset
 
 if TYPE_CHECKING:
     from orchestrator.app.graph.state import MarketingState
@@ -88,6 +91,46 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
     if extra_hints:
         positive = f"{positive} Use this additional visual guidance: {extra_hints}"
     negative = f"{TEXT_NEGATIVE}, {', '.join(visual_template.negative_prompt_additions)}, {COMMON_NEGATIVE_PROMPT}"
+
+    # ImagePrompt v3: ScenePlan / QualityPolicy / PromptAdapter 빌드
+    context_dict = state.get("context") or {}
+    if hasattr(context_dict, "model_dump"):
+        context_dict = context_dict.model_dump()
+    user_input = (
+        state.get("user_input")
+        or context_dict.get("user_input")
+        or (state.get("current_brief") or {}).get("user_input")
+        or ""
+    )
+    scene_plan = build_scene_plan(
+        user_input=user_input,
+        business_type=context.business_type,
+        ad_format=ad_format_spec.get("ad_format"),
+        selected_reference_template=selected_reference_template,
+        reference_template_selection=reference_template_selection,
+        metadata={
+            "business_type": context.business_type,
+            "item_or_service": context.item_or_service,
+            "target_persona": context.target_persona,
+            "promotion_goal": context.promotion_goal,
+        }
+    )
+    preset = select_visual_preset(
+        business_type=scene_plan.business_type,
+        ad_format=scene_plan.ad_format,
+        selected_reference_template=selected_reference_template
+    )
+    preset_id = preset["preset_id"]
+    policy = build_prompt_quality_policy(preset)
+    engine = state.get("engine") or "gpt_image_2"
+    adapter_output = render_engine_prompt(engine, scene_plan, policy, preset_id=preset_id)
+    adapter_positive_prompt = adapter_output.prompt
+    if extra_hints:
+        adapter_positive_prompt = f"{adapter_positive_prompt} Additional visual/reference guidance: {extra_hints}"
+
+    adapter_negative_prompt = adapter_output.negative_prompt or negative
+
+
     spec = ImagePromptSpec(
         scene_description=scene,
         product_subject=subject,
@@ -95,8 +138,8 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
         composition=composition,
         lighting=visual_template.lighting or lighting_for_business(context.business_type),
         reserved_text_areas=text_layout.reserved_text_areas,
-        positive_prompt_en=positive,
-        negative_prompt_en=negative,
+        positive_prompt_en=adapter_positive_prompt,
+        negative_prompt_en=adapter_negative_prompt,
         target_width=int(ad_format_spec.get("width") or text_layout.canvas_width),
         target_height=int(ad_format_spec.get("height") or text_layout.canvas_height),
         aspect_ratio=str(ad_format_spec.get("aspect_ratio") or "1:1"),
@@ -119,6 +162,12 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
                 "color_palette_hint": visual_template.color_palette_hint,
             },
             "vision_pipeline_enabled": bool(reference_style_profile or product_preserve_spec or selected_reference_template),
+            "image_prompt_version": "v3",
+            "scene_plan": scene_plan.model_dump(mode="json"),
+            "prompt_quality_policy": policy.model_dump(mode="json"),
+            "prompt_adapter": adapter_output.model_dump(mode="json"),
+            "business_visual_preset_id": preset_id,
+            "beauty_subtype": scene_plan.business_type if scene_plan.business_type.startswith("beauty_") else None,
         },
     )
     return spec
@@ -126,6 +175,11 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
 
 def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> ImagePrompt:
     subject = spec.product_subject
+    v3_meta = {}
+    for key in ["image_prompt_version", "scene_plan", "prompt_quality_policy", "prompt_adapter", "business_visual_preset_id", "beauty_subtype"]:
+        if key in spec.metadata:
+            v3_meta[key] = spec.metadata[key]
+
     image_prompt = ImagePrompt(
         subject=subject,
         style="clean commercial advertising background",
@@ -135,7 +189,7 @@ def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> I
         negative_prompt=spec.negative_prompt_en or TEXT_NEGATIVE,
         scene=spec.scene_description,
         avoid_text=True,
-        metadata={"render_text_in_image": False, "tlfp_enabled": True},
+        metadata={"render_text_in_image": False, "tlfp_enabled": True, **v3_meta},
     )
     return image_prompt
 

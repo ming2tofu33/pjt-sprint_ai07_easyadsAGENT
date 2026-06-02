@@ -69,6 +69,16 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
         "reference_template_typography_hint": template_style_hint.get("typography_hint"),
         "source_node": "t2i_request_builder",
     }
+
+    # Merge existing metadata from image_prompt_spec
+    spec_meta = (state.get("image_prompt_spec") or {}).get("metadata") or {}
+    for key in ["image_prompt_version", "scene_plan", "prompt_quality_policy", "prompt_adapter", "business_visual_preset_id", "beauty_subtype"]:
+        if key in spec_meta:
+            metadata[key] = spec_meta[key]
+    if "visual_template_id" in spec_meta:
+        metadata["visual_template_id"] = spec_meta["visual_template_id"]
+    elif "business_visual_preset_id" in spec_meta:
+        metadata["visual_template_id"] = spec_meta["business_visual_preset_id"]
     input_image_paths = [path for path in [state.get("source_image_path")] if path]
     if input_image_paths:
         metadata["input_image_paths"] = input_image_paths

@@ -471,3 +471,13 @@ Conditional:
 5. After v3, rerun a small 3-case actual batch and compare before/after.
 6. Then proceed to SD3.5 actual comparison and FLUX lane comparison.
 ```
+
+---
+
+## 9. Reflection on ImagePrompt v3 Design
+
+본 v1 수동 평가 결과는 ImagePrompt v3 설계에 다음과 같이 구체적으로 반영되었습니다.
+
+- **Cafe (카페/디저트)**: v1 결과의 강점이었던 우측 상품 배치 및 좌측/상단 여백(clean negative space) 구조와 pastel premium mood를 그대로 보존하기 위해 `cafe_dessert_soft_premium` 프리셋을 정의하고 가짜 글자, 메뉴판, 간판 등이 생성되는 것을 방지하기 위해 텍스트 금지 정책을 한층 더 강화했습니다.
+- **Restaurant BBQ (고깃집)**: 가장 완성도가 높았던 우측의 고기 피사체(right-side grill hero)와 좌측의 어두운 여백(dark warm left negative space) 조화를 프리셋 `restaurant_bbq_warm_grill`로 공식 스펙화하고, 저가형 이벤트 전단지 느낌의 어수선한 도구 배치 및 가격 라벨 생성을 사전에 차단하도록 구성했습니다.
+- **Beauty (뷰티)**: v1의 높은 화질 대비 헤어살롱 광고로서 스킨케어 제품과 인물 얼굴에 과도하게 초점이 맞춰졌던 문제를 해결하기 위해, 단일 `beauty_salon` 처리 방식에서 `beauty_skincare`, `beauty_hair`, `beauty_nail`, `beauty_spa` 4대 하위 업종(subtype) 프리셋으로 완전히 분리하여 각각의 상황에 알맞은 주제(styling chair, mirror, massage setup 등) 및 인물 노출 제한 정책을 정의했습니다.
