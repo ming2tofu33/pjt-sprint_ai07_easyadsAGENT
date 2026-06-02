@@ -21,6 +21,22 @@ def render_prompt_for_engine(
 ) -> PromptRenderOutput:
     prompt = image_prompt if isinstance(image_prompt, ImagePrompt) else ImagePrompt(**image_prompt)
     metadata = dict(metadata or {})
+    prompt_adapter = prompt.metadata.get("prompt_adapter") if isinstance(prompt.metadata, dict) else None
+    if isinstance(prompt_adapter, dict):
+        adapter_prompt = prompt_adapter.get("prompt")
+        adapter_negative_prompt = prompt_adapter.get("negative_prompt")
+        if adapter_prompt:
+            return PromptRenderOutput(
+                engine=engine,
+                positive_prompt=adapter_prompt,
+                negative_prompt=adapter_negative_prompt or prompt.negative_prompt,
+                render_profile=render_profile,
+                render_notes=["Using ImagePrompt v3 prompt_adapter output."],
+                width=width,
+                height=height,
+                metadata={**metadata, "render_text_in_image": False, "prompt_adapter_used": True},
+            )
+
     base = ", ".join(
         [
             prompt.subject,
