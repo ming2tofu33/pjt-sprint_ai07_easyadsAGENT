@@ -69,6 +69,8 @@
 - `SafeAreaGate`: bbox-based reserved text area and product-zone overlap validation implemented.
 - `ResultNode`: final output payload and artifact reference assembly implemented.
 - `Vision Pipeline MVP`: PIL preprocess, reference style stub, product preserve stub, and optional graph route implemented.
+- `GenerationJob DB foundation`: Supabase/Postgres migration SQL and repository layer are prepared while `EASYADS_DB_BACKEND=memory` remains the default.
+- The DB repository foundation is not yet a full production rollout. Actual Supabase smoke, R2 asset upload, Modal job persistence, and production Auth/RLS enforcement are separate follow-up milestones.
 
 ## Not Implemented Yet
 
@@ -79,6 +81,8 @@
 - Actual reference-guided image generation beyond metadata prompt hints.
 - Unguarded actual GPT-image-2, SD3.5, or FLUX generation.
 - Static artifact serving or signed download URLs.
+- Production Supabase Auth/RLS enforcement.
+- R2/object storage upload.
 - Automatic regeneration loops.
 - Production-grade font packaging.
 - Real product occlusion detection.
