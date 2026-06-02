@@ -273,6 +273,161 @@ copy_generation_mode
 validation_questions
 ```
 
+### RevisionIntent Metadata Design
+
+This is a documentation-only contract for a future `RevisionIntentClassifier`.
+It does not add a runtime node, LLM call, graph route, or partial rerun implementation.
+
+The classifier should run only after an initial creative result exists and the user sends a multi-turn revision request, for example:
+
+```text
+"Make the headline shorter."
+"Move the text lower."
+"Make it feel more premium."
+"Regenerate only the background."
+"Change it to an Instagram Story ratio."
+```
+
+It should not run during first-pass generation, missing-field collection, copy candidate selection, or deterministic state update unless the graph has already produced a result that can be revised.
+
+Carries:
+
+```text
+latest_user_utterance
+messages
+conversation_summary
+result_payload
+context
+current_brief
+revision
+dirty_fields
+copy_generation_mode
+copy_required
+marketing_copy
+copy_spec
+text_layout_spec
+text_style_spec
+image_prompt_spec
+ad_format_spec
+layout_spec
+prompt_render_output
+t2i_request.metadata
+t2i_result.metadata
+background_validation_report
+safe_area_report
+readability_report
+final_validation_report
+artifact_refs
+```
+
+Output schema:
+
+```text
+RevisionIntentOutput
+```
+
+Recommended output shape:
+
+```json
+{
+  "intent": {
+    "intent_type": "copy_edit",
+    "operation": "shorten",
+    "raw_utterance": "Make the headline shorter.",
+    "confidence": 0.82
+  },
+  "patches": [
+    {
+      "target_spec": "copy_spec",
+      "field_path": "items[role=headline].text",
+      "old_value": "Fresh latte for your afternoon break",
+      "new_value": "Fresh latte today",
+      "dirty_fields": [
+        "marketing_copy",
+        "copy_spec",
+        "text_layout_spec",
+        "render_result",
+        "readability_report",
+        "final_validation_report",
+        "result_payload"
+      ]
+    }
+  ],
+  "should_rerun_from": "copy_spec_parser",
+  "requires_clarification": false,
+  "clarification_question": null,
+  "metadata": {
+    "source_node": "revision_intent_classifier",
+    "revision": 2,
+    "no_direct_state_mutation": true
+  }
+}
+```
+
+The future classifier must classify intent and propose patches only. It must not mutate `MarketingState` directly. A deterministic resolver should validate any patch, merge it into state, increment `revision`, and calculate the final dirty field set before a partial rerun is attempted.
+
+Supported intent types should start small:
+
+```text
+copy_edit
+tone_edit
+layout_edit
+text_style_edit
+background_regenerate
+format_change
+reference_change
+no_copy_toggle
+unknown
+```
+
+Dirty field examples:
+
+| User request | Expected dirty fields | Suggested rerun start |
+| --- | --- | --- |
+| Make the text bigger. | `text_layout_spec`, `render_result`, `readability_report`, `final_validation_report`, `result_payload` | `text_layout_planner` or `text_renderer` |
+| Change only the wording. | `marketing_copy`, `copy_spec`, `text_layout_spec`, `render_result`, `readability_report`, `final_validation_report`, `result_payload` | `copy_spec_parser` |
+| Make it more premium. | `tone_binding_output`, `marketing_copy`, `copy_spec`, `text_style_spec`, `image_prompt_spec`, `prompt_render_output`, `t2i_request`, `t2i_result`, `background_validation_report`, `render_result`, `final_validation_report`, `result_payload` | `tone_binding` |
+| Regenerate the background. | `image_prompt_spec`, `prompt_render_output`, `t2i_request`, `t2i_result`, `background_validation_report`, `render_result`, `safe_area_report`, `readability_report`, `final_validation_report`, `result_payload` | `image_prompt_planner` |
+| Change to Story ratio. | `ad_format_spec`, `layout_spec`, `text_layout_spec`, `image_prompt_spec`, `prompt_render_output`, `t2i_request`, `t2i_result`, `background_validation_report`, `render_result`, `final_validation_report`, `result_payload` | `format_planner` |
+
+Rerun start decision rules:
+
+```text
+If ad_format_spec or layout_spec is dirty, start at format_planner.
+If tone_binding_output is dirty, start at tone_binding.
+If marketing_copy is dirty but tone is unchanged, start at copy generation or copy_spec_parser depending on whether new copy must be generated.
+If copy_spec is dirty and image background does not need regeneration, start at text_layout_planner or text_renderer.
+If text_layout_spec changes only visual placement/size, prefer text_renderer when reserved_text_areas and background remain valid.
+If text_layout_spec changes reserved_text_areas, start no later than image_prompt_planner because the background may need new empty text space.
+If image_prompt_spec, prompt_render_output, t2i_request, or t2i_result is dirty, start at image_prompt_planner.
+If only readability_report, safe_area_report, final_validation_report, or result_payload is dirty, rerun the relevant validation/result node.
+If confidence is low or target fields are ambiguous, return requires_clarification=true instead of guessing.
+```
+
+RevisionIntent constraints:
+
+```text
+structured_output_only=true
+no_chain_of_thought=true
+include_reasoning_summary_only=true
+no_direct_state_mutation=true
+do_not_invent=true
+preserve_user_copy_when_requested=true
+do_not_regenerate_background_unless_required=true
+render_text_in_image=false
+```
+
+RevisionIntent explicit non-goals for v1:
+
+```text
+implement RevisionIntentClassifier runtime code
+call a real LLM for revisions
+mutate MarketingState from an LLM response
+implement partial rerun routing
+implement revision history persistence
+implement retry loops or auto-regeneration
+```
+
 ## Explicit Non-Goals
 
 This v1 work does not:
@@ -285,7 +440,8 @@ change copy generation behavior
 change image generation behavior
 change graph routing
 change fallback behavior
-implement RevisionIntentClassifier
+implement RevisionIntentClassifier runtime code
+implement partial rerun routing
 ```
 
 ## Test Contract
@@ -305,3 +461,5 @@ ImagePromptPlanner metadata prefers current TextLayoutSpec reserved areas over s
 copy generation metadata can use node-specific output schema names
 future VLM metadata carries image paths, reserved areas, final path, and expected constraints
 ```
+
+The RevisionIntent section is a documentation-only phase-5 contract. It intentionally has no runtime test until the classifier, deterministic patch resolver, and partial rerun router are implemented in a later phase.
