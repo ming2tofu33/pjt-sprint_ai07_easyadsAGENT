@@ -105,3 +105,7 @@ Generated reports under `data/logs/` and generated artifacts under `data/outputs
 ## GPT-image-2 Quality Batch v1
 
 `scripts/run_gpt_image2_quality_batch.py` runs a guarded GenerationJob API batch for GPT-image-2 actual quality review. Dry-run mode records planned cafe, restaurant, and beauty cases without external calls. Actual mode is blocked unless explicit T2I/GPT-image-2 env flags, `OPENAI_API_KEY`, `EASYADS_QUALITY_BATCH_CONFIRM=true`, and `--confirm-cost` are all present. The runner enforces one image per case and a maximum of six cases, writes safe JSON/Markdown reports under `data/logs/`, and leaves generated images under `data/outputs/` for manual review. Reports must not include raw API keys, base64 image data, or image bytes.
+
+## ImagePrompt v3
+
+ImagePrompt v3 introduces the `ScenePlan`, `PromptQualityPolicy`, and `EnginePromptAdapter` (with adapters for `gpt_image_2`, `sd35_large`, and `flux`). In v3, the beauty industry template has been split into four subtypes: `beauty_skincare`, `beauty_hair`, `beauty_nail`, and `beauty_spa` based on v1 manual quality review findings. All v3 metadata is merged cleanly into `ImagePromptSpec.metadata` and carried into `T2IRequest.metadata` without breaking backward compatibility.
