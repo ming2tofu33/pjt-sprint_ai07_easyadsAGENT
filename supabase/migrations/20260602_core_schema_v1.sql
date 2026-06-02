@@ -159,6 +159,8 @@ create table if not exists generation_outputs (
   thread_id uuid not null references chat_threads(id) on delete cascade,
   job_id uuid references generation_jobs(id) on delete set null,
   asset_id uuid references assets(id) on delete set null,
+  thumbnail_asset_id uuid references assets(id) on delete set null,
+  variant_index integer not null default 0,
   output_type text not null default 'final_image',
   result_payload jsonb not null default '{}'::jsonb,
   is_final boolean not null default false,

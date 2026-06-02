@@ -18,8 +18,11 @@ def reset_store(monkeypatch):
 def _row(public_job_id="job_db", status="queued", metadata=None, result_payload=None, error=None):
     now = datetime.now(timezone.utc)
     return {
+        "id": "job_uuid",
         "public_job_id": public_job_id,
+        "workspace_id": "workspace_uuid",
         "thread_id": "thread_uuid",
+        "requested_by": "demo_user",
         "status": status,
         "current_stage": "completed" if status == "done" else status,
         "progress_percent": 100 if status == "done" else 0,
@@ -43,6 +46,11 @@ def fake_db_transaction():
     yield object()
 
 
+def _patch_noop_side_effects(monkeypatch):
+    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: {"id": "thread_uuid"})
+    monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: {"id": "event_uuid", **kwargs})
+
+
 def test_memory_backend_uses_existing_store(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "memory")
     request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="queued_only")
@@ -56,6 +64,7 @@ def test_memory_backend_uses_existing_store(monkeypatch):
 def test_postgres_backend_create_uses_repository_path(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
+    _patch_noop_side_effects(monkeypatch)
     monkeypatch.setattr(service.workspace_repo, "ensure_demo_workspace", lambda user_id=None, connection=None: {"id": "workspace_uuid"})
     monkeypatch.setattr(
         service.chat_thread_repo,
@@ -89,6 +98,7 @@ def test_postgres_backend_create_uses_repository_path(monkeypatch):
 def test_postgres_backend_sanitizes_nested_metadata(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
+    _patch_noop_side_effects(monkeypatch)
     monkeypatch.setattr(service.workspace_repo, "ensure_demo_workspace", lambda user_id=None, connection=None: {"id": "workspace_uuid"})
     monkeypatch.setattr(service.chat_thread_repo, "create_chat_thread", lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_db"})
 
@@ -116,24 +126,40 @@ def test_postgres_backend_sanitizes_nested_metadata(monkeypatch):
 
 def test_postgres_backend_mark_done_and_failed_preserve_shape(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
+    _patch_noop_side_effects(monkeypatch)
     state = {"row": _row(public_job_id="job_db")}
-    monkeypatch.setattr(service.generation_job_repo, "get_generation_job_row", lambda job_id: state["row"])
+    monkeypatch.setattr(service.generation_job_repo, "get_generation_job_row", lambda job_id, connection=None: state["row"])
 
-    def fake_update(job_id, **fields):
-        metadata = fields.get("metadata") or state["row"]["metadata"]
+    def fake_mark_done(job_id, result_payload, output_path=None, metadata=None, connection=None):
+        metadata = metadata or state["row"]["metadata"]
         state["row"] = {
             **state["row"],
-            "status": fields.get("status", state["row"]["status"]),
-            "current_stage": fields.get("current_stage", state["row"]["current_stage"]),
-            "progress_percent": fields.get("progress_percent", state["row"]["progress_percent"]),
-            "output_path": fields.get("output_path", state["row"]["output_path"]),
-            "result_payload": fields.get("result_payload", state["row"]["result_payload"]),
-            "error": fields.get("error", state["row"]["error"]),
+            "status": "done",
+            "current_stage": "completed",
+            "progress_percent": 100,
+            "output_path": output_path,
+            "result_payload": result_payload,
+            "error": {},
             "metadata": metadata,
         }
         return state["row"]
 
-    monkeypatch.setattr(service.generation_job_repo, "update_generation_job_row", fake_update)
+    def fake_mark_failed(job_id, error, metadata=None, connection=None):
+        state["row"] = {
+            **state["row"],
+            "status": "failed",
+            "current_stage": "failed",
+            "error": error,
+            "metadata": metadata or state["row"]["metadata"],
+        }
+        return state["row"]
+
+    monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_done_row", fake_mark_done)
+    monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_failed_row", fake_mark_failed)
+    monkeypatch.setattr(service.asset_repo, "create_asset", lambda **kwargs: {"id": "asset_uuid", **kwargs})
+    monkeypatch.setattr(service.generation_output_repo, "create_generation_output", lambda **kwargs: {"id": "output_uuid", "asset_id": kwargs["asset_id"], **kwargs})
+    monkeypatch.setattr(service.generation_output_repo, "mark_output_final", lambda output_id, connection=None: {"id": output_id})
 
     done = service.mark_generation_job_done("job_db", result_payload={"schema_version": "result_artifact_v1"}, output_path="data/outputs/job_db/final_0.png")
     assert done.status == "done"

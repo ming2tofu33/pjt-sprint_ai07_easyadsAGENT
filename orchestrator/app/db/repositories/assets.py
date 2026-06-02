@@ -31,11 +31,33 @@ def create_asset(
             cur.execute(
                 """
                 insert into assets (
-                  workspace_id, thread_id, project_id, created_by, kind, storage_provider, bucket,
-                  object_key, mime_type, size_bytes, width, height, checksum_sha256, public_url,
-                  signed_url_expires_at, metadata
+                workspace_id, thread_id, project_id, created_by,
+                bucket, object_key, kind, storage_provider,
+                mime_type, size_bytes, width, height, checksum_sha256,
+                public_url, signed_url_expires_at, metadata
                 )
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                values (
+                %s, %s, %s, %s,
+                %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
+                %s, %s, %s::jsonb
+                )
+                on conflict (bucket, object_key)
+                do update set
+                workspace_id = excluded.workspace_id,
+                thread_id = excluded.thread_id,
+                project_id = excluded.project_id,
+                kind = excluded.kind,
+                storage_provider = excluded.storage_provider,
+                mime_type = excluded.mime_type,
+                size_bytes = excluded.size_bytes,
+                width = excluded.width,
+                height = excluded.height,
+                checksum_sha256 = excluded.checksum_sha256,
+                public_url = excluded.public_url,
+                signed_url_expires_at = excluded.signed_url_expires_at,
+                metadata = excluded.metadata,
+                updated_at = now()
                 returning *
                 """,
                 (

@@ -42,7 +42,7 @@ Repositories pass JSONB values through `jsonb_param(...)` and SQL `::jsonb` cast
 `orchestrator/app/generation_jobs/service.py` now branches by backend:
 
 - memory backend keeps the existing module-level store and response shape.
-- postgres backend creates or resolves a demo workspace, creates a chat thread, inserts a generation job row, and converts the row back into `GenerationJobResponse`.
+- postgres backend creates or resolves a demo workspace, creates a chat thread, inserts a generation job row, records lifecycle events, and converts rows back into `GenerationJobResponse`.
 
 The public API response shape is preserved:
 
@@ -65,6 +65,17 @@ If request context does not include workspace information, the postgres backend 
 1. `EASYADS_DEMO_WORKSPACE_ID` when configured.
 2. A created demo workspace when no demo id is configured.
 3. `EASYADS_DEMO_USER_ID` as `created_by`/`requested_by` when configured.
+
+## GenerationJob Persistence
+
+The postgres backend supports create/get/running/done/failed lifecycle operations:
+
+- create records a `queued` event and sets the thread active job.
+- running records a `running` event and updates progress/current stage.
+- done records a `done` event, creates a local-dev asset placeholder, creates a generation output row, marks it final, updates the thread final output, and records `output_created`.
+- failed records a `failed` event and marks the thread failed.
+
+Local artifact assets use `storage_provider=local_dev`, `bucket=local-dev`, and `metadata.public_serving=false`. R2 upload is still a follow-up milestone.
 
 ## Not Included
 

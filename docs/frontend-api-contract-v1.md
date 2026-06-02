@@ -255,7 +255,7 @@ Error responses:
 - Invalid create payload returns `invalid_generation_job_request`.
 
 Current limitations:
-- GenerationJob storage defaults to in-memory. A Postgres repository foundation is available behind `EASYADS_DB_BACKEND=postgres`, but production persistence rollout is still pending.
+- GenerationJob storage defaults to in-memory. A Postgres repository path is available behind `EASYADS_DB_BACKEND=postgres` for create/get/status lifecycle persistence.
 - Job state is not retained after server restart.
 - Worker and queue execution are not implemented.
 - `build_marketing_graph()` is not executed.
@@ -266,6 +266,7 @@ Current limitations:
 - `result_payload.download_path` is a repo-relative development path and is not a public URL.
 - `result_payload.download_url` and `result_payload.final_image_url` remain `null` until static serving or object storage is implemented.
 - The mock artifact contract is local-path based for development tracing only; public URL serving is a later milestone.
+- Postgres `assets` rows may track local development artifacts, but those rows do not create public URLs. FE must still rely only on `final_image_url`/`download_url` for preview and download.
 
 ## 8. Archive Response Contract
 
