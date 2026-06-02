@@ -109,3 +109,11 @@ Generated reports under `data/logs/` and generated artifacts under `data/outputs
 ## ImagePrompt v3
 
 ImagePrompt v3 introduces the `ScenePlan`, `PromptQualityPolicy`, and `EnginePromptAdapter` (with adapters for `gpt_image_2`, `sd35_large`, and `flux`). In v3, the beauty industry template has been split into four subtypes: `beauty_skincare`, `beauty_hair`, `beauty_nail`, and `beauty_spa` based on v1 manual quality review findings. All v3 metadata is merged cleanly into `ImagePromptSpec.metadata` and carried into `T2IRequest.metadata` without breaking backward compatibility.
+
+## Copy Visual Quality Loop v1
+
+- Added deterministic copy tone policies for cafe, restaurant BBQ, beauty subtypes, and generic businesses.
+- Added rule-based overlay validation for contrast, safe area complexity, and clipping without OCR/VLM/model calls.
+- Added `scripts/run_copy_visual_overlay_review.py` to create local overlay previews from existing batch artifacts only.
+- Runtime previews and reports are written under ignored `data/outputs` and `data/logs` paths and are not commit targets.
+- Beauty outputs need stronger plate/shadow defaults; cafe and restaurant outputs are more likely to work with short copy and controlled CTAs.
