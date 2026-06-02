@@ -20,7 +20,7 @@ Implemented routes:
 - `POST /api/v1/generation-jobs`
 - `GET /api/v1/generation-jobs/{job_id}`
 
-Archive skeleton support is partially prepared for MVP generated-result flows, but production persistence and complete frontend archive integration are not implemented. Usage and Settings routers are still out of scope. Persistence, object storage, background queues, unguarded image/model calls, and production serving remain out of scope. Guarded GPT-image-2 and SD3.5 lanes exist but are disabled by default and are not executed in CI/default tests.
+Archive skeleton support is partially prepared for MVP generated-result flows, but production persistence and complete frontend archive integration are not implemented. Usage and Settings routers are still out of scope. Persistence, object storage, background queues, unguarded image/model calls, and production serving remain out of scope. Guarded GPT-image-2, SD3.5, and FLUX lanes exist but are disabled by default and are not executed in CI/default tests.
 
 ## 3. Common Response Format
 
@@ -190,11 +190,13 @@ Run mode policy:
 - `graph_immediate`: currently degrades to `queued_only`; no graph execution happens.
 - `gpt_image_2_actual` / `gpt_image_2_smoke`: request the guarded GPT-image-2 lane.
 - `sd35_local` / `sd35_local_smoke`: request the guarded SD3.5 local lane.
+- `flux_local` / `flux_local_smoke`: request the guarded FLUX local lane.
 
 Actual generation lane policy:
 - All actual generation lanes are disabled by default.
 - GPT-image-2 requires `EASYADS_ENABLE_EXTERNAL_T2I=true`, `EASYADS_ENABLE_GPT_IMAGE_2=true`, and an `OPENAI_API_KEY`.
 - SD3.5 requires `EASYADS_ENABLE_SD35_LOCAL=true` plus local dependency/model availability.
+- FLUX requires `EASYADS_ENABLE_FLUX_LOCAL=true` plus local dependency/model availability.
 - CI/default tests do not call external APIs, load local models, download HF models, or require GPU.
 - If an actual lane is requested without the required guard conditions, the job returns `status: "failed"` with `error.error_code: "t2i_engine_not_enabled"` or `t2i_engine_unavailable`.
 
@@ -256,7 +258,7 @@ Current limitations:
 - Job state is not retained after server restart.
 - Worker and queue execution are not implemented.
 - `build_marketing_graph()` is not executed.
-- GPT-image-2 and SD3.5 lanes exist but are guarded and disabled by default; FLUX is still not implemented here.
+- GPT-image-2, SD3.5, and FLUX lanes exist but are guarded and disabled by default.
 - LLM/VLM/OCR calls are not made.
 - Output URL/static serving is not implemented.
 - `download_url` is `null`.
@@ -300,10 +302,9 @@ Contracts:
 - Logo upload and object storage integration for BrandKit
 - Authenticated user extraction for BrandKit
 - Production archive persistence and full archive frontend integration
-- Unguarded or default GPT-image-2 / SD3.5 calls
-- FLUX generation lane
+- Unguarded or default GPT-image-2 / SD3.5 / FLUX calls
 - LLM, VLM, OCR, rembg, or SAM calls
-- Production-grade manual smoke validation for GPT-image-2 / SD3.5
+- Production-grade manual smoke validation for GPT-image-2 / SD3.5 / FLUX
 
 ## 12. Reference Template Selection Flow
 

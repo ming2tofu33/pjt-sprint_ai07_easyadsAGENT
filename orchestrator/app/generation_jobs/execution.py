@@ -25,6 +25,14 @@ from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from orchestrator.app.t2i.execution import TEXT_FREE_NEGATIVE_PROMPT, build_generation_job_prompt, prompt_summary
 from orchestrator.app.t2i.settings import T2IEngineNotEnabledError, T2IEngineUnavailableError
 
+_EFFECTIVE_RUN_MODE_BY_ENGINE = {
+    "gpt_image_2": "gpt_image_2_actual",
+    "sd35_large": "sd35_local",
+    "flux": "flux_local",
+    "flux_local": "flux_local",
+}
+
+
 def get_generation_job_output_dir(job_id: str) -> Path:
     return get_job_output_dir(job_id)
 
@@ -174,7 +182,7 @@ def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest,
                 "job_id": job_id,
                 "engine": engine_name,
                 "requested_run_mode": request.run_mode,
-                "effective_run_mode": "gpt_image_2_actual" if engine_name == "gpt_image_2" else "sd35_local",
+                "effective_run_mode": _effective_run_mode(engine_name),
                 "execution_mode": "t2i_actual",
                 "latency_ms": generation.latency_ms,
                 "render_text_in_image": False,
@@ -201,9 +209,11 @@ def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest,
             output_path=_as_posix(final_path),
             metadata={
                 "requested_run_mode": request.run_mode,
-                "effective_run_mode": "gpt_image_2_actual" if engine_name == "gpt_image_2" else "sd35_local",
+                "effective_run_mode": _effective_run_mode(engine_name),
                 "execution_mode": "t2i_actual",
                 "engine": engine_name,
+                "engine_preference": engine_name,
+                "t2i_engine": engine_name,
                 "render_text_in_image": False,
                 "must_not_include_text": True,
             },
@@ -267,9 +277,11 @@ def _mark_t2i_failed(
         {"error_code": error_code, "message": message, "detail": detail},
         metadata={
             "requested_run_mode": run_mode,
-            "effective_run_mode": "gpt_image_2_actual" if engine_name == "gpt_image_2" else "sd35_local",
+            "effective_run_mode": _effective_run_mode(engine_name),
             "execution_mode": "t2i_actual_failed",
             "engine": engine_name,
+            "engine_preference": engine_name,
+            "t2i_engine": engine_name,
         },
     )
     if not failed:
@@ -279,3 +291,7 @@ def _mark_t2i_failed(
 
 def _as_posix(path: Path) -> str:
     return path.as_posix()
+
+
+def _effective_run_mode(engine_name: str) -> str:
+    return _EFFECTIVE_RUN_MODE_BY_ENGINE.get(engine_name, engine_name)

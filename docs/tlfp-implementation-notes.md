@@ -41,8 +41,8 @@
 - Visual templates add business-aware composition, lighting, color palette hints, reserved text area guidance, and negative prompt additions while preserving `must_not_include_text=true`.
 - `ResultNode` writes the final `result_payload`, including `output_path`, validation summary, and artifact references.
 - GenerationJob `mock_immediate` uses Result Artifact Contract v1 with `background_0.png`, `final_0.png`, `metadata.json`, `prompt.json`, `validation.json`, `copy.json`, `layout.json`, and `render_result.json`.
-- GenerationJob actual T2I lanes are guarded and disabled by default. `gpt_image_2_actual`/`gpt_image_2_smoke` require explicit external T2I and GPT-image-2 env flags plus an OpenAI API key. `sd35_local`/`sd35_local_smoke` require the SD3.5 local env flag and local dependency/model availability.
-- CI/default tests do not call GPT-image-2, load SD3.5, download HF models, or require GPU.
+- GenerationJob actual T2I lanes are guarded and disabled by default. `gpt_image_2_actual`/`gpt_image_2_smoke` require explicit external T2I and GPT-image-2 env flags plus an OpenAI API key. `sd35_local`/`sd35_local_smoke` require the SD3.5 local env flag and local dependency/model availability. `flux_local`/`flux_local_smoke` require the FLUX local env flag and local dependency/model availability.
+- CI/default tests do not call GPT-image-2, load SD3.5 or FLUX, download HF models, or require GPU.
 - `download_url` and `final_image_url` remain `null` because static serving/object storage is not implemented.
 - Vision Pipeline MVP preprocessing is available before validation when `source_image_path` or `reference_image_path` is supplied.
 - `ReferenceStyleProfile` can inform `ImagePromptPlannerNode` with deterministic palette and style hints.
@@ -94,7 +94,7 @@
 
 ## Manual T2I Smoke Reports
 
-`scripts/smoke_generation_job_t2i.py` creates JSON and Markdown reports under `data/logs/` for guarded GPT-image-2 and SD3.5 lanes. Dry-run mode never calls external APIs or loads local models. Non-dry-run smoke is blocked unless the explicit engine flags and credentials/model readiness are present. Reports store only boolean credential presence, prompt hash/preview, job id, safe result payload fields, and error summaries; raw API keys, HF tokens, base64 image data, and image bytes must not be written.
+`scripts/smoke_generation_job_t2i.py` creates JSON and Markdown reports under `data/logs/` for guarded GPT-image-2, SD3.5, and FLUX lanes. Dry-run mode never calls external APIs or loads local models. Non-dry-run smoke is blocked unless the explicit engine flags and credentials/model readiness are present. Reports store only boolean credential presence, prompt hash/preview, job id, safe result payload fields, and error summaries; raw API keys, HF tokens, base64 image data, and image bytes must not be written.
 
 Generated reports under `data/logs/` and generated artifacts under `data/outputs/` are runtime files and must not be committed.
 
@@ -117,3 +117,10 @@ ImagePrompt v3 introduces the `ScenePlan`, `PromptQualityPolicy`, and `EnginePro
 - Added `scripts/run_copy_visual_overlay_review.py` to create local overlay previews from existing batch artifacts only.
 - Runtime previews and reports are written under ignored `data/outputs` and `data/logs` paths and are not commit targets.
 - Beauty outputs need stronger plate/shadow defaults; cafe and restaurant outputs are more likely to work with short copy and controlled CTAs.
+
+## FLUX Lane Comparison v1
+
+- Added a guarded FLUX local lane with `flux_local` and `flux_local_smoke` run modes.
+- FLUX is disabled by default and performs no `diffusers`/`torch` import or model load until `EASYADS_ENABLE_FLUX_LOCAL=true` and an actual guarded execution path are used.
+- The FLUX engine stores safe metadata only: model id when using a public model reference, model source, local path presence, HF token presence, and generation parameters. Raw HF tokens and local absolute paths are not exposed.
+- `scripts/run_t2i_engine_comparison.py` writes dry-run or guarded actual comparison reports for GPT-image-2, SD3.5, and FLUX under `data/logs/`.

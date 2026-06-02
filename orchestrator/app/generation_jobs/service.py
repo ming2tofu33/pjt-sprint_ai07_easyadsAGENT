@@ -56,6 +56,8 @@ def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
         return "gpt_image_2_actual", "pending_t2i_actual"
     if run_mode in {"sd35_local", "sd35_local_smoke"}:
         return "sd35_local", "pending_t2i_actual"
+    if run_mode in {"flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
+        return "flux_local", "pending_t2i_actual"
     return "queued_only", "queued_only"
 
 
@@ -92,6 +94,8 @@ def create_generation_job(request: GenerationJobCreateRequest) -> GenerationJobR
             "user_plan": request.user_plan,
             "selected_reference_template_id": request.selected_reference_template_id,
             "ad_format": request.ad_format,
+            "engine_preference": _engine_preference(request.run_mode),
+            "t2i_engine": _engine_preference(request.run_mode),
             **_safe_request_metadata(request.metadata),
         },
     )
@@ -163,3 +167,13 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
 
 def reset_generation_job_store_for_tests() -> None:
     _GENERATION_JOBS.clear()
+
+
+def _engine_preference(run_mode: str) -> str | None:
+    if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
+        return "gpt_image_2"
+    if run_mode in {"sd35_local", "sd35_local_smoke"}:
+        return "sd35_large"
+    if run_mode in {"flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
+        return "flux"
+    return None
