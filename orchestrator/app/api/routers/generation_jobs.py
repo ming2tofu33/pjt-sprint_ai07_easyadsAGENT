@@ -46,6 +46,8 @@ def create_generation_job_route(request: GenerationJobCreateRequest) -> Generati
         job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_2")
     elif request.run_mode in {"sd35_local", "sd35_local_smoke"}:
         job = execute_generation_job_t2i(job.job_id, request, engine_name="sd35_large")
+    elif request.run_mode in {"flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
+        job = execute_generation_job_t2i(job.job_id, request, engine_name="flux")
     return GenerationJobCreateResponse(job=job)
 
 

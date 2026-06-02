@@ -2,8 +2,15 @@
 
 import { CheckCircle2, Download, Home, ImageOff, Info, RotateCcw, Share2, Sparkles } from "lucide-react";
 import type { ChatBrief, ChatFlowState } from "@/types/marketing";
-import { buildGenerationResultCopyText, isDownloadEnabled, resolveDownloadUrl, resolvePreviewImageUrl } from "@/lib/generation-result-utils";
-import { buildGeneratedAssetUrl } from "@/lib/generated-assets";
+import {
+  buildGenerationResultCopyText,
+  getGenerationResultNotice,
+  getResultArtifactPayload,
+  hasOnlyLocalArtifactPath,
+  isDownloadEnabled,
+  resolveDownloadUrl,
+  resolvePreviewImageUrl
+} from "@/lib/generation-result-utils";
 import type { CreativeTone } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { StepHeader } from "./StepHeader";
@@ -42,10 +49,10 @@ function resolveBriefImageUrl(path: string | null | undefined) {
   if (!path) {
     return null;
   }
-  if (/^https?:\/\//.test(path) || path.startsWith("/")) {
+  if (/^https?:\/\//.test(path) || path.startsWith("/api/") || path.startsWith("/generated/")) {
     return path;
   }
-  return buildGeneratedAssetUrl(path);
+  return null;
 }
 
 function creativeToneFromBrief(brief: ChatBrief): CreativeTone {
@@ -89,13 +96,18 @@ export function GenerationCompleteStep({
 }: GenerationCompleteStepProps) {
   const brief = state.brief;
   const generatedJob = state.generationJob ?? null;
+  const resultPayload = getResultArtifactPayload(generatedJob);
+  const resultNotice = getGenerationResultNotice(generatedJob);
   const generatedImageUrl =
     resolvePreviewImageUrl(generatedJob) ??
     resolveBriefImageUrl(brief?.finalImagePath);
   const downloadUrl = resolveDownloadUrl(generatedJob);
   const canDownload = isDownloadEnabled(generatedJob);
-  const debugFinalPath = generatedJob?.result_payload?.final_image_path ?? generatedJob?.output_path ?? brief?.finalImagePath ?? null;
+  const debugFinalPath = resultPayload?.final_image_path ?? resultPayload?.download_path ?? generatedJob?.output_path ?? brief?.finalImagePath ?? null;
+  const hasLocalOnlyArtifact = hasOnlyLocalArtifactPath(resultPayload);
+  const isDevelopment = process.env.NODE_ENV !== "production";
   const hasResultContext = Boolean(brief || generatedJob);
+  const isDoneWithoutPublicUrl = generatedJob?.status === "done" && !generatedImageUrl;
   const resultChips = brief
     ? [
         state.inferredContext.businessType,
@@ -142,13 +154,23 @@ export function GenerationCompleteStep({
       <StepHeader title="GENERATED RESULTS" canGoBack onBack={onGoHome} />
 
       <header className={styles.resultsHeader}>
-        <h1>{generatedImageUrl ? "찰떡 광고 시안이 완성됐어요" : hasResultContext ? "이미지 생성이 완료되지 않았어요" : "생성된 시안이 아직 없어요"}</h1>
+        <h1>
+          {generatedImageUrl
+            ? "찰떡 광고 시안이 완성됐어요"
+            : isDoneWithoutPublicUrl
+              ? "광고 시안 생성은 완료됐어요"
+              : hasResultContext
+                ? "이미지 생성이 진행 중이거나 표시할 수 없어요"
+                : "생성된 시안이 아직 없어요"}
+        </h1>
         <p>
           {generatedImageUrl
             ? "실제 생성된 결과만 먼저 보여드려요."
-            : hasResultContext
-              ? "브리프나 생성 작업은 준비됐지만 표시할 실제 이미지가 없어요. public preview URL 연결 상태를 확인해주세요."
-              : "대화로 광고를 생성하면 실제 결과와 선택한 문구가 여기에 표시됩니다."}
+            : isDoneWithoutPublicUrl
+              ? "생성 결과는 준비됐지만, 현재 브라우저에서 표시 가능한 이미지 URL이 아직 연결되지 않았어요."
+              : hasResultContext
+                ? "브리프나 생성 작업은 준비됐지만 표시할 실제 이미지가 없어요. public preview URL 연결 상태를 확인해주세요."
+                : "대화로 광고를 생성하면 실제 결과와 선택한 문구가 여기에 표시됩니다."}
         </p>
         {resultChips.length > 0 ? (
           <div className={styles.resultChips} aria-label="광고 결과 태그">
@@ -184,12 +206,28 @@ export function GenerationCompleteStep({
         {generatedImageUrl
           ? "이 결과는 이번 브라우저 세션의 보관함에 자동 저장됐어요."
           : hasResultContext
-            ? "이미지가 없어 이번 결과는 세션 보관함에 저장하지 않았어요."
+            ? "브라우저에서 표시 가능한 이미지 URL이 없어 이번 결과는 세션 보관함 카드로 저장하지 않았어요."
             : "아직 생성된 결과가 없어 보관함에 저장된 항목도 없어요."}
       </p>
 
-      {!generatedImageUrl && debugFinalPath ? (
-        <p className={styles.savedNotice}>생성 결과 경로는 준비되었습니다. Public download URL은 아직 연결되지 않았습니다: {debugFinalPath}</p>
+      {generatedJob ? (
+        <p className={styles.savedNotice} data-result-notice-level={resultNotice.level}>
+          <Info size={18} aria-hidden="true" />
+          {resultNotice.message}
+        </p>
+      ) : null}
+
+      {!generatedImageUrl && hasLocalOnlyArtifact ? (
+        <p className={styles.savedNotice}>
+          Generation is complete, but a browser-displayable image URL is not connected yet. Download becomes available when an image URL is connected.
+        </p>
+      ) : null}
+
+      {isDevelopment && debugFinalPath ? (
+        <details className={styles.savedNotice}>
+          <summary>Debug artifact details</summary>
+          <span>{debugFinalPath}</span>
+        </details>
       ) : null}
 
       {editActions.length > 0 ? (
@@ -230,17 +268,19 @@ export function GenerationCompleteStep({
               <Download size={16} aria-hidden="true" />
               세션 보관함에서 보기
             </button>
-            <button
-              className={styles.textButton}
-              disabled={!canDownload}
-              type="button"
-              title={canDownload ? undefined : "이미지는 생성되었지만 public download URL은 아직 연결되지 않았습니다."}
-              onClick={() => downloadUrl && window.open(downloadUrl, "_blank", "noopener,noreferrer")}
-            >
-              <Download size={16} aria-hidden="true" />
-              다운로드
-            </button>
           </>
+        ) : null}
+        {generatedJob ? (
+          <button
+            className={styles.textButton}
+            disabled={!canDownload}
+            type="button"
+            title={canDownload ? undefined : "이미지는 생성되었지만 public download URL은 아직 연결되지 않았습니다."}
+            onClick={() => downloadUrl && window.open(downloadUrl, "_blank", "noopener,noreferrer")}
+          >
+            <Download size={16} aria-hidden="true" />
+            {canDownload ? "다운로드" : "다운로드 준비 전"}
+          </button>
         ) : null}
         {generatedJob ? (
           <button className={styles.textButton} type="button" onClick={() => navigator.clipboard?.writeText(buildGenerationResultCopyText(generatedJob))}>

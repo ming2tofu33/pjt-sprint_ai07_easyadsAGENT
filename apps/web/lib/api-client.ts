@@ -107,38 +107,47 @@ export interface GenerationProgress {
 }
 
 export interface ResultArtifactPayload {
-  schema_version?: string;
+  schema_version?: "result_artifact_v1" | string;
   job_id?: string;
   output_dir?: string | null;
   background_image_path?: string | null;
   final_image_path?: string | null;
+  download_path?: string | null;
   metadata_path?: string | null;
   prompt_path?: string | null;
   validation_path?: string | null;
   copy_path?: string | null;
   layout_path?: string | null;
   render_result_path?: string | null;
-  download_path?: string | null;
-  download_url?: string | null;
   final_image_url?: string | null;
-  prompt_summary?: Record<string, unknown>;
-  validation_summary?: Record<string, unknown>;
-  copy_summary?: Record<string, unknown>;
-  layout_summary?: Record<string, unknown>;
+  download_url?: string | null;
+  preview_image_url?: string | null;
+  copy_visual_preview_url?: string | null;
+  copy_visual_preview_path?: string | null;
+  prompt_summary?: Record<string, unknown> | null;
+  validation_summary?: Record<string, unknown> | null;
+  copy_summary?: Record<string, unknown> | null;
+  layout_summary?: Record<string, unknown> | null;
+  render_summary?: Record<string, unknown> | null;
   has_text_overlay?: boolean;
   engine?: string;
   render_mode?: string;
+  [key: string]: unknown;
 }
 
 export interface GenerationJob {
   job_id: string;
   thread_id?: string | null;
   status: GenerationJobStatus;
-  progress: GenerationProgress;
+  progress?: GenerationProgress;
+  progress_percent?: number | null;
+  current_stage?: string | null;
   output_path?: string | null;
   result_payload?: ResultArtifactPayload | null;
   error?: unknown;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface GenerationJobResponse {

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from orchestrator.app.api.schemas.generation_jobs import (
@@ -11,8 +13,37 @@ from orchestrator.app.api.schemas.generation_jobs import (
     GenerationProgress,
 )
 from orchestrator.app.api.schemas.common import ErrorResponse
+from orchestrator.app.db import settings as db_settings
+from orchestrator.app.db.repositories import assets as asset_repo
+from orchestrator.app.db.repositories import chat_threads as chat_thread_repo
+from orchestrator.app.db.repositories import generation_job_events as generation_job_event_repo
+from orchestrator.app.db.repositories import generation_jobs as generation_job_repo
+from orchestrator.app.db.repositories import generation_outputs as generation_output_repo
+from orchestrator.app.db.repositories import workspaces as workspace_repo
+from orchestrator.app.db.session import db_transaction
+from orchestrator.app.storage import settings as storage_settings
+from orchestrator.app.storage.errors import AssetStorageError
+from orchestrator.app.storage.object_keys import build_generation_object_key
+from orchestrator.app.storage.r2_service import upload_file_to_r2
 
 _GENERATION_JOBS: dict[str, GenerationJobResponse] = {}
+_BLOCKED_METADATA_KEYS = {
+    "api_key",
+    "openai_api_key",
+    "hf_token",
+    "huggingface_token",
+    "token",
+    "authorization",
+    "password",
+    "secret",
+    "service_role_key",
+}
+_RESERVED_METADATA_KEYS = {
+    "requested_run_mode",
+    "effective_run_mode",
+    "execution_mode",
+    "user_input_preview",
+}
 
 DEFAULT_STAGE_ORDER = [
     "briefing",
@@ -38,13 +69,34 @@ def _preview_user_input(value: str, max_length: int = 120) -> str:
 def _safe_request_metadata(metadata: dict | None) -> dict:
     if not metadata:
         return {}
-    blocked = {"api_key", "openai_api_key", "hf_token", "huggingface_token", "token"}
-    reserved = {"requested_run_mode", "effective_run_mode", "execution_mode", "user_input_preview"}
+    sanitized = _sanitize_metadata_value(metadata)
+    if not isinstance(sanitized, dict):
+        return {}
     return {
         key: value
-        for key, value in metadata.items()
-        if key.lower() not in blocked and key not in reserved
+        for key, value in sanitized.items()
+        if str(key).lower() not in _RESERVED_METADATA_KEYS
     }
+
+
+def _sanitize_metadata_value(value):
+    if isinstance(value, dict):
+        output = {}
+        for key, item in value.items():
+            normalized_key = str(key).lower()
+            if normalized_key in _BLOCKED_METADATA_KEYS:
+                continue
+            if normalized_key in _RESERVED_METADATA_KEYS:
+                continue
+            output[key] = _sanitize_metadata_value(item)
+        return output
+    if isinstance(value, list):
+        return [_sanitize_metadata_value(item) for item in value[:50]]
+    if isinstance(value, str):
+        if len(value) > 500:
+            return f"{value[:497]}..."
+        return value
+    return value
 
 
 def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
@@ -56,10 +108,18 @@ def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
         return "gpt_image_2_actual", "pending_t2i_actual"
     if run_mode in {"sd35_local", "sd35_local_smoke"}:
         return "sd35_local", "pending_t2i_actual"
+    if run_mode in {"flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
+        return "flux_local", "pending_t2i_actual"
     return "queued_only", "queued_only"
 
 
 def create_generation_job(request: GenerationJobCreateRequest) -> GenerationJobResponse:
+    if _use_postgres_backend():
+        return _create_generation_job_db(request)
+    return _create_generation_job_memory(request)
+
+
+def _create_generation_job_memory(request: GenerationJobCreateRequest) -> GenerationJobResponse:
     now = _now_iso()
     effective_run_mode, execution_mode = _initial_run_mode_metadata(request.run_mode)
     job = GenerationJobResponse(
@@ -92,6 +152,8 @@ def create_generation_job(request: GenerationJobCreateRequest) -> GenerationJobR
             "user_plan": request.user_plan,
             "selected_reference_template_id": request.selected_reference_template_id,
             "ad_format": request.ad_format,
+            "engine_preference": _engine_preference(request.run_mode),
+            "t2i_engine": _engine_preference(request.run_mode),
             **_safe_request_metadata(request.metadata),
         },
     )
@@ -100,10 +162,15 @@ def create_generation_job(request: GenerationJobCreateRequest) -> GenerationJobR
 
 
 def get_generation_job(job_id: str) -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        return _get_generation_job_db(job_id)
     return _GENERATION_JOBS.get(job_id)
 
 
 def update_generation_job(job_id: str, **fields) -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        return _update_generation_job_db(job_id, **fields)
+
     existing = get_generation_job(job_id)
     if not existing:
         return None
@@ -113,6 +180,8 @@ def update_generation_job(job_id: str, **fields) -> GenerationJobResponse | None
 
 
 def mark_generation_job_running(job_id: str, stage: str = "running") -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        return _mark_generation_job_running_db(job_id, stage)
     existing = get_generation_job(job_id)
     if not existing:
         return None
@@ -126,6 +195,8 @@ def mark_generation_job_done(
     output_path: str | None = None,
     metadata: dict | None = None,
 ) -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        return _mark_generation_job_done_db(job_id, result_payload, output_path=output_path, metadata=metadata)
     existing = get_generation_job(job_id)
     if not existing:
         return None
@@ -143,6 +214,8 @@ def mark_generation_job_done(
 
 
 def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None = None) -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        return _mark_generation_job_failed_db(job_id, error, metadata=metadata)
     existing = get_generation_job(job_id)
     if not existing:
         return None
@@ -163,3 +236,567 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
 
 def reset_generation_job_store_for_tests() -> None:
     _GENERATION_JOBS.clear()
+
+
+def _engine_preference(run_mode: str) -> str | None:
+    if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
+        return "gpt_image_2"
+    if run_mode in {"sd35_local", "sd35_local_smoke"}:
+        return "sd35_large"
+    if run_mode in {"flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
+        return "flux"
+    return None
+
+def _model_provider_for_run_mode(run_mode: str) -> str | None:
+    if run_mode in {"mock_immediate"}:
+        return "mock"
+    if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
+        return "openai"
+    if run_mode in {"sd35_local", "sd35_local_smoke", "flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
+        return "local"
+    return None
+
+
+def _model_name_for_run_mode(run_mode: str) -> str | None:
+    return _engine_preference(run_mode)
+
+def _use_postgres_backend() -> bool:
+    return db_settings.get_db_backend() == "postgres"
+
+
+def _create_generation_job_db(request: GenerationJobCreateRequest) -> GenerationJobResponse:
+    now = _now_iso()
+    effective_run_mode, execution_mode = _initial_run_mode_metadata(request.run_mode)
+    user_id = request.user_id or db_settings.get_demo_user_id()
+    public_job_id = f"job_{uuid4().hex}"
+    prompt_preview = _preview_user_input(request.user_input)
+    request_payload = _request_payload_summary(request)
+    with db_transaction() as conn:
+        workspace = workspace_repo.ensure_demo_workspace(user_id=user_id, connection=conn)
+        thread = chat_thread_repo.create_chat_thread(
+            workspace_id=str(workspace["id"]),
+            created_by=user_id,
+            title=_preview_user_input(request.user_input, max_length=80),
+            brand_kit_id=request.brand_kit_id,
+            connection=conn,
+        )
+        metadata = {
+            "requested_run_mode": request.run_mode,
+            "effective_run_mode": effective_run_mode,
+            "execution_mode": execution_mode,
+            "user_input_preview": prompt_preview,
+            "brand_kit_id": request.brand_kit_id,
+            "user_id": request.user_id,
+            "entry_mode": request.entry_mode,
+            "copy_generation_mode": request.copy_generation_mode,
+            "user_plan": request.user_plan,
+            "selected_reference_template_id": request.selected_reference_template_id,
+            "ad_format": request.ad_format,
+            "workspace_id": str(workspace["id"]),
+            "public_thread_id": thread.get("public_thread_id"),
+            "engine_preference": _engine_preference(request.run_mode),
+            "t2i_engine": _engine_preference(request.run_mode),
+            **_safe_request_metadata(request.metadata),
+        }
+        row = generation_job_repo.create_generation_job_row(
+            public_job_id=public_job_id,
+            workspace_id=str(workspace["id"]),
+            thread_id=str(thread["id"]) if thread.get("id") else None,
+            requested_by=user_id,
+            status="queued",
+            current_stage="queued",
+            progress_percent=0,
+            selected_reference_template_id=request.selected_reference_template_id,
+            output_path=None,
+            result_payload=None,
+            error=None,
+            metadata=metadata,
+            run_mode=request.run_mode,
+            engine=_engine_preference(request.run_mode),
+            model_provider=_model_provider_for_run_mode(request.run_mode),
+            model_name=_model_name_for_run_mode(request.run_mode),
+            prompt_hash=hashlib.sha256(request.user_input.encode("utf-8")).hexdigest(),
+            prompt_preview=prompt_preview,
+            request_payload=request_payload,
+            connection=conn,
+        )
+        chat_thread_repo.update_chat_thread_status(
+            thread.get("public_thread_id") or str(thread["id"]),
+            status="generating",
+            active_job_id=str(row["id"]) if row.get("id") else None,
+            connection=conn,
+        )
+        _record_generation_job_event_db(row, "queued", payload={"run_mode": request.run_mode}, connection=conn)
+    response = _job_response_from_db_row(row)
+    if response:
+        return response
+    return GenerationJobResponse(
+        job_id=public_job_id,
+        thread_id=thread.get("public_thread_id"),
+        user_id=request.user_id,
+        brand_kit_id=request.brand_kit_id,
+        status="queued",
+        progress=GenerationProgress(progress_percent=0, current_stage="queued", stage_order=DEFAULT_STAGE_ORDER),
+        selected_reference_template_id=request.selected_reference_template_id,
+        output_path=None,
+        result_payload=None,
+        error=None,
+        created_at=now,
+        updated_at=now,
+        metadata=metadata,
+    )
+
+
+def _db_update_fields(existing: GenerationJobResponse, fields: dict) -> dict:
+    metadata = fields.get("metadata", existing.metadata)
+    if fields.get("metadata") is not None:
+        metadata = fields["metadata"]
+    progress = fields.get("progress", existing.progress)
+    error = fields.get("error", existing.error)
+    return {
+        "status": fields.get("status", existing.status),
+        "current_stage": progress.current_stage,
+        "progress_percent": progress.progress_percent,
+        "output_path": fields.get("output_path", existing.output_path),
+        "result_payload": fields.get("result_payload", existing.result_payload),
+        "error": error.model_dump(mode="json") if hasattr(error, "model_dump") else error,
+        "metadata": metadata,
+    }
+
+
+def _get_generation_job_db(job_id: str) -> GenerationJobResponse | None:
+    row = generation_job_repo.get_generation_job_row(job_id)
+    return _job_response_from_db_row(row)
+
+
+def _update_generation_job_db(job_id: str, **fields) -> GenerationJobResponse | None:
+    existing = get_generation_job(job_id)
+    if not existing:
+        return None
+    row_fields = _db_update_fields(existing, fields)
+    row = generation_job_repo.update_generation_job_row(job_id, **row_fields)
+    return _job_response_from_db_row(row)
+
+
+def _mark_generation_job_running_db(job_id: str, stage: str) -> GenerationJobResponse | None:
+    with db_transaction() as conn:
+        row = generation_job_repo.mark_generation_job_running_row(job_id, current_stage=stage, connection=conn)
+        if not row:
+            return None
+        _record_generation_job_event_db(row, "running", message=stage, payload={"current_stage": stage}, connection=conn)
+        if row.get("thread_id"):
+            chat_thread_repo.update_chat_thread_status(
+                _thread_public_or_internal(row),
+                status="generating",
+                active_job_id=str(row["id"]) if row.get("id") else None,
+                connection=conn,
+            )
+    return _job_response_from_db_row(row)
+
+
+def _mark_generation_job_done_db(
+    job_id: str,
+    result_payload: dict,
+    output_path: str | None = None,
+    metadata: dict | None = None,
+) -> GenerationJobResponse | None:
+    with db_transaction() as conn:
+        existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if not existing:
+            return None
+        merged_metadata = {**(existing.get("metadata") or {}), **(metadata or {})}
+        final_path = _resolve_final_artifact_path(result_payload, output_path)
+        row = generation_job_repo.mark_generation_job_done_row(
+            job_id,
+            result_payload=result_payload,
+            output_path=final_path,
+            metadata=merged_metadata,
+            connection=conn,
+        )
+        if not row:
+            return None
+
+        try:
+            output, row = _create_output_records_for_done_job_db(row, result_payload, final_path, connection=conn)
+        except AssetStorageError as exc:
+            return _mark_generation_job_failed_from_row_db(
+                row,
+                {
+                    "error_code": "r2_upload_failed",
+                    "message": "R2 upload failed.",
+                    "detail": str(exc),
+                },
+                metadata={**merged_metadata, "storage_warning": "r2_upload_failed_required"},
+                connection=conn,
+            )
+
+        _record_generation_job_event_db(
+            row,
+            "done",
+            payload={
+                "output_path": final_path,
+                "storage_provider": (row.get("result_payload") or {}).get("storage_provider"),
+                "final_image_url_present": bool((row.get("result_payload") or {}).get("final_image_url")),
+                "download_url_present": bool((row.get("result_payload") or {}).get("download_url")),
+            },
+            connection=conn,
+        )
+        chat_thread_repo.update_chat_thread_status(
+            _thread_public_or_internal(row),
+            status="completed",
+            active_job_id=None,
+            final_output_id=str(output["id"]) if output and output.get("id") else None,
+            connection=conn,
+        )
+
+        if output:
+            _record_generation_job_event_db(
+                row,
+                "output_created",
+                payload={
+                    "output_id": _string_or_none(output.get("id")),
+                    "asset_id": _string_or_none(output.get("asset_id")),
+                },
+                connection=conn,
+            )
+    return _job_response_from_db_row(row)
+
+
+def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | None = None) -> GenerationJobResponse | None:
+    error_payload = {
+        "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
+        "message": str(error.get("message") or "Generation job execution failed."),
+        "detail": error.get("detail"),
+    }
+    with db_transaction() as conn:
+        existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if not existing:
+            return None
+        merged_metadata = {**(existing.get("metadata") or {}), **(metadata or {})}
+        row = generation_job_repo.mark_generation_job_failed_row(job_id, error_payload, metadata=merged_metadata, connection=conn)
+        if not row:
+            return None
+        _record_generation_job_event_db(
+            row,
+            "failed",
+            message=error_payload["message"],
+            payload={"error_code": error_payload["error_code"], "message": error_payload["message"]},
+            connection=conn,
+        )
+        chat_thread_repo.update_chat_thread_status(
+            _thread_public_or_internal(row),
+            status="failed",
+            active_job_id=None,
+            connection=conn,
+        )
+    return _job_response_from_db_row(row)
+
+
+def _create_output_records_for_done_job_db(
+    row: dict,
+    result_payload: dict,
+    final_path: str | None,
+    connection: object,
+) -> tuple[dict | None, dict]:
+    if not final_path or not row.get("workspace_id") or not row.get("thread_id") or not row.get("id"):
+        return None, row
+
+    effective_result_payload = dict(result_payload or {})
+    asset = None
+    if _should_attempt_r2_upload():
+        _record_generation_job_event_db(
+            row,
+            "r2_upload_started",
+            payload={"final_path": final_path, "upload_required": storage_settings.is_r2_upload_required()},
+            connection=connection,
+        )
+        try:
+            asset, effective_result_payload, row = _upload_final_asset_to_r2(
+                row,
+                effective_result_payload,
+                final_path,
+                connection=connection,
+            )
+            _record_generation_job_event_db(
+                row,
+                "r2_upload_completed",
+                payload={
+                    "bucket": asset.get("bucket"),
+                    "object_key": asset.get("object_key"),
+                    "url_mode": effective_result_payload.get("url_mode"),
+                    "final_image_url_present": bool(effective_result_payload.get("final_image_url")),
+                    "download_url_present": bool(effective_result_payload.get("download_url")),
+                },
+                connection=connection,
+            )
+        except AssetStorageError:
+            _record_generation_job_event_db(
+                row,
+                "r2_upload_failed",
+                payload={
+                    "error_code": "r2_upload_failed",
+                    "message": "R2 upload failed.",
+                    "fallback": "local_dev",
+                    "upload_required": storage_settings.is_r2_upload_required(),
+                },
+                connection=connection,
+            )
+            if storage_settings.is_r2_upload_required():
+                raise
+            asset = None
+            effective_result_payload["final_image_url"] = None
+            effective_result_payload["download_url"] = None
+            row = generation_job_repo.update_generation_job_row(
+                str(row["public_job_id"]),
+                result_payload=effective_result_payload,
+                metadata={**(row.get("metadata") or {}), "storage_warning": "r2_upload_failed_local_dev_fallback"},
+                connection=connection,
+            ) or row
+
+    if asset is None:
+        asset = asset_repo.create_asset(
+            workspace_id=str(row["workspace_id"]),
+            thread_id=str(row["thread_id"]),
+            created_by=row.get("requested_by"),
+            bucket="local-dev",
+            object_key=final_path,
+            kind="result",
+            storage_provider="local_dev",
+            metadata={
+                "source": "generation_job_done",
+                "serving_status": "not_public",
+                "public_serving": False,
+            },
+            connection=connection,
+        )
+
+    if asset:
+        effective_result_payload = {
+            **effective_result_payload,
+            "final_asset_id": _string_or_none(asset.get("id")),
+            "storage_provider": asset.get("storage_provider") or "local_dev",
+            "bucket": asset.get("bucket"),
+            "object_key": asset.get("object_key"),
+            "url_mode": effective_result_payload.get("url_mode"),
+            "final_image_url": effective_result_payload.get("final_image_url"),
+            "download_url": effective_result_payload.get("download_url"),
+        }
+        row = generation_job_repo.update_generation_job_row(
+            str(row["public_job_id"]),
+            result_payload=effective_result_payload,
+            connection=connection,
+        ) or row
+
+    output = generation_output_repo.create_generation_output(
+        workspace_id=str(row["workspace_id"]),
+        thread_id=str(row["thread_id"]),
+        job_id=str(row["id"]),
+        asset_id=str(asset["id"]),
+        variant_index=0,
+        is_final=False,
+        result_payload=effective_result_payload,
+        metadata={"result_payload_summary": _result_payload_summary(effective_result_payload)},
+        connection=connection,
+    )
+    final_output = generation_output_repo.mark_output_final(str(output["id"]), connection=connection)
+
+    if final_output:
+        return {**output, **final_output}, row
+    return output, row
+
+
+def _upload_final_asset_to_r2(
+    row: dict,
+    result_payload: dict,
+    final_path: str,
+    connection: object,
+) -> tuple[dict, dict, dict]:
+    workspace_id = str(row["workspace_id"])
+    public_thread_id = _thread_public_or_internal(row)
+    public_job_id = str(row["public_job_id"])
+    filename = Path(final_path).name or "final_0.png"
+    object_key = build_generation_object_key(
+        workspace_id=workspace_id,
+        thread_id=public_thread_id,
+        job_id=public_job_id,
+        filename=filename,
+    )
+    uploaded = upload_file_to_r2(
+        local_path=final_path,
+        object_key=object_key,
+        metadata={
+            "job_id": public_job_id,
+            "workspace_id": workspace_id,
+            "thread_id": public_thread_id,
+            "asset_kind": "result",
+        },
+    )
+    asset = asset_repo.create_asset(
+        workspace_id=workspace_id,
+        thread_id=str(row["thread_id"]),
+        created_by=row.get("requested_by"),
+        bucket=uploaded.bucket,
+        object_key=uploaded.object_key,
+        kind="result",
+        storage_provider=uploaded.storage_provider,
+        mime_type=uploaded.mime_type,
+        size_bytes=uploaded.size_bytes,
+        width=uploaded.width,
+        height=uploaded.height,
+        public_url=uploaded.public_url,
+        signed_url_expires_at=uploaded.signed_url_expires_at,
+        metadata=uploaded.metadata,
+        connection=connection,
+    )
+    effective_result_payload = {
+        **result_payload,
+        "final_asset_id": _string_or_none(asset.get("id")),
+        "storage_provider": uploaded.storage_provider,
+        "bucket": uploaded.bucket,
+        "object_key": uploaded.object_key,
+        "url_mode": uploaded.metadata.get("url_mode"),
+        "final_image_url": uploaded.final_image_url,
+        "download_url": uploaded.download_url,
+        "signed_url_expires_at": uploaded.signed_url_expires_at,
+    }
+    updated_row = generation_job_repo.update_generation_job_row(
+        public_job_id,
+        result_payload=effective_result_payload,
+        connection=connection,
+    ) or row
+    return asset, effective_result_payload, updated_row
+
+
+def _record_generation_job_event_db(
+    row: dict,
+    event_type: str,
+    message: str | None = None,
+    payload: dict | None = None,
+    connection: object | None = None,
+) -> dict | None:
+    if not row.get("workspace_id") or not row.get("thread_id") or not row.get("id"):
+        return None
+    return generation_job_event_repo.record_generation_job_event(
+        workspace_id=str(row["workspace_id"]),
+        thread_id=str(row["thread_id"]),
+        job_id=str(row["id"]),
+        event_type=event_type,
+        message=message,
+        payload=payload or {},
+        connection=connection,
+    )
+
+
+def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
+    if not row:
+        return None
+    metadata = row.get("metadata") or {}
+    error = row.get("error")
+    return GenerationJobResponse(
+        job_id=str(row.get("public_job_id")),
+        thread_id=metadata.get("public_thread_id") or _string_or_none(row.get("thread_id")),
+        user_id=metadata.get("user_id"),
+        brand_kit_id=metadata.get("brand_kit_id"),
+        status=row.get("status") or "queued",
+        progress=GenerationProgress(
+            progress_percent=int(row.get("progress_percent") or 0),
+            current_stage=str(row.get("current_stage") or "queued"),
+            estimated_seconds_remaining=None,
+            stage_order=DEFAULT_STAGE_ORDER,
+        ),
+        selected_reference_template_id=row.get("selected_reference_template_id"),
+        output_path=row.get("output_path"),
+        result_payload=row.get("result_payload"),
+        error=ErrorResponse(**error) if isinstance(error, dict) and error.get("error_code") else None,
+        created_at=_iso(row.get("created_at")),
+        updated_at=_iso(row.get("updated_at")),
+        metadata=metadata,
+    )
+
+
+def _iso(value) -> str:
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value or _now_iso())
+
+
+def _string_or_none(value) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _thread_public_or_internal(row: dict) -> str:
+    metadata = row.get("metadata") or {}
+    return str(metadata.get("public_thread_id") or row.get("thread_id"))
+
+
+def _should_attempt_r2_upload() -> bool:
+    return storage_settings.is_r2_upload_enabled()
+
+
+def _resolve_final_artifact_path(result_payload: dict, output_path: str | None) -> str | None:
+    if output_path:
+        return output_path
+    for key in ("final_image_path", "download_path"):
+        value = (result_payload or {}).get(key)
+        if value:
+            return str(value)
+    return None
+
+
+def _mark_generation_job_failed_from_row_db(
+    row: dict,
+    error: dict,
+    metadata: dict,
+    connection: object,
+) -> GenerationJobResponse | None:
+    error_payload = {
+        "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
+        "message": str(error.get("message") or "Generation job execution failed."),
+        "detail": error.get("detail"),
+    }
+    failed_row = generation_job_repo.mark_generation_job_failed_row(
+        str(row["public_job_id"]),
+        error_payload,
+        metadata=metadata,
+        connection=connection,
+    )
+    if not failed_row:
+        return None
+    _record_generation_job_event_db(
+        failed_row,
+        "failed",
+        message=error_payload["message"],
+        payload={"error_code": error_payload["error_code"], "message": error_payload["message"]},
+        connection=connection,
+    )
+    chat_thread_repo.update_chat_thread_status(
+        _thread_public_or_internal(failed_row),
+        status="failed",
+        active_job_id=None,
+        connection=connection,
+    )
+    return _job_response_from_db_row(failed_row)
+
+
+def _result_payload_summary(result_payload: dict) -> dict:
+    return {
+        "schema_version": result_payload.get("schema_version"),
+        "final_image_path": result_payload.get("final_image_path"),
+        "final_image_url": result_payload.get("final_image_url"),
+        "download_url": result_payload.get("download_url"),
+        "engine": result_payload.get("engine"),
+        "render_mode": result_payload.get("render_mode"),
+    }
+
+
+def _request_payload_summary(request: GenerationJobCreateRequest) -> dict:
+    return {
+        "entry_mode": request.entry_mode,
+        "run_mode": request.run_mode,
+        "ad_format": request.ad_format,
+        "copy_generation_mode": request.copy_generation_mode,
+        "selected_reference_template_id": request.selected_reference_template_id,
+        "user_plan": request.user_plan,
+        "user_input_preview": _preview_user_input(request.user_input),
+        "metadata": _safe_request_metadata(request.metadata),
+    }
