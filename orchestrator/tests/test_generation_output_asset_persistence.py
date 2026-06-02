@@ -48,6 +48,7 @@ def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
 
     monkeypatch.setattr(service.generation_job_repo, "get_generation_job_row", lambda job_id, connection=None: row)
     monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_done_row", mark_done)
+    monkeypatch.setattr(service.generation_job_repo, "update_generation_job_row", lambda job_id, connection=None, **fields: row.update(fields) or row)
     monkeypatch.setattr(service.asset_repo, "create_asset", lambda **kwargs: assets.append({"id": "asset_uuid", **kwargs}) or assets[-1])
     monkeypatch.setattr(
         service.generation_output_repo,
@@ -133,6 +134,7 @@ def test_mark_done_without_final_path_still_completes_thread(monkeypatch):
 
     monkeypatch.setattr(service.generation_job_repo, "get_generation_job_row", lambda job_id, connection=None: row)
     monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_done_row", mark_done)
+    monkeypatch.setattr(service.generation_job_repo, "update_generation_job_row", lambda job_id, connection=None, **fields: row.update(fields) or row)
     monkeypatch.setattr(service.asset_repo, "create_asset", lambda **kwargs: (_ for _ in ()).throw(AssertionError("asset should not be created")))
     monkeypatch.setattr(service.generation_output_repo, "create_generation_output", lambda **kwargs: (_ for _ in ()).throw(AssertionError("output should not be created")))
     monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})

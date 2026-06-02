@@ -109,12 +109,12 @@ Status values are stored as `text` with lightweight check constraints instead of
 
 `generation_outputs` stores result versions per thread and links each output to a job and asset. `generation_outputs_one_final_per_thread_idx` keeps one final output per thread.
 
-Completed local artifacts can be represented by `assets` rows with `storage_provider=local_dev` and `bucket=local-dev` until R2 upload/static serving is implemented.
+Completed artifacts can be represented by either local-dev placeholder rows (`storage_provider=local_dev`, `bucket=local-dev`) or real R2 object rows once optional upload is enabled.
 
 ## Scope Limits
 
 - RLS policy design is not included in this migration.
 - Supabase Auth integration is not enforced yet.
-- R2/object storage upload is not implemented.
+- Optional R2 upload integration exists at the service layer, but remote smoke and broader object storage rollout are still follow-up work.
 - Modal execution and evaluation pipelines are not implemented.
 - Generated result static serving and signed URL generation remain separate follow-up work.

@@ -157,6 +157,11 @@ def test_postgres_backend_mark_done_and_failed_preserve_shape(monkeypatch):
 
     monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_done_row", fake_mark_done)
     monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_failed_row", fake_mark_failed)
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "update_generation_job_row",
+        lambda job_id, connection=None, **fields: state["row"].update(fields) or state["row"],
+    )
     monkeypatch.setattr(service.asset_repo, "create_asset", lambda **kwargs: {"id": "asset_uuid", **kwargs})
     monkeypatch.setattr(service.generation_output_repo, "create_generation_output", lambda **kwargs: {"id": "output_uuid", "asset_id": kwargs["asset_id"], **kwargs})
     monkeypatch.setattr(service.generation_output_repo, "mark_output_final", lambda output_id, connection=None: {"id": output_id})

@@ -261,12 +261,13 @@ Current limitations:
 - `build_marketing_graph()` is not executed.
 - GPT-image-2, SD3.5, and FLUX lanes exist but are guarded and disabled by default.
 - LLM/VLM/OCR calls are not made.
-- Output URL/static serving is not implemented.
-- `download_url` is `null`.
+- Output URL/static serving is not always present.
 - `result_payload.download_path` is a repo-relative development path and is not a public URL.
-- `result_payload.download_url` and `result_payload.final_image_url` remain `null` until static serving or object storage is implemented.
-- The mock artifact contract is local-path based for development tracing only; public URL serving is a later milestone.
-- Postgres `assets` rows may track local development artifacts, but those rows do not create public URLs. FE must still rely only on `final_image_url`/`download_url` for preview and download.
+- `result_payload.download_url` and `result_payload.final_image_url` may remain `null` when local-dev placeholder storage is used.
+- When R2 upload is enabled and succeeds, `result_payload.final_image_url` and `result_payload.download_url` are filled using either signed or public URL mode.
+- Signed URLs may expire. A refresh API is a later milestone.
+- The mock artifact contract is still local-path based for development tracing when object storage is disabled or unavailable.
+- Postgres `assets` rows may track either local development artifacts or R2 objects. FE must still rely only on `final_image_url`/`download_url` for preview and download.
 
 ## 8. Archive Response Contract
 
@@ -338,4 +339,4 @@ Backend owns DTO validation, stable response shapes, domain service integration,
 
 Generation result screens must use public URL fields only for browser preview and download. `result_payload.final_image_url`, `result_payload.preview_image_url`, `result_payload.copy_visual_preview_url`, and `result_payload.download_url` may be used as display/download URLs. Local runtime paths such as `data/outputs/...`, `download_path`, `final_image_path`, and `job.output_path` are development artifact paths and must not be used as `img src` or anchor `href` values.
 
-When `job.status == "done"` but no public URL is present, the frontend should show a completed-but-URL-not-ready state instead of continuing a loading spinner. Summary copy remains available, but it must hide local artifact paths and secret-like fields.
+When `job.status == "done"` but no public URL is present, the frontend should show a completed-but-URL-not-ready state instead of continuing a loading spinner. Summary copy remains available, but it must hide local artifact paths and secret-like fields. When signed URLs are used, FE should also be prepared for eventual URL expiration and a later refresh flow.

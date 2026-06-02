@@ -25,7 +25,7 @@ Postgres `create_generation_job()` ensures a demo workspace, creates a chat thre
 
 ## Output And Asset Policy
 
-R2 upload is not implemented in this milestone. Completed local artifacts use asset placeholders:
+R2 upload is optional in this milestone. Completed local artifacts still fall back to asset placeholders when R2 is disabled or when upload fails with `EASYADS_R2_UPLOAD_REQUIRED=false`:
 
 - `kind=result`
 - `storage_provider=local_dev`
@@ -36,11 +36,12 @@ R2 upload is not implemented in this milestone. Completed local artifacts use as
 
 This row is internal metadata only. It does not imply the artifact is browser-displayable.
 
-`result_payload.final_image_url` and `result_payload.download_url` remain `null` unless another service explicitly provides public URLs.
+When R2 upload succeeds, the backend stores an R2 asset row, creates the generation output against that asset, and fills `result_payload.final_image_url` / `result_payload.download_url` according to the configured URL mode.
+
+Signed URLs may expire. Refresh APIs are a later milestone.
 
 ## Not Included
 
-- R2 upload
 - static serving or signed URLs
 - Modal execution
 - Archive API/UI
