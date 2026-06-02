@@ -61,6 +61,9 @@ def test_selected_reference_template_reaches_result_and_metadata():
     assert result["selected_reference_template"]["template_id"] == template_id
     assert result["current_brief"]["reference_template_selected"] is True
     assert metadata["selected_reference_template_id"] == template_id
+    assert metadata["reference_template_selection"]
+    assert result["image_prompt_spec"]["metadata"]["selected_reference_template"]
+    assert result["image_prompt_spec"]["metadata"]["visual_template_id"]
     assert metadata["reference_template_style_keywords"]
     assert metadata["reference_template_color_palette"]
     assert result["image_prompt_spec"]["must_not_include_text"] is True

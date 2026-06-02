@@ -21,8 +21,17 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildBrandKitHref, type BrandKitStep as BrandKitFlowStage } from "@/lib/brand-kit-navigation";
+import {
+  brandKitMeta,
+  brandKitPhrases,
+  brandKitProducts,
+  brandKitTone,
+  readBrandKitDraft,
+  saveBrandKit,
+  writeBrandKitDraft,
+  type BrandKitInput
+} from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
-import { brandFacts } from "@/lib/mock-dashboard-data";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -41,19 +50,22 @@ const businessTypes = [
 
 const toneOptions = ["감성적인", "고급스러운", "귀여운", "깔끔한", "트렌디한", "따뜻한"];
 const phraseOptions = ["예약은 DM 주세요", "신메뉴 출시", "매일 한정 수량", "오늘만 할인", "감사합니다"];
-const productOptions = ["딸기라떼", "바닐라라떼", "크림라떼", "아메리카노"];
+const productOptions = ["대표 메뉴", "시그니처 상품", "예약 서비스", "이벤트 혜택"];
 const colorOptions = ["#FFD7C9", "#FFE4B5", "#BCEBE2", "#C8B8FF", "#111111"];
 
 export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
   const router = useRouter();
-  const [businessName, setBusinessName] = useState(brandFacts.name);
-  const [businessType, setBusinessType] = useState(brandFacts.businessType);
-  const [region, setRegion] = useState(brandFacts.region);
-  const [sns, setSns] = useState(brandFacts.sns);
-  const [tones, setTones] = useState<string[]>(brandFacts.toneList);
-  const [colors, setColors] = useState<string[]>(brandFacts.colors);
-  const [phrases, setPhrases] = useState<string[]>(brandFacts.phraseList);
-  const [products, setProducts] = useState<string[]>(brandFacts.productList);
+  const initialBrandKit = readBrandKitDraft();
+  const [brandKitStatus, setBrandKitStatus] = useState(initialBrandKit.status);
+  const [businessName, setBusinessName] = useState(initialBrandKit.businessName);
+  const [businessType, setBusinessType] = useState(initialBrandKit.businessType);
+  const [region, setRegion] = useState(initialBrandKit.region);
+  const [sns, setSns] = useState(initialBrandKit.sns);
+  const [tones, setTones] = useState<string[]>(initialBrandKit.tones);
+  const [colors, setColors] = useState<string[]>(initialBrandKit.colors);
+  const [phrases, setPhrases] = useState<string[]>(initialBrandKit.phrases);
+  const [products, setProducts] = useState<string[]>(initialBrandKit.products);
+  const canContinueInfo = Boolean(businessName.trim() && businessType);
 
   function goBack() {
     if (step === "start") {
@@ -72,6 +84,31 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
     setValues(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
   }
 
+  function currentBrandKitInput(): BrandKitInput {
+    return {
+      businessName,
+      businessType,
+      region,
+      sns,
+      tones,
+      colors,
+      phrases,
+      products
+    };
+  }
+
+  function continueToTone() {
+    const next = writeBrandKitDraft(currentBrandKitInput());
+    setBrandKitStatus(next.status);
+    router.push(buildBrandKitHref("tone"));
+  }
+
+  function completeBrandKit() {
+    const next = saveBrandKit(currentBrandKitInput());
+    setBrandKitStatus(next.status);
+    router.push(buildBrandKitHref("complete"));
+  }
+
   if (step === "info") {
     return (
       <>
@@ -81,7 +118,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
 
         <label className={styles.brandInputField}>
           <span>가게 이름 *</span>
-          <input aria-label="가게 이름" value={businessName} placeholder="예) 도민 카페" onChange={(event) => setBusinessName(event.target.value)} />
+          <input aria-label="가게 이름" value={businessName} placeholder="가게 이름을 입력하세요" onChange={(event) => setBusinessName(event.target.value)} />
         </label>
 
         <h2 className={styles.sectionTitle}>업종 *</h2>
@@ -101,7 +138,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
 
         <label className={styles.brandInputField}>
           <span>SNS 계정</span>
-          <input aria-label="SNS 계정" value={sns} placeholder="예) @domin_cafe" onChange={(event) => setSns(event.target.value)} />
+          <input aria-label="SNS 계정" value={sns} placeholder="SNS 계정을 입력하세요" onChange={(event) => setSns(event.target.value)} />
         </label>
 
         <button className={styles.logoUploadCard} type="button">
@@ -111,7 +148,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
         </button>
 
         <BrandFlowFooter current={2} tone="purple">
-          <button className={styles.primaryButton} type="button" onClick={() => router.push(buildBrandKitHref("tone"))}>
+          <button className={styles.primaryButton} disabled={!canContinueInfo} type="button" onClick={continueToTone}>
             다음 <ArrowRight size={18} aria-hidden="true" />
           </button>
         </BrandFlowFooter>
@@ -174,7 +211,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
         </div>
 
         <BrandFlowFooter current={3} tone="mint">
-          <button className={styles.primaryButton} type="button" onClick={() => router.push(buildBrandKitHref("complete"))}>
+          <button className={styles.primaryButton} disabled={!canContinueInfo} type="button" onClick={completeBrandKit}>
             저장하기 <ArrowRight size={18} aria-hidden="true" />
           </button>
         </BrandFlowFooter>
@@ -183,6 +220,25 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
   }
 
   if (step === "complete") {
+    if (brandKitStatus !== "saved") {
+      return (
+        <>
+          <StepHeader title="브랜드 키트" canGoBack onBack={goBack} onHome={goHome} />
+          <section className={styles.brandCompleteHero}>
+            <Store size={42} aria-hidden="true" />
+            <h1>브랜드 키트가 아직 저장되지 않았어요</h1>
+            <p>가게 정보를 입력하고 저장하면 홈과 마이페이지에 바로 반영됩니다.</p>
+          </section>
+
+          <BrandFlowFooter current={1} tone="lime">
+            <button className={styles.primaryButton} type="button" onClick={() => router.push(buildBrandKitHref("info"))}>
+              브랜드 키트 만들기 <ArrowRight size={18} aria-hidden="true" />
+            </button>
+          </BrandFlowFooter>
+        </>
+      );
+    }
+
     return (
       <>
         <StepHeader title="브랜드 키트" canGoBack onBack={goBack} onHome={goHome} />
@@ -200,17 +256,17 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
             <div>
               <strong>{businessName}</strong>
               <small>{businessType}</small>
-              <p>{region} · {sns}</p>
+              <p>{brandKitMeta({ ...currentBrandKitInput(), status: "saved", updatedAt: "" })}</p>
             </div>
           </div>
           <dl className={styles.brandFacts}>
-            <div><dt>브랜드 톤</dt><dd>{tones.join(", ")}</dd></div>
+            <div><dt>브랜드 톤</dt><dd>{brandKitTone({ ...currentBrandKitInput(), status: "saved", updatedAt: "" })}</dd></div>
             <div>
               <dt>브랜드 컬러</dt>
               <dd>{colors.slice(0, 4).map((color) => <span key={color} style={{ background: color }} />)}</dd>
             </div>
-            <div><dt>자주 쓰는 문구</dt><dd>{phrases.join(", ")}</dd></div>
-            <div><dt>대표 상품</dt><dd>{products.join(", ")}</dd></div>
+            <div><dt>자주 쓰는 문구</dt><dd>{brandKitPhrases({ ...currentBrandKitInput(), status: "saved", updatedAt: "" })}</dd></div>
+            <div><dt>대표 상품</dt><dd>{brandKitProducts({ ...currentBrandKitInput(), status: "saved", updatedAt: "" })}</dd></div>
           </dl>
         </section>
 

@@ -7,6 +7,7 @@ from typing import Any
 from langgraph.types import interrupt
 
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.llm.copy_quality import score_copy_quality
 from orchestrator.app.llm.metadata_builders import build_custom_copy_validation_metadata, build_metadata_contract_summary
 from orchestrator.app.schemas.llm_marketing import CustomCopyInput, MarketingCopy
 
@@ -50,12 +51,14 @@ def custom_copy_validation_node(state: MarketingState) -> dict[str, Any]:
     warnings = []
     if len(str(headline)) > 15:
         warnings.append("headline exceeds recommended 15 characters")
+    warnings.append("custom_copy_not_rewritten")
     custom = CustomCopyInput(
         headline=str(headline),
         subcopy=subcopy,
         cta=cta,
         metadata={"warnings": warnings, "llm_metadata_summary": metadata_summary},
     )
+    quality = score_copy_quality({"headline": custom.headline, "subcopy": custom.subcopy, "cta": custom.cta})
     copy = MarketingCopy(
         headline=custom.headline,
         subcopy=custom.subcopy,
@@ -64,6 +67,7 @@ def custom_copy_validation_node(state: MarketingState) -> dict[str, Any]:
         metadata={
             "source_node": "custom_copy_validation",
             "warnings": warnings,
+            "copy_quality": quality,
             "preserved_user_copy": True,
             "llm_metadata_summary": metadata_summary,
         },

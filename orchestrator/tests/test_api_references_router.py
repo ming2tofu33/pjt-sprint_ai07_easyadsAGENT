@@ -127,3 +127,49 @@ def test_similar_references_excludes_self_and_applies_limit():
     assert len(payload["items"]) <= 2
     assert all(item["template_id"] != template.template_id for item in payload["items"])
     assert_no_local_paths(payload)
+
+
+def test_temporary_reference_assets_use_safe_urls(monkeypatch, tmp_path):
+    manifest_dir = tmp_path / "2026-06-user-refs"
+    manifest_dir.mkdir()
+    image_path = manifest_dir / "watermelon-juice.png"
+    image_path.write_bytes(b"temporary image")
+    manifest = {
+        "removal_group": "2026-06-user-refs",
+        "items": [
+            {
+                "template_id": "temp_watermelon_juice_feed",
+                "title": "수박주스 블루 여름 피드",
+                "category": "cafe",
+                "tags": ["수박", "여름"],
+                "business_types": ["cafe"],
+                "ad_formats": ["instagram_feed"],
+                "platforms": ["instagram"],
+                "assets": {
+                    "thumbnail_path": "watermelon-juice.png",
+                    "preview_path": "watermelon-juice.png",
+                },
+                "style_keywords": ["summer", "blue"],
+                "color_palette": ["#5AB4F2", "#EF3B3B"],
+                "layout_hint": "top_large_headline_center_product_bottom_copy",
+                "background_style": "bright blue summer beverage poster",
+                "popularity_score": 0.5,
+            }
+        ],
+    }
+    (manifest_dir / "catalog.local.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("EASYADS_TEMP_REFERENCE_ROOT", str(tmp_path))
+    monkeypatch.setenv("EASYADS_ENABLE_TEMP_REFERENCES", "true")
+
+    response = client().get("/api/v1/references", params={"keyword": "수박주스"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["template_id"] == "temp_watermelon_juice_feed"
+    assert payload["items"][0]["thumbnail_url"] == "/api/v1/references/temp-assets/2026-06-user-refs/watermelon-juice.png"
+    assert payload["items"][0]["preview_url"] == "/api/v1/references/temp-assets/2026-06-user-refs/watermelon-juice.png"
+    assert_no_local_paths(payload)
+
+    asset_response = client().get(payload["items"][0]["thumbnail_url"])
+    assert asset_response.status_code == 200
+    assert asset_response.content == b"temporary image"

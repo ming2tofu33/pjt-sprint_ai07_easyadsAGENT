@@ -12,7 +12,7 @@ function buildTargetUrl(path: string, request: NextRequest): string {
   return target.toString();
 }
 
-export async function proxyOrchestratorJson(request: NextRequest, method: ProxyMethod, path: string) {
+export async function proxyOrchestratorJson(request: NextRequest, method: ProxyMethod, path: string, bodyTransform?: (body: unknown) => unknown) {
   const init: RequestInit = {
     method,
     headers: { "content-type": "application/json" },
@@ -22,7 +22,7 @@ export async function proxyOrchestratorJson(request: NextRequest, method: ProxyM
   if (method !== "GET") {
     const body = await request.text();
     if (body) {
-      init.body = body;
+      init.body = bodyTransform ? JSON.stringify(bodyTransform(JSON.parse(body))) : body;
     }
   }
 

@@ -32,7 +32,7 @@ describe("chat flow state", () => {
       promotionGoal: ""
     });
     expect(next.contextSource).toBe("empty");
-    expect(next.copyCandidateSource).toBe("sample");
+    expect(next.copyCandidateSource).toBe("empty");
   });
 
   it("marks copy candidates as backend-generated when the backend returns candidates", () => {
@@ -61,7 +61,7 @@ describe("chat flow state", () => {
     expect(state.selectedCopyId).toBe("copy_backend");
   });
 
-  it("keeps default copy candidates marked as sample when the backend returns none", () => {
+  it("keeps copy candidates empty when the backend returns none", () => {
     let state = createInitialChatFlowState();
     state = chatFlowReducer(state, {
       type: "submitPrompt",
@@ -81,9 +81,10 @@ describe("chat flow state", () => {
       recommendedCopyId: null
     });
 
-    expect(state.copyCandidateSource).toBe("sample");
+    expect(state.copyCandidateSource).toBe("empty");
     expect(state.contextSource).toBe("backend");
-    expect(state.copyCandidates[0].id).toBe("spring-strawberry");
+    expect(state.copyCandidates).toEqual([]);
+    expect(state.selectedCopyId).toBe("");
   });
 
   it("builds a complete brief after tone copy and channel selections", () => {

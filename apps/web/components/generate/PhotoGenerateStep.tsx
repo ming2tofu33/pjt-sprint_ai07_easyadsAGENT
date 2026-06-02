@@ -1,15 +1,18 @@
 "use client";
 
-import { FileImage, ImagePlus, MessageCircle, Send, Sparkles, UploadCloud } from "lucide-react";
+import { FileImage, ImagePlus, MessageCircle, PenLine, Send, Sparkles, UploadCloud } from "lucide-react";
 import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { CopyGenerationMode, CustomCopyFields } from "@/types/marketing";
 import { AutosizeTextarea } from "./AutosizeTextarea";
+import { ChoiceChip } from "./ChoiceChip";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
 type PhotoGenerateInput = {
   file: File;
   prompt: string;
-};
+  copyGenerationMode?: CopyGenerationMode;
+} & CustomCopyFields;
 
 type PhotoGenerateStepProps = {
   onBack: () => void;
@@ -36,6 +39,9 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [copyGenerationMode, setCopyGenerationMode] = useState<CopyGenerationMode>("suggest_candidates");
+  const [customHeadline, setCustomHeadline] = useState("");
+  const [customSubcopy, setCustomSubcopy] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -51,7 +57,13 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
   }, [selectedFile]);
 
   const promptText = prompt.trim();
-  const canSubmit = useMemo(() => Boolean(selectedFile && promptText) && !isSubmitting, [isSubmitting, promptText, selectedFile]);
+  const customHeadlineText = customHeadline.trim();
+  const customSubcopyText = customSubcopy.trim();
+  const usesCustomCopy = copyGenerationMode === "custom_input";
+  const canSubmit = useMemo(
+    () => Boolean(selectedFile && promptText) && (!usesCustomCopy || customHeadlineText.length > 0) && !isSubmitting,
+    [customHeadlineText.length, isSubmitting, promptText, selectedFile, usesCustomCopy]
+  );
 
   function acceptFile(file: File | null) {
     if (!file) {
@@ -77,15 +89,21 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedFile || !promptText) {
-      setErrorMessage("사진과 요청 내용을 모두 입력해주세요.");
+    if (!selectedFile || !promptText || (usesCustomCopy && !customHeadlineText)) {
+      setErrorMessage(usesCustomCopy && !customHeadlineText ? "메인 문구를 입력해주세요." : "사진과 요청 내용을 모두 입력해주세요.");
       return;
     }
 
     setIsSubmitting(true);
     setErrorMessage(null);
     try {
-      await onGenerate({ file: selectedFile, prompt: promptText });
+      await onGenerate({
+        file: selectedFile,
+        prompt: promptText,
+        copyGenerationMode,
+        userCustomHeadline: usesCustomCopy ? customHeadlineText : undefined,
+        userCustomSubcopy: usesCustomCopy && customSubcopyText ? customSubcopyText : undefined
+      });
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "사진 기반 생성 요청에 실패했습니다.");
       setIsSubmitting(false);
@@ -141,6 +159,63 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
             {selectedFile ? "다른 사진 선택" : "사진 선택하기"}
           </button>
         </div>
+
+        <h2 className={styles.sectionTitle}>문구 포함 여부</h2>
+        <div className={`${styles.chipGrid} ${styles.copyModeGrid}`}>
+          <ChoiceChip selected={copyGenerationMode === "suggest_candidates"} onClick={() => setCopyGenerationMode("suggest_candidates")}>
+            <MessageCircle size={16} aria-hidden="true" />
+            <span>문구도 추천</span>
+          </ChoiceChip>
+          <ChoiceChip selected={copyGenerationMode === "auto_pilot"} onClick={() => setCopyGenerationMode("auto_pilot")}>
+            <Sparkles size={16} aria-hidden="true" />
+            <span>AI 자동 완성</span>
+          </ChoiceChip>
+          <ChoiceChip selected={copyGenerationMode === "no_copy"} onClick={() => setCopyGenerationMode("no_copy")}>
+            <ImagePlus size={16} aria-hidden="true" />
+            <span>이미지만 생성</span>
+          </ChoiceChip>
+          <ChoiceChip selected={copyGenerationMode === "custom_input"} onClick={() => setCopyGenerationMode("custom_input")}>
+            <PenLine size={16} aria-hidden="true" />
+            <span>직접 문구</span>
+          </ChoiceChip>
+        </div>
+
+        {usesCustomCopy ? (
+          <div className={styles.customCopyFields}>
+            <label className={styles.customCopyField}>
+              <span>메인 문구</span>
+              <AutosizeTextarea
+                className={styles.customCopyTextarea}
+                value={customHeadline}
+                aria-label="사진 직접 메인 문구 입력"
+                placeholder="광고에 넣을 메인 문구"
+                onChange={(event) => {
+                  setCustomHeadline(event.target.value);
+                  if (errorMessage) {
+                    setErrorMessage(null);
+                  }
+                }}
+                onSubmit={() => formRef.current?.requestSubmit()}
+              />
+            </label>
+            <label className={styles.customCopyField}>
+              <span>보조 문구</span>
+              <AutosizeTextarea
+                className={styles.customCopyTextarea}
+                value={customSubcopy}
+                aria-label="사진 직접 보조 문구 입력"
+                placeholder="이벤트 상세나 안내 문구"
+                onChange={(event) => {
+                  setCustomSubcopy(event.target.value);
+                  if (errorMessage) {
+                    setErrorMessage(null);
+                  }
+                }}
+                onSubmit={() => formRef.current?.requestSubmit()}
+              />
+            </label>
+          </div>
+        ) : null}
 
         <label className={styles.photoPromptCard}>
           <AutosizeTextarea

@@ -7,13 +7,14 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
+from orchestrator.app.core.config import PROJECT_ROOT
 from orchestrator.app.schemas.vision import ImageInputSpec, ImageMetadata, ImagePreprocessResult
 from orchestrator.app.vision.settings import VisionSettings, get_vision_settings
 
 
 def preprocess_image(input_spec: ImageInputSpec, job_id: str, settings: VisionSettings | None = None) -> ImagePreprocessResult:
     settings = settings or get_vision_settings()
-    source = Path(input_spec.image_path).expanduser().resolve()
+    source = resolve_input_image_path(input_spec.image_path)
     output_dir = (settings.processed_dir / safe_name(job_id)).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     issues: list[str] = []
@@ -76,6 +77,13 @@ def preprocess_image(input_spec: ImageInputSpec, job_id: str, settings: VisionSe
         warnings=warnings,
         issues=issues,
     )
+
+
+def resolve_input_image_path(image_path: str) -> Path:
+    source = Path(image_path).expanduser()
+    if source.is_absolute():
+        return source.resolve()
+    return (PROJECT_ROOT / source).resolve()
 
 
 def apply_preprocess(image: Image.Image, input_spec: ImageInputSpec, settings: VisionSettings) -> Image.Image:

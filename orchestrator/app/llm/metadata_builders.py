@@ -285,6 +285,12 @@ def build_t2i_request_metadata(
     reference_style_profile = source.get("reference_style_profile")
     product_preserve_spec = source.get("product_preserve_spec")
     selected_reference_template = source.get("selected_reference_template")
+    raw_image_prompt = source.get("image_prompt_spec") or {}
+    if hasattr(raw_image_prompt, "model_dump"):
+        raw_image_prompt = raw_image_prompt.model_dump()
+    raw_image_prompt_metadata = raw_image_prompt.get("metadata", {}) if isinstance(raw_image_prompt, dict) else {}
+    image_prompt = _dict(source.get("image_prompt_spec"))
+    image_prompt_metadata = _dict(image_prompt.get("metadata"))
     reference_template_selection = source.get("reference_template_selection")
     template_style_hint = _dict(_dict(reference_template_selection).get("style_profile_hint"))
     vision_pipeline_enabled = bool(
@@ -336,9 +342,26 @@ def build_t2i_request_metadata(
         "reference_template_typography_hint": template_style_hint.get("typography_hint"),
         "source_node": "t2i_request_builder",
     }
+    for key in (
+        "image_prompt_version",
+        "scene_plan",
+        "prompt_quality_policy",
+        "prompt_adapter",
+        "business_visual_preset_id",
+        "beauty_subtype",
+    ):
+        if key in image_prompt_metadata:
+            metadata[key] = image_prompt_metadata[key]
+    if "visual_template_id" in image_prompt_metadata:
+        metadata["visual_template_id"] = image_prompt_metadata["visual_template_id"]
+    elif "business_visual_preset_id" in image_prompt_metadata:
+        metadata["visual_template_id"] = image_prompt_metadata["business_visual_preset_id"]
     if input_image_paths:
         metadata["input_image_paths"] = input_image_paths
-    return sanitize_metadata(metadata)
+    sanitized = sanitize_metadata(metadata)
+    if isinstance(raw_image_prompt_metadata, dict) and "prompt_adapter" in raw_image_prompt_metadata:
+        sanitized["prompt_adapter"] = raw_image_prompt_metadata["prompt_adapter"]
+    return sanitized
 
 
 def build_background_validation_metadata(state: dict[str, Any] | None) -> dict[str, Any]:

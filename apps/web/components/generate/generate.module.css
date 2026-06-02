@@ -579,6 +579,61 @@
   opacity: 0.58;
 }
 
+.copyModeGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quickStartGrid .chip,
+.copyModeGrid .chip {
+  gap: 5px;
+  padding: 9px 6px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.quickStartGrid .chip span,
+.copyModeGrid .chip span {
+  white-space: nowrap;
+}
+
+.customCopyFields {
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.customCopyField {
+  border: 1px solid var(--color-border-soft);
+  border-radius: 14px;
+  background: var(--color-bg-card);
+  padding: 10px 12px;
+  display: grid;
+  gap: 5px;
+}
+
+.customCopyField span {
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 850;
+}
+
+.customCopyTextarea {
+  width: 100%;
+  min-height: 30px;
+  max-height: 86px;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.45;
+  resize: none;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
 .inputCard {
   margin-top: auto;
   border: 1px solid var(--color-purple);
@@ -589,6 +644,14 @@
   grid-template-columns: 32px 1fr 42px;
   align-items: end;
   gap: 8px;
+}
+
+.inputCard.startInputCard {
+  margin-top: 0;
+}
+
+.contextAnswerInputCard {
+  grid-template-columns: minmax(0, 1fr) 42px;
 }
 
 .input {
@@ -1491,6 +1554,29 @@
   font-size: 13px;
   line-height: 1.25;
   font-weight: 950;
+}
+
+.sampleLibraryHeader {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sampleLibraryHeader .archiveSectionTitle {
+  margin: 0;
+}
+
+.sampleLibraryHeader button {
+  min-height: 32px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 999px;
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .sampleNotice {
@@ -2455,6 +2541,11 @@
   font-weight: 780;
 }
 
+.emptyResultPanel .secondaryButton {
+  width: min(100%, 190px);
+  margin-top: 6px;
+}
+
 .resultCard {
   min-height: 172px;
 }
@@ -3332,6 +3423,7 @@
 }
 
 .adPreviewArt {
+  position: relative;
   min-height: 230px;
   border: 1px solid var(--color-border-hairline);
   border-radius: 14px;
@@ -3348,6 +3440,70 @@
   grid-template-columns: 1fr 78px;
   border-radius: 12px;
   padding: 16px;
+}
+
+.adPreviewArt[data-has-image="true"] {
+  display: block;
+  padding: 0;
+  background: #f7f4ee;
+}
+
+.adPreviewArt[data-has-image="true"][data-compact="true"] {
+  min-height: 126px;
+}
+
+.adPreviewImage {
+  object-fit: contain;
+  background: #f7f4ee;
+}
+
+.adPreviewImageFallback {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.55), rgba(247, 244, 238, 0.88)),
+    #f7f4ee;
+  color: var(--color-muted);
+  padding: 18px;
+  text-align: center;
+}
+
+.adPreviewArt[data-has-image="true"] .adPreviewImageFallback strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 950;
+}
+
+.adPreviewArt[data-has-image="true"] .adPreviewImageFallback small {
+  max-width: 220px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 820;
+}
+
+.adPreviewArt[data-compact="true"] .adPreviewImageFallback small {
+  display: none;
+}
+
+.adPreviewCaption {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 24px rgba(30, 25, 18, 0.12);
+  padding: 8px 10px;
 }
 
 .adPreviewArt[data-tone="strawberry"] {
@@ -3392,6 +3548,11 @@
   font-size: 13px;
 }
 
+.adPreviewArt[data-has-image="true"] strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+
 .adPreviewArt small {
   display: block;
   margin-top: 10px;
@@ -3403,6 +3564,12 @@
 
 .adPreviewArt[data-compact="true"] small {
   margin-top: 6px;
+  font-size: 10px;
+}
+
+.adPreviewArt[data-has-image="true"] small {
+  margin-top: 4px;
+  color: var(--color-muted);
   font-size: 10px;
 }
 
@@ -3421,6 +3588,98 @@
   width: 60px;
   height: 70px;
   border-radius: 16px 16px 22px 22px;
+}
+
+.generatedImageViewer {
+  margin-top: 14px;
+}
+
+.generatedImageViewer .adPreviewArt {
+  min-height: 360px;
+  border-radius: 18px;
+  background: #f7f4ee;
+}
+
+.generatedImageViewer .adPreviewImage {
+  object-fit: contain;
+}
+
+.generatedImageSummary {
+  margin-top: 12px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 16px;
+  background: var(--color-bg-card);
+  padding: 14px;
+}
+
+.generatedImageSummary > span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--color-purple-soft);
+  color: var(--color-brand-purple-text);
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.generatedImageSummary h2 {
+  margin: 10px 0 0;
+  color: var(--color-text-primary);
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 950;
+}
+
+.generatedImageSummary p {
+  margin: 7px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 850;
+}
+
+.generatedImageSummary dl {
+  margin: 14px 0 0;
+  display: grid;
+  gap: 8px;
+}
+
+.generatedImageSummary div {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  gap: 10px;
+  border-top: 1px solid var(--color-border-hairline);
+  padding-top: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.generatedImageSummary dt {
+  color: var(--color-muted);
+  font-weight: 850;
+}
+
+.generatedImageSummary dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text-primary);
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.downloadMockNotice {
+  margin: 10px 0;
+  border: 1px solid rgba(255, 179, 167, 0.82);
+  border-radius: 14px;
+  background: var(--color-coral-soft);
+  color: var(--color-brand-coral-text);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 900;
+  text-align: center;
 }
 
 .adThumbStrip {

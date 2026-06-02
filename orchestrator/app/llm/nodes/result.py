@@ -11,6 +11,7 @@ from orchestrator.app.schemas.text_layout import ResultPayload
 def result_node(state: MarketingState) -> dict[str, Any]:
     t2i_result = state.get("t2i_result") or {}
     background_path = (t2i_result.get("image_paths") or [None])[0]
+    upstream_error = t2i_result.get("error") or state.get("error_message") or "missing output path"
     no_copy = (
         state.get("copy_generation_mode") == "no_copy"
         or state.get("copy_required") is False
@@ -56,12 +57,12 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             "source_node": "result",
             "render_text_in_image": False,
             "tlfp_enabled": True,
-            "error": None if output_path else "missing output path",
+            "error": None if output_path else upstream_error,
         },
     )
     return {
         "result_payload": payload.model_dump(),
         "artifact_refs": artifacts,
         "status": status,
-        "error_message": None if output_path else "missing output path",
+        "error_message": None if output_path else upstream_error,
     }

@@ -24,7 +24,9 @@ export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStep
       <div className={styles.assistantBubble}>
         <span className={styles.assistantAvatar}>AI</span>
         <p className={styles.bubble}>
-          {hasGeneratedImage ? "실제 광고 이미지 생성이 완료됐어요. 이제 결과 화면에서 확인할 수 있어요." : "모든 정보가 준비됐어요. 이 내용으로 광고를 만들 준비가 완료됐어요."}
+          {hasGeneratedImage
+            ? "실제 광고 이미지 생성이 완료됐어요. 이제 결과 화면에서 확인할 수 있어요."
+            : "브리프는 정리됐지만 아직 표시할 실제 이미지를 받지 못했어요. 결과 화면에서 상태를 확인할 수 있어요."}
         </p>
       </div>
 
@@ -43,7 +45,7 @@ export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStep
 
       <div className={styles.stepFooter}>
         <p className={styles.completeNote}>
-          {hasGeneratedImage ? "생성된 이미지를 결과 화면에서 바로 확인해보세요." : "이 내용으로 광고 이미지를 생성할게요. 마음에 들지 않으면 언제든 수정할 수 있어요."}
+          {hasGeneratedImage ? "생성된 이미지를 결과 화면에서 바로 확인해보세요." : "임의 카드로 대체하지 않고 실제 이미지가 준비된 경우에만 결과를 표시합니다."}
         </p>
 
         <div className={`${styles.progressWrap} ${styles.finalProgress}`}>
@@ -56,7 +58,7 @@ export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStep
         </div>
 
         <button className={styles.primaryButton} type="button" onClick={onGenerate}>
-          {hasGeneratedImage ? "생성 결과 확인하기" : "찰떡 광고 생성하기"} <Sparkles size={18} aria-hidden="true" />
+          {hasGeneratedImage ? "생성 결과 확인하기" : "결과 상태 확인하기"} <Sparkles size={18} aria-hidden="true" />
         </button>
       </div>
     </>

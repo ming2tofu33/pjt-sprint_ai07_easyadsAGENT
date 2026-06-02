@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Bookmark, Briefcase, Eye, Home, MoreHorizontal, RefreshCcw, Search, SlidersHorizontal, Sparkles, Star, Trash2, User } from "lucide-react";
+import { Bell, Bookmark, Briefcase, Download, Eye, Home, MoreHorizontal, RefreshCcw, Search, SlidersHorizontal, Sparkles, Star, Trash2, User } from "lucide-react";
 import Image from "next/image";
 import { archivedCreatives, type CreativeTone, type MockCreative } from "@/lib/mock-dashboard-data";
 import styles from "./generate.module.css";
@@ -14,8 +14,9 @@ type RecentAdsStepProps = {
   onOpenBrandKit: () => void;
   onRegenerate: () => void;
   onShowProgress: () => void;
-  onOpenGeneratedAd: () => void;
+  onOpenGeneratedAd: (creativeId: string) => void;
   onOpenAd: (creativeId: string) => void;
+  onDownloadGeneratedAd: (title: string) => void;
   onDeleteGeneratedAd: (creativeId: string, title: string) => void;
   onDeleteSampleAd: (title: string) => void;
   onOpenNotifications: () => void;
@@ -54,12 +55,14 @@ export function RecentAdsStep({
   onShowProgress,
   onOpenGeneratedAd,
   onOpenAd,
+  onDownloadGeneratedAd,
   onDeleteGeneratedAd,
   onDeleteSampleAd,
   onOpenNotifications
 }: RecentAdsStepProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [hiddenSampleIds, setHiddenSampleIds] = useState<string[]>([]);
+  const [showSampleLibrary, setShowSampleLibrary] = useState(false);
   const sampleCreatives = archivedCreatives.filter((creative) => !hiddenSampleIds.includes(creative.id));
 
   function closeMenu() {
@@ -101,7 +104,8 @@ export function RecentAdsStep({
                   closeMenu();
                   onDeleteGeneratedAd(ad.id, ad.title);
                 }}
-                onOpen={onOpenGeneratedAd}
+                onDownload={() => onDownloadGeneratedAd(ad.title)}
+                onOpen={() => onOpenGeneratedAd(ad.id)}
                 onRegenerate={onRegenerate}
                 onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
               />
@@ -109,30 +113,45 @@ export function RecentAdsStep({
           </section>
         </>
       ) : (
-        <p className={styles.sampleNotice}>
-          실제 생성 결과가 아직 없어요. 대화로 광고를 만들면 여기에 먼저 표시됩니다.
-        </p>
+        <section className={styles.emptyResultPanel} aria-label="실제 생성 광고 없음">
+          <Briefcase size={24} aria-hidden="true" />
+          <strong>아직 저장된 실제 생성 결과가 없어요</strong>
+          <p>대화나 사진으로 광고를 만들면 실제 이미지가 있는 결과만 여기에 저장됩니다.</p>
+          <button className={styles.secondaryButton} type="button" onClick={onRegenerate}>
+            새 광고 만들기
+          </button>
+        </section>
       )}
 
-      <h2 className={styles.archiveSectionTitle}>샘플 광고</h2>
-      <section className={styles.archiveGrid} aria-label="샘플 광고 보관함">
-        {sampleCreatives.map((ad) => (
-          <ArchiveCard
-            ad={ad}
-            key={ad.id}
-            menuOpen={openMenuId === ad.id}
-            onDelete={() => {
-              closeMenu();
-              setHiddenSampleIds((current) => [...current, ad.id]);
-              onDeleteSampleAd(ad.title);
-            }}
-            onOpen={() => onOpenAd(ad.id)}
-            onRegenerate={ad.status === "generating" ? onShowProgress : onRegenerate}
-            onShowProgress={onShowProgress}
-            onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
-          />
-        ))}
-      </section>
+      <div className={styles.sampleLibraryHeader}>
+        <h2 className={styles.archiveSectionTitle}>샘플 광고</h2>
+        <button type="button" onClick={() => setShowSampleLibrary((current) => !current)}>
+          {showSampleLibrary ? "숨기기" : "보기"}
+        </button>
+      </div>
+      <p className={styles.sampleNotice}>
+        아래 항목은 실제 생성 결과가 아니라 화면 확인용 샘플입니다. 보관함의 실제 결과와 분리해서 표시합니다.
+      </p>
+      {showSampleLibrary ? (
+        <section className={styles.archiveGrid} aria-label="샘플 광고 보관함">
+          {sampleCreatives.map((ad) => (
+            <ArchiveCard
+              ad={ad}
+              key={ad.id}
+              menuOpen={openMenuId === ad.id}
+              onDelete={() => {
+                closeMenu();
+                setHiddenSampleIds((current) => [...current, ad.id]);
+                onDeleteSampleAd(ad.title);
+              }}
+              onOpen={() => onOpenAd(ad.id)}
+              onRegenerate={ad.status === "generating" ? onShowProgress : onRegenerate}
+              onShowProgress={onShowProgress}
+              onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
+            />
+          ))}
+        </section>
+      ) : null}
 
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">
         <button type="button" onClick={onGoHome}>
@@ -165,6 +184,7 @@ function ArchiveCard({
   isGenerated = false,
   menuOpen,
   onDelete,
+  onDownload,
   onOpen,
   onRegenerate,
   onShowProgress,
@@ -174,6 +194,7 @@ function ArchiveCard({
   isGenerated?: boolean;
   menuOpen: boolean;
   onDelete: () => void;
+  onDownload?: () => void;
   onOpen: () => void;
   onRegenerate: () => void;
   onShowProgress?: () => void;
@@ -229,6 +250,12 @@ function ArchiveCard({
               <button role="menuitem" type="button" onClick={() => runMenuAction(onRegenerate)}>
                 <RefreshCcw size={15} aria-hidden="true" />
                 비슷하게 만들기
+              </button>
+            ) : null}
+            {isGenerated && !isGenerating && onDownload ? (
+              <button role="menuitem" type="button" onClick={() => runMenuAction(onDownload)}>
+                <Download size={15} aria-hidden="true" />
+                다운로드
               </button>
             ) : null}
             <button className={styles.archiveDangerAction} role="menuitem" type="button" onClick={() => runMenuAction(onDelete)}>

@@ -17,12 +17,6 @@ export const toneOptions: ToneOption[] = [
   { id: "bold", label: "강렬한", icon: "star" }
 ];
 
-export const copyOptions: CopyOption[] = [
-  { id: "spring-strawberry", headline: "봄을 닮은 한 잔, 딸기라떼 출시", selectedByDefault: true },
-  { id: "today-sweet", headline: "오늘만 더 달콤하게, 신메뉴 딸기라떼" },
-  { id: "full-strawberry", headline: "딸기 한가득, 지금 가장 상큼한 메뉴" }
-];
-
 export const channelOptions: ChannelOption[] = [
   { id: "instagram-feed", label: "인스타 피드", ratio: "1:1" },
   { id: "instagram-story", label: "인스타 스토리", ratio: "9:16" },
@@ -57,13 +51,17 @@ export function createInitialChatFlowState(): ChatFlowState {
       promotionGoal: ""
     },
     contextSource: "empty",
-    copyCandidates: copyOptions,
-    copyCandidateSource: "sample",
+    copyCandidates: [],
+    copyCandidateSource: "empty",
+    copyGenerationMode: "suggest_candidates",
     selectedTone: "감성적인",
-    selectedCopyId: "spring-strawberry",
+    selectedCopyId: "",
     selectedChannelId: "instagram-feed",
     customDirection: "",
     brief: null,
+    generationJob: null,
+    selectedReferenceTemplateId: null,
+    selectedReferenceTemplateTitle: null,
     currentQuestion: null,
     conversationMessages: [],
     isLoading: false,
@@ -81,6 +79,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         step: 2,
         progress: { current: 1, total: 4, label: "정보 입력" },
         userInput: action.prompt,
+        copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
         inferredContext: {
           businessType: "",
           itemOrService: "",
@@ -118,7 +117,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       };
     case "backendStartSucceeded": {
       const hasBackendCopyCandidates = action.copyCandidates.length > 0;
-      const nextCopyCandidates = hasBackendCopyCandidates ? action.copyCandidates : state.copyCandidates;
+      const nextCopyCandidates = hasBackendCopyCandidates ? action.copyCandidates : [];
       return {
         ...state,
         step: 2,
@@ -129,8 +128,9 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         inferredContext: action.context,
         contextSource: "backend",
         copyCandidates: nextCopyCandidates,
-        copyCandidateSource: action.copyCandidateSource ?? (hasBackendCopyCandidates ? "backend" : "sample"),
-        selectedCopyId: action.recommendedCopyId || nextCopyCandidates[0]?.id || state.selectedCopyId,
+        copyCandidateSource: action.copyCandidateSource ?? (hasBackendCopyCandidates ? "backend" : "empty"),
+        copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
+        selectedCopyId: action.recommendedCopyId || nextCopyCandidates[0]?.id || "",
         currentQuestion: null,
         conversationMessages: [
           ...state.conversationMessages,
@@ -156,6 +156,11 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         selectedTone: action.tone
+      };
+    case "setCopyGenerationMode":
+      return {
+        ...state,
+        copyGenerationMode: action.copyGenerationMode
       };
     case "continueToCopy":
       return {
@@ -185,12 +190,40 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         isLoading: false,
         errorMessage: null
       };
+    case "requestContextLoaded":
+      return {
+        ...state,
+        userInput: state.userInput || action.draftPrompt || state.userInput,
+        selectedReferenceTemplateId: action.selectedReferenceTemplateId ?? null,
+        selectedReferenceTemplateTitle: action.selectedReferenceTemplateTitle ?? null
+      };
+    case "referenceTemplateSelected":
+      return {
+        ...state,
+        selectedReferenceTemplateId: action.selectedReferenceTemplateId,
+        selectedReferenceTemplateTitle: action.selectedReferenceTemplateTitle ?? null
+      };
+    case "referenceTemplateCleared":
+      return {
+        ...state,
+        selectedReferenceTemplateId: null,
+        selectedReferenceTemplateTitle: null
+      };
     case "continueToBrief":
       return {
         ...state,
         step: 4,
         progress: { current: 4, total: 4, label: "정보 입력" },
         isLoading: false
+      };
+    case "showResultShell":
+      return {
+        ...state,
+        step: 4,
+        progress: { current: 4, total: 4, label: "결과 확인" },
+        isLoading: false,
+        currentQuestion: null,
+        errorMessage: null
       };
     case "back":
       return {
@@ -199,11 +232,32 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       };
     default:
       return state;
+    case "generationJobRequested":
+      return {
+        ...state,
+        isLoading: true,
+        errorMessage: null
+      };
+
+    case "generationJobUpdated":
+      return {
+        ...state,
+        generationJob: action.generationJob,
+        isLoading: false,
+        errorMessage: null
+      };
+
+    case "generationJobFailed":
+      return {
+        ...state,
+        isLoading: false,
+        errorMessage: action.message
+      };
   }
 }
 
 export function selectedCopyLabel(state: ChatFlowState): string {
-  return state.copyCandidates.find((copy) => copy.id === state.selectedCopyId)?.headline ?? copyOptions[0].headline;
+  return state.copyCandidates.find((copy) => copy.id === state.selectedCopyId)?.headline ?? "";
 }
 
 export function selectedChannelLabel(state: ChatFlowState): string {
