@@ -68,8 +68,11 @@ On successful R2 upload, `result_payload` is extended with:
 - `final_image_url`
 - `download_url`
 - `signed_url_expires_at`
+- `assets.final`
 
-Local-dev fallback rows also populate `final_asset_id`, `storage_provider`, `bucket`, and `object_key`, while keeping `final_image_url` and `download_url` as `null`.
+Local-dev fallback rows also populate `final_asset_id`, `storage_provider`, `bucket`, `object_key`, and `assets.final`, while keeping `final_image_url` and `download_url` as `null`.
+
+All `result_payload` values returned through API responses are sanitized to remove local absolute paths, unsafe URL schemes, and secret-like metadata keys.
 
 ## Assets Policy
 

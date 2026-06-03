@@ -36,6 +36,7 @@ GenerationRunMode = Literal[
     "flux",
     "flux_smoke",
 ]
+ResultArtifactPayloadDict = dict[str, Any]
 
 
 class GenerationJobCreateRequest(BaseModel):
@@ -78,7 +79,9 @@ class GenerationJobResponse(BaseModel):
     progress: GenerationProgress
     selected_reference_template_id: str | None = None
     output_path: str | None = None
-    result_payload: dict[str, Any] | None = None
+    # Kept as a dict for backward-compatible API responses. The payload is
+    # validated/sanitized by orchestrator.app.artifacts before response output.
+    result_payload: ResultArtifactPayloadDict | None = None
     error: ErrorResponse | None = None
     created_at: str
     updated_at: str

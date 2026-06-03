@@ -265,6 +265,7 @@ Current limitations:
 - `result_payload.download_path` is a repo-relative development path and is not a public URL.
 - `result_payload.download_url` and `result_payload.final_image_url` may remain `null` when local-dev placeholder storage is used.
 - When R2 upload is enabled and succeeds, `result_payload.final_image_url` and `result_payload.download_url` are filled using either signed or public URL mode.
+- R2 and local-dev payloads may include `final_asset_id`, `storage_provider`, `bucket`, `object_key`, `url_mode`, `signed_url_expires_at`, and nested `assets.final` metadata.
 - Signed URLs may expire. A refresh API is a later milestone.
 - The mock artifact contract is still local-path based for development tracing when object storage is disabled or unavailable.
 - Postgres `assets` rows may track either local development artifacts or R2 objects. FE must still rely only on `final_image_url`/`download_url` for preview and download.
@@ -339,4 +340,4 @@ Backend owns DTO validation, stable response shapes, domain service integration,
 
 Generation result screens must use public URL fields only for browser preview and download. `result_payload.final_image_url`, `result_payload.preview_image_url`, `result_payload.copy_visual_preview_url`, and `result_payload.download_url` may be used as display/download URLs. Local runtime paths such as `data/outputs/...`, `download_path`, `final_image_path`, and `job.output_path` are development artifact paths and must not be used as `img src` or anchor `href` values.
 
-When `job.status == "done"` but no public URL is present, the frontend should show a completed-but-URL-not-ready state instead of continuing a loading spinner. Summary copy remains available, but it must hide local artifact paths and secret-like fields. When signed URLs are used, FE should also be prepared for eventual URL expiration and a later refresh flow.
+When `job.status == "done"` but no public URL is present, the frontend should show a completed-but-URL-not-ready state instead of continuing a loading spinner. Summary copy remains available, but it must hide local artifact paths and secret-like fields. Backend responses sanitize local absolute paths and unsafe URL schemes before returning `result_payload`. When signed URLs are used, FE should also be prepared for eventual URL expiration and a later refresh flow.

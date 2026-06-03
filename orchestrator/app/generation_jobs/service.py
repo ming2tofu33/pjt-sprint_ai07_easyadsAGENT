@@ -13,6 +13,11 @@ from orchestrator.app.api.schemas.generation_jobs import (
     GenerationProgress,
 )
 from orchestrator.app.api.schemas.common import ErrorResponse
+from orchestrator.app.artifacts.service import (
+    merge_final_asset_into_result_payload,
+    normalize_repo_relative_artifact_path,
+    sanitize_result_artifact_payload_for_api,
+)
 from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.repositories import assets as asset_repo
 from orchestrator.app.db.repositories import chat_threads as chat_thread_repo
@@ -570,17 +575,12 @@ def _create_output_records_for_done_job_db(
             connection=connection,
         )
 
-    if asset:
-        effective_result_payload = {
-            **effective_result_payload,
-            "final_asset_id": _string_or_none(asset.get("id")),
-            "storage_provider": asset.get("storage_provider") or "local_dev",
-            "bucket": asset.get("bucket"),
-            "object_key": asset.get("object_key"),
-            "url_mode": effective_result_payload.get("url_mode"),
-            "final_image_url": effective_result_payload.get("final_image_url"),
-            "download_url": effective_result_payload.get("download_url"),
-        }
+    if asset and asset.get("storage_provider") != "r2":
+        effective_result_payload = merge_final_asset_into_result_payload(
+            result_payload=effective_result_payload,
+            asset_row=asset,
+            storage_provider=asset.get("storage_provider") or "local_dev",
+        )
         row = generation_job_repo.update_generation_job_row(
             str(row["public_job_id"]),
             result_payload=effective_result_payload,
@@ -648,17 +648,12 @@ def _upload_final_asset_to_r2(
         metadata=uploaded.metadata,
         connection=connection,
     )
-    effective_result_payload = {
-        **result_payload,
-        "final_asset_id": _string_or_none(asset.get("id")),
-        "storage_provider": uploaded.storage_provider,
-        "bucket": uploaded.bucket,
-        "object_key": uploaded.object_key,
-        "url_mode": uploaded.metadata.get("url_mode"),
-        "final_image_url": uploaded.final_image_url,
-        "download_url": uploaded.download_url,
-        "signed_url_expires_at": uploaded.signed_url_expires_at,
-    }
+    effective_result_payload = merge_final_asset_into_result_payload(
+        result_payload=result_payload,
+        asset_row=asset,
+        uploaded_asset=uploaded,
+        storage_provider=uploaded.storage_provider,
+    )
     updated_row = generation_job_repo.update_generation_job_row(
         public_job_id,
         result_payload=effective_result_payload,
@@ -692,6 +687,7 @@ def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
         return None
     metadata = row.get("metadata") or {}
     error = row.get("error")
+    safe_result_payload = sanitize_result_artifact_payload_for_api(row.get("result_payload"))
     return GenerationJobResponse(
         job_id=str(row.get("public_job_id")),
         thread_id=metadata.get("public_thread_id") or _string_or_none(row.get("thread_id")),
@@ -705,8 +701,8 @@ def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
             stage_order=DEFAULT_STAGE_ORDER,
         ),
         selected_reference_template_id=row.get("selected_reference_template_id"),
-        output_path=row.get("output_path"),
-        result_payload=row.get("result_payload"),
+        output_path=normalize_repo_relative_artifact_path(row.get("output_path")),
+        result_payload=safe_result_payload,
         error=ErrorResponse(**error) if isinstance(error, dict) and error.get("error_code") else None,
         created_at=_iso(row.get("created_at")),
         updated_at=_iso(row.get("updated_at")),
