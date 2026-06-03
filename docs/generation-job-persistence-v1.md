@@ -36,7 +36,9 @@ R2 upload is optional in this milestone. Completed local artifacts still fall ba
 
 This row is internal metadata only. It does not imply the artifact is browser-displayable.
 
-When R2 upload succeeds, the backend stores an R2 asset row, creates the generation output against that asset, and fills `result_payload.final_image_url` / `result_payload.download_url` according to the configured URL mode.
+When R2 upload succeeds, the backend stores an R2 asset row, creates the generation output against that asset, and fills `result_payload.final_image_url` / `result_payload.download_url` according to the configured URL mode. Both R2 success and local-dev fallback payloads include `final_asset_id`, `storage_provider`, `bucket`, `object_key`, and `assets.final`.
+
+GenerationJob responses sanitize `result_payload` before returning it through the API. Local absolute paths, unsafe URL schemes, and secret-like keys are removed.
 
 Signed URLs may expire. Refresh APIs are a later milestone.
 

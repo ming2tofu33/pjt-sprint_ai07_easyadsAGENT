@@ -43,7 +43,7 @@
 - GenerationJob `mock_immediate` uses Result Artifact Contract v1 with `background_0.png`, `final_0.png`, `metadata.json`, `prompt.json`, `validation.json`, `copy.json`, `layout.json`, and `render_result.json`.
 - GenerationJob actual T2I lanes are guarded and disabled by default. `gpt_image_2_actual`/`gpt_image_2_smoke` require explicit external T2I and GPT-image-2 env flags plus an OpenAI API key. `sd35_local`/`sd35_local_smoke` require the SD3.5 local env flag and local dependency/model availability. `flux_local`/`flux_local_smoke` require the FLUX local env flag and local dependency/model availability.
 - CI/default tests do not call GPT-image-2, load SD3.5 or FLUX, download HF models, or require GPU.
-- `download_url` and `final_image_url` remain `null` because static serving/object storage is not implemented.
+- `download_url` and `final_image_url` remain `null` in the default local_dev/CI path. When R2 upload is explicitly enabled and succeeds, GenerationJob responses may include browser-safe `final_image_url` and `download_url` values.
 - Vision Pipeline MVP preprocessing is available before validation when `source_image_path` or `reference_image_path` is supplied.
 - `ReferenceStyleProfile` can inform `ImagePromptPlannerNode` with deterministic palette and style hints.
 - `ProductPreserveSpec` is currently a `center_bbox_stub` only; no real product-preserving edit is performed.
@@ -73,6 +73,7 @@
 - The DB repository foundation is not yet a full production rollout. Actual Supabase smoke, R2 asset upload, Modal job persistence, and production Auth/RLS enforcement are separate follow-up milestones.
 - `GenerationJob persistence v1`: postgres backend can persist create/get/running/done/failed lifecycle changes, record generation job events, and create local-dev asset/output placeholders for completed jobs.
 - `R2 asset storage v1`: when explicitly enabled, `mark_generation_job_done()` can upload final local artifacts to Cloudflare R2, persist R2 asset metadata, and fill `result_payload.final_image_url` / `download_url`. Default CI and local test environments still keep R2 disabled.
+- `ResultArtifactPayload storage contract v1`: result payloads now include storage-backed asset metadata such as `final_asset_id`, `storage_provider`, `bucket`, `object_key`, and nested `assets.final`. API responses sanitize local absolute paths, unsafe URL schemes, and secret-like fields.
 
 ## Not Implemented Yet
 

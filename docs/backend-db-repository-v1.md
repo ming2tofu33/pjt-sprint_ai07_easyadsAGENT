@@ -79,6 +79,8 @@ The postgres backend supports create/get/running/done/failed lifecycle operation
 
 When R2 is enabled, upload lifecycle events `r2_upload_started`, `r2_upload_completed`, and `r2_upload_failed` may be recorded. Local artifact assets still use `storage_provider=local_dev`, `bucket=local-dev`, and `metadata.public_serving=false` when fallback is used.
 
+Storage-backed `result_payload` includes top-level URL fields for FE compatibility and nested `assets.final` metadata for DB/Archive follow-up work. API conversion sanitizes local absolute paths and secret-like metadata before returning payloads.
+
 ## Not Included
 
 - Remote Supabase migration execution.
