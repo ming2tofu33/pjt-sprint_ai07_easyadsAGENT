@@ -87,6 +87,17 @@ export type ReferenceTemplateListResponse = {
   };
 };
 
+export type ReferenceTemplateDetailResponse = {
+  template: ReferenceTemplateCard;
+  detail: Record<string, unknown>;
+  similarTemplates: ReferenceTemplateCard[];
+};
+
+export type ReferenceTemplateSimilarResponse = {
+  templateId: string;
+  items: ReferenceTemplateCard[];
+};
+
 export type PhotoUploadResponse = {
   sourceImagePath: string;
   fileName: string;
@@ -416,9 +427,21 @@ type RawReferenceTemplateListResponse = {
   };
 };
 
+type RawReferenceTemplateDetailResponse = {
+  template: RawReferenceTemplateCard;
+  detail?: Record<string, unknown>;
+  similar_templates?: RawReferenceTemplateCard[];
+};
+
+type RawReferenceTemplateSimilarResponse = {
+  template_id: string;
+  items?: RawReferenceTemplateCard[];
+};
+
 export function listReferenceTemplates(params: {
   keyword?: string;
   category?: string;
+  tags?: string[];
   limit?: number;
 } = {}): Promise<ReferenceTemplateListResponse> {
   const search = new URLSearchParams();
@@ -428,6 +451,12 @@ export function listReferenceTemplates(params: {
   if (params.category?.trim()) {
     search.set("category", params.category.trim());
   }
+  params.tags?.forEach((tag) => {
+    const trimmed = tag.trim();
+    if (trimmed) {
+      search.append("tags", trimmed);
+    }
+  });
   search.set("limit", String(params.limit ?? 40));
   const query = search.toString();
   return getJson<RawReferenceTemplateListResponse>(`/api/references${query ? `?${query}` : ""}`).then((payload) => ({
@@ -480,12 +509,19 @@ export function fetchReferences(params?: ReferenceQueryParams): Promise<unknown>
   return getJson("/api/references", params);
 }
 
-export function fetchReferenceDetail(templateId: string): Promise<unknown> {
-  return getJson(`/api/references/${encodeURIComponent(templateId)}`);
+export function fetchReferenceDetail(templateId: string): Promise<ReferenceTemplateDetailResponse> {
+  return getJson<RawReferenceTemplateDetailResponse>(`/api/references/${encodeURIComponent(templateId)}`).then((payload) => ({
+    template: mapReferenceTemplateCard(payload.template),
+    detail: payload.detail ?? {},
+    similarTemplates: (payload.similar_templates ?? []).map(mapReferenceTemplateCard)
+  }));
 }
 
-export function fetchSimilarReferences(templateId: string, params?: ReferenceQueryParams): Promise<unknown> {
-  return getJson(`/api/references/${encodeURIComponent(templateId)}/similar`, params);
+export function fetchSimilarReferences(templateId: string, params?: ReferenceQueryParams): Promise<ReferenceTemplateSimilarResponse> {
+  return getJson<RawReferenceTemplateSimilarResponse>(`/api/references/${encodeURIComponent(templateId)}/similar`, params).then((payload) => ({
+    templateId: payload.template_id,
+    items: (payload.items ?? []).map(mapReferenceTemplateCard)
+  }));
 }
 
 export function getCurrentBrandKit(params?: { userId?: string }): Promise<unknown> {

@@ -89,6 +89,10 @@ describe("generate chat routes", () => {
       method: "GET",
       url: "/api/references/temp-assets/2026-06-user-refs/watermelon-juice.png"
     });
+    const similarResponse = await app.inject({
+      method: "GET",
+      url: "/api/references/temp_watermelon_juice_feed/similar?limit=3"
+    });
 
     expect(listResponse.statusCode).toBe(200);
     expect(listResponse.json().items[0].template_id).toBe("temp_watermelon_juice_feed");
@@ -102,7 +106,13 @@ describe("generate chat routes", () => {
       "http://orchestrator/api/v1/references/temp-assets/2026-06-user-refs/watermelon-juice.png",
       expect.objectContaining({ method: "GET" })
     );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      3,
+      "http://orchestrator/api/v1/references/temp_watermelon_juice_feed/similar?limit=3",
+      expect.objectContaining({ method: "GET" })
+    );
     expect(assetResponse.statusCode).toBe(200);
+    expect(similarResponse.statusCode).toBe(200);
     expect(assetResponse.headers["content-type"]).toContain("image/png");
     expect(assetResponse.body).toBe("image bytes");
     await app.close();

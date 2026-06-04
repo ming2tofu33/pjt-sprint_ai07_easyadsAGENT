@@ -241,6 +241,14 @@ export function buildApp(options = {}) {
     })
   );
 
+  app.get("/api/references/:templateId/similar", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    return proxyGetJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/references/${encodeURIComponent(request.params.templateId)}/similar${queryString}`
+    });
+  });
+
   app.get("/api/references/:templateId", async (request) =>
     proxyGetJson({
       fetchImpl,
