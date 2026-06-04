@@ -15,12 +15,12 @@ const usagePeriods = [
   {
     id: "this-month",
     label: "이번 달",
-    description: "이번 달에 완성된 이미지 결과를 기준으로 봅니다."
+    description: "이번 달 생성 사용량을 확인하는 기준 기간입니다."
   },
   {
     id: "last-month",
     label: "지난 달",
-    description: "기간별 사용량 데이터가 연결되면 지난 달 내역을 보여드려요."
+    description: "사용량 데이터가 연결되면 지난 달 집계를 보여드려요."
   },
   {
     id: "last-3-months",
@@ -49,7 +49,7 @@ export function UsageSummaryStep() {
         <button aria-label="뒤로" type="button" onClick={() => goBackOrPush(router, buildMyHref())}>
           <ArrowLeft size={20} aria-hidden="true" />
         </button>
-        <h1>이미지 생성 내역</h1>
+        <h1>생성 사용량</h1>
         <button
           aria-expanded={isPeriodMenuOpen}
           aria-label="기간 선택"
@@ -82,15 +82,12 @@ export function UsageSummaryStep() {
 
       <section className={styles.usageHeroCard}>
         <div className={styles.usageRing} style={{ "--progress": "0%" } as CSSProperties}>
-          <strong>
-            {sessionCreatives.length}
-            <small>/ 생성</small>
-          </strong>
-          <span>결과</span>
+          <strong>연결 전</strong>
+          <span>사용량</span>
         </div>
         <div>
-          <p>{selectedPeriod.label}에 생성한 결과</p>
-          <strong>{sessionCreatives.length}개</strong>
+          <p>{selectedPeriod.label} 생성 사용량</p>
+          <strong>사용량 정보 연결 전</strong>
           <small>
             월간 사용량과 결제 한도는 사용량 데이터가 연동되면 표시됩니다.
           </small>
@@ -102,12 +99,12 @@ export function UsageSummaryStep() {
 
       <p className={styles.usageNotice}>
         <Info size={16} aria-hidden="true" />
-        실제 완성된 이미지 결과만 사용 내역에 표시됩니다.
+        아래 완성 이미지 내역은 참고용이며, 실제 월간 사용량과 결제 한도는 사용량 데이터가 연결되면 표시됩니다.
       </p>
 
       <section className={styles.usageHistoryList}>
         <div>
-          <h2>최근 사용 내역</h2>
+          <h2>이번에 생성한 결과</h2>
           <button
             aria-expanded={showAllHistory}
             type="button"
@@ -133,10 +130,10 @@ export function UsageSummaryStep() {
             ) : null}
           </>
         ) : (
-          <section className={styles.emptyResultPanel} aria-label="사용 내역 없음">
+          <section className={styles.emptyResultPanel} aria-label="생성 결과 내역 없음">
             <Sparkles size={24} aria-hidden="true" />
             <strong>아직 생성된 이미지 결과가 없어요</strong>
-            <p>이미지를 생성하면 여기에 차곡차곡 표시돼요.</p>
+            <p>이미지를 생성하면 완성된 결과가 여기에 차곡차곡 표시돼요.</p>
           </section>
         )}
       </section>
@@ -154,9 +151,9 @@ export function UsageSummaryStep() {
         <section className={styles.usageDetailsPanel} aria-label="사용량 상세 안내">
           <h2>사용량 안내</h2>
           <ul>
-            <li>실제 완성된 이미지 결과만 사용 내역에 표시됩니다.</li>
-            <li>이미지 생성에 실패한 요청은 사용 내역에 포함하지 않습니다.</li>
-            <li>월간 사용량과 결제 한도는 결제 정보가 연결되면 함께 표시됩니다.</li>
+            <li>월간 사용량과 결제 한도는 사용량 데이터가 연결되면 표시됩니다.</li>
+            <li>이미지 생성에 실패한 요청은 사용량 집계에 포함하지 않는 기준으로 정리할 예정입니다.</li>
+            <li>완성 이미지 내역은 참고용이며 실제 사용량 집계와는 분리됩니다.</li>
           </ul>
         </section>
       ) : null}
