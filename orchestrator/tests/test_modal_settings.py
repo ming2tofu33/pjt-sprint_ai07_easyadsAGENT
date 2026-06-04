@@ -40,3 +40,17 @@ def test_modal_result_transport_unknown_falls_back_to_inline_base64(monkeypatch)
     monkeypatch.setenv("EASYADS_MODAL_RESULT_TRANSPORT", "weird")
 
     assert settings.get_modal_result_transport() == "inline_base64"
+
+
+def test_modal_function_name_routes_real_model_modes(monkeypatch):
+    monkeypatch.setenv("EASYADS_MODAL_FUNCTION_NAME", "generate_image")
+
+    assert settings.get_modal_function_name(run_mode="flux_local_smoke", engine="flux") == "generate_image"
+    assert settings.get_modal_function_name(run_mode="flux_schnell_real", engine="flux") == "generate_flux_schnell_image"
+    assert settings.get_modal_function_name(run_mode="sd35_large_real", engine="sd35_large") == "generate_sd35_large_image"
+
+    monkeypatch.setenv("EASYADS_MODAL_FLUX_FUNCTION_NAME", "custom_flux")
+    monkeypatch.setenv("EASYADS_MODAL_SD35_FUNCTION_NAME", "custom_sd35")
+
+    assert settings.get_modal_function_name(run_mode="flux_schnell_real") == "custom_flux"
+    assert settings.get_modal_function_name(run_mode="sd35_large_real") == "custom_sd35"

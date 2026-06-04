@@ -49,6 +49,8 @@ def run_structured_node(
     allowed, guard_reason = is_api_call_allowed(state, selection, settings)
     if not allowed:
         return fallback_with_result(state, selection, fallback_fn, guard_reason, metadata)
+    if selection.provider == "mock":
+        return fallback_with_result(state, selection, fallback_fn, "provider_mock_fallback", metadata)
 
     adapter = get_llm_adapter_safe(selection.provider, settings, allow_mock_fallback=True)
     result = adapter.invoke_structured(output_schema, prompt, selection, metadata=safe_metadata(metadata))
@@ -60,7 +62,7 @@ def run_structured_node(
                 "llm_attempted": True,
                 "fallback_used": False,
                 "model_selection": selection.model_dump(),
-                "llm_call_result": result.model_dump(),
+                "llm_call_result": safe_llm_call_result(result),
             }
         except Exception:
             return fallback_with_result(state, selection, fallback_fn, "structured_output_validation_failed", metadata, attempted_result=result)
@@ -100,7 +102,7 @@ def fallback_with_metadata(selection, fallback_fn: FallbackFn, reason: str, resu
         "selected_model_class": selection.selected_model_class,
         "node_name": selection.node_name,
         "model_selection": selection.model_dump(),
-        "llm_call_result": result.model_dump(),
+        "llm_call_result": safe_llm_call_result(result),
     }
 
 
@@ -126,4 +128,29 @@ def append_model_selection(state: dict[str, Any], selection: Any) -> None:
 
 def append_llm_call_result(state: dict[str, Any], result: Any) -> None:
     state.setdefault("llm_call_results", [])
-    state["llm_call_results"].append(result.model_dump() if hasattr(result, "model_dump") else result)
+    state["llm_call_results"].append(safe_llm_call_result(result))
+
+
+def safe_llm_call_result(result: Any) -> dict[str, Any]:
+    data = result.model_dump() if hasattr(result, "model_dump") else dict(result or {})
+    selection = data.get("model_selection") or {}
+    output = data.get("output")
+    if isinstance(output, dict):
+        output_count = len(output.get("candidates") or [])
+    elif isinstance(output, list):
+        output_count = len(output)
+    else:
+        output_count = 1 if output else 0
+    return {
+        "success": data.get("success"),
+        "node_name": data.get("node_name"),
+        "provider": selection.get("provider"),
+        "selected_model_class": selection.get("selected_model_class"),
+        "model_name": selection.get("model_name"),
+        "provider_profile": selection.get("provider_profile"),
+        "latency_ms": data.get("latency_ms"),
+        "error": data.get("error"),
+        "raw_text_present": bool(data.get("raw_text")),
+        "output_candidate_count": output_count,
+        "metadata": safe_metadata(data.get("metadata") or {}),
+    }

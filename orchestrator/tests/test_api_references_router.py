@@ -97,6 +97,14 @@ def test_reference_keyword_aliases_include_cafe_for_food_and_drink():
     assert any(item["category"] == "cafe" for item in english_drink.json()["items"])
 
 
+def test_reference_multi_tag_query_matches_any_alias_term():
+    response = client().get("/api/v1/references?tags=음료&tags=삼겹살&limit=20")
+
+    assert response.status_code == 200
+    categories = {item["category"] for item in response.json()["items"]}
+    assert {"cafe", "restaurant"} <= categories
+
+
 def test_reference_food_category_includes_cafe_and_restaurant():
     response = client().get("/api/v1/references", params={"category": "food", "limit": 20})
 

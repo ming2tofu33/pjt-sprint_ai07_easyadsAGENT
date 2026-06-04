@@ -274,9 +274,28 @@ vi.mock("@/lib/api-client", () => ({
         typographyHint: "extra_bold_condensed_headline",
         popularityScore: 0.5,
         isSaved: false
+      },
+      {
+        templateId: "seed_no_image_reference",
+        title: "이미지 없는 seed 레퍼런스",
+        description: "이미지가 없는 내부 메타데이터",
+        category: "cafe",
+        tags: ["카페"],
+        businessTypes: ["cafe"],
+        adFormats: ["instagram_feed"],
+        platforms: ["instagram"],
+        aspectRatio: "1:1",
+        thumbnailUrl: null,
+        previewUrl: null,
+        styleKeywords: ["mock"],
+        colorPalette: ["#FFFFFF"],
+        layoutHint: "placeholder",
+        typographyHint: "placeholder",
+        popularityScore: 0.9,
+        isSaved: false
       }
     ],
-    pagination: { limit: 40, offset: 0, total: 1, hasMore: false }
+    pagination: { limit: 40, offset: 0, total: 2, hasMore: false }
   })),
   saveArchiveItem: vi.fn(async () => ({
     item: {
@@ -1132,7 +1151,9 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="reference" />);
 
     await waitFor(() => expect(screen.getByText("수박주스 블루 여름 피드")).toBeTruthy());
-    expect(screen.getByText("임시 레퍼런스")).toBeTruthy();
+    expect(screen.queryByText("임시 레퍼런스")).toBeNull();
+    expect(screen.queryByText("테스트용 레퍼런스가 포함되어 있어요. 마음에 드는 스타일을 골라 다음 광고에 참고할 수 있어요.")).toBeNull();
+    expect(screen.queryByText("이미지 없는 seed 레퍼런스")).toBeNull();
     expect(screen.getByText("파란 배경과 큼직한 음료 중심의 여름 음료 레퍼런스")).toBeTruthy();
     expect(screen.queryByText("SPRING SALE")).toBeNull();
   });

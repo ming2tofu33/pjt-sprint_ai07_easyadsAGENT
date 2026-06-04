@@ -9,7 +9,15 @@ import type {
   ReferenceTemplateFields
 } from "@/types/marketing";
 
-const BFF_BASE_URL = process.env.NEXT_PUBLIC_BFF_BASE_URL || "http://127.0.0.1:4000";
+const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "http://127.0.0.1:4000");
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "");
+}
+
+function buildBffUrl(path: string): string {
+  return `${BFF_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 export type ChatStartResponse = {
   type?: "copy_candidates";
@@ -85,6 +93,17 @@ export type ReferenceTemplateListResponse = {
     total: number;
     hasMore: boolean;
   };
+};
+
+export type ReferenceTemplateDetailResponse = {
+  template: ReferenceTemplateCard;
+  detail: Record<string, unknown>;
+  similarTemplates: ReferenceTemplateCard[];
+};
+
+export type ReferenceTemplateSimilarResponse = {
+  templateId: string;
+  items: ReferenceTemplateCard[];
 };
 
 export type PhotoUploadResponse = {
@@ -231,7 +250,7 @@ type RawArchiveMutationResponse = {
 };
 
 async function postJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
-  const response = await fetch(`${BFF_BASE_URL}${path}`, {
+  const response = await fetch(buildBffUrl(path), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
@@ -244,7 +263,7 @@ async function postJson<TResponse>(path: string, body: unknown): Promise<TRespon
 }
 
 async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams): Promise<TResponse> {
-  const url = new URL(`${BFF_BASE_URL}${path}`);
+  const url = new URL(buildBffUrl(path));
   Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value === undefined || value === null) {
       return;
@@ -264,7 +283,7 @@ async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams
 }
 
 async function getJson<TResponse>(path: string, params?: ReferenceQueryParams): Promise<TResponse> {
-  const url = new URL(`${BFF_BASE_URL}${path}`);
+  const url = new URL(buildBffUrl(path));
   Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value === undefined || value === null) {
       return;
@@ -288,7 +307,7 @@ async function getJson<TResponse>(path: string, params?: ReferenceQueryParams): 
 }
 
 async function patchJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
-  const response = await fetch(`${BFF_BASE_URL}${path}`, {
+  const response = await fetch(buildBffUrl(path), {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
@@ -416,9 +435,21 @@ type RawReferenceTemplateListResponse = {
   };
 };
 
+type RawReferenceTemplateDetailResponse = {
+  template: RawReferenceTemplateCard;
+  detail?: Record<string, unknown>;
+  similar_templates?: RawReferenceTemplateCard[];
+};
+
+type RawReferenceTemplateSimilarResponse = {
+  template_id: string;
+  items?: RawReferenceTemplateCard[];
+};
+
 export function listReferenceTemplates(params: {
   keyword?: string;
   category?: string;
+  tags?: string[];
   limit?: number;
 } = {}): Promise<ReferenceTemplateListResponse> {
   const search = new URLSearchParams();
@@ -428,6 +459,12 @@ export function listReferenceTemplates(params: {
   if (params.category?.trim()) {
     search.set("category", params.category.trim());
   }
+  params.tags?.forEach((tag) => {
+    const trimmed = tag.trim();
+    if (trimmed) {
+      search.append("tags", trimmed);
+    }
+  });
   search.set("limit", String(params.limit ?? 40));
   const query = search.toString();
   return getJson<RawReferenceTemplateListResponse>(`/api/references${query ? `?${query}` : ""}`).then((payload) => ({
@@ -468,10 +505,10 @@ function normalizeReferenceAssetUrl(url?: string | null): string | null {
     return null;
   }
   if (url.startsWith("/api/v1/references/temp-assets/")) {
-    return `${BFF_BASE_URL}${url.replace("/api/v1/references", "/api/references")}`;
+    return buildBffUrl(url.replace("/api/v1/references", "/api/references"));
   }
   if (url.startsWith("/api/references/")) {
-    return `${BFF_BASE_URL}${url}`;
+    return buildBffUrl(url);
   }
   return url;
 }
@@ -480,12 +517,19 @@ export function fetchReferences(params?: ReferenceQueryParams): Promise<unknown>
   return getJson("/api/references", params);
 }
 
-export function fetchReferenceDetail(templateId: string): Promise<unknown> {
-  return getJson(`/api/references/${encodeURIComponent(templateId)}`);
+export function fetchReferenceDetail(templateId: string): Promise<ReferenceTemplateDetailResponse> {
+  return getJson<RawReferenceTemplateDetailResponse>(`/api/references/${encodeURIComponent(templateId)}`).then((payload) => ({
+    template: mapReferenceTemplateCard(payload.template),
+    detail: payload.detail ?? {},
+    similarTemplates: (payload.similar_templates ?? []).map(mapReferenceTemplateCard)
+  }));
 }
 
-export function fetchSimilarReferences(templateId: string, params?: ReferenceQueryParams): Promise<unknown> {
-  return getJson(`/api/references/${encodeURIComponent(templateId)}/similar`, params);
+export function fetchSimilarReferences(templateId: string, params?: ReferenceQueryParams): Promise<ReferenceTemplateSimilarResponse> {
+  return getJson<RawReferenceTemplateSimilarResponse>(`/api/references/${encodeURIComponent(templateId)}/similar`, params).then((payload) => ({
+    templateId: payload.template_id,
+    items: (payload.items ?? []).map(mapReferenceTemplateCard)
+  }));
 }
 
 export function getCurrentBrandKit(params?: { userId?: string }): Promise<unknown> {

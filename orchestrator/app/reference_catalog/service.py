@@ -263,7 +263,7 @@ def matches_query(template: ReferenceTemplate, query: ReferenceTemplateSearchQue
         return False
     if query.aspect_ratio and normalize(template.aspect_ratio or "") != normalize(query.aspect_ratio):
         return False
-    if query.tags and not all(contains(template.tags, tag) for tag in query.tags):
+    if query.tags and not any(reference_term_matches(template, tag) for tag in query.tags):
         return False
     if query.style_keywords and not all(contains(template.style_keywords, key) for key in query.style_keywords):
         return False
@@ -282,7 +282,7 @@ def relevance_score(template: ReferenceTemplate, query: ReferenceTemplateSearchQ
         score += 3
     if query.business_type and contains(template.business_types, query.business_type):
         score += 2
-    score += overlap_count(template.tags, query.tags)
+    score += reference_term_match_count(template, query.tags)
     score += overlap_count(template.style_keywords, query.style_keywords)
     return score
 
@@ -335,6 +335,14 @@ def template_search_aliases(template: ReferenceTemplate) -> list[str]:
 def keyword_matches(template: ReferenceTemplate, keyword: str) -> bool:
     haystack = searchable_text(template)
     return any(term in haystack for term in expanded_keyword_terms(keyword))
+
+
+def reference_term_matches(template: ReferenceTemplate, term: str) -> bool:
+    return keyword_matches(template, term)
+
+
+def reference_term_match_count(template: ReferenceTemplate, terms: list[str]) -> int:
+    return sum(1 for term in unique_normalized_terms(terms) if reference_term_matches(template, term))
 
 
 def keyword_relevance_bonus(template: ReferenceTemplate, keyword: str) -> float:

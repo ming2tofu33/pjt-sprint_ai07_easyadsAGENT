@@ -2922,6 +2922,18 @@
   object-fit: cover;
 }
 
+.adCreativeImageMissing {
+  width: 100%;
+  min-height: 72px;
+  border: 1px dashed var(--color-border-soft);
+  border-radius: 10px;
+  color: var(--color-muted);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .adCreativeCup {
   width: 58px;
   height: 68px;
@@ -3068,6 +3080,25 @@
   align-content: space-between;
 }
 
+.referenceDetailHero[data-has-image="true"] {
+  padding: 0;
+  background: #f6f2ea;
+}
+
+.referenceDetailImage {
+  object-fit: contain;
+}
+
+.referenceDetailOverlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 52px 18px 16px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.72));
+  color: #fff;
+}
+
 .referenceDetailHero[data-tone="strawberry"],
 .selectedStyleVisual[data-tone="strawberry"] {
   background:
@@ -3107,6 +3138,7 @@
   position: absolute;
   top: 12px;
   right: 12px;
+  z-index: 2;
   width: 44px;
   height: 44px;
   border: 1px solid rgba(17, 17, 17, 0.16);
@@ -3124,12 +3156,24 @@
   font-weight: 950;
 }
 
+.referenceDetailHero[data-has-image="true"] strong {
+  max-width: 100%;
+  color: #fff;
+  font-size: 20px;
+}
+
 .referenceDetailHero small {
   display: block;
   margin-top: 12px;
   color: #df7669;
   font-size: 12px;
   font-weight: 900;
+}
+
+.referenceDetailHero[data-has-image="true"] small {
+  max-width: 100%;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.45;
 }
 
 .referenceDetailHero > span,
@@ -3344,12 +3388,22 @@
 }
 
 .selectedStyleVisual {
+  position: relative;
   min-height: 112px;
   border-radius: 13px;
   overflow: hidden;
   display: grid;
   align-items: end;
   padding: 10px;
+}
+
+.selectedStyleVisual[data-has-image="true"] {
+  padding: 0;
+  background: #f6f2ea;
+}
+
+.selectedStyleImage {
+  object-fit: cover;
 }
 
 .selectedStyleVisual span {

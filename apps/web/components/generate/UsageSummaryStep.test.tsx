@@ -91,12 +91,15 @@ describe("UsageSummaryStep", () => {
 
     render(<UsageSummaryStep />);
 
+    expect(screen.getByRole("heading", { name: "생성 사용량" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "이미지 생성 내역" })).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: "기간 선택" }));
     expect(screen.getByRole("button", { name: /지난 달/ })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /지난 달/ }));
 
-    expect(screen.getByText("지난 달에 생성한 결과")).toBeTruthy();
+    expect(screen.getByText("지난 달 생성 사용량")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /최근 3개월/ })).toBeNull();
   });
 
@@ -106,6 +109,8 @@ describe("UsageSummaryStep", () => {
 
     render(<UsageSummaryStep />);
 
+    expect(screen.getByRole("heading", { name: "이번에 생성한 결과" })).toBeTruthy();
+    expect(screen.getByText(/아래 완성 이미지 내역은 참고용/)).toBeTruthy();
     expect(screen.getByText("딸기라떼 광고")).toBeTruthy();
     expect(screen.queryByText("네 번째 생성 결과")).toBeNull();
     expect(screen.getByText("나머지 1개 내역은 전체 보기에서 확인할 수 있어요.")).toBeTruthy();
@@ -116,6 +121,6 @@ describe("UsageSummaryStep", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /사용량 더 보기/ }));
     expect(screen.getByRole("heading", { name: "사용량 안내" })).toBeTruthy();
-    expect(screen.getByText("이미지 생성에 실패한 요청은 사용 내역에 포함하지 않습니다.")).toBeTruthy();
+    expect(screen.getByText("완성 이미지 내역은 참고용이며 실제 사용량 집계와는 분리됩니다.")).toBeTruthy();
   });
 });

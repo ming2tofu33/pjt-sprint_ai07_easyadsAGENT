@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import { listReferenceTemplates, type ReferenceTemplateCard } from "@/lib/api-client";
-import type { CreativeTone, MockCreative } from "@/lib/mock-dashboard-data";
+import { hasReferenceTemplateImage, referenceTemplateToCreative } from "@/lib/reference-template-creative";
 import { AdCreativeCard } from "./AdCreativeCard";
 import styles from "./generate.module.css";
 
@@ -58,16 +58,14 @@ export function ReferenceBrowseStep({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const sortedTemplates = useMemo(
+  const searchTags = useMemo(() => splitReferenceSearchTerms(searchTerm), [searchTerm]);
+  const visibleTemplates = useMemo(
     () =>
-      [...templates].sort((first, second) => {
-        const firstHasImage = first.thumbnailUrl || first.previewUrl ? 1 : 0;
-        const secondHasImage = second.thumbnailUrl || second.previewUrl ? 1 : 0;
-        return secondHasImage - firstHasImage || second.popularityScore - first.popularityScore;
-      }),
+      templates
+        .filter(hasReferenceTemplateImage)
+        .sort((first, second) => second.popularityScore - first.popularityScore),
     [templates]
   );
-  const hasTemporaryTemplates = sortedTemplates.some((template) => template.templateId.startsWith("temp_"));
 
   function focusSearchField() {
     searchInputRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
@@ -82,6 +80,7 @@ export function ReferenceBrowseStep({
     listReferenceTemplates({
       keyword: searchTerm,
       category: selectedCategory,
+      tags: searchTags,
       limit: 60
     })
       .then((response) => {
@@ -106,7 +105,7 @@ export function ReferenceBrowseStep({
     return () => {
       cancelled = true;
     };
-  }, [searchTerm, selectedCategory, reloadToken]);
+  }, [searchTags, searchTerm, selectedCategory, reloadToken]);
 
   return (
     <>
@@ -191,20 +190,17 @@ export function ReferenceBrowseStep({
               다시 시도
             </button>
           </section>
-        ) : sortedTemplates.length > 0 ? (
+        ) : visibleTemplates.length > 0 ? (
           <>
-            <p className={styles.sampleNotice}>
-              {hasTemporaryTemplates
-                ? "테스트용 레퍼런스가 포함되어 있어요. 마음에 드는 스타일을 골라 다음 광고에 참고할 수 있어요."
-                : "마음에 드는 스타일을 고르면 다음 광고에 그 분위기를 참고해요."}
-            </p>
+            <p className={styles.sampleNotice}>마음에 드는 스타일을 고르면 다음 광고에 그 분위기를 참고해요.</p>
             <section className={styles.referenceGrid} aria-label="광고 레퍼런스 목록">
-              {sortedTemplates.map((template) => {
+              {visibleTemplates.map((template) => {
                 const creative = referenceTemplateToCreative(template);
                 return (
                   <AdCreativeCard
                     creative={creative}
                     key={template.templateId}
+                    showPlaceholderArt={false}
                     openLabel={`${template.title} 스타일로 시작`}
                     openText="이 스타일로 시작"
                     onOpen={() => {
@@ -223,8 +219,8 @@ export function ReferenceBrowseStep({
         ) : (
           <section className={styles.emptyResultPanel} aria-label="레퍼런스 검색 결과 없음">
             <Search size={24} aria-hidden="true" />
-            <strong>조건에 맞는 레퍼런스가 없어요</strong>
-            <p>검색어나 카테고리를 바꿔서 다시 찾아보세요.</p>
+            <strong>조건에 맞는 레퍼런스 이미지가 없어요</strong>
+            <p>직접 넣은 레퍼런스 이미지가 연결되면 여기에 표시돼요.</p>
           </section>
         )}
       </div>
@@ -264,68 +260,16 @@ export function ReferenceBrowseStep({
   );
 }
 
-function referenceTemplateToCreative(template: ReferenceTemplateCard): MockCreative {
-  return {
-    id: template.templateId,
-    title: template.title,
-    subtitle: template.description ?? [formatLabel(template), ...template.tags.slice(0, 2)].filter(Boolean).join(" · "),
-    format: formatLabel(template),
-    imageUrl: template.thumbnailUrl ?? template.previewUrl,
-    tone: toneForTemplate(template),
-    badge: template.templateId.startsWith("temp_") ? "임시 레퍼런스" : categoryLabel(template.category),
-    tags: template.tags,
-    savedCount: Math.round(template.popularityScore * 100),
-    styleProfile: {
-      colors: template.colorPalette.length > 0 ? template.colorPalette : ["#F7F4EF", "#111827", "#D1D5DB"],
-      layout: template.layoutHint ?? "선택한 템플릿의 레이아웃 힌트를 생성 요청에 반영해요.",
-      copySpace: template.typographyHint ?? "문구가 잘 읽히는 위치와 크기를 참고해요.",
-      mood: template.styleKeywords.join(", ") || categoryLabel(template.category),
-      bestUse: [formatLabel(template), ...template.businessTypes].filter(Boolean).join(", ")
-    }
-  };
-}
-
-function formatLabel(template: ReferenceTemplateCard): string {
-  const format = template.adFormats[0] ?? template.aspectRatio ?? "reference";
-  const labels: Record<string, string> = {
-    instagram_feed: "인스타 피드",
-    instagram_story: "인스타 스토리",
-    poster: "포스터",
-    flyer: "전단지",
-    banner: "배너"
-  };
-  return labels[format] ?? format;
-}
-
-function categoryLabel(category: string): string {
-  const labels: Record<string, string> = {
-    cafe: "카페",
-    food: "음식",
-    restaurant: "음식점",
-    beauty: "뷰티",
-    retail: "리테일",
-    event: "이벤트",
-    flyer: "전단지",
-    banner: "배너",
-    instagram_story: "스토리",
-    instagram_feed: "피드"
-  };
-  return labels[category] ?? category;
-}
-
-function toneForTemplate(template: ReferenceTemplateCard): CreativeTone {
-  const joined = [...template.styleKeywords, ...template.tags, template.category].join(" ").toLowerCase();
-  if (joined.includes("mint") || joined.includes("clean") || joined.includes("green")) {
-    return "mint";
-  }
-  if (joined.includes("yellow") || joined.includes("summer") || joined.includes("event")) {
-    return "sunny";
-  }
-  if (joined.includes("purple") || joined.includes("premium") || joined.includes("minimal")) {
-    return "cream";
-  }
-  if (joined.includes("strawberry") || joined.includes("pink") || joined.includes("dessert")) {
-    return "strawberry";
-  }
-  return "peach";
+function splitReferenceSearchTerms(value: string): string[] {
+  const seen = new Set<string>();
+  return value
+    .split(/[\s,，]+/)
+    .map((term) => term.trim())
+    .filter((term) => {
+      if (!term || seen.has(term)) {
+        return false;
+      }
+      seen.add(term);
+      return true;
+    });
 }

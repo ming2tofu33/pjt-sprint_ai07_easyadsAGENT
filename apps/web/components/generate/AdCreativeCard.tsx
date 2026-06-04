@@ -9,13 +9,14 @@ type AdCreativeCardProps = {
   creative: MockCreative;
   index?: number;
   compact?: boolean;
+  showPlaceholderArt?: boolean;
   openLabel?: string;
   openText?: string;
   onSave?: () => void;
   onOpen?: () => void;
 };
 
-export function AdCreativeCard({ creative, index, compact = false, openLabel, openText, onSave, onOpen }: AdCreativeCardProps) {
+export function AdCreativeCard({ creative, index, compact = false, showPlaceholderArt = true, openLabel, openText, onSave, onOpen }: AdCreativeCardProps) {
   const hasImage = Boolean(creative.imageUrl);
 
   return (
@@ -36,11 +37,13 @@ export function AdCreativeCard({ creative, index, compact = false, openLabel, op
             src={creative.imageUrl}
             unoptimized
           />
-        ) : (
+        ) : showPlaceholderArt ? (
           <>
             <span className={styles.adCreativeCup} />
             <span className={styles.adCreativeFruit} />
           </>
+        ) : (
+          <span className={styles.adCreativeImageMissing}>이미지 준비 중</span>
         )}
       </div>
       <div className={styles.adCreativeCopy}>
