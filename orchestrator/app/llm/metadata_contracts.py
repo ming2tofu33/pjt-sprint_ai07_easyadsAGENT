@@ -45,6 +45,8 @@ ALLOWED_SENSITIVE_KEY_NAMES = {
     "completion_tokens",
     "cost_estimate",
     "prompt_tokens",
+    "openai_api_key_present",
+    "local_api_key_present",
     "token_usage",
     "total_tokens",
 }

@@ -24,7 +24,7 @@ NodeModelName = Literal[
 ]
 RiskLevel = Literal["low", "medium", "high"]
 LatencyBudget = Literal["interactive", "standard", "batch"]
-AdapterProvider = Literal["mock", "openai", "local_gemma", "local_qwen", "vision_api"]
+AdapterProvider = Literal["mock", "openai", "openai_compatible", "local_openai_compat", "local_gemma", "local_qwen", "vision_api"]
 CostTier = Literal["none", "low", "medium", "high"]
 
 
@@ -82,6 +82,8 @@ class ModelSelection(BaseModel):
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     latency_budget: LatencyBudget | None = None
     estimated_cost_tier: CostTier = "none"
+    model_name: str | None = None
+    provider_profile: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("reason")

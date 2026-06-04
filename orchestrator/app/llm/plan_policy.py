@@ -51,7 +51,13 @@ def build_default_plan_policy(user_plan: UserPlan | str) -> PlanPolicy:
         vision_gate_enabled=vision_gate,
         allow_api_fallback=allow_api_fallback,
         node_policies=get_default_node_policies(plan),
-        metadata={"source": "default_plan_policy"},
+        metadata={
+            "source": "default_plan_policy",
+            "local_fast_max_calls": 2 if plan == "free" else None,
+            "local_quality_max_calls": 1 if plan == "free" else None,
+            "auto_pilot_copywriting": "merged_with_copy_candidate_generation" if plan == "free" else "separate_node",
+            "prompt_optimization": "conditional" if plan == "free" else "standard",
+        },
     )
 
 
