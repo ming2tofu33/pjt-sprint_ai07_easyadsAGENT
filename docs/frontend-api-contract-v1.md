@@ -20,7 +20,7 @@ Implemented routes:
 - `POST /api/v1/generation-jobs`
 - `GET /api/v1/generation-jobs/{job_id}`
 
-Archive skeleton support is partially prepared for MVP generated-result flows, but production persistence and complete frontend archive integration are not implemented. Usage and Settings routers are still out of scope. Persistence, object storage, background queues, unguarded image/model calls, and production serving remain out of scope. Guarded GPT-image-2, SD3.5, and FLUX lanes exist but are disabled by default and are not executed in CI/default tests.
+Archive skeleton support is partially prepared for MVP generated-result flows, but production persistence and complete frontend archive integration are not implemented. Usage and Settings routers are still out of scope. Persistence, guarded R2 object storage, and guarded Modal execution foundations are available only when explicitly enabled by backend environment flags. In the default local_dev/CI path, generated artifacts may still have no browser-safe URL, and FE must treat local artifact paths as debug-only traces. Production serving, actual Modal GPU execution, and complete background worker/callback flows remain separate follow-up milestones.
 
 ## 3. Common Response Format
 
@@ -192,6 +192,7 @@ Run mode policy:
 - `gpt_image_2_actual` / `gpt_image_2_smoke`: request the guarded GPT-image-2 lane.
 - `sd35_local` / `sd35_local_smoke`: request the guarded SD3.5 local lane.
 - `flux_local` / `flux_local_smoke`: request the guarded FLUX local lane.
+- With `EASYADS_T2I_EXECUTION_BACKEND=modal`, eligible SD3.5/FLUX run modes can be submitted to the guarded Modal backend instead of executing locally. Modal is disabled by default.
 
 Actual generation lane policy:
 - All actual generation lanes are disabled by default.
@@ -267,6 +268,7 @@ Current limitations:
 - When R2 upload is enabled and succeeds, `result_payload.final_image_url` and `result_payload.download_url` are filled using either signed or public URL mode.
 - R2 and local-dev payloads may include `final_asset_id`, `storage_provider`, `bucket`, `object_key`, `url_mode`, `signed_url_expires_at`, and nested `assets.final` metadata.
 - Signed URLs may expire. A refresh API is a later milestone.
+- Modal execution writes successful GPU results back into the same `result_artifact_v1` payload shape. Modal image bytes/base64 data and Modal token values are never part of the public response.
 - The mock artifact contract is still local-path based for development tracing when object storage is disabled or unavailable.
 - Postgres `assets` rows may track either local development artifacts or R2 objects. FE must still rely only on `final_image_url`/`download_url` for preview and download.
 

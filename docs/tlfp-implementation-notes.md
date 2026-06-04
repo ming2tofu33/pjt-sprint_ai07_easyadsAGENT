@@ -73,7 +73,7 @@
 - The DB repository foundation is not yet a full production rollout. Actual Supabase smoke, R2 asset upload, Modal job persistence, and production Auth/RLS enforcement are separate follow-up milestones.
 - `GenerationJob persistence v1`: postgres backend can persist create/get/running/done/failed lifecycle changes, record generation job events, and create local-dev asset/output placeholders for completed jobs.
 - `R2 asset storage v1`: when explicitly enabled, `mark_generation_job_done()` can upload final local artifacts to Cloudflare R2, persist R2 asset metadata, and fill `result_payload.final_image_url` / `download_url`. Default CI and local test environments still keep R2 disabled.
-- `ResultArtifactPayload storage contract v1`: result payloads now include storage-backed asset metadata such as `final_asset_id`, `storage_provider`, `bucket`, `object_key`, and nested `assets.final`. API responses sanitize local absolute paths, unsafe URL schemes, and secret-like fields.
+- `Modal GPU execution backend v1`: eligible SD3.5/FLUX run modes can be routed through a guarded Modal bridge when `EASYADS_T2I_EXECUTION_BACKEND=modal` and `EASYADS_ENABLE_MODAL_EXECUTION=true`. Default tests use fake clients only and never call Modal or load models.
 
 ## Not Implemented Yet
 
@@ -83,6 +83,7 @@
 - Actual product-preserving image edit.
 - Actual reference-guided image generation beyond metadata prompt hints.
 - Unguarded actual GPT-image-2, SD3.5, or FLUX generation.
+- Actual Modal GPU smoke or deployed Modal app management.
 - Signed URL refresh APIs and broader static artifact serving policy.
 - Production Supabase Auth/RLS enforcement.
 - Automatic regeneration loops.

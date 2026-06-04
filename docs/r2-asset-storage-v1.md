@@ -58,6 +58,8 @@ Signed URL refresh is not implemented in this milestone.
 4. creates a `generation_outputs` row,
 5. records upload lifecycle events.
 
+The same completion path is reused by the guarded Modal backend after a successful Modal poll writes `final_0.png` into the local runtime artifact directory.
+
 On successful R2 upload, `result_payload` is extended with:
 
 - `final_asset_id`

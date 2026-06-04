@@ -14,6 +14,8 @@ Postgres repository path requires `psycopg` at runtime. This milestone keeps `ps
 
 R2 upload path also remains lazy and optional. `boto3` is not added to project dependencies in this milestone; actual R2 smoke or deployment needs a runtime `boto3` installation.
 
+Modal execution also remains lazy and optional. `EASYADS_T2I_EXECUTION_BACKEND=modal` routes eligible SD3.5/FLUX run modes through the Modal bridge only when `EASYADS_ENABLE_MODAL_EXECUTION=true`; Modal SDK imports happen inside the client wrapper, not at module import time.
+
 ## Environment
 
 ```env
@@ -77,6 +79,8 @@ The postgres backend supports create/get/running/done/failed lifecycle operation
 - done records a `done` event, optionally uploads the final artifact to R2, creates either an R2 asset row or a local-dev placeholder, creates a generation output row, marks it final, updates the thread final output, and records `output_created`.
 - failed records a `failed` event and marks the thread failed.
 
+When Modal execution is enabled, GenerationJob rows keep the internal `modal_call_id`, while public metadata should expose only presence booleans and lifecycle states. Modal completion reuses `mark_generation_job_done()` so the same ResultArtifactPayload and asset/output persistence rules apply.
+
 When R2 is enabled, upload lifecycle events `r2_upload_started`, `r2_upload_completed`, and `r2_upload_failed` may be recorded. Local artifact assets still use `storage_provider=local_dev`, `bucket=local-dev`, and `metadata.public_serving=false` when fallback is used.
 
 Storage-backed `result_payload` includes top-level URL fields for FE compatibility and nested `assets.final` metadata for DB/Archive follow-up work. API conversion sanitizes local absolute paths and secret-like metadata before returning payloads.
@@ -84,7 +88,7 @@ Storage-backed `result_payload` includes top-level URL fields for FE compatibili
 ## Not Included
 
 - Remote Supabase migration execution.
-- Modal execution.
+- Actual Modal execution smoke or deployed Modal app management.
 - Supabase Auth/RLS enforcement.
 - Frontend changes.
 - Evaluation pipeline implementation.

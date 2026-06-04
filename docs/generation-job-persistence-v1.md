@@ -20,7 +20,7 @@ Postgres `create_generation_job()` ensures a demo workspace, creates a chat thre
 ## Status Transitions
 
 - `mark_generation_job_running()` updates status/progress/stage, sets `started_at`, records a `running` event, and keeps the thread generating.
-- `mark_generation_job_done()` updates status/result payload/output path, sets `finished_at`, records `done`, creates a local-dev asset placeholder, creates a generation output, marks it final, updates the thread final output, and records `output_created`.
+- `mark_generation_job_done()` updates status/result payload/output path, sets `finished_at`, creates a local-dev or R2 asset, creates a generation output, records `done`, marks the output final, updates the thread final output, and records `output_created`.
 - `mark_generation_job_failed()` stores a structured error, sets `finished_at`, records `failed`, and marks the thread failed.
 
 ## Output And Asset Policy
@@ -45,7 +45,7 @@ Signed URLs may expire. Refresh APIs are a later milestone.
 ## Not Included
 
 - static serving or signed URLs
-- Modal execution
+- Modal execution is available as a guarded follow-up bridge when `EASYADS_T2I_EXECUTION_BACKEND=modal`; actual Modal calls remain disabled by default and are not run in CI/default tests.
 - Archive API/UI
 - FE implementation
 - actual GPT-image-2, SD3.5, FLUX, LLM, VLM, or OCR calls

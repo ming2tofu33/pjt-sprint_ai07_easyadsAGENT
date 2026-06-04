@@ -26,6 +26,14 @@ from orchestrator.app.db.repositories import generation_jobs as generation_job_r
 from orchestrator.app.db.repositories import generation_outputs as generation_output_repo
 from orchestrator.app.db.repositories import workspaces as workspace_repo
 from orchestrator.app.db.session import db_transaction
+from orchestrator.app.modal import settings as modal_settings
+from orchestrator.app.modal.errors import ModalExecutionError, ModalJobPollError
+from orchestrator.app.modal.service import (
+    build_modal_t2i_request_from_job,
+    is_modal_eligible_run_mode,
+    poll_and_process_modal_generation_job,
+    submit_generation_job_to_modal,
+)
 from orchestrator.app.storage import settings as storage_settings
 from orchestrator.app.storage.errors import AssetStorageError
 from orchestrator.app.storage.object_keys import build_generation_object_key
@@ -243,6 +251,94 @@ def reset_generation_job_store_for_tests() -> None:
     _GENERATION_JOBS.clear()
 
 
+def should_route_generation_job_to_modal(request: GenerationJobCreateRequest) -> bool:
+    return (
+        modal_settings.get_t2i_execution_backend() == "modal"
+        and is_modal_eligible_run_mode(request.run_mode)
+    )
+
+
+def maybe_submit_generation_job_to_modal(
+    job: GenerationJobResponse,
+    request: GenerationJobCreateRequest,
+) -> GenerationJobResponse:
+    if not should_route_generation_job_to_modal(request):
+        return job
+    if not _use_postgres_backend():
+        return mark_generation_job_failed(
+            job.job_id,
+            {
+                "error_code": "modal_execution_requires_postgres",
+                "message": "Modal execution requires postgres GenerationJob persistence.",
+            },
+            metadata={"execution_backend": "modal"},
+        ) or job
+    if not modal_settings.is_modal_execution_enabled():
+        return mark_generation_job_failed(
+            job.job_id,
+            {
+                "error_code": "modal_execution_not_enabled",
+                "message": "Modal execution is disabled.",
+            },
+            metadata={"execution_backend": "modal"},
+        ) or job
+
+    job_row = generation_job_repo.get_generation_job_row(job.job_id)
+    if not job_row:
+        return job
+    modal_request = build_modal_t2i_request_from_job(job_row=job_row, generation_request=request)
+    try:
+        submit_generation_job_to_modal(job_row=job_row, modal_request=modal_request)
+    except ModalExecutionError as exc:
+        return mark_generation_job_failed(
+            job.job_id,
+            {
+                "error_code": "modal_submit_failed",
+                "message": "Modal job submit failed.",
+                "detail": str(exc),
+            },
+            metadata={"execution_backend": "modal", "modal_submit_failed": True},
+        ) or job
+    return get_generation_job(job.job_id) or job
+
+
+def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> GenerationJobResponse:
+    if not _use_postgres_backend():
+        return job
+    if not modal_settings.is_modal_poll_on_get_enabled():
+        return job
+    if job.status not in {"queued", "running"}:
+        return job
+    job_row = generation_job_repo.get_generation_job_row(job.job_id)
+    if not job_row or not job_row.get("modal_call_id"):
+        return job
+    try:
+        polled = poll_and_process_modal_generation_job(job_id=job.job_id)
+    except ModalJobPollError as exc:
+        job_row = generation_job_repo.get_generation_job_row(job.job_id)
+        if job_row:
+            _record_generation_job_event_db(
+                job_row,
+                "modal_poll_unavailable",
+                payload={
+                    "error_code": "modal_poll_adapter_unavailable",
+                    "message": str(exc),
+                },
+            )
+        return job
+    except ModalExecutionError as exc:
+        return mark_generation_job_failed(
+            job.job_id,
+            {
+                "error_code": "modal_poll_failed",
+                "message": "Modal job poll failed.",
+                "detail": str(exc),
+            },
+            metadata={"execution_backend": "modal", "modal_poll_failed": True},
+        ) or job
+    return polled or job
+
+
 def _engine_preference(run_mode: str) -> str | None:
     if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "gpt_image_2"
@@ -260,6 +356,12 @@ def _model_provider_for_run_mode(run_mode: str) -> str | None:
     if run_mode in {"sd35_local", "sd35_local_smoke", "flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
         return "local"
     return None
+
+
+def _model_provider_for_request(request: GenerationJobCreateRequest) -> str | None:
+    if modal_settings.get_t2i_execution_backend() == "modal" and is_modal_eligible_run_mode(request.run_mode):
+        return "modal"
+    return _model_provider_for_run_mode(request.run_mode)
 
 
 def _model_name_for_run_mode(run_mode: str) -> str | None:
@@ -318,7 +420,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             metadata=metadata,
             run_mode=request.run_mode,
             engine=_engine_preference(request.run_mode),
-            model_provider=_model_provider_for_run_mode(request.run_mode),
+            model_provider=_model_provider_for_request(request),
             model_name=_model_name_for_run_mode(request.run_mode),
             prompt_hash=hashlib.sha256(request.user_input.encode("utf-8")).hexdigest(),
             prompt_preview=prompt_preview,
