@@ -988,10 +988,11 @@ EASYADS_MODAL_APP_NAME=easyads-t2i
 EASYADS_MODAL_FUNCTION_NAME=generate_image
 ```
 
-같은 파일에는 실제 FLUX.1-schnell worker도 함께 들어 있습니다. 이 함수는 GPU와 Hugging Face secret을 사용합니다.
+같은 파일에는 실제 FLUX.1-schnell worker와 SD3.5 Large worker도 함께 들어 있습니다. 이 함수들은 GPU와 Hugging Face secret을 사용합니다.
 
 ```text
-EASYADS_MODAL_FUNCTION_NAME=generate_flux_schnell_image
+EASYADS_MODAL_FLUX_FUNCTION_NAME=generate_flux_schnell_image
+EASYADS_MODAL_SD35_FUNCTION_NAME=generate_sd35_large_image
 ```
 
 ### 12.3 Railway Modal 변수
@@ -1006,6 +1007,8 @@ EASYADS_ENABLE_MODAL_EXECUTION=true
 EASYADS_MODAL_POLL_ON_GET=true
 EASYADS_MODAL_APP_NAME=easyads-t2i
 EASYADS_MODAL_FUNCTION_NAME=generate_image
+EASYADS_MODAL_FLUX_FUNCTION_NAME=generate_flux_schnell_image
+EASYADS_MODAL_SD35_FUNCTION_NAME=generate_sd35_large_image
 EASYADS_MODAL_ENVIRONMENT=main
 EASYADS_MODAL_RESULT_TRANSPORT=inline_base64
 EASYADS_MODAL_POLL_TIMEOUT_SECONDS=0
@@ -1013,13 +1016,15 @@ EASYADS_MODAL_POLL_TIMEOUT_SECONDS=0
 
 적용 후 orchestrator를 redeploy합니다.
 
-실제 FLUX.1-schnell smoke를 할 때만 Railway orchestrator에서 함수명을 바꿉니다.
+orchestrator는 `runMode`에 따라 Modal 함수를 자동 선택합니다.
 
 ```text
-EASYADS_MODAL_FUNCTION_NAME=generate_flux_schnell_image
+mock/smoke        -> EASYADS_MODAL_FUNCTION_NAME
+flux_schnell_real -> EASYADS_MODAL_FLUX_FUNCTION_NAME
+sd35_large_real   -> EASYADS_MODAL_SD35_FUNCTION_NAME
 ```
 
-이때 API 요청은 다음 run mode를 사용합니다.
+실제 FLUX.1-schnell smoke 요청:
 
 ```json
 {
@@ -1032,6 +1037,23 @@ EASYADS_MODAL_FUNCTION_NAME=generate_flux_schnell_image
       "num_inference_steps": 4,
       "guidance_scale": 0.0,
       "max_sequence_length": 256
+    }
+  }
+}
+```
+
+실제 SD3.5 Large smoke 요청:
+
+```json
+{
+  "userInput": "Create a premium cafe ad",
+  "runMode": "sd35_large_real",
+  "metadata": {
+    "width": 768,
+    "height": 768,
+    "t2i_params": {
+      "num_inference_steps": 8,
+      "guidance_scale": 4.0
     }
   }
 }
@@ -1085,10 +1107,11 @@ L40S
 ```
 
 실제 FLUX.1-schnell worker의 기본값은 `EASYADS_MODAL_FLUX_GPU=L40S`입니다.
+실제 SD3.5 Large worker의 기본값은 `EASYADS_MODAL_SD35_GPU=L40S`입니다.
 Modal worker 배포 전에 로컬 환경변수로 바꾸면 다른 GPU로 배포할 수 있습니다.
 
 ```bash
-EASYADS_MODAL_FLUX_GPU=H100 uv run modal deploy modal_apps/easyads_t2i_worker.py
+EASYADS_MODAL_FLUX_GPU=H100 EASYADS_MODAL_SD35_GPU=H100 uv run modal deploy modal_apps/easyads_t2i_worker.py
 ```
 
 SD 3.5 Large와 FLUX는 모델별 VRAM 요구량이 다르므로 실제 worker 전환 전 한 모델씩 smoke합니다.

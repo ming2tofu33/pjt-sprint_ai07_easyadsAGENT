@@ -34,6 +34,7 @@ Modal routing is allowed only for local GPU lanes:
 ```text
 sd35_local
 sd35_local_smoke
+sd35_large_real
 flux_local
 flux_local_smoke
 flux_schnell_real
@@ -116,7 +117,7 @@ commit data/outputs artifacts
 ## 9. Current Limitations
 
 ```text
-Actual SD3.5 Large deployment is not included. A mock Modal worker is available for connectivity smoke tests, and `generate_flux_schnell_image` is available for FLUX.1-schnell smoke tests when `easyads-hf-token` and a GPU deployment are configured.
+A mock Modal worker is available for connectivity smoke tests. `generate_flux_schnell_image` is available for FLUX.1-schnell smoke tests, and `generate_sd35_large_image` is available for SD3.5 Large smoke tests when `easyads-hf-token` and a GPU deployment are configured.
 Callback/webhook handling is not implemented.
 Long polling and background workers are not implemented.
 Signed URL refresh remains a separate storage milestone.
