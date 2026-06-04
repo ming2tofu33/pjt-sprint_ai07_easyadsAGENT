@@ -31,6 +31,7 @@ GenerationRunMode = Literal[
     "gpt_image_2_smoke",
     "sd35_local",
     "sd35_local_smoke",
+    "sd35_large_real",
     "flux_local",
     "flux_local_smoke",
     "flux_schnell_real",

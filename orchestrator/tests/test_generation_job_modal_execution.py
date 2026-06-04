@@ -53,6 +53,9 @@ def test_modal_router_policy_only_applies_to_modal_backend(monkeypatch):
     real_flux_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux_schnell_real")
     assert service.should_route_generation_job_to_modal(real_flux_request) is True
 
+    real_sd35_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="sd35_large_real")
+    assert service.should_route_generation_job_to_modal(real_sd35_request) is True
+
 
 def test_modal_disabled_marks_job_failed_without_local_model_execution(monkeypatch):
     monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "modal")
@@ -108,6 +111,10 @@ def test_modal_backend_records_model_provider_as_modal(monkeypatch):
 
     assert service._model_provider_for_request(request) == "modal"
     assert service._model_name_for_run_mode(request.run_mode) == "flux"
+
+    sd35_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="sd35_large_real")
+    assert service._model_provider_for_request(sd35_request) == "modal"
+    assert service._model_name_for_run_mode(sd35_request.run_mode) == "sd35_large"
 
 
 def test_modal_poll_adapter_unavailable_does_not_fail_job(monkeypatch):

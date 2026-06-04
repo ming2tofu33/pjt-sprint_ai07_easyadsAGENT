@@ -5,12 +5,12 @@ from orchestrator.app.modal import client as modal_client
 from orchestrator.app.modal.schemas import ModalT2IRequest
 
 
-def _request() -> ModalT2IRequest:
+def _request(run_mode: str = "flux_local", engine: str = "flux") -> ModalT2IRequest:
     return ModalT2IRequest(
         job_id="job_modal",
         workspace_id="workspace_uuid",
-        run_mode="flux_local",
-        engine="flux",
+        run_mode=run_mode,
+        engine=engine,
         prompt="premium advertising background",
     )
 
@@ -46,6 +46,38 @@ def test_submit_modal_t2i_job_lazy_imports_modal(monkeypatch):
     assert captured["app_name"] == "easyads-t2i"
     assert captured["function_name"] == "generate_image"
     assert captured["payload"]["job_id"] == "job_modal"
+
+
+def test_submit_modal_t2i_job_routes_real_model_functions(monkeypatch):
+    captured = []
+    modal_module = types.ModuleType("modal")
+
+    class FakeCall:
+        object_id = "modal_call_123"
+
+    class FakeFunction:
+        @classmethod
+        def from_name(cls, app_name, function_name):
+            captured.append((app_name, function_name))
+            return cls()
+
+        def spawn(self, payload):
+            return FakeCall()
+
+    modal_module.Function = FakeFunction
+    monkeypatch.setitem(sys.modules, "modal", modal_module)
+    monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "modal")
+    monkeypatch.setenv("EASYADS_ENABLE_MODAL_EXECUTION", "true")
+    monkeypatch.setenv("MODAL_TOKEN_ID", "token-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "token-secret")
+
+    modal_client.submit_modal_t2i_job(_request(run_mode="flux_schnell_real", engine="flux"))
+    modal_client.submit_modal_t2i_job(_request(run_mode="sd35_large_real", engine="sd35_large"))
+
+    assert captured == [
+        ("easyads-t2i", "generate_flux_schnell_image"),
+        ("easyads-t2i", "generate_sd35_large_image"),
+    ]
 
 
 def test_submit_modal_t2i_job_accepts_injected_fake_client(monkeypatch):

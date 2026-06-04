@@ -18,14 +18,15 @@ def submit_modal_t2i_job(request: ModalT2IRequest, *, client: object | None = No
     try:
         modal = _import_modal()
         environment_name = settings.get_modal_environment()
+        function_name = settings.get_modal_function_name(run_mode=request.run_mode, engine=request.engine)
         if environment_name:
             function = modal.Function.from_name(
                 settings.get_modal_app_name(),
-                settings.get_modal_function_name(),
+                function_name,
                 environment_name=environment_name,
             )
         else:
-            function = modal.Function.from_name(settings.get_modal_app_name(), settings.get_modal_function_name())
+            function = modal.Function.from_name(settings.get_modal_app_name(), function_name)
         function_call = function.spawn(request.model_dump(mode="json"))
     except ModalExecutionUnavailableError:
         raise

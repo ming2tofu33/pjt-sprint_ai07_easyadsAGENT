@@ -15,6 +15,7 @@ from orchestrator.app.modal.schemas import ModalPollResult, ModalSubmitResult, M
 MODAL_ELIGIBLE_RUN_MODES = {
     "sd35_local",
     "sd35_local_smoke",
+    "sd35_large_real",
     "flux_local",
     "flux_local_smoke",
     "flux_schnell_real",
@@ -55,6 +56,10 @@ def build_modal_t2i_request_from_job(
         params.setdefault("render_mode", "flux_schnell")
         params.setdefault("num_inference_steps", 4)
         params.setdefault("guidance_scale", 0.0)
+    if run_mode == "sd35_large_real":
+        params.setdefault("render_mode", "sd35_large")
+        params.setdefault("num_inference_steps", 8)
+        params.setdefault("guidance_scale", 4.0)
     return ModalT2IRequest(
         job_id=public_job_id,
         thread_id=str(metadata.get("public_thread_id") or job_row.get("thread_id") or "") or None,
@@ -220,7 +225,7 @@ def _record_usage(row: dict, poll_result: ModalPollResult):
 
 
 def _engine_from_run_mode(run_mode: str | None) -> str | None:
-    if run_mode in {"sd35_local", "sd35_local_smoke"}:
+    if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         return "sd35_large"
     if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
         return "flux"
