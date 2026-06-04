@@ -33,6 +33,7 @@ GenerationRunMode = Literal[
     "sd35_local_smoke",
     "flux_local",
     "flux_local_smoke",
+    "flux_schnell_real",
     "flux",
     "flux_smoke",
 ]

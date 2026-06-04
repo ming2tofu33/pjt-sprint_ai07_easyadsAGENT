@@ -1,14 +1,16 @@
-"""EasyAds Modal T2I worker.
+"""EasyAds Modal T2I workers.
 
-The first deployed worker is intentionally a lightweight deterministic image
-generator. It validates the Railway -> Modal -> R2 path before heavier SD/FLUX
-model code is enabled.
+``generate_image`` stays as the cheap deterministic smoke worker. The real
+FLUX worker is exposed as ``generate_flux_schnell_image`` so production can
+switch to GPU inference without making every connectivity smoke test allocate
+a GPU.
 """
 
 from __future__ import annotations
 
 import base64
 import io
+import os
 import time
 from typing import Any
 
@@ -16,13 +18,45 @@ import modal
 
 
 APP_NAME = "easyads-t2i"
+FLUX_MODEL_ID = "black-forest-labs/FLUX.1-schnell"
+FLUX_REAL_RUN_MODES = {"flux_schnell_real", "flux_real", "flux_modal_real"}
+FLUX_GPU = os.getenv("EASYADS_MODAL_FLUX_GPU", "L40S")
+try:
+    FLUX_TIMEOUT_SECONDS = int(os.getenv("EASYADS_MODAL_FLUX_TIMEOUT_SECONDS", "900"))
+except ValueError:
+    FLUX_TIMEOUT_SECONDS = 900
+FLUX_VOLUME_NAME = os.getenv("EASYADS_MODAL_FLUX_VOLUME_NAME", "easyads-hf-cache")
 
-image = modal.Image.debian_slim(python_version="3.12").pip_install("Pillow==12.2.0")
-app = modal.App(APP_NAME, image=image)
+mock_image = modal.Image.debian_slim(python_version="3.12").pip_install("Pillow==12.2.0")
+flux_image = modal.Image.debian_slim(python_version="3.12").pip_install(
+    "Pillow==12.2.0",
+    "torch>=2.5.1,<3",
+    "diffusers>=0.36.0,<0.37",
+    "transformers>=4.46.0,<5",
+    "accelerate>=1.1.0,<2",
+    "safetensors>=0.6.0,<1",
+    "huggingface_hub>=0.26.0,<1",
+    "sentencepiece>=0.2.0,<1",
+    "protobuf>=5,<7",
+)
+hf_cache_volume = modal.Volume.from_name(FLUX_VOLUME_NAME, create_if_missing=True)
+hf_secret = modal.Secret.from_name("easyads-hf-token")
+app = modal.App(APP_NAME, image=mock_image)
+_flux_pipeline_cache: dict[str, Any] = {}
 
 
-@app.function(timeout=300)
+@app.function(image=mock_image, timeout=300)
 def generate_image(payload: dict[str, Any]) -> dict[str, Any]:
+    if _is_real_flux_request(payload):
+        return _failed_result(
+            payload,
+            error_code="modal_function_mismatch",
+            message=(
+                "Real FLUX requests must use Modal function "
+                "generate_flux_schnell_image, not generate_image."
+            ),
+        )
+
     started = time.perf_counter()
     image_b64 = _render_mock_png_base64(payload)
     duration_ms = int((time.perf_counter() - started) * 1000)
@@ -59,6 +93,133 @@ def generate_image(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@app.function(
+    image=flux_image,
+    gpu=FLUX_GPU,
+    timeout=FLUX_TIMEOUT_SECONDS,
+    startup_timeout=FLUX_TIMEOUT_SECONDS,
+    secrets=[hf_secret],
+    volumes={"/cache": hf_cache_volume},
+    env={
+        "HF_HOME": "/cache/huggingface",
+        "HF_HUB_CACHE": "/cache/huggingface/hub",
+        "HF_HUB_ENABLE_HF_TRANSFER": "0",
+    },
+)
+def generate_flux_schnell_image(payload: dict[str, Any]) -> dict[str, Any]:
+    if not _is_real_flux_request(payload):
+        return _failed_result(
+            payload,
+            error_code="modal_real_flux_run_mode_required",
+            message="Real FLUX worker requires run_mode=flux_schnell_real or params.render_mode=flux_schnell.",
+        )
+
+    started = time.perf_counter()
+    try:
+        image_b64 = _render_flux_schnell_png_base64(payload)
+    except Exception as exc:
+        return _failed_result(
+            payload,
+            error_code="modal_flux_generation_failed",
+            message="FLUX.1-schnell generation failed.",
+            detail=_safe_exception_detail(exc),
+        )
+
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    options = _flux_generation_options(payload)
+    model_id = _flux_model_id(payload)
+    return {
+        "status": "succeeded",
+        "modal_call_id": _current_modal_call_id(payload),
+        "image_b64": image_b64,
+        "mime_type": "image/png",
+        "filename": "final_0.png",
+        "result_payload": {
+            "schema_version": "result_artifact_v1",
+            "engine": "flux",
+            "render_mode": "modal_flux_schnell",
+            "model_name": model_id,
+            "prompt_summary": {
+                "prompt_preview": _preview_text(payload.get("prompt")),
+                "run_mode": payload.get("run_mode"),
+            },
+            "generation_params": {
+                "width": options["width"],
+                "height": options["height"],
+                "num_inference_steps": options["num_inference_steps"],
+                "guidance_scale": options["guidance_scale"],
+                "max_sequence_length": options["max_sequence_length"],
+                "seed": options["seed"],
+            },
+            "validation_summary": {
+                "overall_pass": True,
+                "checks": ["modal_worker_invoked", "flux_schnell_rendered"],
+            },
+        },
+        "usage": {
+            "gpu_type": FLUX_GPU,
+            "gpu_seconds": duration_ms / 1000,
+            "duration_ms": duration_ms,
+            "model_name": model_id,
+            "cost_usd": None,
+        },
+        "metadata": {
+            "worker": "easyads_t2i_worker",
+            "worker_mode": "flux_schnell",
+        },
+    }
+
+
+def _render_flux_schnell_png_base64(payload: dict[str, Any]) -> str:
+    import torch
+
+    token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+    if not token:
+        raise RuntimeError("HF_TOKEN is not set in Modal secret easyads-hf-token.")
+
+    options = _flux_generation_options(payload)
+    model_id = _flux_model_id(payload)
+    pipe = _get_flux_pipeline(model_id, token)
+
+    generator = None
+    if options["seed"] is not None:
+        generator = torch.Generator("cuda").manual_seed(options["seed"])
+
+    image = pipe(
+        prompt=str(payload.get("prompt") or ""),
+        width=options["width"],
+        height=options["height"],
+        num_inference_steps=options["num_inference_steps"],
+        guidance_scale=options["guidance_scale"],
+        max_sequence_length=options["max_sequence_length"],
+        generator=generator,
+    ).images[0]
+
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    return base64.b64encode(output.getvalue()).decode("ascii")
+
+
+def _get_flux_pipeline(model_id: str, token: str):
+    if model_id in _flux_pipeline_cache:
+        return _flux_pipeline_cache[model_id]
+
+    import torch
+    from diffusers import FluxPipeline
+
+    pipe = FluxPipeline.from_pretrained(model_id, torch_dtype=torch.bfloat16, token=token)
+    if hasattr(pipe, "enable_model_cpu_offload"):
+        pipe.enable_model_cpu_offload()
+    else:
+        pipe.to("cuda")
+    _flux_pipeline_cache[model_id] = pipe
+    try:
+        hf_cache_volume.commit()
+    except Exception:
+        pass
+    return pipe
+
+
 def _render_mock_png_base64(payload: dict[str, Any]) -> str:
     from PIL import Image, ImageDraw
 
@@ -88,6 +249,60 @@ def _render_mock_png_base64(payload: dict[str, Any]) -> str:
     return base64.b64encode(output.getvalue()).decode("ascii")
 
 
+def _is_real_flux_request(payload: dict[str, Any]) -> bool:
+    run_mode = str(payload.get("run_mode") or "").strip().lower()
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    render_mode = str(params.get("render_mode") or "").strip().lower()
+    return run_mode in FLUX_REAL_RUN_MODES or render_mode in {"real_flux", "flux_schnell"}
+
+
+def _flux_model_id(payload: dict[str, Any]) -> str:
+    value = str(payload.get("model_name") or "").strip()
+    if value and value not in {"flux", "flux_local", "flux_schnell"}:
+        return value
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    param_value = str(params.get("model_id") or "").strip()
+    if param_value:
+        return param_value
+    return FLUX_MODEL_ID
+
+
+def _flux_generation_options(payload: dict[str, Any]) -> dict[str, Any]:
+    params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
+    width = _snap_to_multiple(_safe_int(params.get("width") or payload.get("width"), 1024), 16)
+    height = _snap_to_multiple(_safe_int(params.get("height") or payload.get("height"), 1024), 16)
+    return {
+        "width": min(max(width, 256), 1024),
+        "height": min(max(height, 256), 1024),
+        "num_inference_steps": min(max(_safe_int(params.get("num_inference_steps"), 4), 1), 8),
+        "guidance_scale": min(max(_safe_float(params.get("guidance_scale"), 0.0), 0.0), 5.0),
+        "max_sequence_length": min(max(_safe_int(params.get("max_sequence_length"), 256), 64), 512),
+        "seed": _optional_int(params.get("seed") if params.get("seed") is not None else payload.get("seed")),
+    }
+
+
+def _failed_result(
+    payload: dict[str, Any],
+    *,
+    error_code: str,
+    message: str,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "status": "failed",
+        "modal_call_id": _current_modal_call_id(payload),
+        "error": {
+            "error_code": error_code,
+            "message": message,
+            "detail": detail,
+        },
+        "metadata": {
+            "worker": "easyads_t2i_worker",
+            "worker_mode": "error",
+        },
+    }
+
+
 def _current_modal_call_id(payload: dict[str, Any]) -> str:
     try:
         value = modal.current_function_call_id()
@@ -108,3 +323,32 @@ def _safe_int(value: Any, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float(value: Any, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _snap_to_multiple(value: int, multiple: int) -> int:
+    return max(multiple, (value // multiple) * multiple)
+
+
+def _safe_exception_detail(exc: Exception) -> str:
+    text = f"{type(exc).__name__}: {exc}".strip()
+    for env_name in ("HF_TOKEN", "HUGGINGFACE_TOKEN", "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"):
+        secret = os.getenv(env_name)
+        if secret:
+            text = text.replace(secret, "[REDACTED]")
+    return text[:500]
