@@ -194,6 +194,70 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("proxies generation job create and get requests", async () => {
+    const fetchImpl = vi.fn(async (_url, init) => {
+      if (init?.method === "GET") {
+        return jsonResponse({
+          success: true,
+          job: {
+            job_id: "job_1",
+            thread_id: "thread_1",
+            status: "queued",
+            progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+            metadata: { workspace_id: "workspace_1" }
+          }
+        });
+      }
+      return jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          thread_id: "thread_1",
+          status: "queued",
+          progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+          metadata: { workspace_id: "workspace_1" }
+        }
+      });
+    });
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs",
+      payload: {
+        userInput: "Supabase 연결 확인",
+        runMode: "queued_only",
+        selectedReferenceTemplateId: "seed_1"
+      }
+    });
+    const getResponse = await app.inject({
+      method: "GET",
+      url: "/api/generation-jobs/job_1"
+    });
+
+    expect(createResponse.statusCode).toBe(200);
+    expect(getResponse.statusCode).toBe(200);
+    expect(getResponse.json().job.job_id).toBe("job_1");
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://orchestrator/api/v1/generation-jobs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          userInput: "Supabase 연결 확인",
+          runMode: "queued_only",
+          selected_reference_template_id: "seed_1"
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/generation-jobs/job_1",
+      expect.objectContaining({ method: "GET" })
+    );
+    await app.close();
+  });
+
   it("validates chat start payloads", async () => {
     const app = buildApp({ fetchImpl: vi.fn() });
 
