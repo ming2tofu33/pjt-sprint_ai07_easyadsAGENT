@@ -1,0 +1,115 @@
+ad-gen/                              ← 루트 (monorepo)
+│
+├── apps/
+│   │
+│   ├── web/                         ← FE 전담 (Next.js App Router, UI only)
+│   │   ├── app/
+│   │   │   ├── (landing)/
+│   │   │   ├── generate/            ← 입력 폼 + 스트리밍 진행 UI
+│   │   │   └── result/              ← 광고 이미지 + 문구 결과 화면
+│   │   ├── components/
+│   │   │   ├── ui/                  ← shadcn 기반 공통 컴포넌트
+│   │   │   ├── generate/            ← 생성 플로우 전용 컴포넌트
+│   │   │   └── result/
+│   │   ├── lib/
+│   │   │   └── api-client.ts        ← bff 엔드포인트 호출 함수만
+│   │   ├── types/
+│   │   ├── public/
+│   │   ├── package.json
+│   │   └── next.config.ts
+│   │
+│   ├── bff/                         ← BE 전담 (Node.js Fastify)
+│   │   ├── src/
+│   │   │   ├── routes/
+│   │   │   │   ├── generate.ts      ← POST /api/generate → orchestrator 전달
+│   │   │   │   ├── status.ts        ← GET  /api/status/:jobId (폴링 or SSE)
+│   │   │   │   └── health.ts
+│   │   │   ├── services/
+│   │   │   │   ├── orchestrator.ts  ← Python orchestrator 호출 클라이언트
+│   │   │   │   └── session.ts       ← 요청 ID 관리, 타임아웃
+│   │   │   ├── middlewares/
+│   │   │   │   ├── errorHandler.ts
+│   │   │   │   ├── rateLimit.ts
+│   │   │   │   └── logger.ts
+│   │   │   ├── schemas/
+│   │   │   │   └── generate.schema.ts  ← Zod 스키마 (Python Pydantic과 1:1)
+│   │   │   └── app.ts
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   │
+│   ├── llm-service/                 ← Python FastAPI (광고 문구 생성)
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   ├── routers/
+│   │   │   ├── services/
+│   │   │   ├── schemas/             ← Pydantic 스키마
+│   │   │   └── prompts/             ← 업종별 프롬프트 템플릿
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   │
+│   ├── image-service/               ← Python FastAPI (T2I / LoRA)
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   ├── routers/
+│   │   │   ├── services/
+│   │   │   │   ├── t2i.py
+│   │   │   │   └── lora_loader.py
+│   │   │   └── schemas/
+│   │   ├── tests/
+│   │   ├── Dockerfile
+│   │   └── requirements.txt
+│   │
+│   └── vision-service/              ← Python FastAPI (rembg, SAM, 합성)
+│       ├── app/
+│       │   ├── main.py
+│       │   ├── routers/
+│       │   ├── services/
+│       │   │   ├── rembg_pipeline.py
+│       │   │   └── composite.py
+│       │   └── schemas/
+│       ├── tests/
+│       ├── Dockerfile
+│       └── requirements.txt
+│
+├── orchestrator/                    ← Python FastAPI + LangGraph (Serving 파트)
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── graph/                   ← LangGraph StateGraph 노드
+│   │   │   ├── state.py
+│   │   │   ├── nodes/
+│   │   │   │   ├── copy_node.py
+│   │   │   │   ├── image_node.py
+│   │   │   │   ├── vision_node.py
+│   │   │   │   └── validator_node.py
+│   │   │   └── workflow.py
+│   │   └── schemas/
+│   ├── tests/
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── packages/
+│   └── shared-types/                ← 공유 TS 타입 (선택, 팀 규모 따라)
+│
+├── infra/
+│   ├── docker-compose.yml           ← 로컬 개발 전체 스택
+│   ├── docker-compose.prod.yml      ← GCP 배포용
+│   └── nginx/
+│       └── nginx.conf
+│
+├── scripts/
+│   ├── setup.sh                     ← 초기 환경 세팅 (venv, .env 복사)
+│   └── seed_prompts.py              ← 업종별 프롬프트 초기 데이터
+│
+├── docs/
+│   ├── architecture.md
+│   ├── api-spec.md
+│   └── eval-rubric.md               ← Eval 기준 문서
+│
+├── .github/
+│   └── PULL_REQUEST_TEMPLATE.md
+│
+├── .env.example
+├── .gitignore
+└── README.md

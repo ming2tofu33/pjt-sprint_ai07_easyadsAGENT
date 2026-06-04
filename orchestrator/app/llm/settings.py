@@ -1,0 +1,72 @@
+"""LLM runtime settings and API cost guard."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from orchestrator.app.core.config import _get_bool, _get_env
+from orchestrator.app.schemas.llm_model_policy import ModelSelection
+
+
+@dataclass(frozen=True)
+class LLMSettings:
+    enable_api_call: bool = False
+    default_provider: str = "mock"
+    openai_api_key: str | None = None
+    openai_text_model_nano: str | None = None
+    openai_text_model_mini: str | None = None
+    openai_text_model_full: str | None = None
+    openai_vision_model: str | None = None
+    max_api_calls_per_job_override: int | None = None
+    request_timeout_seconds: int = 30
+    provider_strict_mode: bool = True
+
+    @classmethod
+    def from_env(cls) -> "LLMSettings":
+        override = _get_env("LLM_MAX_API_CALLS_PER_JOB_OVERRIDE", "")
+        return cls(
+            enable_api_call=_get_bool("LLM_ENABLE_API_CALL", False),
+            default_provider=_get_env("LLM_DEFAULT_PROVIDER", "mock"),
+            openai_api_key=_get_env("OPENAI_API_KEY", "") or None,
+            openai_text_model_nano=_get_env("LLM_OPENAI_TEXT_MODEL_NANO", "") or None,
+            openai_text_model_mini=_get_env("LLM_OPENAI_TEXT_MODEL_MINI", "") or None,
+            openai_text_model_full=_get_env("LLM_OPENAI_TEXT_MODEL_FULL", "") or None,
+            openai_vision_model=_get_env("LLM_OPENAI_VISION_MODEL", "") or None,
+            max_api_calls_per_job_override=int(override) if override.isdigit() else None,
+            request_timeout_seconds=int(_get_env("LLM_REQUEST_TIMEOUT_SECONDS", "30") or "30"),
+            provider_strict_mode=_get_bool("LLM_PROVIDER_STRICT_MODE", True),
+        )
+
+
+def get_llm_settings() -> LLMSettings:
+    return LLMSettings.from_env()
+
+
+def model_class_requires_api(model_class: str) -> bool:
+    return model_class.startswith("api_")
+
+
+def count_api_calls(state: dict[str, Any]) -> int:
+    count = 0
+    for result in state.get("llm_call_results", []) or []:
+        selection = result.get("model_selection") or {}
+        if model_class_requires_api(str(selection.get("selected_model_class", ""))):
+            count += 1
+    return count
+
+
+def is_api_call_allowed(state: dict[str, Any], model_selection: ModelSelection, settings: LLMSettings) -> tuple[bool, str]:
+    if not model_class_requires_api(model_selection.selected_model_class):
+        return True, "model class does not require external API"
+    if model_selection.user_plan == "free":
+        return False, "free_plan_api_disabled"
+    if not settings.enable_api_call:
+        return False, "api_call_disabled"
+    policy = state.get("plan_policy") or {}
+    max_calls = settings.max_api_calls_per_job_override
+    if max_calls is None:
+        max_calls = int(policy.get("max_api_calls_per_job", 0))
+    if count_api_calls(state) >= max_calls:
+        return False, "api_call_limit_exceeded"
+    return True, "api_call_allowed"

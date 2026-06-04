@@ -1,0 +1,125 @@
+:root {
+  --color-bg-page: #f8f8f4;
+  --color-bg-surface: #ffffff;
+  --color-bg-card: #ffffff;
+  --color-text-primary: #111111;
+  --color-text-secondary: #565248;
+  --color-text-muted: #73736f;
+  --color-text-inverse: #ffffff;
+  --color-border-soft: #e8e6df;
+  --color-border-frame: rgba(17, 17, 17, 0.08);
+  --color-border-hairline: rgba(17, 17, 17, 0.08);
+  --color-border-control: rgba(17, 17, 17, 0.12);
+  --color-border-overlay: rgba(17, 17, 17, 0.14);
+  --color-neutral-track: #ebe9e4;
+  --color-neutral-chip: #f6f6f3;
+  --color-action-primary: #050505;
+  --color-action-primary-text: #ffffff;
+  --color-focus-ring: rgba(170, 146, 255, 0.9);
+  --color-brand-lime: #eaff79;
+  --color-brand-lime-soft: #f3ffd0;
+  --color-brand-lime-shell: #f5ffd0;
+  --color-brand-purple: #aa92ff;
+  --color-brand-purple-soft: #f3efff;
+  --color-brand-purple-shell: #eee8ff;
+  --color-brand-purple-strong: #6d52d8;
+  --color-brand-purple-text: #5f43d6;
+  --color-brand-mint: #dff8f2;
+  --color-brand-mint-soft: #e8fbf5;
+  --color-brand-mint-border: #bcebe2;
+  --color-brand-mint-text: #24564b;
+  --color-brand-coral: #ffb3a7;
+  --color-brand-coral-soft: #fff0ea;
+  --color-brand-coral-text: #6a4039;
+  --color-status-success: #28a98e;
+  --color-status-success-soft: #dff8f2;
+  --color-status-warning: #fff9df;
+  --color-status-danger: #ef513d;
+  --color-status-danger-soft: #fff0ea;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-phone: 34px;
+  --radius-pill: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 18px;
+  --space-6: 22px;
+  --space-7: 28px;
+  --touch-target-min: 44px;
+  --mobile-shell-width: 390px;
+  --mobile-shell-min-height: 760px;
+  --screen-padding-x: 18px;
+  --screen-padding-top: 28px;
+  --screen-padding-bottom: 22px;
+  --shadow-phone: 0 24px 80px rgba(17, 17, 17, 0.13);
+  --shadow-card: 0 10px 30px rgba(17, 17, 17, 0.07);
+  --motion-press: 180ms ease;
+  --motion-slide: 360ms cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Legacy aliases kept while older screens are migrated to semantic tokens. */
+  --color-page: var(--color-bg-page);
+  --color-surface: var(--color-bg-surface);
+  --color-text: var(--color-text-primary);
+  --color-muted: var(--color-text-muted);
+  --color-border: var(--color-border-soft);
+  --color-lime: var(--color-brand-lime);
+  --color-lime-soft: var(--color-brand-lime-soft);
+  --color-purple: var(--color-brand-purple);
+  --color-purple-soft: var(--color-brand-purple-soft);
+  --color-coral: var(--color-brand-coral);
+  --color-coral-soft: var(--color-brand-coral-soft);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(circle at 22% 8%, rgba(234, 255, 121, 0.32), transparent 28rem),
+    radial-gradient(circle at 86% 18%, rgba(170, 146, 255, 0.22), transparent 24rem),
+    var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus-ring);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
