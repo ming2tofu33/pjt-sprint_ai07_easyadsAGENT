@@ -367,6 +367,13 @@ EASYADS_MODAL_RESULT_TRANSPORT=inline_base64
 EASYADS_MODAL_POLL_TIMEOUT_SECONDS=0
 ```
 
+`EASYADS_MODAL_FUNCTION_NAME=generate_image`는 GPU 없는 mock/R2 smoke용입니다.
+실제 FLUX.1-schnell을 실행할 때만 다음 값으로 바꿉니다.
+
+```text
+EASYADS_MODAL_FUNCTION_NAME=generate_flux_schnell_image
+```
+
 모델 weight는 R2가 아니라 Modal cache 또는 Modal Volume에 둡니다.
 R2는 사용자 파일과 결과물 저장소로만 사용합니다.
 
@@ -981,6 +988,12 @@ EASYADS_MODAL_APP_NAME=easyads-t2i
 EASYADS_MODAL_FUNCTION_NAME=generate_image
 ```
 
+같은 파일에는 실제 FLUX.1-schnell worker도 함께 들어 있습니다. 이 함수는 GPU와 Hugging Face secret을 사용합니다.
+
+```text
+EASYADS_MODAL_FUNCTION_NAME=generate_flux_schnell_image
+```
+
 ### 12.3 Railway Modal 변수
 
 Railway orchestrator에 넣습니다.
@@ -1000,12 +1013,48 @@ EASYADS_MODAL_POLL_TIMEOUT_SECONDS=0
 
 적용 후 orchestrator를 redeploy합니다.
 
+실제 FLUX.1-schnell smoke를 할 때만 Railway orchestrator에서 함수명을 바꿉니다.
+
+```text
+EASYADS_MODAL_FUNCTION_NAME=generate_flux_schnell_image
+```
+
+이때 API 요청은 다음 run mode를 사용합니다.
+
+```json
+{
+  "userInput": "Create a premium cafe ad",
+  "runMode": "flux_schnell_real",
+  "metadata": {
+    "width": 768,
+    "height": 768,
+    "t2i_params": {
+      "num_inference_steps": 4,
+      "guidance_scale": 0.0,
+      "max_sequence_length": 256
+    }
+  }
+}
+```
+
 ### 12.4 실제 모델 secrets 준비
 
 실제 SD/FLUX worker로 바꿀 때 Modal secret에는 모델 다운로드에 필요한 값을 넣습니다.
 
 ```text
 HF_TOKEN
+```
+
+권장 secret 이름:
+
+```text
+easyads-hf-token
+```
+
+생성:
+
+```bash
+uv run modal secret create easyads-hf-token HF_TOKEN="$HF_TOKEN"
 ```
 
 현재 R2 업로드는 Railway orchestrator가 담당하므로 mock worker 단계에서는 Modal에 R2 secret을 넣지 않습니다.
@@ -1032,7 +1081,14 @@ R2는 서비스 파일과 산출물 저장소로 사용하고, 모델 weight는 
 초기 MVP 추천:
 
 ```text
-A10 또는 L40S
+L40S
+```
+
+실제 FLUX.1-schnell worker의 기본값은 `EASYADS_MODAL_FLUX_GPU=L40S`입니다.
+Modal worker 배포 전에 로컬 환경변수로 바꾸면 다른 GPU로 배포할 수 있습니다.
+
+```bash
+EASYADS_MODAL_FLUX_GPU=H100 uv run modal deploy modal_apps/easyads_t2i_worker.py
 ```
 
 SD 3.5 Large와 FLUX는 모델별 VRAM 요구량이 다르므로 실제 worker 전환 전 한 모델씩 smoke합니다.
@@ -1040,7 +1096,7 @@ SD 3.5 Large와 FLUX는 모델별 VRAM 요구량이 다르므로 실제 worker �
 더 가벼운 테스트:
 
 ```text
-L4 또는 T4
+mock worker의 generate_image 함수
 ```
 
 고품질/고속 생성:

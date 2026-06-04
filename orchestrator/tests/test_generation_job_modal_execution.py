@@ -50,6 +50,9 @@ def test_modal_router_policy_only_applies_to_modal_backend(monkeypatch):
     gpt_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="gpt_image_2_actual")
     assert service.should_route_generation_job_to_modal(gpt_request) is False
 
+    real_flux_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux_schnell_real")
+    assert service.should_route_generation_job_to_modal(real_flux_request) is True
+
 
 def test_modal_disabled_marks_job_failed_without_local_model_execution(monkeypatch):
     monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "modal")
