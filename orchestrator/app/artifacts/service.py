@@ -295,4 +295,10 @@ def _looks_like_base64_image(value: str) -> bool:
 
 
 def _should_keep_null_field(key: str) -> bool:
-    return key in URL_FIELDS or key.endswith("_url") or key.endswith("_asset_id") or key == "signed_url_expires_at"
+    return (
+        key in URL_FIELDS
+        or key.endswith("_url")
+        or key.endswith("_path")
+        or key.endswith("_asset_id")
+        or key in {"output_dir", "object_key", "signed_url_expires_at"}
+    )
