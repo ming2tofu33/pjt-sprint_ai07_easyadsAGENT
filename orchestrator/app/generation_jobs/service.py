@@ -13,12 +13,12 @@ from orchestrator.app.api.schemas.generation_jobs import (
     GenerationProgress,
 )
 from orchestrator.app.api.schemas.common import ErrorResponse
-from orchestrator.app.db import settings as db_settings
 from orchestrator.app.artifacts.service import (
     merge_final_asset_into_result_payload,
     normalize_repo_relative_artifact_path,
     sanitize_result_artifact_payload_for_api,
 )
+from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.repositories import assets as asset_repo
 from orchestrator.app.db.repositories import chat_threads as chat_thread_repo
 from orchestrator.app.db.repositories import generation_job_events as generation_job_event_repo
@@ -677,11 +677,10 @@ def _create_output_records_for_done_job_db(
             connection=connection,
         )
 
-    if asset:
+    if asset and asset.get("storage_provider") != "r2":
         effective_result_payload = merge_final_asset_into_result_payload(
             result_payload=effective_result_payload,
             asset_row=asset,
-            uploaded_asset=None,
             storage_provider=asset.get("storage_provider") or "local_dev",
         )
         row = generation_job_repo.update_generation_job_row(
@@ -755,7 +754,7 @@ def _upload_final_asset_to_r2(
         result_payload=result_payload,
         asset_row=asset,
         uploaded_asset=uploaded,
-        storage_provider="r2",
+        storage_provider=uploaded.storage_provider,
     )
     updated_row = generation_job_repo.update_generation_job_row(
         public_job_id,
@@ -790,6 +789,7 @@ def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
         return None
     metadata = row.get("metadata") or {}
     error = row.get("error")
+    safe_result_payload = sanitize_result_artifact_payload_for_api(row.get("result_payload"))
     return GenerationJobResponse(
         job_id=str(row.get("public_job_id")),
         thread_id=metadata.get("public_thread_id") or _string_or_none(row.get("thread_id")),
@@ -804,7 +804,7 @@ def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
         ),
         selected_reference_template_id=row.get("selected_reference_template_id"),
         output_path=normalize_repo_relative_artifact_path(row.get("output_path")),
-        result_payload=sanitize_result_artifact_payload_for_api(row.get("result_payload")),
+        result_payload=safe_result_payload,
         error=ErrorResponse(**error) if isinstance(error, dict) and error.get("error_code") else None,
         created_at=_iso(row.get("created_at")),
         updated_at=_iso(row.get("updated_at")),
