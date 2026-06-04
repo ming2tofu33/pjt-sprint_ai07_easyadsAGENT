@@ -18,6 +18,7 @@ from orchestrator.app.graph.state import (
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.metadata_builders import build_copy_mode_inference_metadata, metadata_contract_to_prompt_json
+from orchestrator.app.llm.nodes.brief_interpreter import build_context_updates_from_brief_interpreter, interpret_brief_with_llm
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.option_registry import get_next_missing_field, get_option_question, option_label_for_value
 from orchestrator.app.schemas.llm_marketing import CopyModeInferenceOutput, InitialMarketingRequest, MarketingContext, ProgressState, UserSelectionRequest, ValidatorOutput
@@ -44,9 +45,21 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     extra = dict(context_data.get("extra") or {})
     if updates.pop("ad_format", None):
         extra["ad_format"] = infer_ad_format(text)
+    copy_mode_from_brief: str | None = None
     for key, value in updates.items():
         if value and not context_data.get(key):
             context_data[key] = value
+    brief_interpreter_output, brief_interpreter_metadata = interpret_brief_with_llm(state, text)
+    brief_interpreter_warnings: list[str] = []
+    if brief_interpreter_output:
+        llm_updates, brief_interpreter_warnings = build_context_updates_from_brief_interpreter(
+            brief_interpreter_output,
+            source_text=text,
+        )
+        copy_mode_from_brief = llm_updates.pop("copy_generation_mode", None)
+        for key, value in llm_updates.items():
+            if value and not context_data.get(key):
+                context_data[key] = value
     requested_ad_format = state.get("current_brief", {}).get("requested_ad_format") or infer_ad_format(text) or extra.get("ad_format")
     if requested_ad_format:
         extra["ad_format"] = requested_ad_format
@@ -55,6 +68,15 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
 
     missing_fields = calculate_missing_fields(context)
     copy_mode, copy_mode_output = resolve_copy_generation_mode(state, text)
+    if copy_mode is None and copy_mode_from_brief:
+        copy_mode = copy_mode_from_brief
+        copy_mode_output = CopyModeInferenceOutput(
+            copy_generation_mode=copy_mode_from_brief,
+            confidence=brief_interpreter_output.confidence if brief_interpreter_output else 0.65,
+            source="brief_interpreter_llm",
+            reasoning_summary="Copy mode inferred by guarded brief interpreter.",
+            metadata={"source": "brief_interpreter_llm", "source_detail": "copy_generation_mode inferred by guarded brief interpreter"},
+        )
     if copy_mode is None and "copy_generation_mode" not in missing_fields:
         missing_fields.append("copy_generation_mode")
     if copy_mode and "copy_generation_mode" in missing_fields:
@@ -70,8 +92,15 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         inferred_generation_route=state.get("generation_route"),
         inferred_ad_format=inferred_ad_format,
         progress_state=progress_state,
-        reasoning_summary="Rule-based v1 validator; no LLM call was made.",
+        reasoning_summary="Rule-based v1 validator with guarded brief interpretation fallback.",
     )
+    validator_metadata = {
+        "brief_interpreter": {
+            "used": bool(brief_interpreter_output),
+            "llm_metadata": brief_interpreter_metadata,
+            "warnings": brief_interpreter_warnings,
+        }
+    }
     current_brief_updates = {"ready_for_planning": not bool(missing_fields), "copy_generation_mode": copy_mode}
     if requested_ad_format:
         current_brief_updates["requested_ad_format"] = requested_ad_format
@@ -81,6 +110,7 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     return {
         "context": context.model_dump(),
         "validator_output": validator_output.model_dump(),
+        "validator_metadata": validator_metadata,
         "missing_fields": missing_fields,
         "progress_state": progress_state.model_dump(),
         "current_brief": state.get("current_brief", {}),

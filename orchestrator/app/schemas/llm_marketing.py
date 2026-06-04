@@ -338,7 +338,7 @@ class ToneBindingOutput(BaseModel):
 class CopyModeInferenceOutput(BaseModel):
     copy_generation_mode: CopyGenerationMode
     confidence: float = Field(..., ge=0.0, le=1.0)
-    source: Literal["explicit_user_choice", "heuristic", "default"]
+    source: Literal["explicit_user_choice", "heuristic", "default", "brief_interpreter_llm"]
     reasoning_summary: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
