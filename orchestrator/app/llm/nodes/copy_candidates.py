@@ -9,6 +9,7 @@ from langgraph.types import interrupt
 from orchestrator.app.graph.state import MarketingState, context_to_model
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
+from orchestrator.app.llm.copy_tone_policy import normalize_copy_for_business
 from orchestrator.app.llm.metadata_builders import build_copy_generation_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.nodes.format_planner import build_layout_spec
@@ -44,6 +45,7 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
     if not isinstance(output, CopyCandidateListOutput) or not output.candidates:
         output = build_rule_based_candidate_output(state)
         llm_metadata = {**llm_metadata, "fallback_used": True, "fallback_reason": "invalid_candidate_output"}
+    output, llm_metadata = validate_or_fallback_candidate_output(state, output, llm_metadata)
     max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
     candidates = [apply_candidate_quality_policy(candidate) for candidate in normalize_candidate_ids(output.candidates[: max(1, max_candidates)])]
     output = CopyCandidateListOutput(
@@ -75,6 +77,77 @@ def build_rule_based_candidate_output(state: MarketingState) -> CopyCandidateLis
     else:
         candidates = build_generic_candidates(item, context.promotion_goal)
     return CopyCandidateListOutput(candidates=candidates, recommended_candidate_id="copy_1", metadata={"source_node": "copy_candidate_generation", "fallback": "rule_based"})
+
+
+def validate_or_fallback_candidate_output(
+    state: MarketingState,
+    output: CopyCandidateListOutput,
+    llm_metadata: dict[str, Any],
+) -> tuple[CopyCandidateListOutput, dict[str, Any]]:
+    blocked: list[str] = []
+    normalized: list[CopyCandidate] = []
+    context = context_to_model(state.get("context"))
+    for candidate in output.candidates:
+        reason = hallucinated_fact_reason(candidate, state)
+        if reason:
+            blocked.append(reason)
+            continue
+        policy = normalize_copy_for_business(
+            {"headline": candidate.headline, "subcopy": candidate.subcopy, "cta": candidate.cta},
+            context.business_type,
+            mode="generated",
+        )
+        copy = policy["normalized_copy"]
+        normalized.append(
+            candidate.model_copy(
+                update={
+                    "headline": copy["headline"],
+                    "subcopy": copy["subcopy"],
+                    "cta": copy["cta"],
+                    "metadata": {**candidate.metadata, "copy_tone_policy": policy},
+                }
+            )
+        )
+    if not normalized:
+        fallback = build_rule_based_candidate_output(state)
+        return fallback, {**llm_metadata, "fallback_used": True, "fallback_reason": "llm_candidate_validation_failed", "blocked_claims": sorted(set(blocked))}
+    return output.model_copy(update={"candidates": normalized}), {**llm_metadata, "blocked_claims": sorted(set(blocked))}
+
+
+def hallucinated_fact_reason(candidate: CopyCandidate, state: MarketingState) -> str | None:
+    context = context_to_model(state.get("context"))
+    provided = " ".join(
+        str(value or "")
+        for value in (
+            context.price_or_discount,
+            context.location_text,
+            context.contact_or_order_method,
+            state.get("user_input"),
+        )
+    )
+    text = " ".join(str(value or "") for value in (candidate.headline, candidate.subcopy, candidate.cta))
+    if re_search_phone(text) and not re_search_phone(provided):
+        return "invented_phone_number"
+    if "%" in text and "%" not in provided:
+        return "invented_discount_rate"
+    if re_search_price(text) and not re_search_price(provided):
+        return "invented_price"
+    for marker in ("주소", "강남구", "서울", "부산", "대구", "인천"):
+        if marker in text and marker not in provided:
+            return "invented_address"
+    return None
+
+
+def re_search_phone(text: str) -> bool:
+    import re
+
+    return bool(re.search(r"0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}", text or ""))
+
+
+def re_search_price(text: str) -> bool:
+    import re
+
+    return bool(re.search(r"(₩\s*\d|[0-9][0-9,]*\s*원)", text or ""))
 
 
 def build_restaurant_candidates(item: str) -> list[CopyCandidate]:
