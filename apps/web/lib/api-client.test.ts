@@ -259,10 +259,10 @@ describe("api-client photo generation", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await listReferenceTemplates({ keyword: "수박", limit: 40 });
+    const result = await listReferenceTemplates({ keyword: "수박 음료", tags: ["수박", "음료"], limit: 40 });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:4000/api/references?keyword=%EC%88%98%EB%B0%95&limit=40",
+      "http://127.0.0.1:4000/api/references?keyword=%EC%88%98%EB%B0%95+%EC%9D%8C%EB%A3%8C&tags=%EC%88%98%EB%B0%95&tags=%EC%9D%8C%EB%A3%8C&limit=40",
       expect.objectContaining({ method: "GET" })
     );
     expect(result.items[0]).toMatchObject({
@@ -350,16 +350,41 @@ describe("api-client backend contract routes", () => {
   });
 
   it("fetches reference catalog endpoints through the BFF", async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({ success: true, items: [] }));
+    const rawTemplate = {
+      template_id: "template_1",
+      title: "레퍼런스 템플릿",
+      category: "cafe",
+      tags: ["카페"],
+      business_types: ["cafe"],
+      ad_formats: ["instagram_feed"],
+      platforms: ["instagram"],
+      style_keywords: ["fresh"],
+      color_palette: ["#FFFFFF"],
+      popularity_score: 0.5,
+      is_saved: false
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/references/template_1")) {
+        return jsonResponse({ success: true, template: rawTemplate, detail: {}, similar_templates: [rawTemplate] });
+      }
+      if (url.includes("/api/references/template_1/similar")) {
+        return jsonResponse({ success: true, template_id: "template_1", items: [rawTemplate] });
+      }
+      return jsonResponse({ success: true, items: [] });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     await fetchReferences({ category: "cafe", tags: ["CTA", "warm"], limit: 2 });
-    await fetchReferenceDetail("template_1");
-    await fetchSimilarReferences("template_1", { limit: 3 });
+    const detail = await fetchReferenceDetail("template_1");
+    const similar = await fetchSimilarReferences("template_1", { limit: 3 });
 
     expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/references?category=cafe&tags=CTA&tags=warm&limit=2");
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/references/template_1");
     expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/references/template_1/similar?limit=3");
+    expect(detail.template.templateId).toBe("template_1");
+    expect(detail.similarTemplates[0].templateId).toBe("template_1");
+    expect(similar.items[0].templateId).toBe("template_1");
   });
 
   it("calls brand kit endpoints through the BFF", async () => {

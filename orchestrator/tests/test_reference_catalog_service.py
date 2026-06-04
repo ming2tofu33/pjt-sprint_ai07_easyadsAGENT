@@ -47,6 +47,17 @@ def test_food_and_drink_keywords_include_cafe_results(monkeypatch):
     assert any(item.template_id == "seed_cafe_strawberry_feed_001" for item in english_drink_items)
 
 
+def test_multi_tag_search_matches_any_expanded_reference_term(monkeypatch):
+    monkeypatch.delenv("EASYADS_ENABLE_TEMP_REFERENCES", raising=False)
+
+    items = search_reference_templates({"tags": ["음료", "삼겹살"], "limit": 20}).items
+    categories = {item.category for item in items}
+
+    assert any(item.template_id == "seed_cafe_strawberry_feed_001" for item in items)
+    assert any(item.template_id == "seed_restaurant_bbq_story_001" for item in items)
+    assert {"cafe", "restaurant"} <= categories
+
+
 def test_broad_food_category_includes_cafe_and_restaurant(monkeypatch):
     monkeypatch.delenv("EASYADS_ENABLE_TEMP_REFERENCES", raising=False)
 
