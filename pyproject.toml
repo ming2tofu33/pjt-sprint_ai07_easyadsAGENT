@@ -49,6 +49,7 @@ dependencies = [
     "websockets==16.0",
     "xxhash==3.7.0",
     "zstandard==0.25.0",
+    "psycopg[binary]==3.3.4",
 ]
 
 [dependency-groups]

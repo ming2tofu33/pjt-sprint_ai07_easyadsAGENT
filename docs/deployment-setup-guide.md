@@ -833,17 +833,34 @@ where is_final = true;
 
 ### 10.6 Railway 연결
 
-Railway backend에 다음 값을 넣습니다.
+현재 코드 기준으로 Supabase DB persistence를 켜는 서비스는 Railway `orchestrator`입니다.
+`apps/bff`는 orchestrator proxy 역할이므로 지금 단계에서는 DB에 직접 연결하지 않습니다.
+
+Supabase Dashboard에서 먼저 `supabase/migrations/20260602_core_schema_v1.sql` 내용을 적용합니다.
+그 다음 Railway orchestrator 서비스에 다음 값을 넣습니다.
+
+```text
+EASYADS_DB_BACKEND=postgres
+DATABASE_URL=
+EASYADS_DEMO_WORKSPACE_ID=
+EASYADS_DEMO_USER_ID=demo
+```
+
+`DATABASE_URL`은 Supabase Dashboard의 `Connect` 패널에서 Postgres connection string을 복사합니다.
+현재 repository는 요청 시점에 짧게 DB connection을 열고 닫기 때문에, 운영 배포에서는 Supabase pooler connection string을 우선 사용합니다.
+
+Auth/API 연동 단계에서 추가로 필요해지는 값:
 
 ```text
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
-DATABASE_URL=
 ```
 
 주의:
 
 - 브라우저에는 `SUPABASE_SERVICE_ROLE_KEY`를 절대 노출하지 않습니다.
+- 현재 Postgres repository path는 `DATABASE_URL`만 사용합니다.
+- `EASYADS_DB_BACKEND=postgres`를 켠 뒤에는 `/api/generation-jobs` 계열 API가 Supabase에 job/thread/output 메타데이터를 저장합니다.
 - DB 연결은 Supabase connection pooler 사용을 우선 고려합니다.
 
 ## 11. Phase 6, Cloudflare R2 설정
