@@ -11,7 +11,13 @@ from orchestrator.app.api.schemas.generation_jobs import (
     GenerationJobGetResponse,
 )
 from orchestrator.app.generation_jobs.execution import execute_generation_job_immediate, execute_generation_job_t2i
-from orchestrator.app.generation_jobs.service import create_generation_job, get_generation_job
+from orchestrator.app.generation_jobs.service import (
+    create_generation_job,
+    get_generation_job,
+    maybe_poll_generation_job_from_modal,
+    maybe_submit_generation_job_to_modal,
+    should_route_generation_job_to_modal,
+)
 from orchestrator.app.reference_catalog.service import get_reference_template
 
 router = APIRouter()
@@ -40,7 +46,9 @@ def create_generation_job_route(request: GenerationJobCreateRequest) -> Generati
     if request.selected_reference_template_id and not get_reference_template(request.selected_reference_template_id):
         _reference_template_not_found(request.selected_reference_template_id)
     job = create_generation_job(request)
-    if request.run_mode == "mock_immediate":
+    if should_route_generation_job_to_modal(request):
+        job = maybe_submit_generation_job_to_modal(job, request)
+    elif request.run_mode == "mock_immediate":
         job = execute_generation_job_immediate(job.job_id, request)
     elif request.run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_2")
@@ -56,4 +64,5 @@ def get_generation_job_route(job_id: str) -> GenerationJobGetResponse:
     job = get_generation_job(job_id)
     if not job:
         _generation_job_not_found(job_id)
+    job = maybe_poll_generation_job_from_modal(job)
     return GenerationJobGetResponse(job=job)

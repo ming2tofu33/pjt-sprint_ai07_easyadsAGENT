@@ -485,7 +485,7 @@ result_payload.assets.final
 - thumbnail/background/copy_visual_preview upload is not required in v1.
 - Archive API is not implemented.
 - Actual R2 smoke is separate from unit tests.
-- Modal GPU execution is separate from this contract.
+- Modal GPU execution writes successful results into this contract instead of defining a separate payload. Modal image bytes/base64 values are transient runtime data and must not be stored in `result_payload`, events, or public API responses.
 ```
 
 ---

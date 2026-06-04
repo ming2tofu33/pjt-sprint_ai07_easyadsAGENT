@@ -98,6 +98,7 @@ def update_generation_job_row(job_id: str, connection: object | None = None, **f
         "result_payload",
         "error",
         "metadata",
+        "modal_call_id",
         "started_at",
         "finished_at",
     }
@@ -173,3 +174,15 @@ def mark_generation_job_failed_row(
     if metadata is not None:
         fields["metadata"] = metadata
     return update_generation_job_row(job_id, connection=connection, **fields)
+
+
+def attach_modal_call_id(
+    public_job_id: str,
+    modal_call_id: str,
+    metadata: dict | None = None,
+    connection: object | None = None,
+) -> dict | None:
+    fields = {"modal_call_id": modal_call_id}
+    if metadata is not None:
+        fields["metadata"] = metadata
+    return update_generation_job_row(public_job_id, connection=connection, **fields)
