@@ -155,11 +155,106 @@ export interface GenerationJobResponse {
   job: GenerationJob;
 }
 
+export type ArchiveItemStatus = "generating" | "saved" | "favorite" | "failed";
+export type ArchiveItemSource = "generated" | "reference_template" | "uploaded";
+
+export interface ArchiveItem {
+  adId: string;
+  jobId?: string | null;
+  title: string;
+  thumbnailUrl?: string | null;
+  imageUrl?: string | null;
+  status: ArchiveItemStatus;
+  adFormat?: string | null;
+  platform?: string | null;
+  source: string;
+  createdAt?: string | null;
+  savedAt?: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface ArchiveItemCreateInput {
+  title: string;
+  publicJobId?: string | null;
+  thumbnailUrl?: string | null;
+  imageUrl?: string | null;
+  status?: Exclude<ArchiveItemStatus, "generating">;
+  adFormat?: string | null;
+  platform?: string | null;
+  source?: ArchiveItemSource;
+  workspaceId?: string | null;
+  userId?: string | null;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ArchiveListResponse {
+  items: ArchiveItem[];
+  pagination: {
+    limit: number;
+    offset: number;
+    total: number;
+    hasMore: boolean;
+  };
+}
+
+export interface ArchiveMutationResponse {
+  item: ArchiveItem;
+}
+
+type RawArchiveItem = {
+  ad_id: string;
+  job_id?: string | null;
+  title: string;
+  thumbnail_url?: string | null;
+  image_url?: string | null;
+  status?: ArchiveItemStatus;
+  ad_format?: string | null;
+  platform?: string | null;
+  source?: string;
+  created_at?: string | null;
+  saved_at?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+type RawArchiveListResponse = {
+  items?: RawArchiveItem[];
+  pagination?: {
+    limit?: number;
+    offset?: number;
+    total?: number;
+    has_more?: boolean;
+  };
+};
+
+type RawArchiveMutationResponse = {
+  item: RawArchiveItem;
+};
+
 async function postJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
   const response = await fetch(`${BFF_BASE_URL}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(normalizeApiErrorMessage(payload?.message || payload?.error || "API request failed"));
+  }
+  return payload as TResponse;
+}
+
+async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams): Promise<TResponse> {
+  const url = new URL(`${BFF_BASE_URL}${path}`);
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+    url.searchParams.set(key, String(value));
+  });
+
+  const response = await fetch(url.toString(), {
+    method: "DELETE",
+    headers: { accept: "application/json" }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -415,4 +510,63 @@ export function createGenerationJob(payload: GenerationJobPayload): Promise<Gene
 
 export function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
   return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function saveArchiveItem(input: ArchiveItemCreateInput): Promise<ArchiveMutationResponse> {
+  return postJson<RawArchiveMutationResponse>("/api/archive/items", {
+    title: input.title,
+    publicJobId: input.publicJobId ?? undefined,
+    thumbnailUrl: input.thumbnailUrl ?? undefined,
+    imageUrl: input.imageUrl ?? undefined,
+    status: input.status ?? "saved",
+    adFormat: input.adFormat ?? undefined,
+    platform: input.platform ?? undefined,
+    source: input.source ?? "generated",
+    workspaceId: input.workspaceId ?? undefined,
+    userId: input.userId ?? undefined,
+    metadata: input.metadata ?? undefined
+  }).then((payload) => ({ item: mapArchiveItem(payload.item) }));
+}
+
+export function listArchiveItems(params: {
+  workspaceId?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<ArchiveListResponse> {
+  return getJson<RawArchiveListResponse>("/api/archive/items", {
+    workspace_id: params.workspaceId,
+    limit: params.limit,
+    offset: params.offset
+  }).then((payload) => ({
+    items: (payload.items ?? []).map(mapArchiveItem),
+    pagination: {
+      limit: payload.pagination?.limit ?? params.limit ?? 50,
+      offset: payload.pagination?.offset ?? params.offset ?? 0,
+      total: payload.pagination?.total ?? payload.items?.length ?? 0,
+      hasMore: payload.pagination?.has_more ?? false
+    }
+  }));
+}
+
+export function deleteArchiveItem(archiveItemId: string, params?: { workspaceId?: string }): Promise<ArchiveMutationResponse> {
+  return deleteJson<RawArchiveMutationResponse>(`/api/archive/items/${encodeURIComponent(archiveItemId)}`, {
+    workspace_id: params?.workspaceId
+  }).then((payload) => ({ item: mapArchiveItem(payload.item) }));
+}
+
+function mapArchiveItem(item: RawArchiveItem): ArchiveItem {
+  return {
+    adId: item.ad_id,
+    jobId: item.job_id,
+    title: item.title,
+    thumbnailUrl: item.thumbnail_url,
+    imageUrl: item.image_url,
+    status: item.status ?? "saved",
+    adFormat: item.ad_format,
+    platform: item.platform,
+    source: item.source ?? "generated",
+    createdAt: item.created_at,
+    savedAt: item.saved_at,
+    metadata: item.metadata ?? {}
+  };
 }

@@ -12,6 +12,7 @@ def test_create_app_registers_legacy_and_new_routes():
     assert "/api/v1/references" in schema["paths"]
     assert "/api/v1/brand-kits/current" in schema["paths"]
     assert "/api/v1/generation-jobs" in schema["paths"]
+    assert "/api/v1/archive/items" in schema["paths"]
 
 
 def test_main_app_exposes_unified_routes():
@@ -22,6 +23,7 @@ def test_main_app_exposes_unified_routes():
     assert "/api/v1/references" in schema["paths"]
     assert "/api/v1/brand-kits/current" in schema["paths"]
     assert "/api/v1/generation-jobs" in schema["paths"]
+    assert "/api/v1/archive/items" in schema["paths"]
 
 
 def test_health_route_still_works_from_main_app():

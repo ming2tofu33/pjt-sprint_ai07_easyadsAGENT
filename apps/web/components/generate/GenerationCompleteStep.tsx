@@ -11,7 +11,7 @@ import {
   resolveDownloadUrl,
   resolvePreviewImageUrl
 } from "@/lib/generation-result-utils";
-import type { CreativeTone } from "@/lib/mock-dashboard-data";
+import type { CreativeTone, MockCreative } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
@@ -21,7 +21,7 @@ type GenerationCompleteStepProps = {
   onBrowseSimilar: () => void;
   onGoHome: () => void;
   onRegenerate: () => void;
-  onSaveCreative?: (title: string) => void;
+  onSaveCreative?: (creative: MockCreative) => void;
   onEditCreative?: () => void;
   onSaveSelected?: (creativeId: string) => void;
 };
@@ -141,7 +141,7 @@ export function GenerationCompleteStep({
         channel: brief ? channelName(brief.channel) : "Generated",
         fileName: "final_0.png",
         fileType: "PNG" as const,
-        storage: "세션 보관함",
+        storage: "브라우저 임시 보관함",
         savedAt: "방금 생성",
         tags: brief
           ? [state.inferredContext.businessType, brief.item, brief.purpose, channelName(brief.channel)].map(cleanLabel).filter(Boolean)
@@ -167,9 +167,9 @@ export function GenerationCompleteStep({
           {generatedImageUrl
             ? "실제 생성된 결과만 먼저 보여드려요."
             : isDoneWithoutPublicUrl
-              ? "생성 결과는 준비됐지만, 현재 브라우저에서 표시 가능한 이미지 URL이 아직 연결되지 않았어요."
+              ? "생성 결과는 준비됐지만, 현재 브라우저에서 바로 표시할 수 있는 이미지가 아직 연결되지 않았어요."
               : hasResultContext
-                ? "브리프나 생성 작업은 준비됐지만 표시할 실제 이미지가 없어요. public preview URL 연결 상태를 확인해주세요."
+                ? "브리프나 생성 작업은 준비됐지만 아직 화면에 표시할 이미지가 없어요. 잠시 후 다시 확인해주세요."
                 : "대화로 광고를 생성하면 실제 결과와 선택한 문구가 여기에 표시됩니다."}
         </p>
         {resultChips.length > 0 ? (
@@ -186,7 +186,7 @@ export function GenerationCompleteStep({
           <AdCreativeCard
             creative={generatedCreative}
             index={0}
-            onSave={() => onSaveCreative?.(generatedCreative.title)}
+            onSave={() => onSaveCreative?.(generatedCreative)}
           />
         </section>
       ) : (
@@ -204,10 +204,10 @@ export function GenerationCompleteStep({
       <p className={styles.savedNotice}>
         {generatedImageUrl ? <CheckCircle2 size={18} aria-hidden="true" /> : <Info size={18} aria-hidden="true" />}
         {generatedImageUrl
-          ? "이 결과는 이번 브라우저 세션의 보관함에 자동 저장됐어요."
+          ? "이 결과는 이 브라우저에서 임시로 다시 볼 수 있어요. 보관함 저장도 사용할 수 있어요."
           : hasResultContext
-            ? "브라우저에서 표시 가능한 이미지 URL이 없어 이번 결과는 세션 보관함 카드로 저장하지 않았어요."
-            : "아직 생성된 결과가 없어 보관함에 저장된 항목도 없어요."}
+            ? "브라우저에서 표시 가능한 이미지가 없어 이번 결과는 임시 보관 항목으로 만들지 않았어요."
+            : "아직 생성된 결과가 없어 임시로 보여줄 항목도 없어요."}
       </p>
 
       {generatedJob ? (
@@ -219,7 +219,7 @@ export function GenerationCompleteStep({
 
       {!generatedImageUrl && hasLocalOnlyArtifact ? (
         <p className={styles.savedNotice}>
-          Generation is complete, but a browser-displayable image URL is not connected yet. Download becomes available when an image URL is connected.
+          이미지는 생성됐지만 아직 화면에서 바로 열 수 없어요. 표시 가능한 이미지가 준비되면 다운로드할 수 있어요.
         </p>
       ) : null}
 
@@ -266,7 +266,7 @@ export function GenerationCompleteStep({
             </div>
             <button className={styles.textButton} type="button" onClick={() => onSaveSelected?.(generatedCreative.id)}>
               <Download size={16} aria-hidden="true" />
-              세션 보관함에서 보기
+              보관함에서 보기
             </button>
           </>
         ) : null}
@@ -275,7 +275,7 @@ export function GenerationCompleteStep({
             className={styles.textButton}
             disabled={!canDownload}
             type="button"
-            title={canDownload ? undefined : "이미지는 생성되었지만 public download URL은 아직 연결되지 않았습니다."}
+            title={canDownload ? undefined : "이미지는 생성됐지만 아직 다운로드할 수 있는 파일이 준비되지 않았습니다."}
             onClick={() => downloadUrl && window.open(downloadUrl, "_blank", "noopener,noreferrer")}
           >
             <Download size={16} aria-hidden="true" />

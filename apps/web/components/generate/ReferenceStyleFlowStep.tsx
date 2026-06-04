@@ -158,6 +158,8 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
             <AdCreativeCard
               creative={item}
               key={item.id}
+              openLabel={`${item.title} 상세 보기`}
+              openText="상세 보기"
               onOpen={() => router.push(buildReferenceStyleHref(item.id))}
               onSave={() => undefined}
             />

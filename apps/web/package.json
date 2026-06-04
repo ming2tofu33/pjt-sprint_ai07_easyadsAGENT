@@ -9,7 +9,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "qa:smoke:generation-flow": "node scripts/qa-generation-flow-smoke.js"
   },
   "dependencies": {
     "clsx": "2.1.1",

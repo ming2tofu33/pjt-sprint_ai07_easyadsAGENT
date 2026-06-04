@@ -31,6 +31,7 @@ describe("HomeEntryClient", () => {
     render(<HomeEntryClient />);
 
     expect(screen.getByRole("status")).toHaveTextContent("개떡찰떡을 준비하고 있어요");
+    expect(screen.getByRole("status")).toHaveTextContent("처음 방문하셨다면 사용법을 안내해 드릴게요.");
     await waitFor(() => expect(navigationMock.replace).toHaveBeenCalledWith("/onboarding"));
   });
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createBrandKit,
   createGenerationJob,
+  deleteArchiveItem,
   fetchReferenceDetail,
   fetchReferences,
   fetchSimilarReferences,
@@ -9,6 +10,8 @@ import {
   getCurrentBrandKit,
   getGenerationJob,
   listReferenceTemplates,
+  listArchiveItems,
+  saveArchiveItem,
   startChatGeneration,
   startPhotoGeneration,
   updateBrandKit,
@@ -403,5 +406,79 @@ describe("api-client backend contract routes", () => {
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/generation-jobs/job_1");
     expect(created.job.result_payload?.schema_version).toBe("result_artifact_v1");
     expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
+  });
+
+  it("calls archive endpoints through the BFF and maps response fields", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return jsonResponse({
+          success: true,
+          item: {
+            ad_id: "archive_1",
+            job_id: "job_1",
+            title: "봄을 닮은 한 잔",
+            image_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal.png",
+            thumbnail_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal.png",
+            status: "saved",
+            ad_format: "1:1",
+            platform: "인스타 피드",
+            source: "generated",
+            saved_at: "2026-06-04T00:00:00+00:00",
+            metadata: { tags: ["카페"] }
+          }
+        });
+      }
+      if (init?.method === "DELETE") {
+        return jsonResponse({
+          success: true,
+          item: {
+            ad_id: "archive_1",
+            title: "봄을 닮은 한 잔",
+            status: "saved",
+            source: "generated"
+          }
+        });
+      }
+      return jsonResponse({
+        success: true,
+        items: [
+          {
+            ad_id: "archive_1",
+            job_id: "job_1",
+            title: "봄을 닮은 한 잔",
+            status: "saved",
+            source: "generated"
+          }
+        ],
+        pagination: { limit: 20, offset: 0, total: 1, has_more: false }
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const saved = await saveArchiveItem({
+      title: "봄을 닮은 한 잔",
+      publicJobId: "job_1",
+      imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal.png",
+      adFormat: "1:1",
+      platform: "인스타 피드",
+      metadata: { tags: ["카페"] }
+    });
+    const listed = await listArchiveItems({ limit: 20 });
+    const deleted = await deleteArchiveItem("archive_1");
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      title: "봄을 닮은 한 잔",
+      publicJobId: "job_1",
+      imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal.png",
+      status: "saved",
+      source: "generated"
+    });
+    expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
+    expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
+    expect(saved.item.adId).toBe("archive_1");
+    expect(saved.item.savedAt).toBe("2026-06-04T00:00:00+00:00");
+    expect(listed.items[0].jobId).toBe("job_1");
+    expect(deleted.item.adId).toBe("archive_1");
   });
 });

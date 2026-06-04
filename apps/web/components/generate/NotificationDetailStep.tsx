@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { buildAdHref } from "@/lib/ad-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { resultCreatives } from "@/lib/mock-dashboard-data";
+import { goBackOrPush } from "@/lib/navigation-history";
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import styles from "./generate.module.css";
 
@@ -36,7 +37,7 @@ export function NotificationDetailStep({ variant }: NotificationDetailStepProps)
   return (
     <>
       <header className={styles.stepHeader}>
-        <button aria-label="뒤로" type="button" onClick={() => router.push(buildNotificationHref())}>
+        <button aria-label="뒤로" type="button" onClick={() => goBackOrPush(router, buildNotificationHref())}>
           <ArrowLeft size={20} aria-hidden="true" />
         </button>
         <h1>알림 상세</h1>
@@ -91,7 +92,7 @@ export function NotificationDetailStep({ variant }: NotificationDetailStepProps)
 
       <p className={styles.notificationInfoBox} data-variant={variant}>
         <Info size={16} aria-hidden="true" />
-        {isComplete ? "생성된 광고는 내 광고 보관함에 자동 저장됐어요." : "실패한 생성은 생성 횟수에서 차감되지 않아요."}
+        {isComplete ? "생성된 광고는 결과 화면에서 확인할 수 있어요. 실제 보관함 저장은 연결 준비 중이에요." : "실패한 생성은 생성 횟수에서 차감되지 않아요."}
       </p>
     </>
   );
