@@ -68,6 +68,33 @@ def test_submit_modal_t2i_job_accepts_injected_fake_client(monkeypatch):
     assert result.modal_call_id == "modal_call_fake"
 
 
+def test_submit_modal_t2i_job_includes_sanitized_exception_detail(monkeypatch):
+    modal_module = types.ModuleType("modal")
+
+    class FakeFunction:
+        @classmethod
+        def from_name(cls, app_name, function_name):
+            raise RuntimeError("auth failed for token-secret")
+
+    modal_module.Function = FakeFunction
+    monkeypatch.setitem(sys.modules, "modal", modal_module)
+    monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "modal")
+    monkeypatch.setenv("EASYADS_ENABLE_MODAL_EXECUTION", "true")
+    monkeypatch.setenv("MODAL_TOKEN_ID", "token-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "token-secret")
+
+    try:
+        modal_client.submit_modal_t2i_job(_request())
+    except modal_client.ModalJobSubmitError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected ModalJobSubmitError")
+
+    assert "RuntimeError" in message
+    assert "[REDACTED]" in message
+    assert "token-secret" not in message
+
+
 def test_poll_modal_t2i_result_uses_function_call_from_id(monkeypatch):
     captured = {}
     modal_module = types.ModuleType("modal")
