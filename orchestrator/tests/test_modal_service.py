@@ -72,6 +72,47 @@ def test_build_modal_t2i_request_for_flux_schnell_real_includes_generation_param
     assert "ignored" not in request.params
 
 
+def test_build_modal_t2i_request_for_sd35_large_real_includes_generation_params():
+    row = {
+        "public_job_id": "job_modal",
+        "workspace_id": "workspace_uuid",
+        "thread_id": "thread_uuid",
+        "run_mode": "sd35_large_real",
+        "engine": "sd35_large",
+        "prompt_preview": "Create a premium cafe ad",
+        "metadata": {"public_thread_id": "thread_public"},
+    }
+    generation_request = GenerationJobCreateRequest(
+        userInput="Create a premium cafe ad",
+        runMode="sd35_large_real",
+        metadata={
+            "width": 768,
+            "height": 768,
+            "seed": 24,
+            "t2i_params": {
+                "num_inference_steps": 10,
+                "guidance_scale": 4.5,
+                "ignored": "not-forwarded",
+            },
+        },
+    )
+
+    request = modal_service.build_modal_t2i_request_from_job(
+        job_row=row,
+        generation_request=generation_request,
+    )
+
+    assert request.run_mode == "sd35_large_real"
+    assert request.engine == "sd35_large"
+    assert request.width == 768
+    assert request.height == 768
+    assert request.seed == 24
+    assert request.params["render_mode"] == "sd35_large"
+    assert request.params["num_inference_steps"] == 10
+    assert request.params["guidance_scale"] == 4.5
+    assert "ignored" not in request.params
+
+
 def test_write_modal_result_image_to_output_dir_writes_decoded_image(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     payload = base64.b64encode(b"fake-png-bytes").decode("ascii")
