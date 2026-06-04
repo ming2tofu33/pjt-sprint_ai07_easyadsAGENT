@@ -16,7 +16,9 @@
   --dashboard-card-radius: var(--radius-md);
   --dashboard-section-gap: var(--space-5);
   width: min(100%, var(--mobile-shell-width));
-  min-height: var(--mobile-shell-min-height);
+  height: min(var(--mobile-shell-min-height), calc(100dvh - 64px));
+  min-height: min(var(--mobile-shell-min-height), calc(100dvh - 64px));
+  max-height: calc(100dvh - 64px);
   background: var(--color-bg-surface);
   border: 1px solid var(--color-border-frame);
   border-radius: var(--radius-phone);
@@ -28,10 +30,14 @@
 
 .body {
   flex: 1;
+  min-height: 0;
   padding: var(--screen-padding-top) var(--screen-padding-x) var(--screen-padding-bottom);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }
 
 .body button {
@@ -783,7 +789,9 @@
 
   .phone {
     width: 100%;
+    height: 100dvh;
     min-height: 100dvh;
+    max-height: 100dvh;
     border-radius: 0;
     border: 0;
     box-shadow: none;
@@ -1336,12 +1344,43 @@
   font-size: 13px;
 }
 
+.archiveSearchField {
+  margin: 12px 0 0;
+  grid-template-columns: 22px minmax(0, 1fr) 32px;
+}
+
+.archiveSearchClear {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.archiveSearchClear:hover,
+.archiveSearchClear:focus-visible {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--color-text-primary);
+}
+
 .categoryScroller {
   margin: 12px -18px 14px 0;
   display: flex;
   gap: 8px;
   overflow-x: auto;
   padding-right: 18px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+}
+
+.categoryScroller::-webkit-scrollbar {
+  display: none;
 }
 
 .categoryScroller button {
@@ -1360,6 +1399,19 @@
   border-color: var(--color-action-primary);
   background: var(--color-action-primary);
   color: var(--color-action-primary-text);
+}
+
+.referenceContentScroll {
+  flex: 1 1 280px;
+  min-height: 0;
+  max-height: clamp(260px, 48dvh, 430px);
+  margin-right: -4px;
+  padding: 0 4px 2px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 .referenceCard,
@@ -1580,7 +1632,7 @@
 }
 
 .sampleNotice {
-  margin: 12px 0;
+  margin: 0 0 12px;
   border: 1px solid #ebe1cc;
   border-radius: 14px;
   background: #fff8ed;
@@ -2828,16 +2880,6 @@
   background: linear-gradient(145deg, #ffd8d1, #fff0ea);
 }
 
-.adCreativeOpenButton {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  color: transparent;
-}
-
 .adCreativeSaveButton {
   position: absolute;
   top: 8px;
@@ -2941,8 +2983,24 @@
   font-weight: 800;
 }
 
+.adCreativeActionButton {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 9px;
+  border: 1px solid rgba(17, 17, 17, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 950;
+}
+
 .adCreativeCard[data-compact="true"] .adCreativeCopy p,
-.adCreativeCard[data-compact="true"] .adCreativeSaveButton {
+.adCreativeCard[data-compact="true"] .adCreativeSaveButton,
+.adCreativeCard[data-compact="true"] .adCreativeActionButton {
   display: none;
 }
 
@@ -5657,7 +5715,19 @@
 }
 
 .usageHeader {
-  grid-template-columns: 44px 1fr 86px;
+  grid-template-columns: 86px 1fr 86px;
+}
+
+.usageHeader > button:first-child {
+  justify-self: start;
+}
+
+.usageHeader h1 {
+  text-align: center;
+}
+
+.usageHeader .myPeriodButton {
+  justify-self: end;
 }
 
 .usageHeroCard {
@@ -5670,6 +5740,45 @@
   grid-template-columns: 122px 1fr;
   gap: 14px;
   align-items: center;
+}
+
+.usagePeriodMenu {
+  margin-top: 10px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 16px;
+  background: var(--color-bg-card);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.usagePeriodMenu button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--color-text);
+  padding: 9px 10px;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+}
+
+.usagePeriodMenu button[data-active="true"] {
+  background: var(--color-purple-soft);
+  color: var(--color-brand-purple-strong);
+}
+
+.usagePeriodMenu strong {
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.usagePeriodMenu small {
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 750;
 }
 
 .usageRing {
@@ -5808,6 +5917,42 @@
   font-size: 11px;
   font-style: normal;
   font-weight: 850;
+}
+
+.usageInlineNote {
+  margin: 10px 0 0;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 780;
+}
+
+.usageDetailsPanel {
+  margin-top: 10px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 16px;
+  background: var(--color-bg-card);
+  padding: 14px;
+}
+
+.usageDetailsPanel h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.usageDetailsPanel ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 7px;
+}
+
+.usageDetailsPanel li {
+  color: #4f4b43;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 800;
 }
 
 .settingsListGroup {
@@ -6354,6 +6499,7 @@
 }
 
 .adCreativeSaveButton,
+.adCreativeActionButton,
 .galleryTopBar button,
 .dashboardHeader button,
 .studioTopNav button,
@@ -6372,6 +6518,7 @@
 .primaryButton,
 .secondaryButton,
 .adCreativeCard,
+.adCreativeActionButton,
 .notificationCard,
 .notificationActionRow button,
 .notificationToggleRow,
@@ -6402,6 +6549,7 @@
 .primaryButton:active,
 .secondaryButton:active,
 .adCreativeCard:active,
+.adCreativeActionButton:active,
 .notificationCard:active,
 .notificationActionRow button:active,
 .notificationToggleRow:active,

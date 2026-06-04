@@ -113,28 +113,28 @@ export function getGenerationResultNotice(job: GenerationJob | null | undefined)
   message: string;
 } {
   if (!job) {
-    return { level: "info", message: "No generation result is available yet." };
+    return { level: "info", message: "아직 확인할 생성 결과가 없어요." };
   }
   if (job.status === "failed") {
-    return { level: "error", message: getErrorMessage(job.error) ?? "Generation failed." };
+    return { level: "error", message: getErrorMessage(job.error) ?? "이미지 생성에 실패했어요." };
   }
   if (job.status === "queued" || job.status === "running") {
-    return { level: "info", message: "Generation is still in progress." };
+    return { level: "info", message: "이미지를 생성하고 있어요." };
   }
   if (job.status === "done") {
     const payload = getResultArtifactPayload(job);
     if (!payload) {
-      return { level: "warning", message: "Generation completed, but result details are empty." };
+      return { level: "warning", message: "생성은 끝났지만 결과 정보를 아직 확인할 수 없어요." };
     }
     if (shouldShowImagePreview(payload)) {
-      return { level: "success", message: "Generation completed and a public image URL is available." };
+      return { level: "success", message: "완성된 이미지를 확인할 수 있어요." };
     }
     if (hasOnlyLocalArtifactPath(payload)) {
-      return { level: "warning", message: "Generation completed, but a browser-displayable image URL is not connected yet." };
+      return { level: "warning", message: "이미지는 생성됐지만 아직 화면에서 바로 열 수 없어요." };
     }
-    return { level: "warning", message: "Generation completed, but image URL information is missing." };
+    return { level: "warning", message: "생성은 끝났지만 표시할 이미지 정보를 찾지 못했어요." };
   }
-  return { level: "info", message: `Generation status: ${job.status}` };
+  return { level: "info", message: "이미지 생성 상태를 확인하는 중이에요." };
 }
 
 export async function copyGenerationResultToClipboard(job: GenerationJob): Promise<boolean> {

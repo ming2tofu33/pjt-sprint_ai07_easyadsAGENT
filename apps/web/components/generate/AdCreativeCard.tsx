@@ -10,18 +10,16 @@ type AdCreativeCardProps = {
   index?: number;
   compact?: boolean;
   openLabel?: string;
+  openText?: string;
   onSave?: () => void;
   onOpen?: () => void;
 };
 
-export function AdCreativeCard({ creative, index, compact = false, openLabel, onSave, onOpen }: AdCreativeCardProps) {
+export function AdCreativeCard({ creative, index, compact = false, openLabel, openText, onSave, onOpen }: AdCreativeCardProps) {
   const hasImage = Boolean(creative.imageUrl);
 
   return (
     <article className={styles.adCreativeCard} data-tone={creative.tone} data-compact={compact}>
-      {onOpen ? (
-        <button aria-label={openLabel ?? `${creative.title} 상세 보기`} className={styles.adCreativeOpenButton} type="button" onClick={onOpen} />
-      ) : null}
       {typeof index === "number" ? <strong className={styles.adCreativeNumber}>{index + 1}</strong> : null}
       {onSave ? (
         <button aria-label={`${creative.title} 저장`} className={styles.adCreativeSaveButton} type="button" onClick={onSave}>
@@ -49,6 +47,11 @@ export function AdCreativeCard({ creative, index, compact = false, openLabel, on
         {creative.badge ? <em>{creative.badge}</em> : null}
         <h2>{creative.title}</h2>
         <p>{creative.subtitle}</p>
+        {onOpen ? (
+          <button aria-label={openLabel ?? `${creative.title} 상세 보기`} className={styles.adCreativeActionButton} type="button" onClick={onOpen}>
+            {openText ?? "상세 보기"}
+          </button>
+        ) : null}
       </div>
     </article>
   );

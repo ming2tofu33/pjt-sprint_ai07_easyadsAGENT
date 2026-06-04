@@ -75,7 +75,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
           <strong>{creativeId.startsWith("generated-") && !sessionChecked ? "보관함 항목을 불러오는 중이에요" : "보관함에서 이 항목을 찾지 못했어요"}</strong>
           <p>
             {creativeId.startsWith("generated-")
-              ? "세션에 저장된 실제 생성 결과가 삭제됐거나 다른 브라우저 세션에서 만든 항목일 수 있어요."
+              ? "이 브라우저에 임시 보관된 실제 생성 결과가 삭제됐거나 다른 브라우저에서 만든 항목일 수 있어요."
               : "보관함으로 돌아가 다시 확인해주세요."}
           </p>
         </section>
@@ -128,7 +128,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
           <dl>
             <div><dt>형식</dt><dd>{activeCreative.fileType ?? "PNG"}</dd></div>
             <div><dt>채널</dt><dd>{activeCreative.channel ?? activeCreative.format}</dd></div>
-            <div><dt>저장 위치</dt><dd>{activeCreative.storage ?? "세션 보관함"}</dd></div>
+            <div><dt>저장 위치</dt><dd>{activeCreative.storage ?? "보관함"}</dd></div>
           </dl>
         </section>
 

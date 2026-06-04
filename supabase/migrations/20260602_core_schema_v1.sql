@@ -180,6 +180,28 @@ create table if not exists generation_job_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists archive_items (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references workspaces(id) on delete cascade,
+  created_by text,
+  job_id uuid null references generation_jobs(id) on delete set null,
+  output_id uuid null references generation_outputs(id) on delete set null,
+  asset_id uuid null references assets(id) on delete set null,
+  public_job_id text,
+  title text not null,
+  thumbnail_url text,
+  image_url text,
+  status text not null default 'saved' check (status in ('saved', 'favorite', 'failed')),
+  ad_format text,
+  platform text,
+  source text not null default 'generated',
+  metadata jsonb not null default '{}'::jsonb,
+  saved_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz null
+);
+
 create table if not exists usage_events (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references workspaces(id) on delete cascade,
@@ -246,3 +268,11 @@ on generation_job_events (job_id, created_at);
 
 create index if not exists generation_job_events_thread_created_idx
 on generation_job_events (thread_id, created_at);
+
+create index if not exists archive_items_workspace_saved_idx
+on archive_items (workspace_id, saved_at desc)
+where deleted_at is null;
+
+create unique index if not exists archive_items_workspace_public_job_unique_idx
+on archive_items (workspace_id, public_job_id)
+where public_job_id is not null and deleted_at is null;

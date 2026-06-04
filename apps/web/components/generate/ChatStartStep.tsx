@@ -3,7 +3,7 @@
 import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, PenLine, Send, Sparkles, Utensils } from "lucide-react";
 import { useState } from "react";
 import type { CopyGenerationMode, CustomCopyFields } from "@/types/marketing";
-import { readGenerationDraftPrompt } from "@/lib/generation-request-context";
+import { readGenerationDraftPrompt, readGenerationRequestContext } from "@/lib/generation-request-context";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { StepHeader } from "./StepHeader";
@@ -30,7 +30,14 @@ type ChatStartStepProps = {
 };
 
 export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps) {
-  const [value, setValue] = useState(() => readGenerationDraftPrompt());
+  const [referenceTemplateTitle] = useState(() => readGenerationRequestContext()?.selectedReferenceTemplateTitle ?? "");
+  const [value, setValue] = useState(() => {
+    const requestContext = readGenerationRequestContext();
+    if (requestContext?.source === "reference_gallery") {
+      return "";
+    }
+    return readGenerationDraftPrompt();
+  });
   const [copyGenerationMode, setCopyGenerationMode] = useState<CopyGenerationMode>("suggest_candidates");
   const [customHeadline, setCustomHeadline] = useState("");
   const [customSubcopy, setCustomSubcopy] = useState("");
@@ -38,6 +45,9 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
   const customHeadlineText = customHeadline.trim();
   const customSubcopyText = customSubcopy.trim();
   const canSubmit = value.trim().length > 0 && (!usesCustomCopy || customHeadlineText.length > 0);
+  const promptPlaceholder = referenceTemplateTitle
+    ? `${referenceTemplateTitle} 스타일을 참고해 어떤 광고를 만들지 적어주세요`
+    : "광고 방향을 입력해주세요";
 
   function submitPrompt() {
     const prompt = value.trim();
@@ -135,7 +145,7 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
           className={`${styles.input} ${styles.promptTextarea}`}
           value={value}
           aria-label="광고 요청 입력"
-          placeholder="예: 우리 가게 신메뉴 인스타 광고 만들어줘"
+          placeholder={promptPlaceholder}
           onChange={(event) => setValue(event.target.value)}
           onSubmit={submitPrompt}
         />

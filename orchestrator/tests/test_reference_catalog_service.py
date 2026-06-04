@@ -34,6 +34,28 @@ def test_search_filters_and_sorting():
     assert title == sorted(title, key=lambda item: item.title)
 
 
+def test_food_and_drink_keywords_include_cafe_results(monkeypatch):
+    monkeypatch.delenv("EASYADS_ENABLE_TEMP_REFERENCES", raising=False)
+
+    food_items = search_reference_templates({"keyword": "음식", "limit": 20}).items
+    drink_items = search_reference_templates({"keyword": "음료", "limit": 20}).items
+    english_drink_items = search_reference_templates({"keyword": "drink", "limit": 20}).items
+
+    assert any(item.template_id == "seed_cafe_strawberry_feed_001" for item in food_items)
+    assert any(item.category == "restaurant" for item in food_items)
+    assert any(item.template_id == "seed_cafe_strawberry_feed_001" for item in drink_items)
+    assert any(item.template_id == "seed_cafe_strawberry_feed_001" for item in english_drink_items)
+
+
+def test_broad_food_category_includes_cafe_and_restaurant(monkeypatch):
+    monkeypatch.delenv("EASYADS_ENABLE_TEMP_REFERENCES", raising=False)
+
+    food_items = search_reference_templates({"category": "food", "limit": 20}).items
+
+    assert any(item.category == "cafe" for item in food_items)
+    assert any(item.category == "restaurant" for item in food_items)
+
+
 def test_limit_offset_and_list_alias():
     page = search_reference_templates({"limit": 2, "offset": 1})
     listed = list_reference_templates({"limit": 2, "offset": 1})

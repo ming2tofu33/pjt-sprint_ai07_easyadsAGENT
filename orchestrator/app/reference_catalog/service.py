@@ -23,6 +23,33 @@ TEMP_REFERENCE_MANIFEST_NAME = "catalog.local.json"
 DEFAULT_TEMP_REFERENCE_ROOT = Path("data/reference_templates/_temporary_unlicensed")
 TEMP_REFERENCE_LICENSE_NOTE = "temporary local reference only; remove before release"
 
+BROAD_CATEGORY_FILTERS: dict[str, set[str]] = {
+    "food": {"cafe", "restaurant"},
+    "음식": {"cafe", "restaurant"},
+    "음식/카페": {"cafe", "restaurant"},
+    "food_cafe": {"cafe", "restaurant"},
+    "beverage": {"cafe"},
+    "drink": {"cafe"},
+    "음료": {"cafe"},
+}
+
+SEARCH_ALIASES_BY_TERM: dict[str, list[str]] = {
+    "cafe": ["카페", "커피", "음료", "주스", "라떼", "에이드", "디저트", "베이커리", "drink", "beverage", "coffee", "juice", "latte", "dessert", "bakery", "food", "음식"],
+    "dessert": ["디저트", "카페", "베이커리", "달콤한", "dessert", "bakery", "cafe", "food", "음식"],
+    "bakery": ["베이커리", "빵", "디저트", "카페", "bakery", "dessert", "cafe", "food", "음식"],
+    "restaurant": ["음식", "음식점", "식당", "맛집", "한식", "메뉴", "meal", "food", "restaurant"],
+    "bbq": ["고기", "삼겹살", "회식", "구이", "음식", "식당", "bbq", "meat", "food", "restaurant"],
+    "bar": ["주점", "맥주", "술집", "bar", "beer", "drink", "beverage", "food"],
+    "coffee": ["커피", "아메리카노", "라떼", "카페", "coffee", "latte", "drink", "beverage", "cafe"],
+    "juice": ["주스", "음료", "에이드", "카페", "juice", "drink", "beverage", "cafe"],
+    "latte": ["라떼", "커피", "음료", "카페", "latte", "coffee", "drink", "beverage", "cafe"],
+    "음식": ["food", "restaurant", "cafe", "dessert", "bakery", "음식점", "식당", "카페", "디저트", "베이커리"],
+    "음료": ["drink", "beverage", "cafe", "coffee", "juice", "latte", "카페", "커피", "주스", "라떼", "에이드"],
+    "drink": ["음료", "beverage", "cafe", "coffee", "juice", "latte", "카페", "커피", "주스", "라떼", "에이드"],
+    "beverage": ["음료", "drink", "cafe", "coffee", "juice", "latte", "카페", "커피", "주스", "라떼", "에이드"],
+    "food": ["음식", "restaurant", "cafe", "dessert", "bakery", "음식점", "식당", "카페", "디저트", "베이커리"],
+}
+
 
 def temporary_references_enabled() -> bool:
     value = os.environ.get(TEMP_REFERENCE_FLAG_ENV, "")
@@ -226,7 +253,7 @@ def resolve_reference_template_selection(template_id: str) -> ReferenceTemplateS
 def matches_query(template: ReferenceTemplate, query: ReferenceTemplateSearchQuery) -> bool:
     if query.active_only and template.status != "active":
         return False
-    if query.category and normalize(template.category) != normalize(query.category):
+    if query.category and not matches_category_filter(template, query.category):
         return False
     if query.business_type and not contains(template.business_types, query.business_type):
         return False
@@ -240,15 +267,15 @@ def matches_query(template: ReferenceTemplate, query: ReferenceTemplateSearchQue
         return False
     if query.style_keywords and not all(contains(template.style_keywords, key) for key in query.style_keywords):
         return False
-    if query.keyword and normalize(query.keyword) not in searchable_text(template):
+    if query.keyword and not keyword_matches(template, query.keyword):
         return False
     return True
 
 
 def relevance_score(template: ReferenceTemplate, query: ReferenceTemplateSearchQuery) -> float:
     score = template.popularity_score
-    if query.keyword and normalize(query.keyword) in normalize(template.title):
-        score += 5
+    if query.keyword:
+        score += keyword_relevance_bonus(template, query.keyword)
     if query.category and normalize(template.category) == normalize(query.category):
         score += 3
     if query.ad_format and contains(template.ad_formats, query.ad_format):
@@ -276,15 +303,91 @@ def similarity_score(left: ReferenceTemplate, right: ReferenceTemplate) -> float
 
 
 def searchable_text(template: ReferenceTemplate) -> str:
+    return normalize(" ".join(searchable_parts(template, include_aliases=True)))
+
+
+def base_searchable_text(template: ReferenceTemplate) -> str:
+    return normalize(" ".join(searchable_parts(template, include_aliases=False)))
+
+
+def searchable_parts(template: ReferenceTemplate, *, include_aliases: bool) -> list[str]:
     parts = [
         template.title,
         template.description or "",
         template.category,
+        template.sub_category or "",
         *(template.tags or []),
         *(template.style_keywords or []),
         *(template.business_types or []),
     ]
-    return normalize(" ".join(parts))
+    if include_aliases:
+        parts.extend(template_search_aliases(template))
+    return parts
+
+
+def template_search_aliases(template: ReferenceTemplate) -> list[str]:
+    aliases: list[str] = []
+    for term in searchable_parts(template, include_aliases=False):
+        aliases.extend(SEARCH_ALIASES_BY_TERM.get(normalize(term), []))
+    return aliases
+
+
+def keyword_matches(template: ReferenceTemplate, keyword: str) -> bool:
+    haystack = searchable_text(template)
+    return any(term in haystack for term in expanded_keyword_terms(keyword))
+
+
+def keyword_relevance_bonus(template: ReferenceTemplate, keyword: str) -> float:
+    query = normalize(keyword)
+    title = normalize(template.title)
+    base_text = base_searchable_text(template)
+    full_text = searchable_text(template)
+    expanded_terms = expanded_keyword_terms(keyword)
+
+    if query and query in title:
+        return 5
+    if query and query in base_text:
+        return 3
+    if any(term in title for term in expanded_terms):
+        return 2.5
+    if any(term in base_text for term in expanded_terms):
+        return 2
+    if any(term in full_text for term in expanded_terms):
+        return 1
+    return 0
+
+
+def expanded_keyword_terms(keyword: str) -> list[str]:
+    query = normalize(keyword)
+    raw_terms = [query]
+    raw_terms.extend(query.replace(",", " ").split())
+
+    for alias_key, aliases in SEARCH_ALIASES_BY_TERM.items():
+        if alias_key == query or alias_key in raw_terms or alias_key in query:
+            raw_terms.extend(aliases)
+
+    return unique_normalized_terms(raw_terms)
+
+
+def unique_normalized_terms(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    terms: list[str] = []
+    for value in values:
+        normalized = normalize(value)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        terms.append(normalized)
+    return terms
+
+
+def matches_category_filter(template: ReferenceTemplate, category: str) -> bool:
+    normalized_category = normalize(category)
+    allowed_categories = BROAD_CATEGORY_FILTERS.get(normalized_category)
+    if allowed_categories is not None:
+        template_categories = {normalize(template.category), *(normalize(item) for item in template.business_types)}
+        return bool(template_categories & allowed_categories)
+    return normalize(template.category) == normalized_category
 
 
 def normalize(value: str | None) -> str:

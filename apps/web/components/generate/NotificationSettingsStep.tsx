@@ -16,6 +16,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { notificationChannels, notificationSettings } from "@/lib/mock-dashboard-data";
+import { goBackOrPush } from "@/lib/navigation-history";
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import styles from "./generate.module.css";
 
@@ -33,7 +34,7 @@ export function NotificationSettingsStep() {
   return (
     <>
       <header className={styles.stepHeader}>
-        <button aria-label="뒤로" type="button" onClick={() => router.push(buildNotificationHref())}>
+        <button aria-label="뒤로" type="button" onClick={() => goBackOrPush(router, buildNotificationHref())}>
           <ArrowLeft size={20} aria-hidden="true" />
         </button>
         <h1>알림 설정</h1>

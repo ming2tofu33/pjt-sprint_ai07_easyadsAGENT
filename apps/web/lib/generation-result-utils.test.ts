@@ -176,14 +176,14 @@ describe("generation result utils", () => {
   it("returns status-specific notices", () => {
     expect(getGenerationResultNotice(doneJobWithUrl)).toEqual({
       level: "success",
-      message: "Generation completed and a public image URL is available."
+      message: "완성된 이미지를 확인할 수 있어요."
     });
     expect(getGenerationResultNotice(doneJobLocalPathOnly)).toEqual({
       level: "warning",
-      message: "Generation completed, but a browser-displayable image URL is not connected yet."
+      message: "이미지는 생성됐지만 아직 화면에서 바로 열 수 없어요."
     });
     expect(getGenerationResultNotice(failedJob).level).toBe("error");
-    expect(getGenerationResultNotice(runningJob)).toEqual({ level: "info", message: "Generation is still in progress." });
+    expect(getGenerationResultNotice(runningJob)).toEqual({ level: "info", message: "이미지를 생성하고 있어요." });
   });
 
   it("keeps failed and running jobs without preview or download", () => {

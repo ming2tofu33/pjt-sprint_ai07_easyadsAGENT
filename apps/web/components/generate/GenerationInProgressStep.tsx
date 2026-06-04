@@ -62,7 +62,7 @@ export function GenerationInProgressStep({ state, progress, onBrowse }: Generati
         <span className={styles.progressTrack}>
           <span className={styles.progressBar} style={{ width: `${safeProgress}%` }} />
         </span>
-        <p>실제 이미지 API 응답을 기다리는 동안만 표시돼요.</p>
+        <p>실제 이미지가 준비되는 동안만 표시돼요.</p>
       </div>
 
       <section>
