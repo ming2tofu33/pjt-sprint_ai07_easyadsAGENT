@@ -30,6 +30,9 @@ def test_marketing_graph_runs_tlfp_to_mock_t2i():
     assert result["t2i_request"]["metadata"]["image_prompt_spec"]
     assert result["t2i_request"]["metadata"]["render_text_in_image"] is False
     assert result["t2i_result"]["engine"] == "mock"
+    assert result["t2i_result"]["metadata"]["reserved_text_areas"] == result["t2i_request"]["metadata"]["reserved_text_areas"]
+    assert result["t2i_result"]["metadata"]["render_text_in_image"] is False
+    assert result["t2i_result"]["metadata"]["must_not_include_text"] is True
     image_path = Path(result["t2i_result"]["image_paths"][0])
     assert "data" in image_path.parts
     assert "outputs" in image_path.parts

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from orchestrator.app.llm.metadata_builders import build_image_prompt_planner_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.visual_templates import select_visual_template
 from orchestrator.app.schemas.llm_marketing import ImagePrompt, MarketingContext
@@ -26,16 +27,17 @@ TEXT_NEGATIVE = (
 
 def image_prompt_planner_node(state: "MarketingState") -> dict[str, object]:
     deterministic = lambda: build_deterministic_image_prompt_spec(state)
+    metadata_contract = build_image_prompt_planner_metadata(state)
     spec_output, llm_metadata = run_structured_node(
         state,
         node_name="image_prompt_planner",
         output_schema=ImagePromptSpec,
-        prompt=build_image_prompt_planner_prompt(state),
+        prompt=build_image_prompt_planner_prompt(state, metadata_contract),
         fallback_fn=deterministic,
         risk_level="medium",
         confidence=0.5,
         latency_budget="standard",
-        metadata={"prompt_summary": "image prompt planning"},
+        metadata=metadata_contract,
     )
     spec = enforce_image_prompt_safety(state, spec_output if isinstance(spec_output, ImagePromptSpec) else deterministic())
     image_prompt = build_legacy_image_prompt(state, spec)
@@ -233,7 +235,7 @@ def enforce_image_prompt_safety(state: MarketingState, spec: ImagePromptSpec) ->
     )
 
 
-def build_image_prompt_planner_prompt(state: MarketingState) -> str:
+def build_image_prompt_planner_prompt(state: MarketingState, metadata_contract: dict[str, object] | None = None) -> str:
     context = context_to_model(state.get("context"))
     text_layout = state.get("text_layout_spec") or {}
     style = state.get("text_style_spec") or {}
@@ -242,6 +244,7 @@ def build_image_prompt_planner_prompt(state: MarketingState) -> str:
     selected_reference_template = state.get("selected_reference_template") or {}
     visual_direction = selected_visual_direction(state)
     selected_tone = selected_tone_label(state)
+    metadata_contract = metadata_contract or build_image_prompt_planner_metadata(state)
     return (
         "Create a structured ImagePromptSpec for a text-free advertising background. "
         f"subject={context.item_or_service}, business_type={context.business_type}, brand_tone={context.brand_tone}. "
@@ -249,6 +252,7 @@ def build_image_prompt_planner_prompt(state: MarketingState) -> str:
         f"reserved_text_areas={text_layout.get('reserved_text_areas', [])}, style_profile={style.get('profile')}. "
         f"reference_style_stub={reference_style_profile.get('ad_style_prompt')}, "
         f"reference_template={selected_reference_template.get('title')}, product_preserve_stub={product_preserve_spec.get('product_bbox')}. "
+        f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}. "
         "Keep all text areas clean; do not include text, letters, numbers, Hangul, logos, or watermarks."
     )
 

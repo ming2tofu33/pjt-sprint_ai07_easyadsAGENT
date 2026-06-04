@@ -7,6 +7,7 @@ from typing import Any, Callable
 from pydantic import BaseModel
 
 from orchestrator.app.llm.adapters.registry import get_llm_adapter_safe
+from orchestrator.app.llm.metadata_contracts import sanitize_metadata
 from orchestrator.app.llm.model_router import choose_model
 from orchestrator.app.llm.settings import LLMSettings, get_llm_settings, is_api_call_allowed
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult
@@ -114,8 +115,8 @@ def validate_output(output_schema: Any, output: Any) -> Any:
 def safe_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
     safe = dict(metadata or {})
     safe.pop("prompt", None)
-    safe.pop("openai_api_key", None)
-    return safe
+    sanitized = sanitize_metadata(safe)
+    return sanitized if isinstance(sanitized, dict) else {}
 
 
 def append_model_selection(state: dict[str, Any], selection: Any) -> None:

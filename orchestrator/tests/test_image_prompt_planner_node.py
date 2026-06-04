@@ -1,7 +1,9 @@
 from orchestrator.app.graph.state import create_initial_marketing_state
 from orchestrator.app.llm.nodes.copy_spec_parser import copy_spec_parser_node
 from orchestrator.app.llm.nodes.format_planner import format_planner_node
-from orchestrator.app.llm.nodes.image_prompt_planner import bbox_to_natural_language, image_prompt_planner_node, infer_copy_space_from_reserved_areas
+import json
+
+from orchestrator.app.llm.nodes.image_prompt_planner import bbox_to_natural_language, build_image_prompt_planner_prompt, image_prompt_planner_node, infer_copy_space_from_reserved_areas
 from orchestrator.app.llm.nodes.text_layout_planner import text_layout_planner_node
 from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
 from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest, MarketingContext
@@ -47,6 +49,12 @@ def test_image_prompt_planner_uses_reserved_text_areas_and_no_text_negative():
         assert phrase in spec["negative_prompt_en"]
     assert spec["target_width"] == 1080
     assert spec["target_height"] == 1080
+    metadata = update["llm_call_results"][0]["metadata"]
+    assert metadata["trace"]["node_name"] == "image_prompt_planner"
+    assert metadata["available_state"]["text_layout_spec"]
+    assert metadata["available_state"]["reserved_text_areas"] == spec["reserved_text_areas"]
+    assert metadata["constraints"]["render_text_in_image"] is False
+    assert metadata["constraints"]["must_not_include_text"] is True
 
 
 def test_image_prompt_planner_includes_frontend_visual_choices():
@@ -67,6 +75,26 @@ def test_image_prompt_planner_includes_frontend_visual_choices():
     assert spec["metadata"]["selected_channel_id"] == "poster"
     assert spec["metadata"]["selected_tone"] == "고급스러운"
     assert spec["metadata"]["custom_direction"] == "상품을 중앙에 더 크게 보여줘"
+
+def test_image_prompt_planner_prompt_uses_json_metadata_contract():
+    state = _state()
+    state["selected_reference_template"] = {"template_id": "ref-1", "title": "Reference Feed"}
+    state["product_preserve_spec"] = {"product_bbox": {"x": 0.3, "y": 0.3, "w": 0.4, "h": 0.4}}
+
+    prompt = build_image_prompt_planner_prompt(state)
+    metadata = _metadata_contract_from_prompt(prompt)
+
+    assert metadata["trace"]["node_name"] == "image_prompt_planner"
+    assert metadata["available_state"]["selected_reference_template"]["template_id"] == "ref-1"
+    assert metadata["available_state"]["product_preserve_spec"]["product_bbox"]["w"] == 0.4
+    assert metadata["constraints"]["negative_prompt_required_terms"] == ["text", "letters", "numbers", "Hangul", "logo", "watermark"]
+
+
+def _metadata_contract_from_prompt(prompt: str) -> dict:
+    marker = "metadata_contract="
+    start = prompt.index(marker) + len(marker)
+    metadata, _ = json.JSONDecoder().raw_decode(prompt[start:].strip())
+    return metadata
 
 
 def test_image_prompt_planner_strengthens_uploaded_product_reference():

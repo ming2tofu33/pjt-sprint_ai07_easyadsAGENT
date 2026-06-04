@@ -82,6 +82,7 @@ class CopySpec(BaseModel):
     items: list[CopyItem] = Field(default_factory=list)
     copy_mode: str = "standard"
     tone_profile: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_headline(self):

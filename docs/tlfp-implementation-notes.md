@@ -41,9 +41,9 @@
 - Visual templates add business-aware composition, lighting, color palette hints, reserved text area guidance, and negative prompt additions while preserving `must_not_include_text=true`.
 - `ResultNode` writes the final `result_payload`, including `output_path`, validation summary, and artifact references.
 - GenerationJob `mock_immediate` uses Result Artifact Contract v1 with `background_0.png`, `final_0.png`, `metadata.json`, `prompt.json`, `validation.json`, `copy.json`, `layout.json`, and `render_result.json`.
-- GenerationJob actual T2I lanes are guarded and disabled by default. `gpt_image_2_actual`/`gpt_image_2_smoke` require explicit external T2I and GPT-image-2 env flags plus an OpenAI API key. `sd35_local`/`sd35_local_smoke` require the SD3.5 local env flag and local dependency/model availability.
-- CI/default tests do not call GPT-image-2, load SD3.5, download HF models, or require GPU.
-- `download_url` and `final_image_url` remain `null` because static serving/object storage is not implemented.
+- GenerationJob actual T2I lanes are guarded and disabled by default. `gpt_image_2_actual`/`gpt_image_2_smoke` require explicit external T2I and GPT-image-2 env flags plus an OpenAI API key. `sd35_local`/`sd35_local_smoke` require the SD3.5 local env flag and local dependency/model availability. `flux_local`/`flux_local_smoke` require the FLUX local env flag and local dependency/model availability.
+- CI/default tests do not call GPT-image-2, load SD3.5 or FLUX, download HF models, or require GPU.
+- `download_url` and `final_image_url` remain `null` in the default local_dev/CI path. When R2 upload is explicitly enabled and succeeds, GenerationJob responses may include browser-safe `final_image_url` and `download_url` values.
 - Vision Pipeline MVP preprocessing is available before validation when `source_image_path` or `reference_image_path` is supplied.
 - `ReferenceStyleProfile` can inform `ImagePromptPlannerNode` with deterministic palette and style hints.
 - `ProductPreserveSpec` is currently a `center_bbox_stub` only; no real product-preserving edit is performed.
@@ -69,6 +69,11 @@
 - `SafeAreaGate`: bbox-based reserved text area and product-zone overlap validation implemented.
 - `ResultNode`: final output payload and artifact reference assembly implemented.
 - `Vision Pipeline MVP`: PIL preprocess, reference style stub, product preserve stub, and optional graph route implemented.
+- `GenerationJob DB foundation`: Supabase/Postgres migration SQL and repository layer are prepared while `EASYADS_DB_BACKEND=memory` remains the default.
+- The DB repository foundation is not yet a full production rollout. Actual Supabase smoke, R2 asset upload, Modal job persistence, and production Auth/RLS enforcement are separate follow-up milestones.
+- `GenerationJob persistence v1`: postgres backend can persist create/get/running/done/failed lifecycle changes, record generation job events, and create local-dev asset/output placeholders for completed jobs.
+- `R2 asset storage v1`: when explicitly enabled, `mark_generation_job_done()` can upload final local artifacts to Cloudflare R2, persist R2 asset metadata, and fill `result_payload.final_image_url` / `download_url`. Default CI and local test environments still keep R2 disabled.
+- `Modal GPU execution backend v1`: eligible SD3.5/FLUX run modes can be routed through a guarded Modal bridge when `EASYADS_T2I_EXECUTION_BACKEND=modal` and `EASYADS_ENABLE_MODAL_EXECUTION=true`. Default tests use fake clients only and never call Modal or load models.
 
 ## Not Implemented Yet
 
@@ -78,7 +83,9 @@
 - Actual product-preserving image edit.
 - Actual reference-guided image generation beyond metadata prompt hints.
 - Unguarded actual GPT-image-2, SD3.5, or FLUX generation.
-- Static artifact serving or signed download URLs.
+- Actual Modal GPU smoke or deployed Modal app management.
+- Signed URL refresh APIs and broader static artifact serving policy.
+- Production Supabase Auth/RLS enforcement.
 - Automatic regeneration loops.
 - Production-grade font packaging.
 - Real product occlusion detection.
@@ -94,7 +101,7 @@
 
 ## Manual T2I Smoke Reports
 
-`scripts/smoke_generation_job_t2i.py` creates JSON and Markdown reports under `data/logs/` for guarded GPT-image-2 and SD3.5 lanes. Dry-run mode never calls external APIs or loads local models. Non-dry-run smoke is blocked unless the explicit engine flags and credentials/model readiness are present. Reports store only boolean credential presence, prompt hash/preview, job id, safe result payload fields, and error summaries; raw API keys, HF tokens, base64 image data, and image bytes must not be written.
+`scripts/smoke_generation_job_t2i.py` creates JSON and Markdown reports under `data/logs/` for guarded GPT-image-2, SD3.5, and FLUX lanes. Dry-run mode never calls external APIs or loads local models. Non-dry-run smoke is blocked unless the explicit engine flags and credentials/model readiness are present. Reports store only boolean credential presence, prompt hash/preview, job id, safe result payload fields, and error summaries; raw API keys, HF tokens, base64 image data, and image bytes must not be written.
 
 Generated reports under `data/logs/` and generated artifacts under `data/outputs/` are runtime files and must not be committed.
 
@@ -109,3 +116,18 @@ Generated reports under `data/logs/` and generated artifacts under `data/outputs
 ## ImagePrompt v3
 
 ImagePrompt v3 introduces the `ScenePlan`, `PromptQualityPolicy`, and `EnginePromptAdapter` (with adapters for `gpt_image_2`, `sd35_large`, and `flux`). In v3, the beauty industry template has been split into four subtypes: `beauty_skincare`, `beauty_hair`, `beauty_nail`, and `beauty_spa` based on v1 manual quality review findings. All v3 metadata is merged cleanly into `ImagePromptSpec.metadata` and carried into `T2IRequest.metadata` without breaking backward compatibility.
+
+## Copy Visual Quality Loop v1
+
+- Added deterministic copy tone policies for cafe, restaurant BBQ, beauty subtypes, and generic businesses.
+- Added rule-based overlay validation for contrast, safe area complexity, and clipping without OCR/VLM/model calls.
+- Added `scripts/run_copy_visual_overlay_review.py` to create local overlay previews from existing batch artifacts only.
+- Runtime previews and reports are written under ignored `data/outputs` and `data/logs` paths and are not commit targets.
+- Beauty outputs need stronger plate/shadow defaults; cafe and restaurant outputs are more likely to work with short copy and controlled CTAs.
+
+## FLUX Lane Comparison v1
+
+- Added a guarded FLUX local lane with `flux_local` and `flux_local_smoke` run modes.
+- FLUX is disabled by default and performs no `diffusers`/`torch` import or model load until `EASYADS_ENABLE_FLUX_LOCAL=true` and an actual guarded execution path are used.
+- The FLUX engine stores safe metadata only: model id when using a public model reference, model source, local path presence, HF token presence, and generation parameters. Raw HF tokens and local absolute paths are not exposed.
+- `scripts/run_t2i_engine_comparison.py` writes dry-run or guarded actual comparison reports for GPT-image-2, SD3.5, and FLUX under `data/logs/`.

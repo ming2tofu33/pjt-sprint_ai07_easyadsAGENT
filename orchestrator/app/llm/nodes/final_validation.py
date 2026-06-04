@@ -5,10 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.llm.metadata_builders import build_final_validation_metadata
 from orchestrator.app.schemas.text_layout import FinalValidationReport
 
 
 def final_validation_node(state: MarketingState) -> dict[str, Any]:
+    vlm_metadata_contract = build_final_validation_metadata(state)
     background = state.get("background_validation_report") or {}
     safe_area = state.get("safe_area_report") or {}
     readability = state.get("readability_report")
@@ -42,6 +44,12 @@ def final_validation_node(state: MarketingState) -> dict[str, Any]:
         no_copy=no_copy,
         warnings=warnings,
         issues=issues,
-        metadata={"source_node": "final_validation"},
+        metadata={
+            "source_node": "final_validation",
+            "ocr_or_vlm_called": False,
+            "vlm_call_allowed": False,
+            "vlm_metadata_contract": vlm_metadata_contract,
+            "validation_questions": vlm_metadata_contract["available_state"].get("validation_questions", []),
+        },
     )
     return {"final_validation_report": report.model_dump(), "status": "final_validating"}
