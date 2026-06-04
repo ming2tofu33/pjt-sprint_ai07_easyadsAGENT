@@ -309,13 +309,17 @@ Railway처럼 장시간 떠 있는 서버는 Supabase connection pooler 또는 �
 Cloudflare dashboard에서 준비할 값:
 
 ```text
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET=easyads-assets
-R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-R2_PUBLIC_BASE_URL=https://<public-domain-or-r2-dev-domain>
+R2_ACCOUNT_ID=...
+EASYADS_R2_ACCESS_KEY_ID=...
+EASYADS_R2_SECRET_ACCESS_KEY=...
+EASYADS_R2_BUCKET=easyads-assets-prod
+EASYADS_R2_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+EASYADS_R2_REGION=auto
+EASYADS_R2_URL_MODE=signed
+EASYADS_R2_SIGNED_URL_TTL_SECONDS=3600
 ```
+
+초기 프로덕션은 `signed` 모드를 권장합니다. 이 모드는 bucket을 공개하지 않고 orchestrator가 만료 시간이 있는 presigned URL을 생성해 UI에 전달합니다. public bucket 또는 custom domain을 쓸 때만 `EASYADS_R2_URL_MODE=public`과 `EASYADS_R2_PUBLIC_BASE_URL=https://...`를 추가합니다.
 
 추천 버킷:
 
@@ -1610,7 +1614,9 @@ Supabase chat_messages 기록으로 context를 수동 재구성한다.
 ```text
 [ ] R2 bucket 생성
 [ ] R2 access key 생성
-[ ] BFF upload를 R2 기반으로 변경
+[ ] Railway orchestrator에 EASYADS_R2_* 환경변수 등록
+[ ] EASYADS_ASSET_STORAGE_BACKEND=r2 설정
+[ ] EASYADS_ENABLE_R2_UPLOAD=true 설정
 [ ] assets table 기록
 [ ] signed URL 발급
 [ ] UI 이미지 표시 확인

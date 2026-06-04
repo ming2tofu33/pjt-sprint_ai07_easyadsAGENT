@@ -50,6 +50,7 @@ dependencies = [
     "xxhash==3.7.0",
     "zstandard==0.25.0",
     "psycopg[binary]==3.3.4",
+    "boto3==1.43.22",
 ]
 
 [dependency-groups]
