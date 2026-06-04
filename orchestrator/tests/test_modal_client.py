@@ -66,3 +66,80 @@ def test_submit_modal_t2i_job_accepts_injected_fake_client(monkeypatch):
     result = modal_client.submit_modal_t2i_job(_request(), client=FakeClient())
 
     assert result.modal_call_id == "modal_call_fake"
+
+
+def test_submit_modal_t2i_job_includes_sanitized_exception_detail(monkeypatch):
+    modal_module = types.ModuleType("modal")
+
+    class FakeFunction:
+        @classmethod
+        def from_name(cls, app_name, function_name):
+            raise RuntimeError("auth failed for token-secret")
+
+    modal_module.Function = FakeFunction
+    monkeypatch.setitem(sys.modules, "modal", modal_module)
+    monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "modal")
+    monkeypatch.setenv("EASYADS_ENABLE_MODAL_EXECUTION", "true")
+    monkeypatch.setenv("MODAL_TOKEN_ID", "token-id")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "token-secret")
+
+    try:
+        modal_client.submit_modal_t2i_job(_request())
+    except modal_client.ModalJobSubmitError as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected ModalJobSubmitError")
+
+    assert "RuntimeError" in message
+    assert "[REDACTED]" in message
+    assert "token-secret" not in message
+
+
+def test_poll_modal_t2i_result_uses_function_call_from_id(monkeypatch):
+    captured = {}
+    modal_module = types.ModuleType("modal")
+
+    class FakeFunctionCall:
+        @classmethod
+        def from_id(cls, modal_call_id):
+            captured["modal_call_id"] = modal_call_id
+            return cls()
+
+        def get(self, timeout=0):
+            captured["timeout"] = timeout
+            return {
+                "status": "succeeded",
+                "image_b64": "aW1hZ2U=",
+                "result_payload": {"schema_version": "result_artifact_v1"},
+            }
+
+    modal_module.FunctionCall = FakeFunctionCall
+    monkeypatch.setitem(sys.modules, "modal", modal_module)
+    monkeypatch.setenv("EASYADS_MODAL_POLL_TIMEOUT_SECONDS", "0")
+
+    result = modal_client.poll_modal_t2i_result("modal_call_123")
+
+    assert result.status == "succeeded"
+    assert result.modal_call_id == "modal_call_123"
+    assert result.image_b64 == "aW1hZ2U="
+    assert captured == {"modal_call_id": "modal_call_123", "timeout": 0}
+
+
+def test_poll_modal_t2i_result_reports_running_on_timeout(monkeypatch):
+    modal_module = types.ModuleType("modal")
+
+    class FakeFunctionCall:
+        @classmethod
+        def from_id(cls, modal_call_id):
+            return cls()
+
+        def get(self, timeout=0):
+            raise TimeoutError("not ready")
+
+    modal_module.FunctionCall = FakeFunctionCall
+    monkeypatch.setitem(sys.modules, "modal", modal_module)
+
+    result = modal_client.poll_modal_t2i_result("modal_call_pending")
+
+    assert result.status == "running"
+    assert result.modal_call_id == "modal_call_pending"

@@ -1,0 +1,101 @@
+import base64
+
+from modal_apps.easyads_t2i_worker import (
+    _flux_generation_options,
+    _is_real_flux_request,
+    _render_mock_png_base64,
+    generate_flux_schnell_image,
+    generate_image,
+)
+
+
+def test_modal_worker_mock_image_is_png():
+    image_b64 = _render_mock_png_base64(
+        {
+            "job_id": "job_modal",
+            "engine": "flux",
+            "prompt": "premium cafe ad",
+            "width": 512,
+            "height": 512,
+        }
+    )
+
+    assert base64.b64decode(image_b64).startswith(b"\x89PNG")
+
+
+def test_modal_worker_function_contract_can_run_locally():
+    result = generate_image.local(
+        {
+            "job_id": "job_modal",
+            "engine": "flux",
+            "prompt": "premium cafe ad",
+            "width": 512,
+            "height": 512,
+        }
+    )
+
+    assert result["status"] == "succeeded"
+    assert result["mime_type"] == "image/png"
+    assert base64.b64decode(result["image_b64"]).startswith(b"\x89PNG")
+    assert result["result_payload"]["schema_version"] == "result_artifact_v1"
+    assert result["result_payload"]["render_mode"] == "modal_mock_worker"
+    assert result["usage"]["gpu_seconds"] == 0
+
+
+def test_modal_worker_mock_function_rejects_real_flux_mode():
+    result = generate_image.local(
+        {
+            "job_id": "job_modal",
+            "engine": "flux",
+            "run_mode": "flux_schnell_real",
+            "prompt": "premium cafe ad",
+        }
+    )
+
+    assert result["status"] == "failed"
+    assert result["error"]["error_code"] == "modal_function_mismatch"
+    assert "generate_flux_schnell_image" in result["error"]["message"]
+
+
+def test_modal_worker_real_flux_function_rejects_smoke_mode_without_loading_model():
+    result = generate_flux_schnell_image.local(
+        {
+            "job_id": "job_modal",
+            "engine": "flux",
+            "run_mode": "flux_local_smoke",
+            "prompt": "premium cafe ad",
+        }
+    )
+
+    assert result["status"] == "failed"
+    assert result["error"]["error_code"] == "modal_real_flux_run_mode_required"
+
+
+def test_modal_worker_real_flux_request_detection():
+    assert _is_real_flux_request({"run_mode": "flux_schnell_real"}) is True
+    assert _is_real_flux_request({"run_mode": "flux_local_smoke"}) is False
+    assert _is_real_flux_request({"params": {"render_mode": "flux_schnell"}}) is True
+
+
+def test_modal_worker_flux_options_are_bounded_and_snapped():
+    options = _flux_generation_options(
+        {
+            "width": 333,
+            "height": 4097,
+            "seed": "123",
+            "params": {
+                "num_inference_steps": 50,
+                "guidance_scale": 9.0,
+                "max_sequence_length": 999,
+            },
+        }
+    )
+
+    assert options == {
+        "width": 320,
+        "height": 1024,
+        "num_inference_steps": 8,
+        "guidance_scale": 5.0,
+        "max_sequence_length": 512,
+        "seed": 123,
+    }
