@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 from uuid import uuid4
 
@@ -29,7 +30,7 @@ def submit_modal_t2i_job(request: ModalT2IRequest, *, client: object | None = No
     except ModalExecutionUnavailableError:
         raise
     except Exception as exc:
-        raise ModalJobSubmitError("Modal job submit failed.") from exc
+        raise ModalJobSubmitError(f"Modal job submit failed: {_safe_exception_detail(exc)}") from exc
     modal_call_id = _extract_modal_call_id(function_call)
     metadata = {}
     if modal_call_id.startswith("synthetic_modal_call_"):
@@ -55,7 +56,7 @@ def poll_modal_t2i_result(modal_call_id: str, *, client: object | None = None) -
     except TimeoutError:
         return ModalPollResult(status="running", modal_call_id=modal_call_id)
     except Exception as exc:
-        raise ModalJobPollError("Modal job poll failed.") from exc
+        raise ModalJobPollError(f"Modal job poll failed: {_safe_exception_detail(exc)}") from exc
     return _coerce_modal_poll_result(raw_result, modal_call_id)
 
 
@@ -93,3 +94,12 @@ def _coerce_modal_poll_result(raw_result: Any, modal_call_id: str) -> ModalPollR
             "result_type": type(raw_result).__name__,
         },
     )
+
+
+def _safe_exception_detail(exc: Exception) -> str:
+    text = f"{type(exc).__name__}: {exc}".strip()
+    for env_name in ("MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"):
+        secret = os.getenv(env_name)
+        if secret:
+            text = text.replace(secret, "[REDACTED]")
+    return text[:500]
