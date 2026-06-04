@@ -286,6 +286,14 @@ eval-logs:
 	          t2i_engine, t2i_image_count AS imgs, \
 	          coalesce(printf('%.6f', t2i_cost_usd), t2i_cost_source) AS t2i, \
 	          cost_estimated AS est FROM job_cost_summary WHERE job_id='$(JOB_ID)'"
+	@echo "── images (result node output) ──"
+	# final = T2I 배경 + PIL 텍스트 합성 최종 광고 / bg = 텍스트 없는 T2I 배경.
+	# 경로는 호스트 파일 경로. 눈으로 보려면 그 PNG 파일을 직접 열기(다운로드/scp). Makefile은 경로만 출력.
+	sqlite3 -header -column /home/records/easyads_ops.db \
+	  "SELECT json_extract(nso.output_snapshot,'$$.result_payload.output_path') AS final, \
+	          json_extract(nso.output_snapshot,'$$.result_payload.background_image_path') AS bg \
+	   FROM node_state_outputs nso JOIN node_executions ne ON ne.id=nso.node_exec_id \
+	   WHERE ne.job_id='$(JOB_ID)' AND ne.node_name='result' ORDER BY ne.id DESC LIMIT 1"
 
 eval-judge:
 	# [judge 단계] 한 job에 LLM+VLM 판정(기본). 이미 채점된 평가자는 건너뜀(멱등).

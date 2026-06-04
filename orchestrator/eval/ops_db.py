@@ -302,6 +302,71 @@ class OpsDBWriter:
                 ),
             )
 
+    def relocate_result_images(self, job_id: str, dest_root: str) -> dict[str, str]:
+        """Mirror a job's generated images into the shared volume and rewrite the
+        logged paths so `make eval-logs` / VLM judge see the shared copy.
+
+        The app writes images to data/outputs/<job_id> (hardcoded in
+        t2i_request_builder.py:83 — see fix.md), which is the local source tree,
+        not the team-shared volume. This eval-side step copies them under
+        dest_root/<job_id>/ and string-replaces old paths with new ones inside the
+        result node's output_snapshot. Best-effort: returns {} and never raises into
+        the batch if anything is missing/unreadable.
+        """
+        import shutil
+
+        with self._conn() as conn:
+            row = conn.execute(
+                """SELECT id, output_snapshot FROM node_state_outputs
+                   WHERE job_id=? AND node_name='result' AND output_snapshot IS NOT NULL
+                   ORDER BY id DESC LIMIT 1""",
+                (job_id,),
+            ).fetchone()
+            if not row:
+                return {}
+            snapshot_id, snapshot = row[0], row[1]
+
+        try:
+            payload = json.loads(snapshot)
+        except (TypeError, ValueError):
+            return {}
+
+        # Gather candidate image paths from top level and result_payload.
+        rp = payload.get("result_payload") if isinstance(payload.get("result_payload"), dict) else {}
+        candidates = [
+            payload.get("final_image_path"),
+            payload.get("background_image_path"),
+            rp.get("output_path"),
+            rp.get("final_image_path"),
+            rp.get("background_image_path"),
+        ]
+
+        dest_dir = os.path.join(dest_root, job_id)
+        remap: dict[str, str] = {}
+        for src in candidates:
+            if not src or src in remap or not os.path.isfile(src):
+                continue
+            os.makedirs(dest_dir, exist_ok=True)
+            dest = os.path.join(dest_dir, os.path.basename(src))
+            try:
+                shutil.copy2(src, dest)
+            except OSError:
+                continue
+            remap[src] = dest
+
+        if not remap:
+            return {}
+
+        new_snapshot = snapshot
+        for old, new in remap.items():
+            new_snapshot = new_snapshot.replace(old, new)
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE node_state_outputs SET output_snapshot=? WHERE id=?",
+                (new_snapshot, snapshot_id),
+            )
+        return remap
+
     def fail_node(
         self,
         exec_id: int,

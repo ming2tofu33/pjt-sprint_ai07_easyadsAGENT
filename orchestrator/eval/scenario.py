@@ -38,7 +38,9 @@ import traceback
 from datetime import datetime, timezone
 from typing import Any
 
+from orchestrator.eval.config import IMAGES_DIR
 from orchestrator.eval.eval import run_full_eval
+from orchestrator.eval.ops_db import create_ops_writer
 from orchestrator.eval.tracked_builder import build_tracked_marketing_graph
 
 # Guard against a malformed answers map (or an unexpected required field) trapping
@@ -177,6 +179,16 @@ def run_one(graph: Any, scenario: dict[str, Any], defaults: dict[str, Any], run_
 
         row["status"] = result.get("status")
         row["final_image_path"] = result.get("final_image_path")
+
+        # Mirror generated images into the shared volume (default /app/records/images)
+        # so teammates can open them; rewrites the logged path too. Best-effort.
+        try:
+            remap = create_ops_writer().relocate_result_images(job_id, IMAGES_DIR)
+            new_final = remap.get(row["final_image_path"])
+            if new_final:
+                row["final_image_path"] = new_final
+        except Exception:  # noqa: BLE001 — image mirroring must never break the batch
+            pass
 
         # ---- Log-phase eval only: auto gates ($0). Paid LLM/VLM/Human judges are
         # decoupled into the judge phase (judge.py / `make eval-pending`) so a batch
