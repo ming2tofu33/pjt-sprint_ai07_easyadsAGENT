@@ -24,7 +24,7 @@ NodeModelName = Literal[
 ]
 RiskLevel = Literal["low", "medium", "high"]
 LatencyBudget = Literal["interactive", "standard", "batch"]
-AdapterProvider = Literal["mock", "openai", "local_gemma", "local_qwen", "vision_api"]
+AdapterProvider = Literal["mock", "openai", "openai_compatible", "local_gemma", "local_qwen", "vision_api"]
 CostTier = Literal["none", "low", "medium", "high"]
 
 

@@ -1,0 +1,179 @@
+"""Guarded OpenAI-compatible LLM adapter."""
+
+from __future__ import annotations
+
+import json
+from time import perf_counter
+from typing import Any
+
+from pydantic import BaseModel
+
+from orchestrator.app.llm.adapters.base import BaseLLMAdapter
+from orchestrator.app.llm.metadata_contracts import sanitize_metadata
+from orchestrator.app.llm.settings import LLMSettings, get_llm_settings
+from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection
+
+
+class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
+    provider = "openai_compatible"
+
+    def __init__(self, settings: LLMSettings | None = None):
+        self.settings = settings or get_llm_settings()
+
+    def invoke_structured(
+        self,
+        schema: Any,
+        prompt: str,
+        model_selection: ModelSelection,
+        metadata: dict[str, Any] | None = None,
+    ) -> LLMCallResult:
+        started = perf_counter()
+        preflight_error = self._preflight()
+        if preflight_error:
+            return self._error(model_selection, preflight_error, started, metadata)
+        model_name = self._model_name(model_selection)
+        if not model_name:
+            return self._error(model_selection, "llm_model_not_configured", started, metadata)
+        try:
+            from openai import OpenAI  # type: ignore
+        except Exception:
+            return self._error(model_selection, "llm_dependency_unavailable", started, metadata)
+        try:
+            client_kwargs = {"api_key": self.settings.openai_api_key, "timeout": self.settings.request_timeout_seconds}
+            if self.settings.llm_base_url:
+                client_kwargs["base_url"] = self.settings.llm_base_url
+            client = OpenAI(**client_kwargs)
+            response = client.responses.create(
+                model=model_name,
+                input=prompt,
+                text={"format": {"type": "json_object"}},
+            )
+            raw_text = getattr(response, "output_text", None) or ""
+            parsed = json.loads(raw_text) if raw_text else {}
+            output = self._validate_schema(schema, parsed)
+            return self._success(model_selection, output, raw_text, started, metadata, model_name)
+        except json.JSONDecodeError:
+            return self._error(model_selection, "llm_structured_output_parse_failed", started, metadata)
+        except Exception as exc:
+            return self._error(model_selection, f"llm_api_error:{type(exc).__name__}", started, metadata)
+
+    def invoke_text(
+        self,
+        prompt: str,
+        model_selection: ModelSelection,
+        metadata: dict[str, Any] | None = None,
+    ) -> LLMCallResult:
+        started = perf_counter()
+        preflight_error = self._preflight()
+        if preflight_error:
+            return self._error(model_selection, preflight_error, started, metadata)
+        model_name = self._model_name(model_selection)
+        if not model_name:
+            return self._error(model_selection, "llm_model_not_configured", started, metadata)
+        try:
+            from openai import OpenAI  # type: ignore
+        except Exception:
+            return self._error(model_selection, "llm_dependency_unavailable", started, metadata)
+        try:
+            client_kwargs = {"api_key": self.settings.openai_api_key, "timeout": self.settings.request_timeout_seconds}
+            if self.settings.llm_base_url:
+                client_kwargs["base_url"] = self.settings.llm_base_url
+            client = OpenAI(**client_kwargs)
+            response = client.responses.create(model=model_name, input=prompt)
+            raw_text = getattr(response, "output_text", None) or ""
+            return self._success(model_selection, raw_text, raw_text, started, metadata, model_name)
+        except Exception as exc:
+            return self._error(model_selection, f"llm_api_error:{type(exc).__name__}", started, metadata)
+
+    def invoke_vision(
+        self,
+        schema: Any,
+        image_path: str,
+        prompt: str,
+        model_selection: ModelSelection,
+        metadata: dict[str, Any] | None = None,
+    ) -> LLMCallResult:
+        started = perf_counter()
+        return self._error(
+            model_selection,
+            "llm_vision_not_implemented",
+            started,
+            {**sanitize_metadata(metadata or {}), "image_path_present": bool(image_path)},
+        )
+
+    def _preflight(self) -> str | None:
+        if not self.settings.enable_api_call:
+            return "llm_calls_disabled"
+        if not self.settings.openai_api_key:
+            return "llm_credentials_missing"
+        return None
+
+    def _model_name(self, model_selection: ModelSelection) -> str | None:
+        if self.settings.llm_model:
+            return self.settings.llm_model
+        return {
+            "api_nano": self.settings.openai_text_model_nano,
+            "api_mini": self.settings.openai_text_model_mini,
+            "api_full": self.settings.openai_text_model_full,
+            "api_vision": self.settings.openai_vision_model,
+        }.get(model_selection.selected_model_class)
+
+    def _validate_schema(self, schema: Any, output: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(schema, type) and issubclass(schema, BaseModel):
+            return schema(**output).model_dump()
+        return output
+
+    def _success(
+        self,
+        model_selection: ModelSelection,
+        output: dict[str, Any] | str,
+        raw_text: str | None,
+        started: float,
+        metadata: dict[str, Any] | None,
+        model_name: str,
+    ) -> LLMCallResult:
+        return LLMCallResult(
+            success=True,
+            node_name=model_selection.node_name,
+            model_selection=model_selection,
+            output=output,
+            raw_text=raw_text,
+            error=None,
+            latency_ms=elapsed_ms(started),
+            token_usage=None,
+            cost_estimate=None,
+            metadata={
+                **sanitize_metadata(metadata or {}),
+                "provider": self.provider,
+                "model": model_name,
+                "api_key_present": bool(self.settings.openai_api_key),
+            },
+        )
+
+    def _error(
+        self,
+        model_selection: ModelSelection,
+        error: str,
+        started: float,
+        metadata: dict[str, Any] | None,
+    ) -> LLMCallResult:
+        return LLMCallResult(
+            success=False,
+            node_name=model_selection.node_name,
+            model_selection=model_selection,
+            output=None,
+            raw_text=None,
+            error=error,
+            latency_ms=elapsed_ms(started),
+            token_usage=None,
+            cost_estimate=None,
+            metadata={
+                **sanitize_metadata(metadata or {}),
+                "provider": self.provider,
+                "api_key_present": bool(self.settings.openai_api_key),
+            },
+        )
+
+
+def elapsed_ms(started: float) -> int:
+    return max(0, round((perf_counter() - started) * 1000))
