@@ -4,6 +4,8 @@
 
 This milestone adds a guarded Modal execution path for GPU-heavy local T2I engines. It is a backend execution bridge only. It does not run actual Modal jobs, upload to R2, call OpenAI, load SD3.5/FLUX models, or change frontend behavior in CI/default tests.
 
+Follow-up deployment preparation adds `modal_apps/easyads_t2i_worker.py`, a lightweight deployed Modal function for smoke testing the `Railway -> Modal -> R2` path before real SD/FLUX model code is enabled.
+
 ## 2. Environment
 
 ```env
@@ -113,7 +115,7 @@ commit data/outputs artifacts
 ## 9. Current Limitations
 
 ```text
-Actual Modal app deployment is not included.
+Actual SD/FLUX model deployment is not included. A mock Modal worker is available for connectivity smoke tests.
 Callback/webhook handling is not implemented.
 Long polling and background workers are not implemented.
 Signed URL refresh remains a separate storage milestone.

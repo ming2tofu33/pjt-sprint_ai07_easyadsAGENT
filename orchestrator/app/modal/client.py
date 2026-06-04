@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from orchestrator.app.modal import settings
@@ -46,10 +47,16 @@ def poll_modal_t2i_result(modal_call_id: str, *, client: object | None = None) -
     if client is not None and hasattr(client, "poll"):
         return client.poll(modal_call_id)
     try:
-        _import_modal()
+        modal = _import_modal()
+        function_call = modal.FunctionCall.from_id(modal_call_id)
+        raw_result = function_call.get(timeout=settings.get_modal_poll_timeout_seconds())
     except ModalExecutionUnavailableError:
         raise
-    raise ModalJobPollError("Modal poll requires a concrete Modal poll adapter in this milestone.")
+    except TimeoutError:
+        return ModalPollResult(status="running", modal_call_id=modal_call_id)
+    except Exception as exc:
+        raise ModalJobPollError("Modal job poll failed.") from exc
+    return _coerce_modal_poll_result(raw_result, modal_call_id)
 
 
 def _import_modal():
@@ -66,3 +73,23 @@ def _extract_modal_call_id(function_call: object) -> str:
         if value:
             return str(value)
     return f"synthetic_modal_call_{uuid4().hex}"
+
+
+def _coerce_modal_poll_result(raw_result: Any, modal_call_id: str) -> ModalPollResult:
+    if isinstance(raw_result, ModalPollResult):
+        return raw_result
+    if isinstance(raw_result, dict):
+        payload = dict(raw_result)
+        payload.setdefault("modal_call_id", modal_call_id)
+        if not payload.get("status"):
+            payload["status"] = "succeeded" if payload.get("image_b64") or payload.get("image_bytes") else "unknown"
+        return ModalPollResult(**payload)
+    return ModalPollResult(
+        status="failed",
+        modal_call_id=modal_call_id,
+        error={
+            "error_code": "modal_invalid_result",
+            "message": "Modal returned an unsupported result payload.",
+            "result_type": type(raw_result).__name__,
+        },
+    )
