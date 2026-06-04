@@ -8,6 +8,7 @@ import { brandKitMeta, brandKitProducts, brandKitTone, readSavedBrandKit, type S
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { myProfile } from "@/lib/mock-dashboard-data";
 import { buildMyHref } from "@/lib/my-navigation";
+import { goBackOrPush } from "@/lib/navigation-history";
 import styles from "./generate.module.css";
 
 export function AccountInfoStep() {
@@ -21,7 +22,7 @@ export function AccountInfoStep() {
   return (
     <>
       <header className={styles.stepHeader}>
-        <button aria-label="뒤로" type="button" onClick={() => router.push(buildMyHref())}>
+        <button aria-label="뒤로" type="button" onClick={() => goBackOrPush(router, buildMyHref())}>
           <ArrowLeft size={20} aria-hidden="true" />
         </button>
         <h1>계정 및 가게 정보</h1>
@@ -80,7 +81,7 @@ export function AccountInfoStep() {
         </dl>
       </section>
 
-      <button className={styles.myLinkedBrandCard} type="button" onClick={() => router.push(buildBrandKitHref(brandKit ? "complete" : "info"))}>
+      <button className={styles.myLinkedBrandCard} type="button" onClick={() => router.push(buildBrandKitHref(brandKit ? "complete" : "start"))}>
         <Store size={24} aria-hidden="true" />
         <strong>
           {brandKit?.businessName ?? "브랜드 키트 연결 전"}

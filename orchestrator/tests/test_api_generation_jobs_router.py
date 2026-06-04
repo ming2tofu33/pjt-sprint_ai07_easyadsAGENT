@@ -117,9 +117,11 @@ def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
     monkeypatch.delenv("EASYADS_ENABLE_EXTERNAL_T2I", raising=False)
     monkeypatch.delenv("EASYADS_ENABLE_GPT_IMAGE_2", raising=False)
     monkeypatch.delenv("EASYADS_ENABLE_SD35_LOCAL", raising=False)
+    monkeypatch.delenv("EASYADS_ENABLE_FLUX_LOCAL", raising=False)
 
     gpt = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "gpt_image_2_smoke"})
     sd35 = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "sd35_local_smoke"})
+    flux = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "flux_local_smoke"})
 
     assert gpt.status_code == 201
     assert gpt.json()["job"]["status"] == "failed"
@@ -127,6 +129,10 @@ def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
     assert sd35.status_code == 201
     assert sd35.json()["job"]["status"] == "failed"
     assert sd35.json()["job"]["error"]["error_code"] == "t2i_engine_not_enabled"
+    assert flux.status_code == 201
+    assert flux.json()["job"]["status"] == "failed"
+    assert flux.json()["job"]["error"]["error_code"] == "t2i_engine_not_enabled"
+    assert flux.json()["job"]["metadata"]["t2i_engine"] == "flux"
 
 
 def test_create_generation_job_accepts_camel_case_reference_alias(client):

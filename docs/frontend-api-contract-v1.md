@@ -6,7 +6,7 @@ This document defines backend API request and response contracts for frontend in
 
 ## 2. Current Scope
 
-Reference Catalog, BrandKit, and GenerationJob FastAPI routes are implemented in v1.
+Reference Catalog, BrandKit, and GenerationJob FastAPI routes are implemented in v1. GenerationJob can use either the default in-memory backend or the Postgres repository foundation when `EASYADS_DB_BACKEND=postgres`.
 
 Implemented routes:
 
@@ -20,7 +20,7 @@ Implemented routes:
 - `POST /api/v1/generation-jobs`
 - `GET /api/v1/generation-jobs/{job_id}`
 
-Archive skeleton support is partially prepared for MVP generated-result flows, but production persistence and complete frontend archive integration are not implemented. Usage and Settings routers are still out of scope. Persistence, object storage, background queues, unguarded image/model calls, and production serving remain out of scope. Guarded GPT-image-2 and SD3.5 lanes exist but are disabled by default and are not executed in CI/default tests.
+Archive skeleton support is partially prepared for MVP generated-result flows, but production persistence and complete frontend archive integration are not implemented. Usage and Settings routers are still out of scope. Persistence, guarded R2 object storage, and guarded Modal execution foundations are available only when explicitly enabled by backend environment flags. In the default local_dev/CI path, generated artifacts may still have no browser-safe URL, and FE must treat local artifact paths as debug-only traces. Production serving, actual Modal GPU execution, and complete background worker/callback flows remain separate follow-up milestones.
 
 ## 3. Common Response Format
 
@@ -157,6 +157,7 @@ Missing ids return `brand_kit_not_found`. Invalid update payloads return `invali
 
 Current limitations:
 - BrandKit storage is in-memory only.
+- A `brand_kits` table exists in the Supabase schema foundation, but BrandKit API persistence is not wired to Postgres in this milestone.
 - Data is not retained after server restart.
 - Real database persistence is planned for a later milestone.
 - Logo upload and object storage are not implemented.
@@ -190,11 +191,14 @@ Run mode policy:
 - `graph_immediate`: currently degrades to `queued_only`; no graph execution happens.
 - `gpt_image_2_actual` / `gpt_image_2_smoke`: request the guarded GPT-image-2 lane.
 - `sd35_local` / `sd35_local_smoke`: request the guarded SD3.5 local lane.
+- `flux_local` / `flux_local_smoke`: request the guarded FLUX local lane.
+- With `EASYADS_T2I_EXECUTION_BACKEND=modal`, eligible SD3.5/FLUX run modes can be submitted to the guarded Modal backend instead of executing locally. Modal is disabled by default.
 
 Actual generation lane policy:
 - All actual generation lanes are disabled by default.
 - GPT-image-2 requires `EASYADS_ENABLE_EXTERNAL_T2I=true`, `EASYADS_ENABLE_GPT_IMAGE_2=true`, and an `OPENAI_API_KEY`.
 - SD3.5 requires `EASYADS_ENABLE_SD35_LOCAL=true` plus local dependency/model availability.
+- FLUX requires `EASYADS_ENABLE_FLUX_LOCAL=true` plus local dependency/model availability.
 - CI/default tests do not call external APIs, load local models, download HF models, or require GPU.
 - If an actual lane is requested without the required guard conditions, the job returns `status: "failed"` with `error.error_code: "t2i_engine_not_enabled"` or `t2i_engine_unavailable`.
 
@@ -211,8 +215,6 @@ Actual generation lane policy:
 Result fields FE can safely bind:
 - `job.status`
 - `job.progress`
-- `job.output_path`
-- `job.result_payload.final_image_path`
 - `job.result_payload.download_url`
 - `job.result_payload.final_image_url`
 - `job.result_payload.prompt_summary`
@@ -220,6 +222,12 @@ Result fields FE can safely bind:
 - `job.result_payload.copy_summary`
 - `job.result_payload.layout_summary`
 
+Development trace fields:
+- `job.output_path`
+- `job.result_payload.final_image_path`
+- `job.result_payload.download_path`
+
+These fields are repo-relative runtime artifact paths. FE may keep them for debug-only details in development mode, but must not use them as `img src`, anchor `href`, or user-facing copy text.
 
 ### FE Result Binding Policy
 
@@ -230,7 +238,7 @@ Frontend result screens should read `GenerationJob.result_payload` before fallin
 - Treat `result_payload.final_image_path`, `result_payload.download_path`, and `job.output_path` as repo-relative development paths, not browser-safe public URLs.
 - Do not render `<img src="data/outputs/...">` or `<a href="data/outputs/...">`.
 - If public URLs are `null`, disable the download action and show that the artifact exists but public serving is not connected yet.
-- Copy actions may include `job_id`, `status`, engine/render mode, repo-relative final path, and prompt/validation/copy/layout summaries because they do not require a public URL.
+- Copy actions may include `job_id`, `status`, engine/render mode, public image/download URLs when available, and sanitized prompt/validation/copy/layout summaries. Repo-relative local artifact paths such as `data/outputs/...` must not be copied as user-facing result text.
 
 Polling policy: FE may poll `GET /api/v1/generation-jobs/{job_id}` while `status` is `queued` or `running`, then stop on `done` or `failed`.
 
@@ -248,17 +256,21 @@ Error responses:
 - Invalid create payload returns `invalid_generation_job_request`.
 
 Current limitations:
-- GenerationJob storage is in-memory only.
+- GenerationJob storage defaults to in-memory. A Postgres repository path is available behind `EASYADS_DB_BACKEND=postgres` for create/get/status lifecycle persistence.
 - Job state is not retained after server restart.
 - Worker and queue execution are not implemented.
 - `build_marketing_graph()` is not executed.
-- GPT-image-2 and SD3.5 lanes exist but are guarded and disabled by default; FLUX is still not implemented here.
+- GPT-image-2, SD3.5, and FLUX lanes exist but are guarded and disabled by default.
 - LLM/VLM/OCR calls are not made.
-- Output URL/static serving is not implemented.
-- `download_url` is `null`.
+- Output URL/static serving is not always present.
 - `result_payload.download_path` is a repo-relative development path and is not a public URL.
-- `result_payload.download_url` and `result_payload.final_image_url` remain `null` until static serving or object storage is implemented.
-- The mock artifact contract is local-path based for development tracing only; public URL serving is a later milestone.
+- `result_payload.download_url` and `result_payload.final_image_url` may remain `null` when local-dev placeholder storage is used.
+- When R2 upload is enabled and succeeds, `result_payload.final_image_url` and `result_payload.download_url` are filled using either signed or public URL mode.
+- R2 and local-dev payloads may include `final_asset_id`, `storage_provider`, `bucket`, `object_key`, `url_mode`, `signed_url_expires_at`, and nested `assets.final` metadata.
+- Signed URLs may expire. A refresh API is a later milestone.
+- Modal execution writes successful GPU results back into the same `result_artifact_v1` payload shape. Modal image bytes/base64 data and Modal token values are never part of the public response.
+- The mock artifact contract is still local-path based for development tracing when object storage is disabled or unavailable.
+- Postgres `assets` rows may track either local development artifacts or R2 objects. FE must still rely only on `final_image_url`/`download_url` for preview and download.
 
 ## 8. Archive Response Contract
 
@@ -296,10 +308,9 @@ Contracts:
 - Logo upload and object storage integration for BrandKit
 - Authenticated user extraction for BrandKit
 - Production archive persistence and full archive frontend integration
-- Unguarded or default GPT-image-2 / SD3.5 calls
-- FLUX generation lane
+- Unguarded or default GPT-image-2 / SD3.5 / FLUX calls
 - LLM, VLM, OCR, rembg, or SAM calls
-- Production-grade manual smoke validation for GPT-image-2 / SD3.5
+- Production-grade manual smoke validation for GPT-image-2 / SD3.5 / FLUX
 
 ## 12. Reference Template Selection Flow
 
@@ -326,3 +337,9 @@ Reference asset proxy/static serving is independent from generated result servin
 Backend owns DTO validation, stable response shapes, domain service integration, and safe public asset references. FE/BFF owns screen composition, query hooks, caching strategy, frontend mock data during UI prototyping, and route-level presentation logic.
 
 `AssetRef.path` exists for transitional backend contract compatibility, but public API handlers should avoid filling it with local absolute paths. Prefer `url` or `thumbnail_url` once asset serving is available; keep internal filesystem paths out of frontend-facing responses.
+
+## FE Result Binding for Actual Payloads
+
+Generation result screens must use public URL fields only for browser preview and download. `result_payload.final_image_url`, `result_payload.preview_image_url`, `result_payload.copy_visual_preview_url`, and `result_payload.download_url` may be used as display/download URLs. Local runtime paths such as `data/outputs/...`, `download_path`, `final_image_path`, and `job.output_path` are development artifact paths and must not be used as `img src` or anchor `href` values.
+
+When `job.status == "done"` but no public URL is present, the frontend should show a completed-but-URL-not-ready state instead of continuing a loading spinner. Summary copy remains available, but it must hide local artifact paths and secret-like fields. Backend responses sanitize local absolute paths and unsafe URL schemes before returning `result_payload`. When signed URLs are used, FE should also be prepared for eventual URL expiration and a later refresh flow.

@@ -108,6 +108,82 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("proxies archive item saves with normalized payload fields", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(
+        {
+          success: true,
+          item: {
+            ad_id: "archive_1",
+            job_id: "job_1",
+            title: "봄을 닮은 한 잔",
+            image_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal.png",
+            status: "saved",
+            source: "generated",
+            metadata: { tags: ["카페"] }
+          }
+        },
+        { status: 201 }
+      )
+    );
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/archive/items",
+      payload: {
+        title: "봄을 닮은 한 잔",
+        publicJobId: "job_1",
+        imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal.png",
+        thumbnailUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal.png",
+        adFormat: "1:1",
+        platform: "인스타 피드",
+        source: "generated",
+        metadata: { tags: ["카페"] }
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/archive/items",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          title: "봄을 닮은 한 잔",
+          public_job_id: "job_1",
+          image_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal.png",
+          thumbnail_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_1%2Ffinal.png",
+          status: "saved",
+          ad_format: "1:1",
+          platform: "인스타 피드",
+          source: "generated",
+          metadata: { tags: ["카페"] }
+        })
+      })
+    );
+    await app.close();
+  });
+
+  it("proxies archive list and delete requests", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ success: true, items: [], pagination: { limit: 20, offset: 0, total: 0, has_more: false } }));
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    await app.inject({ method: "GET", url: "/api/archive/items?limit=20" });
+    await app.inject({ method: "DELETE", url: "/api/archive/items/archive_1" });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "http://orchestrator/api/v1/archive/items?limit=20",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/archive/items/archive_1",
+      expect.objectContaining({ method: "DELETE" })
+    );
+    await app.close();
+  });
+
   it("validates chat start payloads", async () => {
     const app = buildApp({ fetchImpl: vi.fn() });
 

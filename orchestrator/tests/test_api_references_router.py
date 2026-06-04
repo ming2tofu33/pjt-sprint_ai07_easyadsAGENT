@@ -80,6 +80,32 @@ def test_reference_filters_and_sorting_work():
     assert scores == sorted(scores, reverse=True)
 
 
+def test_reference_keyword_aliases_include_cafe_for_food_and_drink():
+    http = client()
+
+    food = http.get("/api/v1/references", params={"keyword": "음식", "limit": 20})
+    assert food.status_code == 200
+    assert any(item["category"] == "cafe" for item in food.json()["items"])
+    assert any(item["category"] == "restaurant" for item in food.json()["items"])
+
+    drink = http.get("/api/v1/references", params={"keyword": "음료", "limit": 20})
+    assert drink.status_code == 200
+    assert any(item["category"] == "cafe" for item in drink.json()["items"])
+
+    english_drink = http.get("/api/v1/references", params={"keyword": "drink", "limit": 20})
+    assert english_drink.status_code == 200
+    assert any(item["category"] == "cafe" for item in english_drink.json()["items"])
+
+
+def test_reference_food_category_includes_cafe_and_restaurant():
+    response = client().get("/api/v1/references", params={"category": "food", "limit": 20})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert any(item["category"] == "cafe" for item in payload["items"])
+    assert any(item["category"] == "restaurant" for item in payload["items"])
+
+
 def test_limit_offset_and_empty_state():
     http = client()
     limited = http.get("/api/v1/references", params={"limit": 2, "offset": 1})

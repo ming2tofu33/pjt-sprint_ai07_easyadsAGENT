@@ -24,16 +24,23 @@ from orchestrator.app.api.app import create_app  # noqa: E402
 RUN_MODE_BY_ENGINE = {
     "gpt_image_2": "gpt_image_2_smoke",
     "sd35_large": "sd35_local_smoke",
+    "flux": "flux_local_smoke",
 }
 
 
 def build_env_summary(engine: str) -> dict[str, bool]:
+    engine_enabled = {
+        "gpt_image_2": _env_bool("EASYADS_ENABLE_GPT_IMAGE_2"),
+        "sd35_large": _env_bool("EASYADS_ENABLE_SD35_LOCAL"),
+        "flux": _env_bool("EASYADS_ENABLE_FLUX_LOCAL"),
+    }[engine]
     return {
         "external_t2i_enabled": _env_bool("EASYADS_ENABLE_EXTERNAL_T2I"),
-        "engine_enabled": _env_bool("EASYADS_ENABLE_GPT_IMAGE_2") if engine == "gpt_image_2" else _env_bool("EASYADS_ENABLE_SD35_LOCAL"),
+        "engine_enabled": engine_enabled,
         "api_key_present": bool(os.getenv("OPENAI_API_KEY")),
         "hf_token_present": bool(os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")),
         "sd35_local_path_present": bool(os.getenv("EASYADS_SD35_LOCAL_PATH")),
+        "flux_local_path_present": bool(os.getenv("EASYADS_FLUX_LOCAL_PATH")),
     }
 
 
@@ -44,10 +51,15 @@ def missing_requirements(engine: str, env: dict[str, bool]) -> list[str]:
             ("EASYADS_ENABLE_GPT_IMAGE_2", env["engine_enabled"]),
             ("OPENAI_API_KEY", env["api_key_present"]),
         ]
-    else:
+    elif engine == "sd35_large":
         checks = [
             ("EASYADS_ENABLE_SD35_LOCAL", env["engine_enabled"]),
             ("HF_TOKEN_or_EASYADS_SD35_LOCAL_PATH", env["hf_token_present"] or env["sd35_local_path_present"]),
+        ]
+    else:
+        checks = [
+            ("EASYADS_ENABLE_FLUX_LOCAL", env["engine_enabled"]),
+            ("HF_TOKEN_or_EASYADS_FLUX_LOCAL_PATH", env["hf_token_present"] or env["flux_local_path_present"]),
         ]
     return [name for name, present in checks if not present]
 

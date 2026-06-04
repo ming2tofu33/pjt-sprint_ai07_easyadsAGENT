@@ -272,7 +272,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
 
         <p className={styles.styleNotice}>
           <Sparkles size={17} aria-hidden="true" />
-          브랜드 키트 저장 API가 연결되면 “이번 주말 이벤트 광고 만들어줘” 같은 요청에 자동 반영됩니다.
+          브랜드 키트가 저장되면 “이번 주말 이벤트 광고 만들어줘” 같은 요청에 자동으로 참고돼요.
         </p>
 
         <BrandFlowFooter current={4} tone="coral">

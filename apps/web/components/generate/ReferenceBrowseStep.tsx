@@ -1,7 +1,7 @@
 "use client";
 
 import { Briefcase, CheckCircle2, ChevronLeft, Home, Search, Sparkles, User } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import { listReferenceTemplates, type ReferenceTemplateCard } from "@/lib/api-client";
@@ -28,7 +28,7 @@ type ReferenceBrowseStepProps = {
 const categories = [
   { label: "전체", value: "" },
   { label: "카페", value: "cafe" },
-  { label: "음식점", value: "restaurant" },
+  { label: "음식", value: "food" },
   { label: "뷰티", value: "beauty" },
   { label: "리테일", value: "retail" },
   { label: "스토리", value: "instagram_story" }
@@ -57,6 +57,7 @@ export function ReferenceBrowseStep({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const sortedTemplates = useMemo(
     () =>
       [...templates].sort((first, second) => {
@@ -67,6 +68,11 @@ export function ReferenceBrowseStep({
     [templates]
   );
   const hasTemporaryTemplates = sortedTemplates.some((template) => template.templateId.startsWith("temp_"));
+
+  function focusSearchField() {
+    searchInputRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    searchInputRef.current?.focus();
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +116,9 @@ export function ReferenceBrowseStep({
             <ChevronLeft size={22} aria-hidden="true" />
           </button>
           <span>REFERENCE GALLERY</span>
-          <Search size={21} aria-hidden="true" />
+          <button aria-label="레퍼런스 검색어 입력" type="button" onClick={focusSearchField}>
+            <Search size={21} aria-hidden="true" />
+          </button>
         </div>
       ) : (
         <div className={styles.progressBanner} data-complete={isGenerationComplete}>
@@ -134,12 +142,17 @@ export function ReferenceBrowseStep({
           <p>REFERENCE</p>
           <h1>찰떡 레퍼런스 둘러보기</h1>
         </div>
-        {isStandaloneGallery ? null : <Search size={22} aria-hidden="true" />}
+        {isStandaloneGallery ? null : (
+          <button className={styles.iconButton} aria-label="레퍼런스 검색어 입력" type="button" onClick={focusSearchField}>
+            <Search size={22} aria-hidden="true" />
+          </button>
+        )}
       </header>
 
       <label className={styles.searchField}>
         <Search size={17} aria-hidden="true" />
         <input
+          ref={searchInputRef}
           aria-label="레퍼런스 검색어"
           placeholder="음료, 여름, 포스터처럼 검색해보세요"
           value={searchTerm}
@@ -160,58 +173,61 @@ export function ReferenceBrowseStep({
         ))}
       </div>
 
-      {isLoading ? (
-        <section className={styles.skeletonGrid} aria-label="레퍼런스 목록 불러오는 중">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div className={styles.skeletonCreative} key={index}>
-              <span />
-            </div>
-          ))}
-        </section>
-      ) : errorMessage ? (
-        <section className={styles.emptyResultPanel} aria-label="레퍼런스 불러오기 실패">
-          <Search size={24} aria-hidden="true" />
-          <strong>레퍼런스를 불러오지 못했어요</strong>
-          <p>{errorMessage}</p>
-          <button className={styles.secondaryButton} type="button" onClick={() => setReloadToken((current) => current + 1)}>
-            다시 시도
-          </button>
-        </section>
-      ) : sortedTemplates.length > 0 ? (
-        <>
-          <p className={styles.sampleNotice}>
-            {hasTemporaryTemplates
-              ? "개발용 임시 레퍼런스가 포함되어 있어요. 선택하면 다음 생성 요청에 스타일 템플릿으로 반영됩니다."
-              : "레퍼런스 API에서 불러온 스타일입니다. 선택하면 다음 생성 요청에 템플릿으로 반영됩니다."}
-          </p>
-          <section className={styles.referenceGrid} aria-label="광고 레퍼런스 목록">
-            {sortedTemplates.map((template) => {
-              const creative = referenceTemplateToCreative(template);
-              return (
-                <AdCreativeCard
-                  creative={creative}
-                  key={template.templateId}
-                  openLabel={`${template.title} 스타일로 시작`}
-                  onOpen={() => {
-                    if (onUseTemplate) {
-                      onUseTemplate(template);
-                      return;
-                    }
-                    onOpenCreative?.(template.templateId);
-                  }}
-                  onSave={() => onSaveCreative?.(template.title)}
-                />
-              );
-            })}
+      <div className={styles.referenceContentScroll}>
+        {isLoading ? (
+          <section className={styles.skeletonGrid} aria-label="레퍼런스 목록 불러오는 중">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div className={styles.skeletonCreative} key={index}>
+                <span />
+              </div>
+            ))}
           </section>
-        </>
-      ) : (
-        <section className={styles.emptyResultPanel} aria-label="레퍼런스 검색 결과 없음">
-          <Search size={24} aria-hidden="true" />
-          <strong>조건에 맞는 레퍼런스가 없어요</strong>
-          <p>검색어나 카테고리를 바꿔서 다시 찾아보세요.</p>
-        </section>
-      )}
+        ) : errorMessage ? (
+          <section className={styles.emptyResultPanel} aria-label="레퍼런스 불러오기 실패">
+            <Search size={24} aria-hidden="true" />
+            <strong>레퍼런스를 불러오지 못했어요</strong>
+            <p>{errorMessage}</p>
+            <button className={styles.secondaryButton} type="button" onClick={() => setReloadToken((current) => current + 1)}>
+              다시 시도
+            </button>
+          </section>
+        ) : sortedTemplates.length > 0 ? (
+          <>
+            <p className={styles.sampleNotice}>
+              {hasTemporaryTemplates
+                ? "테스트용 레퍼런스가 포함되어 있어요. 마음에 드는 스타일을 골라 다음 광고에 참고할 수 있어요."
+                : "마음에 드는 스타일을 고르면 다음 광고에 그 분위기를 참고해요."}
+            </p>
+            <section className={styles.referenceGrid} aria-label="광고 레퍼런스 목록">
+              {sortedTemplates.map((template) => {
+                const creative = referenceTemplateToCreative(template);
+                return (
+                  <AdCreativeCard
+                    creative={creative}
+                    key={template.templateId}
+                    openLabel={`${template.title} 스타일로 시작`}
+                    openText="이 스타일로 시작"
+                    onOpen={() => {
+                      if (onUseTemplate) {
+                        onUseTemplate(template);
+                        return;
+                      }
+                      onOpenCreative?.(template.templateId);
+                    }}
+                    onSave={() => onSaveCreative?.(template.title)}
+                  />
+                );
+              })}
+            </section>
+          </>
+        ) : (
+          <section className={styles.emptyResultPanel} aria-label="레퍼런스 검색 결과 없음">
+            <Search size={24} aria-hidden="true" />
+            <strong>조건에 맞는 레퍼런스가 없어요</strong>
+            <p>검색어나 카테고리를 바꿔서 다시 찾아보세요.</p>
+          </section>
+        )}
+      </div>
 
       <p className={styles.browseNote}>
         <Sparkles size={17} aria-hidden="true" />
@@ -284,6 +300,7 @@ function formatLabel(template: ReferenceTemplateCard): string {
 function categoryLabel(category: string): string {
   const labels: Record<string, string> = {
     cafe: "카페",
+    food: "음식",
     restaurant: "음식점",
     beauty: "뷰티",
     retail: "리테일",

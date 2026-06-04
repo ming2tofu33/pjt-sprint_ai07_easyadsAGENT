@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Bell, Bookmark, Briefcase, Download, Eye, Home, MoreHorizontal, RefreshCcw, Search, SlidersHorizontal, Sparkles, Star, Trash2, User } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Bell, Bookmark, Briefcase, Download, Eye, Home, MoreHorizontal, RefreshCcw, Search, SlidersHorizontal, Sparkles, Star, Trash2, User, X } from "lucide-react";
 import Image from "next/image";
 import { archivedCreatives, type CreativeTone, type MockCreative } from "@/lib/mock-dashboard-data";
 import styles from "./generate.module.css";
@@ -31,6 +31,25 @@ const toneClassByCreativeTone: Record<CreativeTone, string> = {
 };
 
 const filters = ["전체", "생성 중", "저장됨", "즐겨찾기"];
+
+function matchesArchiveSearch(creative: MockCreative, query: string) {
+  if (!query) {
+    return true;
+  }
+  return [
+    creative.title,
+    creative.subtitle,
+    creative.channel,
+    creative.format,
+    creative.date,
+    creative.storage,
+    ...(creative.tags ?? [])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes(query);
+}
 
 function getStatusLabel(creative: MockCreative) {
   if (creative.status === "generating") {
@@ -63,10 +82,41 @@ export function RecentAdsStep({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [hiddenSampleIds, setHiddenSampleIds] = useState<string[]>([]);
   const [showSampleLibrary, setShowSampleLibrary] = useState(false);
-  const sampleCreatives = archivedCreatives.filter((creative) => !hiddenSampleIds.includes(creative.id));
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const sampleCreatives = useMemo(
+    () => archivedCreatives.filter((creative) => !hiddenSampleIds.includes(creative.id)),
+    [hiddenSampleIds]
+  );
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const filteredGeneratedCreatives = useMemo(
+    () => generatedCreatives.filter((creative) => matchesArchiveSearch(creative, normalizedSearchTerm)),
+    [generatedCreatives, normalizedSearchTerm]
+  );
+  const filteredSampleCreatives = useMemo(
+    () => sampleCreatives.filter((creative) => matchesArchiveSearch(creative, normalizedSearchTerm)),
+    [sampleCreatives, normalizedSearchTerm]
+  );
+  const hasActiveSearch = normalizedSearchTerm.length > 0;
+
+  useEffect(() => {
+    if (isSearchOpen) {
+      searchInputRef.current?.focus();
+    }
+  }, [isSearchOpen]);
 
   function closeMenu() {
     setOpenMenuId(null);
+  }
+
+  function openSearch() {
+    setIsSearchOpen(true);
+  }
+
+  function closeSearch() {
+    setSearchTerm("");
+    setIsSearchOpen(false);
   }
 
   return (
@@ -76,8 +126,35 @@ export function RecentAdsStep({
           <Bell size={20} aria-hidden="true" />
         </button>
         <h1>내 찰떡 광고</h1>
-        <Search size={21} aria-hidden="true" />
+        <button aria-label={isSearchOpen ? "보관함 검색 닫기" : "보관함 검색 열기"} type="button" onClick={isSearchOpen ? closeSearch : openSearch}>
+          <Search size={21} aria-hidden="true" />
+        </button>
       </header>
+
+      {isSearchOpen ? (
+        <div className={`${styles.searchField} ${styles.archiveSearchField}`}>
+          <Search size={17} aria-hidden="true" />
+          <input
+            ref={searchInputRef}
+            aria-label="보관함 검색어"
+            placeholder="광고 제목, 채널, 태그로 검색해보세요"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                closeSearch();
+              }
+            }}
+          />
+          {searchTerm ? (
+            <button aria-label="보관함 검색어 지우기" className={styles.archiveSearchClear} type="button" onClick={() => setSearchTerm("")}>
+              <X size={16} aria-hidden="true" />
+            </button>
+          ) : (
+            <span aria-hidden="true" />
+          )}
+        </div>
+      ) : null}
 
       <div className={styles.archiveFilterRow} aria-label="보관함 필터">
         {filters.map((filter) => (
@@ -93,33 +170,47 @@ export function RecentAdsStep({
       {generatedCreatives.length > 0 ? (
         <>
           <h2 className={styles.archiveSectionTitle}>최근 실제 생성</h2>
-          <section className={styles.archiveGrid} aria-label="최근 실제 생성 광고">
-            {generatedCreatives.map((ad) => (
-              <ArchiveCard
-                ad={ad}
-                isGenerated
-                key={ad.id}
-                menuOpen={openMenuId === ad.id}
-                onDelete={() => {
-                  closeMenu();
-                  onDeleteGeneratedAd(ad.id, ad.title);
-                }}
-                onDownload={() => onDownloadGeneratedAd(ad.title)}
-                onOpen={() => onOpenGeneratedAd(ad.id)}
-                onRegenerate={onRegenerate}
-                onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
-              />
-            ))}
-          </section>
+          {filteredGeneratedCreatives.length > 0 ? (
+            <section className={styles.archiveGrid} aria-label="최근 실제 생성 광고">
+              {filteredGeneratedCreatives.map((ad) => (
+                <ArchiveCard
+                  ad={ad}
+                  isGenerated
+                  key={ad.id}
+                  menuOpen={openMenuId === ad.id}
+                  onDelete={() => {
+                    closeMenu();
+                    onDeleteGeneratedAd(ad.id, ad.title);
+                  }}
+                  onDownload={() => onDownloadGeneratedAd(ad.title)}
+                  onOpen={() => onOpenGeneratedAd(ad.id)}
+                  onRegenerate={onRegenerate}
+                  onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
+                />
+              ))}
+            </section>
+          ) : (
+            <section className={styles.emptyResultPanel} aria-label="최근 실제 생성 검색 결과 없음">
+              <Search size={24} aria-hidden="true" />
+              <strong>검색 결과가 없어요</strong>
+              <p>다른 광고 제목이나 채널명으로 다시 찾아보세요.</p>
+            </section>
+          )}
         </>
       ) : (
         <section className={styles.emptyResultPanel} aria-label="실제 생성 광고 없음">
           <Briefcase size={24} aria-hidden="true" />
-          <strong>아직 저장된 실제 생성 결과가 없어요</strong>
-          <p>대화나 사진으로 광고를 만들면 실제 이미지가 있는 결과만 여기에 저장됩니다.</p>
-          <button className={styles.secondaryButton} type="button" onClick={onRegenerate}>
-            새 광고 만들기
-          </button>
+          <strong>{hasActiveSearch ? "검색할 실제 생성 결과가 없어요" : "아직 저장된 실제 생성 결과가 없어요"}</strong>
+          <p>
+            {hasActiveSearch
+              ? "실제 완성된 이미지가 생기면 제목이나 채널명으로 찾아볼 수 있어요."
+              : "대화나 사진으로 광고를 만들면 실제 완성된 이미지 결과만 이 브라우저의 최근 결과에 표시됩니다."}
+          </p>
+          {hasActiveSearch ? null : (
+            <button className={styles.secondaryButton} type="button" onClick={onOpenStudio}>
+              새 광고 만들기
+            </button>
+          )}
         </section>
       )}
 
@@ -132,9 +223,9 @@ export function RecentAdsStep({
       <p className={styles.sampleNotice}>
         아래 항목은 실제 생성 결과가 아니라 화면 확인용 샘플입니다. 보관함의 실제 결과와 분리해서 표시합니다.
       </p>
-      {showSampleLibrary ? (
+      {showSampleLibrary && filteredSampleCreatives.length > 0 ? (
         <section className={styles.archiveGrid} aria-label="샘플 광고 보관함">
-          {sampleCreatives.map((ad) => (
+          {filteredSampleCreatives.map((ad) => (
             <ArchiveCard
               ad={ad}
               key={ad.id}
@@ -150,6 +241,13 @@ export function RecentAdsStep({
               onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
             />
           ))}
+        </section>
+      ) : null}
+      {showSampleLibrary && filteredSampleCreatives.length === 0 ? (
+        <section className={styles.emptyResultPanel} aria-label="샘플 광고 검색 결과 없음">
+          <Search size={24} aria-hidden="true" />
+          <strong>샘플 광고 검색 결과가 없어요</strong>
+          <p>다른 키워드로 다시 검색해보세요.</p>
         </section>
       ) : null}
 

@@ -111,7 +111,7 @@ export function CopyChannelStep({
       <div className={styles.stepFooter}>
         {state.errorMessage ? <p className={styles.helperText}>{state.errorMessage}</p> : null}
         {!state.errorMessage && !hasBackendSession ? (
-          <p className={styles.helperText}>백엔드 세션을 먼저 받아야 실제 이미지 생성을 요청할 수 있어요.</p>
+          <p className={styles.helperText}>생성 연결 정보를 먼저 받아야 실제 이미지 생성을 요청할 수 있어요.</p>
         ) : null}
         {!state.errorMessage && hasBackendSession && !hasBackendCopyCandidates ? (
           <p className={styles.helperText}>이번 요청에 맞는 문구 후보를 받은 뒤 브리프를 만들 수 있어요.</p>

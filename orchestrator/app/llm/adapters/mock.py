@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from orchestrator.app.llm.adapters.base import BaseLLMAdapter
+from orchestrator.app.llm.metadata_contracts import sanitize_metadata
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection
 
 
@@ -27,7 +28,7 @@ class MockLLMAdapter(BaseLLMAdapter):
             model_selection=model_selection,
             output=output,
             latency_ms=elapsed_ms(started),
-            metadata={**(metadata or {}), "mock": True, "schema_name": getattr(schema, "__name__", str(schema))},
+            metadata={**sanitize_metadata(metadata or {}), "mock": True, "schema_name": getattr(schema, "__name__", str(schema))},
         )
 
     def invoke_text(
@@ -42,7 +43,7 @@ class MockLLMAdapter(BaseLLMAdapter):
             output="mock text response",
             raw_text="mock text response",
             latency_ms=elapsed_ms(started),
-            metadata={**(metadata or {}), "mock": True},
+            metadata={**sanitize_metadata(metadata or {}), "mock": True},
         )
 
     def invoke_vision(
@@ -59,7 +60,7 @@ class MockLLMAdapter(BaseLLMAdapter):
             model_selection=model_selection,
             output=output,
             latency_ms=elapsed_ms(started),
-            metadata={**(metadata or {}), "mock": True, "vision": True},
+            metadata={**sanitize_metadata(metadata or {}), "mock": True, "vision": True},
         )
 
     def _result(
