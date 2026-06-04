@@ -14,6 +14,9 @@ class LLMSettings:
     enable_api_call: bool = False
     default_provider: str = "mock"
     openai_api_key: str | None = None
+    llm_model: str | None = None
+    llm_base_url: str | None = None
+    max_retries: int = 0
     openai_text_model_nano: str | None = None
     openai_text_model_mini: str | None = None
     openai_text_model_full: str | None = None
@@ -25,16 +28,23 @@ class LLMSettings:
     @classmethod
     def from_env(cls) -> "LLMSettings":
         override = _get_env("LLM_MAX_API_CALLS_PER_JOB_OVERRIDE", "")
+        easyads_model = _get_env("EASYADS_LLM_MODEL", "") or None
+        easyads_timeout = _get_env("EASYADS_LLM_TIMEOUT_SECONDS", "")
+        legacy_timeout = _get_env("LLM_REQUEST_TIMEOUT_SECONDS", "30") or "30"
+        max_retries = _get_env("EASYADS_LLM_MAX_RETRIES", "0") or "0"
         return cls(
-            enable_api_call=_get_bool("LLM_ENABLE_API_CALL", False),
-            default_provider=_get_env("LLM_DEFAULT_PROVIDER", "mock"),
+            enable_api_call=_get_bool("EASYADS_ENABLE_LLM_CALLS", _get_bool("LLM_ENABLE_API_CALL", False)),
+            default_provider=_get_env("EASYADS_LLM_PROVIDER", "") or _get_env("LLM_DEFAULT_PROVIDER", "mock"),
             openai_api_key=_get_env("OPENAI_API_KEY", "") or None,
-            openai_text_model_nano=_get_env("LLM_OPENAI_TEXT_MODEL_NANO", "") or None,
-            openai_text_model_mini=_get_env("LLM_OPENAI_TEXT_MODEL_MINI", "") or None,
-            openai_text_model_full=_get_env("LLM_OPENAI_TEXT_MODEL_FULL", "") or None,
-            openai_vision_model=_get_env("LLM_OPENAI_VISION_MODEL", "") or None,
+            llm_model=easyads_model,
+            llm_base_url=_get_env("EASYADS_LLM_BASE_URL", "") or None,
+            max_retries=int(max_retries) if max_retries.isdigit() else 0,
+            openai_text_model_nano=_get_env("LLM_OPENAI_TEXT_MODEL_NANO", "") or easyads_model,
+            openai_text_model_mini=_get_env("LLM_OPENAI_TEXT_MODEL_MINI", "") or easyads_model,
+            openai_text_model_full=_get_env("LLM_OPENAI_TEXT_MODEL_FULL", "") or easyads_model,
+            openai_vision_model=_get_env("LLM_OPENAI_VISION_MODEL", "") or easyads_model,
             max_api_calls_per_job_override=int(override) if override.isdigit() else None,
-            request_timeout_seconds=int(_get_env("LLM_REQUEST_TIMEOUT_SECONDS", "30") or "30"),
+            request_timeout_seconds=int(easyads_timeout or legacy_timeout),
             provider_strict_mode=_get_bool("LLM_PROVIDER_STRICT_MODE", True),
         )
 

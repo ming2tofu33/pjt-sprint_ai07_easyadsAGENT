@@ -5,10 +5,39 @@ from orchestrator.app.schemas.llm_model_policy import ModelSelection
 
 def test_llm_settings_defaults_do_not_enable_api(monkeypatch):
     monkeypatch.delenv("LLM_ENABLE_API_CALL", raising=False)
+    monkeypatch.delenv("EASYADS_ENABLE_LLM_CALLS", raising=False)
+    monkeypatch.delenv("EASYADS_LLM_PROVIDER", raising=False)
     settings = LLMSettings.from_env()
 
     assert settings.enable_api_call is False
     assert settings.default_provider == "mock"
+
+
+def test_easyads_llm_settings_aliases(monkeypatch):
+    monkeypatch.setenv("EASYADS_ENABLE_LLM_CALLS", "true")
+    monkeypatch.setenv("EASYADS_LLM_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("EASYADS_LLM_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("EASYADS_LLM_BASE_URL", "https://api.example.test/v1")
+    monkeypatch.setenv("EASYADS_LLM_TIMEOUT_SECONDS", "45")
+    monkeypatch.setenv("EASYADS_LLM_MAX_RETRIES", "2")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.enable_api_call is True
+    assert settings.default_provider == "openai_compatible"
+    assert settings.llm_model == "gpt-4o-mini"
+    assert settings.openai_text_model_mini == "gpt-4o-mini"
+    assert settings.llm_base_url == "https://api.example.test/v1"
+    assert settings.request_timeout_seconds == 45
+    assert settings.max_retries == 2
+
+
+def test_missing_api_key_does_not_crash_settings(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+
+    settings = LLMSettings.from_env()
+
+    assert settings.openai_api_key is None
 
 
 def test_cost_guard_blocks_free_and_disabled_api():
