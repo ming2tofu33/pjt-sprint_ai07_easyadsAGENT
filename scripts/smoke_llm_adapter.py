@@ -29,11 +29,13 @@ def run_smoke(
 ) -> dict[str, Any]:
     settings = get_llm_settings()
     actual_allowed = confirm_actual and settings.enable_api_call and provider != "mock" and not dry_run
+    selected_model_class = "local_quality" if provider == "local_openai_compat" else "api_mini"
+    allowed_providers = {"mock", "openai", "openai_compatible", "local_openai_compat"}
     selection = ModelSelection(
         node_name=task,
         user_plan="premium",
-        selected_model_class="api_mini" if provider != "mock" else "mock",
-        provider=provider if provider in {"mock", "openai", "openai_compatible"} else "mock",
+        selected_model_class=selected_model_class if provider != "mock" else "mock",
+        provider=provider if provider in allowed_providers else "mock",
         structured_output=False,
         reason="llm adapter smoke",
     )
@@ -46,7 +48,11 @@ def run_smoke(
                 "confirm_actual": confirm_actual,
                 "enable_api_call": settings.enable_api_call,
                 "provider": provider,
-                "api_key_present": bool(settings.openai_api_key),
+                "openai_api_key_present": bool(settings.openai_api_key),
+                "local_api_key_present": bool(settings.local_llm_api_key),
+                "local_base_url_configured": bool(settings.local_llm_base_url),
+                "local_model_configured": bool(settings.local_llm_model),
+                "local_api_style": settings.local_llm_api_style,
             },
         }
     else:

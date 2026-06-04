@@ -17,8 +17,28 @@ from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelect
 class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
     provider = "openai_compatible"
 
-    def __init__(self, settings: LLMSettings | None = None):
+    def __init__(
+        self,
+        settings: LLMSettings | None = None,
+        *,
+        provider: str = "openai_compatible",
+        provider_profile: str | None = None,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        api_style: str | None = None,
+        timeout_seconds: int | None = None,
+        max_retries: int | None = None,
+    ):
         self.settings = settings or get_llm_settings()
+        self.provider = provider
+        self.provider_profile = provider_profile
+        self.base_url = base_url if base_url is not None else self.settings.llm_base_url
+        self.api_key = api_key if api_key is not None else self.settings.openai_api_key
+        self.model = model if model is not None else self.settings.llm_model
+        self.api_style = api_style or self.settings.llm_api_style
+        self.timeout_seconds = timeout_seconds if timeout_seconds is not None else self.settings.request_timeout_seconds
+        self.max_retries = max_retries if max_retries is not None else self.settings.max_retries
 
     def invoke_structured(
         self,
@@ -39,16 +59,11 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
         except Exception:
             return self._error(model_selection, "llm_dependency_unavailable", started, metadata)
         try:
-            client_kwargs = {"api_key": self.settings.openai_api_key, "timeout": self.settings.request_timeout_seconds}
-            if self.settings.llm_base_url:
-                client_kwargs["base_url"] = self.settings.llm_base_url
+            client_kwargs = {"api_key": self.api_key, "timeout": self.timeout_seconds}
+            if self.base_url:
+                client_kwargs["base_url"] = self.base_url
             client = OpenAI(**client_kwargs)
-            response = client.responses.create(
-                model=model_name,
-                input=prompt,
-                text={"format": {"type": "json_object"}},
-            )
-            raw_text = getattr(response, "output_text", None) or ""
+            raw_text = self._create_structured_response_text(client, model_name, prompt)
             parsed = json.loads(raw_text) if raw_text else {}
             output = self._validate_schema(schema, parsed)
             return self._success(model_selection, output, raw_text, started, metadata, model_name)
@@ -75,12 +90,11 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
         except Exception:
             return self._error(model_selection, "llm_dependency_unavailable", started, metadata)
         try:
-            client_kwargs = {"api_key": self.settings.openai_api_key, "timeout": self.settings.request_timeout_seconds}
-            if self.settings.llm_base_url:
-                client_kwargs["base_url"] = self.settings.llm_base_url
+            client_kwargs = {"api_key": self.api_key, "timeout": self.timeout_seconds}
+            if self.base_url:
+                client_kwargs["base_url"] = self.base_url
             client = OpenAI(**client_kwargs)
-            response = client.responses.create(model=model_name, input=prompt)
-            raw_text = getattr(response, "output_text", None) or ""
+            raw_text = self._create_text_response_text(client, model_name, prompt)
             return self._success(model_selection, raw_text, raw_text, started, metadata, model_name)
         except Exception as exc:
             return self._error(model_selection, f"llm_api_error:{type(exc).__name__}", started, metadata)
@@ -104,19 +118,50 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
     def _preflight(self) -> str | None:
         if not self.settings.enable_api_call:
             return "llm_calls_disabled"
-        if not self.settings.openai_api_key:
+        if not self.api_key:
             return "llm_credentials_missing"
         return None
 
     def _model_name(self, model_selection: ModelSelection) -> str | None:
-        if self.settings.llm_model:
-            return self.settings.llm_model
+        if self.model:
+            return self.model
         return {
             "api_nano": self.settings.openai_text_model_nano,
             "api_mini": self.settings.openai_text_model_mini,
             "api_full": self.settings.openai_text_model_full,
             "api_vision": self.settings.openai_vision_model,
         }.get(model_selection.selected_model_class)
+
+    def _create_text_response_text(self, client: Any, model_name: str, prompt: str) -> str:
+        if self.api_style == "chat_completions":
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return self._chat_completion_text(response)
+        response = client.responses.create(model=model_name, input=prompt)
+        return getattr(response, "output_text", None) or ""
+
+    def _create_structured_response_text(self, client: Any, model_name: str, prompt: str) -> str:
+        if self.api_style == "chat_completions":
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+            )
+            return self._chat_completion_text(response)
+        response = client.responses.create(
+            model=model_name,
+            input=prompt,
+            text={"format": {"type": "json_object"}},
+        )
+        return getattr(response, "output_text", None) or ""
+
+    def _chat_completion_text(self, response: Any) -> str:
+        try:
+            return response.choices[0].message.content or ""
+        except Exception:
+            return ""
 
     def _validate_schema(self, schema: Any, output: dict[str, Any]) -> dict[str, Any]:
         if isinstance(schema, type) and issubclass(schema, BaseModel):
@@ -145,8 +190,13 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             metadata={
                 **sanitize_metadata(metadata or {}),
                 "provider": self.provider,
+                "provider_profile": self.provider_profile,
                 "model": model_name,
-                "api_key_present": bool(self.settings.openai_api_key),
+                "api_style": self.api_style,
+                "model_configured": bool(model_name),
+                "base_url_configured": bool(self.base_url),
+                "api_key_present": bool(self.api_key),
+                "direct_model_load": False,
             },
         )
 
@@ -170,7 +220,12 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             metadata={
                 **sanitize_metadata(metadata or {}),
                 "provider": self.provider,
-                "api_key_present": bool(self.settings.openai_api_key),
+                "provider_profile": self.provider_profile,
+                "api_style": self.api_style,
+                "model_configured": bool(self.model),
+                "base_url_configured": bool(self.base_url),
+                "api_key_present": bool(self.api_key),
+                "direct_model_load": False,
             },
         )
 
