@@ -29,6 +29,7 @@ describe("api-client photo generation", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("uploads a photo file as a JSON data URL", async () => {
@@ -57,6 +58,36 @@ describe("api-client photo generation", () => {
     expect(body.filename).toBe("menu.png");
     expect(body.mimeType).toBe("image/png");
     expect(body.dataUrl).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("normalizes a trailing slash in the BFF base URL", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_BFF_BASE_URL", "https://bff.example.com/");
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        type: "brief_ready",
+        jobId: "job_trailing_slash",
+        threadId: "thread_trailing_slash",
+        status: "done",
+        context: { businessType: "카페", itemOrService: "딸기라떼", promotionGoal: "신메뉴 출시" },
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: "딸기라떼 출시",
+          tone: "따뜻한",
+          channel: "인스타 피드",
+          imageDirection: "딸기라떼 중심",
+          finalImagePath: "data/outputs/job_trailing_slash/final_composite.png"
+        },
+        copyGenerationMode: "auto_pilot"
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { startChatGeneration: startChatGenerationWithEnv } = await import("./api-client");
+
+    await startChatGenerationWithEnv("딸기라떼 신메뉴 광고");
+
+    expect(fetchMock.mock.calls[0][0]).toBe("https://bff.example.com/api/generate/chat/start");
   });
 
   it("starts photo generation with the uploaded source image path", async () => {
@@ -347,6 +378,7 @@ describe("api-client backend contract routes", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("fetches reference catalog endpoints through the BFF", async () => {

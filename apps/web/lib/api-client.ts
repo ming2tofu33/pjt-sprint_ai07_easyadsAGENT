@@ -9,7 +9,15 @@ import type {
   ReferenceTemplateFields
 } from "@/types/marketing";
 
-const BFF_BASE_URL = process.env.NEXT_PUBLIC_BFF_BASE_URL || "http://127.0.0.1:4000";
+const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "http://127.0.0.1:4000");
+
+function normalizeBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "");
+}
+
+function buildBffUrl(path: string): string {
+  return `${BFF_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 export type ChatStartResponse = {
   type?: "copy_candidates";
@@ -242,7 +250,7 @@ type RawArchiveMutationResponse = {
 };
 
 async function postJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
-  const response = await fetch(`${BFF_BASE_URL}${path}`, {
+  const response = await fetch(buildBffUrl(path), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
@@ -255,7 +263,7 @@ async function postJson<TResponse>(path: string, body: unknown): Promise<TRespon
 }
 
 async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams): Promise<TResponse> {
-  const url = new URL(`${BFF_BASE_URL}${path}`);
+  const url = new URL(buildBffUrl(path));
   Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value === undefined || value === null) {
       return;
@@ -275,7 +283,7 @@ async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams
 }
 
 async function getJson<TResponse>(path: string, params?: ReferenceQueryParams): Promise<TResponse> {
-  const url = new URL(`${BFF_BASE_URL}${path}`);
+  const url = new URL(buildBffUrl(path));
   Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value === undefined || value === null) {
       return;
@@ -299,7 +307,7 @@ async function getJson<TResponse>(path: string, params?: ReferenceQueryParams): 
 }
 
 async function patchJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
-  const response = await fetch(`${BFF_BASE_URL}${path}`, {
+  const response = await fetch(buildBffUrl(path), {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
@@ -497,10 +505,10 @@ function normalizeReferenceAssetUrl(url?: string | null): string | null {
     return null;
   }
   if (url.startsWith("/api/v1/references/temp-assets/")) {
-    return `${BFF_BASE_URL}${url.replace("/api/v1/references", "/api/references")}`;
+    return buildBffUrl(url.replace("/api/v1/references", "/api/references"));
   }
   if (url.startsWith("/api/references/")) {
-    return `${BFF_BASE_URL}${url}`;
+    return buildBffUrl(url);
   }
   return url;
 }
