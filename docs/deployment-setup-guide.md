@@ -544,11 +544,24 @@ Railway에서 repo를 연결하고 orchestrator 서비스를 하나 더 만듭�
 ```text
 Service name: easyads-orchestrator
 Root Directory: .
-Start Command: python3 -m uvicorn orchestrator.app.main:app --host 0.0.0.0 --port $PORT
+Dockerfile Path: Dockerfile.orchestrator
+Start Command: 비워둠
 ```
 
-Railway Python/Nixpacks 감지가 `uv`를 잘 처리하지 못하면 `requirements.txt` 기반으로 설치되도록 설정합니다.
-필요하면 추후 `railway.json` 또는 서비스별 Dockerfile을 추가합니다.
+루트의 기본 `Dockerfile`은 CUDA/GPU 개발 컨테이너용이며, 마지막 명령이 API 서버 실행이 아니라 컨테이너 유지용입니다.
+Railway orchestrator 서비스는 반드시 `Dockerfile.orchestrator`를 사용합니다.
+
+Railway UI에서 Dockerfile Path 필드가 보이지 않으면 orchestrator 서비스 Variables에 다음을 추가합니다.
+
+```text
+RAILWAY_DOCKERFILE_PATH=Dockerfile.orchestrator
+```
+
+`Dockerfile.orchestrator`는 `requirements.txt`를 설치하고 다음 명령으로 FastAPI 서버를 실행합니다.
+
+```bash
+uvicorn orchestrator.app.main:app --host 0.0.0.0 --port ${PORT:-8080}
+```
 
 ### 8.2 환경변수
 
