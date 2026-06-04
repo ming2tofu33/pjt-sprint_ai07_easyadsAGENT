@@ -21,6 +21,7 @@ def test_core_schema_migration_exists_and_contains_tables():
         "generation_jobs",
         "generation_outputs",
         "generation_job_events",
+        "archive_items",
         "usage_events",
         "feedback_events",
     ]:
@@ -42,6 +43,8 @@ def test_core_schema_migration_contains_required_indexes_and_public_ids():
         "usage_events_workspace_created_idx",
         "generation_job_events_job_created_idx",
         "generation_job_events_thread_created_idx",
+        "archive_items_workspace_saved_idx",
+        "archive_items_workspace_public_job_unique_idx",
     ]:
         assert index in sql
 
@@ -67,6 +70,9 @@ def test_core_schema_assets_usage_and_events_are_workspace_scoped():
     assert "cost_usd numeric" in sql
     assert "thumbnail_asset_id uuid references assets(id) on delete set null" in sql
     assert "variant_index integer not null default 0" in sql
+    assert "public_job_id text" in sql
+    assert "source text not null default 'generated'" in sql
+    assert "saved_at timestamptz not null default now()" in sql
 
 
 def test_core_schema_generation_jobs_has_future_execution_columns():

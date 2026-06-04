@@ -60,7 +60,7 @@ export function MyPageStep() {
         <ChevronRight size={18} aria-hidden="true" />
       </button>
 
-      <button className={styles.myBrandBanner} type="button" onClick={() => router.push(buildBrandKitHref(brandKit ? "complete" : "info"))}>
+      <button className={styles.myBrandBanner} type="button" onClick={() => router.push(buildBrandKitHref(brandKit ? "complete" : "start"))}>
         <Store size={24} aria-hidden="true" />
         <strong>
           {brandKit ? "브랜드 키트 사용 중" : "브랜드 키트 연결 전"}
@@ -72,7 +72,7 @@ export function MyPageStep() {
       <section className={styles.myStatsGrid} aria-label="활동 요약">
         <button type="button" onClick={() => router.push(buildDashboardHref("ads"))}>
           <strong>{sessionCreativeCount}개</strong>
-          <span>이번 세션 결과</span>
+          <span>이번에 생성한 결과</span>
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("ads"))}>
           <strong>{sessionCreativeCount}개</strong>
@@ -91,9 +91,6 @@ export function MyPageStep() {
       <section className={styles.myMenuList}>
         <div>
           <h2>메뉴</h2>
-          <button type="button" onClick={() => router.push(buildMyHref("usage"))}>
-            전체 보기
-          </button>
         </div>
         <button type="button" onClick={() => router.push(buildDashboardHref("ads"))}>
           <Briefcase size={18} aria-hidden="true" />

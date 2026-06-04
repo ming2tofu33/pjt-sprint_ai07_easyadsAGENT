@@ -35,7 +35,7 @@ function creativeFromSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative
     channel: snapshot.brief.channel.replace(/\s*\(.+\)/, ""),
     fileName: "final_composite.png",
     fileType: "PNG",
-    storage: "세션 보관함",
+    storage: "브라우저 임시 보관함",
     savedAt: "방금 생성",
     tags: [
       snapshot.context.businessType,

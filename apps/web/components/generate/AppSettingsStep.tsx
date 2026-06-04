@@ -22,7 +22,9 @@ import { useRouter } from "next/navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { appSettings } from "@/lib/mock-dashboard-data";
 import { buildMyHref } from "@/lib/my-navigation";
+import { goBackOrPush } from "@/lib/navigation-history";
 import { buildNotificationHref } from "@/lib/notification-navigation";
+import { buildOnboardingHref } from "@/lib/onboarding-navigation";
 import styles from "./generate.module.css";
 
 function iconForSetting(id: string) {
@@ -47,7 +49,7 @@ export function AppSettingsStep() {
   return (
     <>
       <header className={styles.stepHeader}>
-        <button aria-label="뒤로" type="button" onClick={() => router.push(buildMyHref())}>
+        <button aria-label="뒤로" type="button" onClick={() => goBackOrPush(router, buildMyHref())}>
           <ArrowLeft size={20} aria-hidden="true" />
         </button>
         <h1>설정</h1>
@@ -71,9 +73,9 @@ export function AppSettingsStep() {
 
       <section className={styles.settingsListGroup}>
         <h2>도움말</h2>
-        <button type="button">
+        <button type="button" onClick={() => router.push(buildOnboardingHref())}>
           <HelpCircle size={18} aria-hidden="true" />
-          <strong>개떡찰떡 사용법</strong>
+          <strong>사용법 다시 보기</strong>
           <ChevronRight size={16} aria-hidden="true" />
         </button>
         <button type="button">

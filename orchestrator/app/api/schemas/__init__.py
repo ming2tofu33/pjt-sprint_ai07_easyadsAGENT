@@ -1,6 +1,11 @@
 """Pydantic DTOs for backend API contracts."""
 
-from orchestrator.app.api.schemas.archive import ArchiveItemResponse, ArchiveListResponse
+from orchestrator.app.api.schemas.archive import (
+    ArchiveItemCreateRequest,
+    ArchiveItemResponse,
+    ArchiveListResponse,
+    ArchiveMutationResponse,
+)
 from orchestrator.app.api.schemas.brand_kits import (
     BrandKitCreateRequest,
     BrandKitGetCurrentResponse,
@@ -38,8 +43,10 @@ from orchestrator.app.api.schemas.usage import UsageEventResponse, UsageSummaryR
 
 __all__ = [
     "ApiMeta",
+    "ArchiveItemCreateRequest",
     "ArchiveItemResponse",
     "ArchiveListResponse",
+    "ArchiveMutationResponse",
     "AssetRef",
     "BrandKitCreateRequest",
     "BrandKitGetCurrentResponse",

@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from orchestrator.app.api.chat import router as chat_router
 from orchestrator.app.api.photo import router as photo_router
+from orchestrator.app.api.routers.archive import router as archive_router
 from orchestrator.app.api.routers.brand_kits import router as brand_kits_router
 from orchestrator.app.api.routers.generation_jobs import router as generation_jobs_router
 from orchestrator.app.api.routers.references import router as references_router
@@ -38,6 +39,11 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
         tags=["generation-jobs"],
     )
+    app.include_router(
+        archive_router,
+        prefix="/api/v1",
+        tags=["archive"],
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -56,6 +62,13 @@ def create_app() -> FastAPI:
             error = ErrorResponse(
                 error_code="invalid_generation_job_request",
                 message="Invalid generation job request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.startswith("/api/v1/archive"):
+            error = ErrorResponse(
+                error_code="invalid_archive_request",
+                message="Invalid archive request.",
                 detail=str(exc),
             )
             return JSONResponse(status_code=400, content=error.model_dump(mode="json"))

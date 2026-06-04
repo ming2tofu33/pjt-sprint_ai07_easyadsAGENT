@@ -35,6 +35,7 @@ describe("generated creative storage", () => {
     expect(creatives).toHaveLength(1);
     expect(creatives[0].id).toBe("generated-job_1");
     expect(creatives[0].badge).toBe("실제 생성");
+    expect(creatives[0].storage).toBe("브라우저 임시 보관함");
     expect(creatives[0].imageUrl).toContain("generated-assets");
     expect(readGeneratedCreatives()[0].title).toBe("봄을 닮은 한 잔");
   });

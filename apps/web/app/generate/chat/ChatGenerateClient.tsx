@@ -20,6 +20,7 @@ import { StudioEntryStep } from "@/components/generate/StudioEntryStep";
 import {
   answerChatQuestion,
   createChatBrief,
+  saveArchiveItem,
   startChatGeneration,
   startPhotoGeneration,
   uploadPhotoAsset,
@@ -44,7 +45,7 @@ import {
   appendSavedBrandKitContext,
   clearGenerationDraftPrompt,
   readGenerationDraftReferenceTemplateId,
-  writeGenerationDraftPrompt,
+  saveGenerationRequestContext,
   writeGenerationDraftReferenceTemplateId
 } from "@/lib/generation-request-context";
 import { buildNotificationHref } from "@/lib/notification-navigation";
@@ -141,6 +142,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [generatedCreatives, setGeneratedCreatives] = useState<MockCreative[]>([]);
   const lastPrimedStageRef = useRef<DashboardStage | null>(null);
   const appSurface = optimisticSurface ?? initialSurface;
+
+  const showArchiveStoragePendingToast = useCallback((title: string) => {
+    showToast(`${title} 저장은 실제 보관함 연결 후 사용할 수 있어요.`);
+  }, []);
 
   const navigateTo = useCallback(
     (surface: DashboardSurface, stage?: DashboardStage) => {
@@ -354,7 +359,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       }
       dispatch({
         type: "backendRequestFailed",
-        message: error instanceof Error ? error.message : "백엔드 연결에 실패했습니다. 잠시 후 다시 시도해주세요."
+        message: error instanceof Error ? error.message : "생성 요청에 실패했습니다. 잠시 후 다시 시도해주세요."
       });
     }
   }
@@ -410,7 +415,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     if (!state.jobId || !state.threadId) {
       dispatch({
         type: "backendRequestFailed",
-        message: "백엔드 세션이 없어 실제 이미지 생성을 시작할 수 없습니다. 첫 요청을 다시 보내주세요."
+        message: "생성 연결 정보가 없어 실제 이미지 생성을 시작할 수 없습니다. 첫 요청을 다시 보내주세요."
       });
       return;
     }
@@ -474,8 +479,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     dispatch({ type: "reset" });
     setGenerationProgress(0);
     setGenerationStage("brief");
-    writeGenerationDraftPrompt(`${template.title} 스타일로 광고 만들어줘`);
-    writeGenerationDraftReferenceTemplateId(template.templateId);
+    clearGenerationDraftPrompt();
+    saveGenerationRequestContext({
+      selectedReferenceTemplateId: template.templateId,
+      selectedReferenceTemplateTitle: template.title,
+      source: "reference_gallery"
+    });
     showToast(`${template.title} 스타일을 다음 요청에 연결했어요.`);
     navigateTo("chat", "start");
   }
@@ -488,6 +497,39 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   function handleDeleteGeneratedAd(creativeId: string, title: string) {
     setGeneratedCreatives(removeGeneratedCreative(creativeId));
     showToast(`${title} 항목을 보관함에서 삭제했어요.`);
+  }
+
+  async function handleSaveGeneratedCreative(creative: MockCreative) {
+    if (!creative.imageUrl) {
+      showToast("실제 이미지가 있는 결과만 보관함에 저장할 수 있어요.");
+      return;
+    }
+
+    const publicJobId = state.jobId || (creative.id.startsWith("generated-") ? creative.id.replace(/^generated-/, "") : undefined);
+    try {
+      await saveArchiveItem({
+        title: creative.title,
+        publicJobId,
+        imageUrl: creative.imageUrl,
+        thumbnailUrl: creative.imageUrl,
+        adFormat: creative.format,
+        platform: creative.channel,
+        source: "generated",
+        metadata: {
+          subtitle: creative.subtitle,
+          fileName: creative.fileName,
+          fileType: creative.fileType,
+          savedAt: creative.savedAt,
+          tags: creative.tags ?? []
+        }
+      });
+      setGeneratedCreatives((current) =>
+        current.map((item) => (item.id === creative.id ? { ...item, storage: "내 광고 보관함" } : item))
+      );
+      showToast(`${creative.title}를 보관함에 저장했어요.`);
+    } catch {
+      showToast(`${creative.title}를 보관함에 저장하지 못했어요. 잠시 후 다시 시도해주세요.`);
+    }
   }
 
   function handleBackFromBrief() {
@@ -537,7 +579,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenBrandKit={() => navigateTo("my")}
           onShowProgress={() => navigateTo("studio")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
-          onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onSaveCreative={showArchiveStoragePendingToast}
           onUseTemplate={handleUseReferenceTemplate}
         />
       ) : null}
@@ -628,7 +670,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
-          onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onSaveCreative={showArchiveStoragePendingToast}
           onUseTemplate={handleUseReferenceTemplate}
         />
       ) : null}
@@ -645,7 +687,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onRegenerate={() => {
             handleOpenFreshChat();
           }}
-          onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onSaveCreative={handleSaveGeneratedCreative}
           onEditCreative={() => showToast("선택한 시안 편집 화면은 곧 연결됩니다.")}
           onSaveSelected={() => navigateTo("ads")}
         />
@@ -663,7 +705,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
-          onSaveCreative={(title) => showToast(`${title}를 보관함에 저장했어요.`)}
+          onSaveCreative={showArchiveStoragePendingToast}
           onUseTemplate={handleUseReferenceTemplate}
         />
       ) : null}

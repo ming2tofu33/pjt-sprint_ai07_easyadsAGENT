@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bell,
   Briefcase,
@@ -31,6 +31,14 @@ const iconByType: Record<MockNotificationType, typeof Bell> = {
   brand: Store
 };
 
+const filterTypeByLabel: Record<string, MockNotificationType | "all"> = {
+  전체: "all",
+  "생성 완료": "complete",
+  "생성 중": "progress",
+  실패: "failed",
+  브랜드: "brand"
+};
+
 function NotificationThumb({ item }: { item: MockNotification }) {
   const Icon = iconByType[item.type];
 
@@ -52,6 +60,15 @@ function NotificationThumb({ item }: { item: MockNotification }) {
 export function NotificationCenterStep() {
   const router = useRouter();
   const [showSampleNotifications, setShowSampleNotifications] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState("전체");
+  const [hasReadAll, setHasReadAll] = useState(false);
+  const filteredNotifications = useMemo(() => {
+    const selectedType = filterTypeByLabel[selectedFilter] ?? "all";
+    if (selectedType === "all") {
+      return mockNotifications;
+    }
+    return mockNotifications.filter((item) => item.type === selectedType);
+  }, [selectedFilter]);
 
   function openNotification(item: MockNotification) {
     if (item.target === "complete") {
@@ -77,7 +94,7 @@ export function NotificationCenterStep() {
       <header className={styles.notificationHeader}>
         <h1>알림</h1>
         <div>
-          <button aria-label="모두 읽음" type="button">
+          <button aria-label="모두 읽음" type="button" onClick={() => setHasReadAll(true)}>
             <CheckCircle2 size={19} aria-hidden="true" />
           </button>
           <button aria-label="알림 설정" type="button" onClick={() => router.push(buildNotificationHref("settings"))}>
@@ -101,28 +118,41 @@ export function NotificationCenterStep() {
 
           <div className={styles.notificationFilterRow} aria-label="알림 필터">
             {filters.map((filter) => (
-              <button className={filter === "전체" ? styles.categoryActive : undefined} key={filter} type="button">
+              <button
+                className={filter === selectedFilter ? styles.categoryActive : undefined}
+                key={filter}
+                type="button"
+                onClick={() => setSelectedFilter(filter)}
+              >
                 {filter}
               </button>
             ))}
           </div>
 
-          <section className={styles.notificationList} aria-label="샘플 알림 목록">
-            {mockNotifications.map((item) => (
-              <article className={styles.notificationCard} data-type={item.type} key={item.id}>
-                <span className={styles.notificationUnread} aria-hidden="true" />
-                <NotificationThumb item={item} />
-                <div>
-                  <h2>{item.title}</h2>
-                  <p>{item.subtitle}</p>
-                  <small>{item.time}</small>
-                </div>
-                <button type="button" onClick={() => openNotification(item)}>
-                  {item.ctaLabel}
-                </button>
-              </article>
-            ))}
-          </section>
+          {filteredNotifications.length > 0 ? (
+            <section className={styles.notificationList} aria-label="샘플 알림 목록">
+              {filteredNotifications.map((item) => (
+                <article className={styles.notificationCard} data-type={item.type} key={item.id}>
+                  {hasReadAll ? null : <span className={styles.notificationUnread} aria-hidden="true" />}
+                  <NotificationThumb item={item} />
+                  <div>
+                    <h2>{item.title}</h2>
+                    <p>{item.subtitle}</p>
+                    <small>{item.time}</small>
+                  </div>
+                  <button type="button" onClick={() => openNotification(item)}>
+                    {item.ctaLabel}
+                  </button>
+                </article>
+              ))}
+            </section>
+          ) : (
+            <section className={styles.emptyResultPanel} aria-label="필터 결과 없음">
+              <Bell size={24} aria-hidden="true" />
+              <strong>조건에 맞는 알림이 없어요</strong>
+              <p>다른 알림 종류를 선택해보세요.</p>
+            </section>
+          )}
         </>
       ) : (
         <section className={styles.emptyResultPanel} aria-label="실제 알림 없음">
