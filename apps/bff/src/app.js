@@ -346,6 +346,13 @@ export function buildApp(options = {}) {
     });
   });
 
+  app.get("/api/generation-jobs/:jobId", async (request) =>
+    proxyGetJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}`
+    })
+  );
+
   app.get("/api/archive/items", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
     return proxyGetJson({
