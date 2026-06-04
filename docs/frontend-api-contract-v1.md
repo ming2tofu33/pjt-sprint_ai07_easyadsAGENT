@@ -20,7 +20,7 @@ Implemented routes:
 - `POST /api/v1/generation-jobs`
 - `GET /api/v1/generation-jobs/{job_id}`
 
-Archive skeleton support is partially prepared for MVP generated-result flows, but production persistence and complete frontend archive integration are not implemented. Usage and Settings routers are still out of scope. Persistence, object storage, background queues, unguarded image/model calls, and production serving remain out of scope. Guarded GPT-image-2, SD3.5, and FLUX lanes exist but are disabled by default and are not executed in CI/default tests.
+Archive skeleton support is partially prepared for MVP generated-result flows, but production persistence and complete frontend archive integration are not implemented. Usage and Settings routers are still out of scope. Persistence, guarded R2 object storage, and guarded Modal execution foundations are available only when explicitly enabled by backend environment flags. In the default local_dev/CI path, generated artifacts may still have no browser-safe URL, and FE must treat local artifact paths as debug-only traces. Production serving, actual Modal GPU execution, and complete background worker/callback flows remain separate follow-up milestones.
 
 ## 3. Common Response Format
 

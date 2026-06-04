@@ -3,6 +3,8 @@ from datetime import datetime, timezone
 from orchestrator.app.api.schemas.common import ErrorResponse
 from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest, GenerationJobResponse, GenerationProgress
 from orchestrator.app.generation_jobs import service
+from orchestrator.app.modal.errors import ModalJobPollError
+from orchestrator.app.modal.schemas import ModalPollResult
 from orchestrator.app.modal.schemas import ModalSubmitResult
 
 
@@ -94,3 +96,76 @@ def test_modal_enabled_submits_and_returns_latest_job(monkeypatch):
     assert result.status == "running"
     assert captured["modal_request"].engine == "flux"
     assert captured["modal_request"].job_id == "job_modal"
+
+
+def test_modal_backend_records_model_provider_as_modal(monkeypatch):
+    monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "modal")
+
+    request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux_local")
+
+    assert service._model_provider_for_request(request) == "modal"
+    assert service._model_name_for_run_mode(request.run_mode) == "flux"
+
+
+def test_modal_poll_adapter_unavailable_does_not_fail_job(monkeypatch):
+    monkeypatch.setenv("EASYADS_MODAL_POLL_ON_GET", "true")
+    monkeypatch.setattr(service, "_use_postgres_backend", lambda: True)
+    events = []
+    row = {**_row(), "modal_call_id": "modal_call_1", "status": "running"}
+
+    monkeypatch.setattr(service.generation_job_repo, "get_generation_job_row", lambda job_id: row)
+
+    def raise_poll(job_id):
+        raise ModalJobPollError("poll adapter unavailable")
+
+    monkeypatch.setattr(service, "poll_and_process_modal_generation_job", raise_poll)
+    monkeypatch.setattr(
+        service.generation_job_event_repo,
+        "record_generation_job_event",
+        lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"},
+    )
+
+    result = service.maybe_poll_generation_job_from_modal(_job(status="running"))
+
+    assert result.status == "running"
+    assert events[0]["event_type"] == "modal_poll_unavailable"
+    assert events[0]["payload"]["error_code"] == "modal_poll_adapter_unavailable"
+
+
+def test_modal_success_uses_storage_backed_result_payload_contract(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    captured = {}
+    poll_result = ModalPollResult(
+        status="succeeded",
+        modal_call_id="modal_call_1",
+        image_b64="aW1hZ2U=",
+        result_payload={"schema_version": "result_artifact_v1"},
+    )
+
+    from orchestrator.app.modal import service as modal_service
+
+    monkeypatch.setattr(modal_service.job_repo, "get_generation_job_row", lambda job_id: _row() | {"modal_call_id": "modal_call_1"})
+    monkeypatch.setattr(modal_service, "poll_modal_t2i_result", lambda modal_call_id, client=None: poll_result)
+    monkeypatch.setattr(modal_service, "_record_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(modal_service, "_record_usage", lambda *args, **kwargs: None)
+
+    def fake_mark_done(job_id, result_payload, output_path=None, metadata=None):
+        captured["job_id"] = job_id
+        captured["result_payload"] = result_payload
+        captured["output_path"] = output_path
+        return _job(status="done").model_copy(update={"result_payload": result_payload, "output_path": output_path})
+
+    monkeypatch.setattr(service_module := __import__("orchestrator.app.generation_jobs.service", fromlist=["service"]), "mark_generation_job_done", fake_mark_done)
+    monkeypatch.setattr(service_module, "get_generation_job", lambda job_id: _job(status="running"))
+    monkeypatch.setattr(service_module, "mark_generation_job_running", lambda job_id, stage="running": _job(status="running"))
+    monkeypatch.setattr(service_module, "mark_generation_job_failed", lambda job_id, error, metadata=None: _job(status="failed"))
+
+    result = modal_service.poll_and_process_modal_generation_job(job_id="job_modal")
+
+    assert result.status == "done"
+    assert captured["job_id"] == "job_modal"
+    assert captured["result_payload"]["schema_version"] == "result_artifact_v1"
+    assert captured["result_payload"]["render_mode"] == "modal"
+    assert captured["result_payload"]["final_image_path"] == "data/outputs/job_modal/final_0.png"
+    assert "image_b64" not in str(captured["result_payload"])
+    assert "image_bytes" not in str(captured["result_payload"])

@@ -2,6 +2,7 @@ import base64
 from pathlib import Path
 
 from orchestrator.app.modal import service as modal_service
+from orchestrator.app.modal.errors import ModalResultError
 from orchestrator.app.modal.schemas import ModalPollResult
 
 
@@ -56,3 +57,36 @@ def test_modal_result_image_does_not_write_base64_to_result_payload(monkeypatch,
 
     assert "image_b64" not in result_payload
     assert "image_bytes" not in result_payload
+
+
+def test_write_modal_result_image_ignores_modal_filename_and_uses_final_png(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    payload = base64.b64encode(b"fake-png-bytes").decode("ascii")
+    result = ModalPollResult(
+        status="succeeded",
+        modal_call_id="modal_call_1",
+        image_b64=payload,
+        filename="../../bad-name.txt",
+    )
+
+    final_path = modal_service.write_modal_result_image_to_output_dir(job_id="job_modal", poll_result=result)
+
+    assert final_path == "data/outputs/job_modal/final_0.png"
+    assert Path(final_path).read_bytes() == b"fake-png-bytes"
+    assert not Path("data/outputs/job_modal/bad-name.txt").exists()
+
+
+def test_write_modal_result_image_rejects_invalid_base64(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    result = ModalPollResult(
+        status="succeeded",
+        modal_call_id="modal_call_1",
+        image_b64="not-valid-base64",
+    )
+
+    try:
+        modal_service.write_modal_result_image_to_output_dir(job_id="job_modal", poll_result=result)
+    except ModalResultError as exc:
+        assert "invalid image_b64" in str(exc)
+    else:
+        raise AssertionError("Expected ModalResultError")

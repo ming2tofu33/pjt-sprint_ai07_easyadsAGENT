@@ -34,3 +34,9 @@ def test_modal_readiness_redacts_tokens(monkeypatch):
     assert readiness["token_secret_present"] is True
     assert "token-id-should-not-leak" not in rendered
     assert "secret-should-not-leak" not in rendered
+
+
+def test_modal_result_transport_unknown_falls_back_to_inline_base64(monkeypatch):
+    monkeypatch.setenv("EASYADS_MODAL_RESULT_TRANSPORT", "weird")
+
+    assert settings.get_modal_result_transport() == "inline_base64"

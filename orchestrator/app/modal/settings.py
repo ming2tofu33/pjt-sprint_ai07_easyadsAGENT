@@ -6,6 +6,7 @@ from orchestrator.app.core.config import _get_env
 from orchestrator.app.modal.errors import ModalExecutionUnavailableError
 
 _ALLOWED_EXECUTION_BACKENDS = {"local", "modal"}
+_ALLOWED_RESULT_TRANSPORTS = {"inline_base64"}
 
 
 def _env_bool(name: str) -> bool:
@@ -51,7 +52,7 @@ def get_modal_default_gpu() -> str:
 
 def get_modal_result_transport() -> str:
     value = _get_env("EASYADS_MODAL_RESULT_TRANSPORT", "inline_base64").strip().lower()
-    return value or "inline_base64"
+    return value if value in _ALLOWED_RESULT_TRANSPORTS else "inline_base64"
 
 
 def get_modal_poll_timeout_seconds() -> int:

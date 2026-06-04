@@ -14,6 +14,11 @@ from orchestrator.app.api.schemas.generation_jobs import (
 )
 from orchestrator.app.api.schemas.common import ErrorResponse
 from orchestrator.app.db import settings as db_settings
+from orchestrator.app.artifacts.service import (
+    merge_final_asset_into_result_payload,
+    normalize_repo_relative_artifact_path,
+    sanitize_result_artifact_payload_for_api,
+)
 from orchestrator.app.db.repositories import assets as asset_repo
 from orchestrator.app.db.repositories import chat_threads as chat_thread_repo
 from orchestrator.app.db.repositories import generation_job_events as generation_job_event_repo
@@ -22,7 +27,7 @@ from orchestrator.app.db.repositories import generation_outputs as generation_ou
 from orchestrator.app.db.repositories import workspaces as workspace_repo
 from orchestrator.app.db.session import db_transaction
 from orchestrator.app.modal import settings as modal_settings
-from orchestrator.app.modal.errors import ModalExecutionError
+from orchestrator.app.modal.errors import ModalExecutionError, ModalJobPollError
 from orchestrator.app.modal.service import (
     build_modal_t2i_request_from_job,
     is_modal_eligible_run_mode,
@@ -309,6 +314,18 @@ def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> Generati
         return job
     try:
         polled = poll_and_process_modal_generation_job(job_id=job.job_id)
+    except ModalJobPollError as exc:
+        job_row = generation_job_repo.get_generation_job_row(job.job_id)
+        if job_row:
+            _record_generation_job_event_db(
+                job_row,
+                "modal_poll_unavailable",
+                payload={
+                    "error_code": "modal_poll_adapter_unavailable",
+                    "message": str(exc),
+                },
+            )
+        return job
     except ModalExecutionError as exc:
         return mark_generation_job_failed(
             job.job_id,
@@ -339,6 +356,12 @@ def _model_provider_for_run_mode(run_mode: str) -> str | None:
     if run_mode in {"sd35_local", "sd35_local_smoke", "flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
         return "local"
     return None
+
+
+def _model_provider_for_request(request: GenerationJobCreateRequest) -> str | None:
+    if modal_settings.get_t2i_execution_backend() == "modal" and is_modal_eligible_run_mode(request.run_mode):
+        return "modal"
+    return _model_provider_for_run_mode(request.run_mode)
 
 
 def _model_name_for_run_mode(run_mode: str) -> str | None:
@@ -397,7 +420,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             metadata=metadata,
             run_mode=request.run_mode,
             engine=_engine_preference(request.run_mode),
-            model_provider=_model_provider_for_run_mode(request.run_mode),
+            model_provider=_model_provider_for_request(request),
             model_name=_model_name_for_run_mode(request.run_mode),
             prompt_hash=hashlib.sha256(request.user_input.encode("utf-8")).hexdigest(),
             prompt_preview=prompt_preview,
@@ -655,16 +678,12 @@ def _create_output_records_for_done_job_db(
         )
 
     if asset:
-        effective_result_payload = {
-            **effective_result_payload,
-            "final_asset_id": _string_or_none(asset.get("id")),
-            "storage_provider": asset.get("storage_provider") or "local_dev",
-            "bucket": asset.get("bucket"),
-            "object_key": asset.get("object_key"),
-            "url_mode": effective_result_payload.get("url_mode"),
-            "final_image_url": effective_result_payload.get("final_image_url"),
-            "download_url": effective_result_payload.get("download_url"),
-        }
+        effective_result_payload = merge_final_asset_into_result_payload(
+            result_payload=effective_result_payload,
+            asset_row=asset,
+            uploaded_asset=None,
+            storage_provider=asset.get("storage_provider") or "local_dev",
+        )
         row = generation_job_repo.update_generation_job_row(
             str(row["public_job_id"]),
             result_payload=effective_result_payload,
@@ -732,17 +751,12 @@ def _upload_final_asset_to_r2(
         metadata=uploaded.metadata,
         connection=connection,
     )
-    effective_result_payload = {
-        **result_payload,
-        "final_asset_id": _string_or_none(asset.get("id")),
-        "storage_provider": uploaded.storage_provider,
-        "bucket": uploaded.bucket,
-        "object_key": uploaded.object_key,
-        "url_mode": uploaded.metadata.get("url_mode"),
-        "final_image_url": uploaded.final_image_url,
-        "download_url": uploaded.download_url,
-        "signed_url_expires_at": uploaded.signed_url_expires_at,
-    }
+    effective_result_payload = merge_final_asset_into_result_payload(
+        result_payload=result_payload,
+        asset_row=asset,
+        uploaded_asset=uploaded,
+        storage_provider="r2",
+    )
     updated_row = generation_job_repo.update_generation_job_row(
         public_job_id,
         result_payload=effective_result_payload,
@@ -789,8 +803,8 @@ def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
             stage_order=DEFAULT_STAGE_ORDER,
         ),
         selected_reference_template_id=row.get("selected_reference_template_id"),
-        output_path=row.get("output_path"),
-        result_payload=row.get("result_payload"),
+        output_path=normalize_repo_relative_artifact_path(row.get("output_path")),
+        result_payload=sanitize_result_artifact_payload_for_api(row.get("result_payload")),
         error=ErrorResponse(**error) if isinstance(error, dict) and error.get("error_code") else None,
         created_at=_iso(row.get("created_at")),
         updated_at=_iso(row.get("updated_at")),

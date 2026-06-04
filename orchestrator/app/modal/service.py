@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-from pathlib import Path
 
 from orchestrator.app.artifacts.service import ensure_job_output_dir
 from orchestrator.app.db.repositories import generation_job_events as event_repo
@@ -152,13 +151,14 @@ def poll_and_process_modal_generation_job(*, job_id: str, client: object | None 
 
 def write_modal_result_image_to_output_dir(*, job_id: str, poll_result: ModalPollResult) -> str:
     output_dir = ensure_job_output_dir(job_id)
-    filename = Path(poll_result.filename or "final_0.png").name
-    if not filename:
-        filename = "final_0.png"
+    filename = "final_0.png"
     target = output_dir / filename
     image_bytes = poll_result.image_bytes
     if image_bytes is None and poll_result.image_b64:
-        image_bytes = base64.b64decode(poll_result.image_b64)
+        try:
+            image_bytes = base64.b64decode(poll_result.image_b64, validate=True)
+        except Exception as exc:
+            raise ModalResultError("Modal returned invalid image_b64.") from exc
     if not image_bytes:
         raise ModalResultError("Modal succeeded without image bytes.")
     target.write_bytes(image_bytes)

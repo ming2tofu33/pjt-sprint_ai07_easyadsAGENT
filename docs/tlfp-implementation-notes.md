@@ -43,7 +43,7 @@
 - GenerationJob `mock_immediate` uses Result Artifact Contract v1 with `background_0.png`, `final_0.png`, `metadata.json`, `prompt.json`, `validation.json`, `copy.json`, `layout.json`, and `render_result.json`.
 - GenerationJob actual T2I lanes are guarded and disabled by default. `gpt_image_2_actual`/`gpt_image_2_smoke` require explicit external T2I and GPT-image-2 env flags plus an OpenAI API key. `sd35_local`/`sd35_local_smoke` require the SD3.5 local env flag and local dependency/model availability. `flux_local`/`flux_local_smoke` require the FLUX local env flag and local dependency/model availability.
 - CI/default tests do not call GPT-image-2, load SD3.5 or FLUX, download HF models, or require GPU.
-- `download_url` and `final_image_url` remain `null` because static serving/object storage is not implemented.
+- `download_url` and `final_image_url` remain `null` in the default local_dev/CI path. When R2 upload is explicitly enabled and succeeds, GenerationJob responses may include browser-safe `final_image_url` and `download_url` values.
 - Vision Pipeline MVP preprocessing is available before validation when `source_image_path` or `reference_image_path` is supplied.
 - `ReferenceStyleProfile` can inform `ImagePromptPlannerNode` with deterministic palette and style hints.
 - `ProductPreserveSpec` is currently a `center_bbox_stub` only; no real product-preserving edit is performed.
