@@ -257,11 +257,16 @@ OPENAI_WORKFLOW_TRACE_ENABLED=true
 Modal 연동을 켤 때 추가:
 
 ```text
-HF_TOKEN=
 MODAL_TOKEN_ID=
 MODAL_TOKEN_SECRET=
-MODAL_ENVIRONMENT=main
-MODAL_APP_NAME=easyads-generation-worker
+EASYADS_T2I_EXECUTION_BACKEND=modal
+EASYADS_ENABLE_MODAL_EXECUTION=true
+EASYADS_MODAL_POLL_ON_GET=true
+EASYADS_MODAL_APP_NAME=easyads-t2i
+EASYADS_MODAL_FUNCTION_NAME=generate_image
+EASYADS_MODAL_ENVIRONMENT=
+EASYADS_MODAL_RESULT_TRANSPORT=inline_base64
+EASYADS_MODAL_POLL_TIMEOUT_SECONDS=0
 ```
 
 초기 배포에서는 `T2I_DEFAULT_ENGINE=mock`, `LLM_DEFAULT_PROVIDER=mock`으로 둡니다.
@@ -309,13 +314,17 @@ Railway처럼 장시간 떠 있는 서버는 Supabase connection pooler 또는 �
 Cloudflare dashboard에서 준비할 값:
 
 ```text
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET=easyads-assets
-R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-R2_PUBLIC_BASE_URL=https://<public-domain-or-r2-dev-domain>
+R2_ACCOUNT_ID=...
+EASYADS_R2_ACCESS_KEY_ID=...
+EASYADS_R2_SECRET_ACCESS_KEY=...
+EASYADS_R2_BUCKET=easyads-assets-prod
+EASYADS_R2_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+EASYADS_R2_REGION=auto
+EASYADS_R2_URL_MODE=signed
+EASYADS_R2_SIGNED_URL_TTL_SECONDS=3600
 ```
+
+초기 프로덕션은 `signed` 모드를 권장합니다. 이 모드는 bucket을 공개하지 않고 orchestrator가 만료 시간이 있는 presigned URL을 생성해 UI에 전달합니다. public bucket 또는 custom domain을 쓸 때만 `EASYADS_R2_URL_MODE=public`과 `EASYADS_R2_PUBLIC_BASE_URL=https://...`를 추가합니다.
 
 추천 버킷:
 
@@ -335,15 +344,12 @@ workspaces/<workspace_id>/threads/<thread_id>/artifacts/<job_id>/<name>.json
 
 ### 4.6 Modal
 
-Modal secrets에 넣을 값:
+초기 연결 smoke에서는 Modal secret이 필요하지 않습니다. `modal_apps/easyads_t2i_worker.py`는 GPU와 모델 없이 mock 이미지를 반환해서 `Railway -> Modal -> R2` 경로만 검증합니다.
+
+실제 SD/FLUX 모델을 붙일 때 Modal secrets에 넣을 값:
 
 ```text
 HF_TOKEN=
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET=
-R2_ENDPOINT=
 ```
 
 Railway에서 Modal을 호출하려면 Railway에 다음 값이 필요합니다.
@@ -351,8 +357,14 @@ Railway에서 Modal을 호출하려면 Railway에 다음 값이 필요합니다.
 ```text
 MODAL_TOKEN_ID=
 MODAL_TOKEN_SECRET=
-MODAL_ENVIRONMENT=main
-MODAL_APP_NAME=easyads-generation-worker
+EASYADS_T2I_EXECUTION_BACKEND=modal
+EASYADS_ENABLE_MODAL_EXECUTION=true
+EASYADS_MODAL_POLL_ON_GET=true
+EASYADS_MODAL_APP_NAME=easyads-t2i
+EASYADS_MODAL_FUNCTION_NAME=generate_image
+EASYADS_MODAL_ENVIRONMENT=
+EASYADS_MODAL_RESULT_TRANSPORT=inline_base64
+EASYADS_MODAL_POLL_TIMEOUT_SECONDS=0
 ```
 
 모델 weight는 R2가 아니라 Modal cache 또는 Modal Volume에 둡니다.
@@ -943,24 +955,62 @@ metadata
 Modal 계정을 만들고 CLI를 설정합니다.
 
 ```bash
-pip install modal
-modal setup
+uv run modal token new
 ```
 
-### 12.2 secrets 준비
+또는 이미 Modal dashboard에서 token을 만들었다면:
 
-Modal secret에는 모델 다운로드와 R2 접근에 필요한 값을 넣습니다.
+```bash
+uv run modal token set --token-id <MODAL_TOKEN_ID> --token-secret <MODAL_TOKEN_SECRET>
+```
+
+Railway orchestrator에는 `.modal.toml`이 없으므로 `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` 환경변수를 직접 넣습니다.
+
+### 12.2 mock worker 배포
+
+먼저 GPU/모델 없는 mock Modal worker로 연결을 검증합니다.
+
+```bash
+uv run modal deploy modal_apps/easyads_t2i_worker.py
+```
+
+배포 이름:
+
+```text
+EASYADS_MODAL_APP_NAME=easyads-t2i
+EASYADS_MODAL_FUNCTION_NAME=generate_image
+```
+
+### 12.3 Railway Modal 변수
+
+Railway orchestrator에 넣습니다.
+
+```text
+MODAL_TOKEN_ID=
+MODAL_TOKEN_SECRET=
+EASYADS_T2I_EXECUTION_BACKEND=modal
+EASYADS_ENABLE_MODAL_EXECUTION=true
+EASYADS_MODAL_POLL_ON_GET=true
+EASYADS_MODAL_APP_NAME=easyads-t2i
+EASYADS_MODAL_FUNCTION_NAME=generate_image
+EASYADS_MODAL_ENVIRONMENT=
+EASYADS_MODAL_RESULT_TRANSPORT=inline_base64
+EASYADS_MODAL_POLL_TIMEOUT_SECONDS=0
+```
+
+적용 후 orchestrator를 redeploy합니다.
+
+### 12.4 실제 모델 secrets 준비
+
+실제 SD/FLUX worker로 바꿀 때 Modal secret에는 모델 다운로드에 필요한 값을 넣습니다.
 
 ```text
 HF_TOKEN
-R2_ACCOUNT_ID
-R2_ACCESS_KEY_ID
-R2_SECRET_ACCESS_KEY
-R2_BUCKET
-R2_ENDPOINT
 ```
 
-### 12.3 모델 저장 위치
+현재 R2 업로드는 Railway orchestrator가 담당하므로 mock worker 단계에서는 Modal에 R2 secret을 넣지 않습니다.
+
+### 12.5 모델 저장 위치
 
 모델 weight:
 
@@ -977,13 +1027,15 @@ Cloudflare R2
 모델 weight를 R2에 넣는 것은 추천하지 않습니다.
 R2는 서비스 파일과 산출물 저장소로 사용하고, 모델 weight는 Modal 쪽 캐시/볼륨을 사용합니다.
 
-### 12.4 GPU 선택
+### 12.6 GPU 선택
 
 초기 MVP 추천:
 
 ```text
 A10 또는 L40S
 ```
+
+SD 3.5 Large와 FLUX는 모델별 VRAM 요구량이 다르므로 실제 worker 전환 전 한 모델씩 smoke합니다.
 
 더 가벼운 테스트:
 
@@ -1610,7 +1662,9 @@ Supabase chat_messages 기록으로 context를 수동 재구성한다.
 ```text
 [ ] R2 bucket 생성
 [ ] R2 access key 생성
-[ ] BFF upload를 R2 기반으로 변경
+[ ] Railway orchestrator에 EASYADS_R2_* 환경변수 등록
+[ ] EASYADS_ASSET_STORAGE_BACKEND=r2 설정
+[ ] EASYADS_ENABLE_R2_UPLOAD=true 설정
 [ ] assets table 기록
 [ ] signed URL 발급
 [ ] UI 이미지 표시 확인
