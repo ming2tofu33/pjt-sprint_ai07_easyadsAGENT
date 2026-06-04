@@ -1,5 +1,5 @@
 # .PHONY는 파일 이름과 타겟 이름이 겹쳐서 충돌하는 것을 방지하는 방어막입니다.
-.PHONY: help up down logs shell sync lint rag-test test port gpu dev-api dev-bff dev-web ad-gen ad-answer ad-brief eval-compile eval-test eval-sample eval-run eval-query eval-nodes eval-gates eval-trend eval-cost eval-logs eval-judge eval-pending eval-llm eval-vlm eval-human eval-human-pending eval-ensemble eval-calibrate
+.PHONY: help up down logs shell sync lint rag-test test port gpu dev-api dev-bff dev-web ad-gen ad-answer ad-brief eval-compile eval-test eval-sample eval-run eval-query eval-nodes eval-gates eval-trend eval-cost eval-logs eval-delete eval-judge eval-pending eval-llm eval-vlm eval-human eval-human-pending eval-ensemble eval-calibrate
 
 # JUDGE 기본값을 변수로 둠 — $(or ...)는 쉼표를 인자 구분자로 처리해 "llm,vlm"을 쪼개므로
 # 직접 쓸 수 없다. ?= 는 커맨드라인 JUDGE=... 지정 시 덮어쓰기 가능.
@@ -61,6 +61,7 @@ help:
 	@echo "  eval-trend   : 최근 30일 일별 평균 점수 추세 (회귀 감지)"
 	@echo "  eval-cost    : job별 LLM 토큰/USD + T2I 이미지 비용 내역. make eval-cost JOB_ID=<id>"
 	@echo "  eval-logs    : job ops 로그 전체 직접 조회(노드/LLM/스키마/비용). make eval-logs JOB_ID=<id>"
+	@echo "  eval-delete  : 한 job 로그 완전 삭제(ops+eval DB+이미지). make eval-delete JOB_ID=<id>"
 	@echo "  eval-calibrate: human vs LLM 편차 분석 (보정 기준)"
 
 # ── 🐳 [도커 인프라 제어] ───────────────────────────────────────────────────
@@ -294,6 +295,29 @@ eval-logs:
 	          json_extract(nso.output_snapshot,'$$.result_payload.background_image_path') AS bg \
 	   FROM node_state_outputs nso JOIN node_executions ne ON ne.id=nso.node_exec_id \
 	   WHERE ne.job_id='$(JOB_ID)' AND ne.node_name='result' ORDER BY ne.id DESC LIMIT 1"
+
+eval-delete:
+	# 한 job의 로그를 완전 삭제 — ops DB(7테이블) + eval DB(eval_runs+자식) + 공유 이미지 폴더.
+	# 잘못/미완성 job 정리용. 되돌릴 수 없음. JOB_ID 필수(미지정/와일드카드 거부 → 전체삭제 방지).
+	# 사용법: make eval-delete JOB_ID=test_<name>_<runtag>
+	@test -n "$(JOB_ID)" || { echo "ERROR: JOB_ID required (e.g. make eval-delete JOB_ID=test_foo_123)"; exit 1; }
+	@case "$(JOB_ID)" in *[*?]*|all|"") echo "ERROR: refusing wildcard/empty JOB_ID '$(JOB_ID)'"; exit 1;; esac
+	@echo "── deleting job '$(JOB_ID)' ──"
+	# /home/records DB는 컨테이너 UID 소유 + WAL → 호스트 sqlite3 쓰기 불가(readonly).
+	# 다른 쓰기 타겟(eval-judge)처럼 컨테이너 안에서 실행. 자식테이블 먼저, FK 순서 보존.
+	HOST_UID=$$(id -u) docker compose exec -T orchestrator python3 -c "import sqlite3, shutil; \
+	jid='$(JOB_ID)'; \
+	o=sqlite3.connect('/app/records/easyads_ops.db'); o.execute('PRAGMA foreign_keys=ON'); \
+	[o.execute('DELETE FROM '+t+' WHERE job_id=?', (jid,)) for t in ['dirty_field_events','schema_validations','node_state_outputs','llm_calls','node_executions','job_cost_summary','jobs']]; \
+	o.commit(); o.close(); \
+	e=sqlite3.connect('/app/records/easyads_eval.db'); \
+	[e.execute('DELETE FROM '+t+' WHERE eval_id IN (SELECT eval_id FROM eval_runs WHERE job_id=?)', (jid,)) for t in ['gate_results','score_items','domain_scores','judge_status']]; \
+	e.execute('DELETE FROM eval_runs WHERE job_id=?', (jid,)); e.commit(); e.close(); \
+	shutil.rmtree('/app/records/images/'+jid, ignore_errors=True); \
+	print('deleted', jid)"
+	@echo "── verify (should be 0/0): ──"
+	@sqlite3 /home/records/easyads_ops.db "SELECT count(*) AS ops_jobs FROM jobs WHERE job_id='$(JOB_ID)'"
+	@sqlite3 /home/records/easyads_eval.db "SELECT count(*) AS eval_runs FROM eval_runs WHERE job_id='$(JOB_ID)'"
 
 eval-judge:
 	# [judge 단계] 한 job에 LLM+VLM 판정(기본). 이미 채점된 평가자는 건너뜀(멱등).
