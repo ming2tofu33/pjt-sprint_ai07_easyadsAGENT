@@ -119,7 +119,7 @@ def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
         return "queued_only", "degraded_no_graph_execution"
     if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "gpt_image_2_actual", "pending_t2i_actual"
-    if run_mode in {"sd35_local", "sd35_local_smoke"}:
+    if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         return "sd35_local", "pending_t2i_actual"
     if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
         return "flux_local", "pending_t2i_actual"
@@ -342,7 +342,7 @@ def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> Generati
 def _engine_preference(run_mode: str) -> str | None:
     if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "gpt_image_2"
-    if run_mode in {"sd35_local", "sd35_local_smoke"}:
+    if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         return "sd35_large"
     if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
         return "flux"
@@ -353,7 +353,7 @@ def _model_provider_for_run_mode(run_mode: str) -> str | None:
         return "mock"
     if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "openai"
-    if run_mode in {"sd35_local", "sd35_local_smoke", "flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
+    if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real", "flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
         return "local"
     return None
 
