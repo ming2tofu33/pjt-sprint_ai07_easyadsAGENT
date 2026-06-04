@@ -22,11 +22,12 @@ AnchorPosition = Literal[
     "bottom_center",
     "bottom_right",
 ]
-TextAlignment = Literal["left", "center", "right"]
+TextAlignment = Literal["left", "center", "right", "auto"]
 LayoutTemplate = Literal[
     "top_headline_center_product_bottom_cta",
     "left_text_right_product",
     "right_text_left_product",
+    "dynamic_side_split",
     "bottom_overlay_panel",
     "multi_zone_flyer",
     "minimal_corner",
@@ -115,7 +116,7 @@ class TextSlot(BaseModel):
     effective_font_size_px: int | None = None
     effective_weight: int | None = None
     font_metric: FontMetric
-    alignment: TextAlignment = "center"
+    alignment: TextAlignment = "auto"
     anchor: AnchorPosition = "middle_center"
     text_color: str = "#FFFFFF"
     overlay_treatment: OverlayTreatment = "drop_shadow"
@@ -132,6 +133,7 @@ class TextLayoutSpec(BaseModel):
     template: LayoutTemplate
     canvas_width: int = Field(..., ge=1)
     canvas_height: int = Field(..., ge=1)
+    auto_find_empty_space: bool = Field(default=False)
     safe_margin_ratio: float = Field(default=0.06, ge=0.0, le=0.5)
     slots: list[TextSlot] = Field(default_factory=list)
     reserved_text_areas: list[NormalizedBBox] = Field(default_factory=list)
