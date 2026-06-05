@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Download, Home, ImageOff, Info, RotateCcw, Share2, Sparkles } from "lucide-react";
 import type { ChatBrief, ChatFlowState } from "@/types/marketing";
+import { buildGeneratedAssetUrl } from "@/lib/generated-assets";
 import {
   buildGenerationResultCopyText,
   getGenerationResultNotice,
@@ -16,6 +17,7 @@ import type { CreativeTone, MockCreative } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
+import { ValidationSummaryPanel } from "./ValidationSummaryPanel";
 import styles from "./generate.module.css";
 
 type GenerationCompleteStepProps = {
@@ -54,7 +56,7 @@ function resolveBriefImageUrl(path: string | null | undefined) {
   if (/^https?:\/\//.test(path) || path.startsWith("/api/") || path.startsWith("/generated/")) {
     return path;
   }
-  return null;
+  return buildGeneratedAssetUrl(path);
 }
 
 function creativeToneFromBrief(brief: ChatBrief): CreativeTone {
@@ -230,6 +232,8 @@ export function GenerationCompleteStep({
         </p>
       ) : null}
 
+      <ValidationSummaryPanel payload={resultPayload} />
+
       {isDevelopment && debugFinalPath ? (
         <details className={styles.savedNotice}>
           <summary>Debug artifact details</summary>
@@ -261,7 +265,7 @@ export function GenerationCompleteStep({
           </button>
           <button className={styles.secondaryButton} type="button" onClick={onBrowseSimilar}>
             <Share2 size={17} aria-hidden="true" />
-            레퍼런스 갤러리 보기
+            샘플 갤러리 보기
           </button>
         </div>
         {generatedCreative ? (

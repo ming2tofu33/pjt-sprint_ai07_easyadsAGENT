@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildGenerationResultCopyText,
+  buildValidationFeedbackItems,
   getDisplayImageUrl,
   getDownloadUrl,
   getGenerationResultNotice,
@@ -83,6 +84,53 @@ describe("generation result utils", () => {
     expect(getResultArtifactPayload(null)).toBeNull();
   });
 
+  it("normalizes nested validation summary into user-facing feedback", () => {
+    expect(
+      buildValidationFeedbackItems({
+        background: { overall_pass: true },
+        safe_area: { overall_pass: true, warnings: ["near_edge"] },
+        readability: { overall_pass: false },
+        final: { overall_pass: true }
+      })
+    ).toEqual([
+      {
+        id: "background",
+        label: "배경 확인",
+        status: "pass",
+        message: "이미지 배경이 광고로 쓰기 좋게 준비됐어요."
+      },
+      {
+        id: "safe_area",
+        label: "문구 위치 확인",
+        status: "warn",
+        message: "문구가 들어갈 위치를 한 번 더 확인해보세요."
+      },
+      {
+        id: "readability",
+        label: "가독성 확인",
+        status: "fail",
+        message: "문구 가독성 개선이 필요해요."
+      },
+      {
+        id: "final",
+        label: "최종 확인",
+        status: "pass",
+        message: "전체 결과가 사용 가능한 상태예요."
+      }
+    ]);
+  });
+
+  it("falls back to a final feedback item for flat validation summary", () => {
+    expect(buildValidationFeedbackItems({ overall_pass: true })).toEqual([
+      {
+        id: "final",
+        label: "최종 확인",
+        status: "pass",
+        message: "전체 결과가 사용 가능한 상태예요."
+      }
+    ]);
+  });
+
   it("uses public URLs for preview and download when present", () => {
     const payload = doneJobWithUrl.result_payload;
 
@@ -95,17 +143,18 @@ describe("generation result utils", () => {
     expect(isDownloadEnabled(doneJobWithUrl)).toBe(true);
   });
 
-  it("does not use local artifact paths as preview or download URLs", () => {
+  it("uses generated asset proxy URLs for local artifact paths", () => {
     const payload = doneJobLocalPathOnly.result_payload;
+    const expectedUrl = "/api/generated-assets?path=data%2Foutputs%2Fjob_local%2Ffinal_0.png";
 
-    expect(getDisplayImageUrl(payload)).toBeNull();
-    expect(getDownloadUrl(payload)).toBeNull();
-    expect(resolvePreviewImageUrl(doneJobLocalPathOnly)).toBeNull();
-    expect(resolveDownloadUrl(doneJobLocalPathOnly)).toBeNull();
-    expect(shouldShowImagePreview(payload)).toBe(false);
-    expect(shouldEnableDownload(payload)).toBe(false);
-    expect(hasOnlyLocalArtifactPath(payload)).toBe(true);
-    expect(isDownloadEnabled(doneJobLocalPathOnly)).toBe(false);
+    expect(getDisplayImageUrl(payload)).toBe(expectedUrl);
+    expect(getDownloadUrl(payload)).toBe(expectedUrl);
+    expect(resolvePreviewImageUrl(doneJobLocalPathOnly)).toBe(expectedUrl);
+    expect(resolveDownloadUrl(doneJobLocalPathOnly)).toBe(expectedUrl);
+    expect(shouldShowImagePreview(payload)).toBe(true);
+    expect(shouldEnableDownload(payload)).toBe(true);
+    expect(hasOnlyLocalArtifactPath(payload)).toBe(false);
+    expect(isDownloadEnabled(doneJobLocalPathOnly)).toBe(true);
   });
 
   it("prefers preview and copy visual URLs before download URL for display", () => {
@@ -134,8 +183,8 @@ describe("generation result utils", () => {
 
     expect(text).toContain("Job ID: job_local");
     expect(text).toContain("Status: done");
-    expect(text).toContain("Image URL: not available yet");
-    expect(text).toContain("Download URL: not available yet");
+    expect(text).toContain("Image URL: /api/generated-assets?path=data%2Foutputs%2Fjob_local%2Ffinal_0.png");
+    expect(text).toContain("Download URL: /api/generated-assets?path=data%2Foutputs%2Fjob_local%2Ffinal_0.png");
     expect(text).not.toContain("data/outputs/job_local/final_0.png");
     expect(text).not.toContain("very long raw prompt");
     expect(text).toContain("Warnings: safe_area_complex_background");
@@ -179,8 +228,8 @@ describe("generation result utils", () => {
       message: "완성된 이미지를 확인할 수 있어요."
     });
     expect(getGenerationResultNotice(doneJobLocalPathOnly)).toEqual({
-      level: "warning",
-      message: "이미지는 생성됐지만 아직 화면에서 바로 열 수 없어요."
+      level: "success",
+      message: "완성된 이미지를 확인할 수 있어요."
     });
     expect(getGenerationResultNotice(failedJob).level).toBe("error");
     expect(getGenerationResultNotice(runningJob)).toEqual({ level: "info", message: "이미지를 생성하고 있어요." });

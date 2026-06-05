@@ -4,6 +4,7 @@ import { Gift, Heart, Megaphone, Package, Sparkles, Star } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import { BriefRow } from "./BriefRow";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -31,7 +32,10 @@ export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStep
       </div>
 
       <section className={styles.briefCard} aria-label="광고 브리프 요약">
-        <h2 className={styles.briefTitle}>광고 브리프 요약</h2>
+        <div className={styles.briefTitleGroup}>
+          <MascotImage role="checkPaper" decorative className={styles.briefTitleMascot} />
+          <h2 className={styles.briefTitle}>광고 브리프 요약</h2>
+        </div>
         <BriefRow icon={Megaphone} label="광고 목적" value={brief.purpose} />
         <BriefRow icon={Gift} label="상품/서비스" value={brief.item} />
         <BriefRow icon={Heart} label="선택한 문구" value={brief.copy} />

@@ -1,13 +1,14 @@
 "use client";
 
 import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, PenLine, Send, Sparkles, Utensils } from "lucide-react";
-import { useState } from "react";
-import type { CopyGenerationMode, CustomCopyFields } from "@/types/marketing";
+import { type ChangeEvent, useRef, useState } from "react";
+import type { CopyGenerationMode, CustomCopyFields, ReferenceImageFields } from "@/types/marketing";
 import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "@/lib/generation-engine";
 import { readGenerationDraftPrompt, readGenerationRequestContext } from "@/lib/generation-request-context";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { GenerationEngineSelector } from "./GenerationEngineSelector";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -25,16 +26,19 @@ const quickStarts = [
   { label: "오픈 홍보", icon: Megaphone }
 ];
 
+const acceptedReferenceMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+
 type ChatStartStepProps = {
   onSubmit: (
     prompt: string,
-    options?: CustomCopyFields & { copyGenerationMode?: CopyGenerationMode; imageGenerationEngine?: ImageGenerationEngine }
+    options?: CustomCopyFields & ReferenceImageFields & { copyGenerationMode?: CopyGenerationMode; imageGenerationEngine?: ImageGenerationEngine }
   ) => void;
   onBack: () => void;
   onGoHome: () => void;
 };
 
 export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps) {
+  const referenceFileInputRef = useRef<HTMLInputElement | null>(null);
   const [referenceTemplateTitle] = useState(() => readGenerationRequestContext()?.selectedReferenceTemplateTitle ?? "");
   const [value, setValue] = useState(() => {
     const requestContext = readGenerationRequestContext();
@@ -45,6 +49,8 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
   });
   const [copyGenerationMode, setCopyGenerationMode] = useState<CopyGenerationMode>("suggest_candidates");
   const [imageGenerationEngine, setImageGenerationEngine] = useState<ImageGenerationEngine>(DEFAULT_IMAGE_GENERATION_ENGINE);
+  const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
+  const [referenceImageError, setReferenceImageError] = useState("");
   const [customHeadline, setCustomHeadline] = useState("");
   const [customSubcopy, setCustomSubcopy] = useState("");
   const usesCustomCopy = copyGenerationMode === "custom_input";
@@ -53,7 +59,7 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
   const canSubmit = value.trim().length > 0 && (!usesCustomCopy || customHeadlineText.length > 0);
   const promptPlaceholder = referenceTemplateTitle
     ? `${referenceTemplateTitle} 스타일을 참고해 어떤 광고를 만들지 적어주세요`
-    : "광고 방향을 입력해주세요";
+    : "AI와 대화로 이미지를 생성하세요";
 
   function submitPrompt() {
     const prompt = value.trim();
@@ -61,21 +67,38 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
       onSubmit(prompt, {
         copyGenerationMode,
         imageGenerationEngine,
+        referenceImageFile,
         userCustomHeadline: usesCustomCopy ? customHeadlineText : undefined,
         userCustomSubcopy: usesCustomCopy && customSubcopyText ? customSubcopyText : undefined
       });
     }
   }
 
+  function handleReferenceImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    if (!file) {
+      return;
+    }
+    if (!acceptedReferenceMimeTypes.has(file.type)) {
+      setReferenceImageFile(null);
+      setReferenceImageError("PNG, JPG, WebP 이미지만 참고 이미지로 사용할 수 있어요.");
+      return;
+    }
+    setReferenceImageFile(file);
+    setReferenceImageError("");
+  }
+
   return (
     <>
-      <StepHeader title="대화로 찰떡 만들기" canGoBack backLabel="이전 화면" onBack={onBack} onHome={onGoHome} />
+      <StepHeader title="대화로 찰떡 이미지 만들기" canGoBack backLabel="이전 화면" onBack={onBack} onHome={onGoHome} />
       <section className={styles.hero}>
-        <span className={styles.heroIcon}>
-          <MessageCircle size={25} strokeWidth={2.4} />
-        </span>
+        <MascotImage role="chatWave" decorative priority className={styles.chatHeroMascot} />
         <h2 className={styles.heroTitle}>원하는 광고를 편하게 적어보세요.</h2>
-        <p className={styles.heroCopy}>AI가 부족한 정보를 물어보며 광고 브리프를 완성해드려요.</p>
+        <p className={styles.heroCopy}>
+          AI가 부족한 정보를 물어보며
+          <br />
+          광고 이미지를 완성해드려요.
+        </p>
       </section>
 
       <h2 className={styles.sectionTitle}>예시로 시작해보기</h2>
@@ -149,7 +172,22 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
       <GenerationEngineSelector value={imageGenerationEngine} onChange={setImageGenerationEngine} />
 
       <div className={`${styles.inputCard} ${styles.startInputCard}`}>
-        <ImageIcon size={19} aria-hidden="true" />
+        <input
+          ref={referenceFileInputRef}
+          aria-label="레퍼런스 이미지 첨부"
+          accept="image/png,image/jpeg,image/webp"
+          className={styles.photoFileInput}
+          type="file"
+          onChange={handleReferenceImageChange}
+        />
+        <button
+          className={styles.inputIconButton}
+          type="button"
+          aria-label={referenceImageFile ? `첨부한 레퍼런스 이미지 ${referenceImageFile.name}` : "레퍼런스 이미지 선택"}
+          onClick={() => referenceFileInputRef.current?.click()}
+        >
+          <ImageIcon size={19} aria-hidden="true" />
+        </button>
         <AutosizeTextarea
           className={`${styles.input} ${styles.promptTextarea}`}
           value={value}
@@ -162,6 +200,8 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
           <Send size={18} aria-hidden="true" />
         </button>
       </div>
+      {referenceImageFile ? <p className={styles.referenceAttachmentNote}>참고 이미지: {referenceImageFile.name}</p> : null}
+      {referenceImageError ? <p className={styles.referenceAttachmentNote}>{referenceImageError}</p> : null}
       <p className={styles.helperText}>대충 써도 괜찮아요. AI가 찰떡같이 알아들을게요.</p>
     </>
   );

@@ -233,7 +233,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
           <AutosizeTextarea
             className={`${styles.input} ${styles.promptTextarea}`}
             aria-label="사진 광고 요청 입력"
-            placeholder="광고 방향을 입력해주세요"
+            placeholder="AI와 대화로 이미지를 생성하세요"
             value={prompt}
             onChange={(event) => {
               setPrompt(event.target.value);

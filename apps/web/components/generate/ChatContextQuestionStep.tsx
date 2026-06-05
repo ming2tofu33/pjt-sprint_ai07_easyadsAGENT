@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { ChatFlowState, OptionItem } from "@/types/marketing";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -65,7 +66,10 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack }: ChatContext
       </section>
 
       <section className={styles.contextCard} aria-label="현재까지 파악한 내용">
-        <h2 className={styles.contextTitle}>현재까지 파악한 내용</h2>
+        <div className={styles.contextTitleGroup}>
+          <MascotImage role="questionPaper" decorative className={styles.contextTitleMascot} />
+          <h2 className={styles.contextTitle}>현재까지 파악한 내용</h2>
+        </div>
         <div className={styles.contextGrid}>
           <div className={styles.contextItem}>
             <span>업종</span>

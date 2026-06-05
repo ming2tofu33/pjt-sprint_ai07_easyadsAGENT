@@ -14,10 +14,14 @@ export type GeneratedCreativeSnapshot = {
   selectedChannelId: string;
   selectedTone: string;
   customDirection: string;
+  userCustomHeadline?: string | null;
+  userCustomSubcopy?: string | null;
   brief: ChatBrief;
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
   imageGenerationEngine?: ImageGenerationEngine;
+  sourceImagePath?: string | null;
+  referenceImagePath?: string | null;
 };
 
 const GENERATED_CREATIVES_STORAGE_KEY = "easyads_generated_creatives_v1";
