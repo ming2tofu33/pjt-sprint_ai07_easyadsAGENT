@@ -2,6 +2,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from orchestrator.app.api.app import create_app
+from orchestrator.app.chat_threads.errors import (
+    ChatThreadArchivedError,
+    ChatThreadHasActiveJobError,
+    ChatThreadNotFoundError,
+    ChatThreadServiceError,
+)
 from orchestrator.app.generation_jobs.service import reset_generation_job_store_for_tests
 
 
@@ -164,6 +170,29 @@ def test_create_generation_job_accepts_snake_case_reference_id(client):
     assert response.status_code == 201
     job = response.json()["job"]
     assert job["selected_reference_template_id"] == "seed_cafe_strawberry_feed_001"
+
+
+@pytest.mark.parametrize(
+    ("exc", "status_code"),
+    [
+        (ChatThreadNotFoundError(), 404),
+        (ChatThreadArchivedError(), 409),
+        (ChatThreadHasActiveJobError(), 409),
+        (ChatThreadServiceError("invalid_chat_thread_request", "Invalid thread."), 400),
+    ],
+)
+def test_generation_job_chat_thread_errors_are_mapped(client, monkeypatch, exc, status_code):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    monkeypatch.setattr(router, "create_generation_job", lambda request: (_ for _ in ()).throw(exc))
+
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={"user_input": "Create an ad", "thread_id": "thread_existing"},
+    )
+
+    assert response.status_code == status_code
+    assert response.json()["detail"]["error_code"] == exc.error_code
 
 
 def test_generation_job_actual_payload_preserves_quality_batch_metadata(client, monkeypatch):
