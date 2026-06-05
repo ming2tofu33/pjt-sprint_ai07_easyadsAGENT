@@ -27,6 +27,7 @@ class T2ISettings(BaseModel):
     flux_device: str = "auto"
     flux_num_inference_steps: int = Field(default=4, ge=1, le=50)
     flux_guidance_scale: float = Field(default=0.0, ge=0.0, le=20.0)
+    flux_max_sequence_length: int = Field(default=256, ge=64, le=512)
     max_images_per_job: int = Field(default=1, ge=1, le=4)
     default_width: int = 1024
     default_height: int = 1024
@@ -60,6 +61,7 @@ def load_t2i_settings() -> T2ISettings:
         flux_device=_get_env("EASYADS_FLUX_DEVICE", "") or "auto",
         flux_num_inference_steps=_env_int("EASYADS_FLUX_NUM_INFERENCE_STEPS", 4, minimum=1, maximum=50),
         flux_guidance_scale=_env_float("EASYADS_FLUX_GUIDANCE_SCALE", 0.0, minimum=0.0, maximum=20.0),
+        flux_max_sequence_length=_env_int("EASYADS_FLUX_MAX_SEQUENCE_LENGTH", 256, minimum=64, maximum=512),
         max_images_per_job=_env_int("EASYADS_T2I_MAX_IMAGES_PER_JOB", 1),
     )
 

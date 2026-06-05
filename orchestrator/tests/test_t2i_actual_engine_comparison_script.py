@@ -235,3 +235,59 @@ def test_summary_counts_pending_statuses():
 
     assert summary["pending"] == 2
     assert summary["success"] == 1
+
+
+def test_main_prints_safe_run_summary(monkeypatch, tmp_path, capsys):
+    path = tmp_path / "report.json"
+
+    exit_code = runner.main(
+        [
+            "--dry-run",
+            "--plan",
+            "premium",
+            "--engines",
+            "flux",
+            "--cases",
+            "cafe_dessert_001",
+            "--output-json",
+            path.as_posix(),
+        ]
+    )
+
+    printed = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert printed["status"] == "dry_run"
+    assert printed["report_path"] == path.as_posix()
+    assert printed["runs"][0]["engine"] == "flux"
+    assert "prompt_preview" not in printed["runs"][0]
+
+
+def test_main_returns_nonzero_for_failed_report(monkeypatch, tmp_path, capsys):
+    def fake_run_comparison(**kwargs):
+        return {
+            "status": "failed",
+            "report_path": (tmp_path / "report.json").as_posix(),
+            "runs": [
+                {
+                    "engine": "flux",
+                    "case_id": "cafe_dessert_001",
+                    "status": "failed",
+                    "error_code": "flux_prompt_token_budget_unresolvable",
+                    "error_type": "FluxPromptTokenBudgetError",
+                    "error_message": "budget failed",
+                    "clip_token_count": 77,
+                    "clip_max_tokens": 77,
+                    "clip_truncated": True,
+                    "prompt_2_used": True,
+                    "critical_constraints_preserved": False,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(runner, "run_comparison", fake_run_comparison)
+
+    exit_code = runner.main(["--confirm-actual", "--engines", "flux"])
+
+    printed = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert printed["runs"][0]["error_type"] == "FluxPromptTokenBudgetError"

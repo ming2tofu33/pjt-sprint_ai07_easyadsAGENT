@@ -154,6 +154,7 @@ def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest,
                 num_images=1,
                 output_dir=output_dir.as_posix(),
                 metadata={
+                    **_safe_t2i_request_metadata(request.metadata or {}),
                     "requested_run_mode": request.run_mode,
                     "render_text_in_image": False,
                     "must_not_include_text": True,
@@ -216,6 +217,7 @@ def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest,
                 "t2i_engine": engine_name,
                 "render_text_in_image": False,
                 "must_not_include_text": True,
+                **_safe_engine_metadata(generation.metadata),
             },
         )
         if not done:
@@ -224,9 +226,24 @@ def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest,
     except T2IEngineNotEnabledError as exc:
         return _mark_t2i_failed(job_id, "t2i_engine_not_enabled", str(exc), engine_name, request.run_mode)
     except T2IEngineUnavailableError as exc:
-        return _mark_t2i_failed(job_id, "t2i_engine_unavailable", str(exc), engine_name, request.run_mode)
+        return _mark_t2i_failed(
+            job_id,
+            getattr(exc, "error_code", "t2i_engine_unavailable"),
+            str(exc),
+            engine_name,
+            request.run_mode,
+            error_type=type(exc).__name__,
+        )
     except Exception as exc:
-        return _mark_t2i_failed(job_id, "t2i_engine_unavailable", "T2I generation failed.", engine_name, request.run_mode, detail=str(exc))
+        return _mark_t2i_failed(
+            job_id,
+            "t2i_engine_unavailable",
+            "T2I generation failed.",
+            engine_name,
+            request.run_mode,
+            detail=str(exc),
+            error_type=type(exc).__name__,
+        )
 
 
 def _write_mock_images(background_path: Path, final_path: Path, request: GenerationJobCreateRequest) -> None:
@@ -264,6 +281,50 @@ def _safe_engine_metadata(metadata: dict) -> dict:
     return {key: value for key, value in metadata.items() if key.lower() not in blocked}
 
 
+_ALLOWED_T2I_REQUEST_METADATA = {
+    "comparison_batch_id",
+    "case_id",
+    "business_type",
+    "business_subtype",
+    "item_or_service",
+    "primary_subject",
+    "selected_reference_template_id",
+    "reference_template_id",
+}
+
+_SECRET_METADATA_KEYS = {
+    "api_key",
+    "openai_api_key",
+    "hf_token",
+    "huggingface_token",
+    "token",
+    "authorization",
+    "secret",
+    "password",
+}
+
+
+def _safe_t2i_request_metadata(metadata: dict) -> dict:
+    sanitized = _sanitize_metadata_recursive(metadata)
+    return {
+        key: value
+        for key, value in sanitized.items()
+        if key in _ALLOWED_T2I_REQUEST_METADATA
+    }
+
+
+def _sanitize_metadata_recursive(value):
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_metadata_recursive(item)
+            for key, item in value.items()
+            if str(key).lower() not in _SECRET_METADATA_KEYS
+        }
+    if isinstance(value, list):
+        return [_sanitize_metadata_recursive(item) for item in value]
+    return value
+
+
 def _mark_t2i_failed(
     job_id: str,
     error_code: str,
@@ -271,10 +332,11 @@ def _mark_t2i_failed(
     engine_name: str,
     run_mode: str,
     detail: str | None = None,
+    error_type: str | None = None,
 ) -> GenerationJobResponse:
     failed = mark_generation_job_failed(
         job_id,
-        {"error_code": error_code, "message": message, "detail": detail},
+        {"error_code": error_code, "error_type": error_type, "message": message, "detail": detail},
         metadata={
             "requested_run_mode": run_mode,
             "effective_run_mode": _effective_run_mode(engine_name),

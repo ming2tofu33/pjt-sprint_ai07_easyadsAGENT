@@ -240,6 +240,7 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
         progress=progress,
         error=ErrorResponse(
             error_code=str(error.get("error_code") or "generation_job_execution_failed"),
+            error_type=error.get("error_type"),
             message=str(error.get("message") or "Generation job execution failed."),
             detail=error.get("detail"),
         ),
@@ -572,6 +573,7 @@ def _mark_generation_job_done_db(
 def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | None = None) -> GenerationJobResponse | None:
     error_payload = {
         "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
+        "error_type": error.get("error_type"),
         "message": str(error.get("message") or "Generation job execution failed."),
         "detail": error.get("detail"),
     }
@@ -587,7 +589,11 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
             row,
             "failed",
             message=error_payload["message"],
-            payload={"error_code": error_payload["error_code"], "message": error_payload["message"]},
+            payload={
+                "error_code": error_payload["error_code"],
+                "error_type": error_payload.get("error_type"),
+                "message": error_payload["message"],
+            },
             connection=conn,
         )
         chat_thread_repo.update_chat_thread_status(
@@ -849,6 +855,7 @@ def _mark_generation_job_failed_from_row_db(
 ) -> GenerationJobResponse | None:
     error_payload = {
         "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
+        "error_type": error.get("error_type"),
         "message": str(error.get("message") or "Generation job execution failed."),
         "detail": error.get("detail"),
     }
@@ -864,7 +871,11 @@ def _mark_generation_job_failed_from_row_db(
         failed_row,
         "failed",
         message=error_payload["message"],
-        payload={"error_code": error_payload["error_code"], "message": error_payload["message"]},
+        payload={
+            "error_code": error_payload["error_code"],
+            "error_type": error_payload.get("error_type"),
+            "message": error_payload["message"],
+        },
         connection=connection,
     )
     chat_thread_repo.update_chat_thread_status(
