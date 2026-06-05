@@ -140,7 +140,7 @@ export function UsageSummaryStep() {
 
       <button
         aria-expanded={showUsageDetails}
-        className={styles.secondaryButton}
+        className={`${styles.secondaryButton} ${styles.usageDetailsButton}`}
         type="button"
         onClick={() => setShowUsageDetails((current) => !current)}
       >
@@ -165,7 +165,7 @@ export function UsageSummaryStep() {
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("reference"))}>
           <Search size={18} aria-hidden="true" />
-          레퍼런스
+          찾기
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("studio"))}>
           <Sparkles size={18} aria-hidden="true" />

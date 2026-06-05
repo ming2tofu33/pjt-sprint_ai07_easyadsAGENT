@@ -592,12 +592,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenStudio={() => navigateTo("studio")}
           onOpenBrandKit={() => navigateTo("my")}
           onRegenerate={handleRegenerateFromRecent}
-          onShowProgress={() => showToast("광고 생성 상태를 확인합니다.")}
           onOpenGeneratedAd={(creativeId) => router.push(buildAdHref(creativeId))}
-          onOpenAd={(creativeId) => router.push(buildAdHref(creativeId))}
           onDownloadGeneratedAd={(title) => showToast(`${title} 다운로드는 실제 파일 저장 연결 후 활성화돼요.`)}
           onDeleteGeneratedAd={handleDeleteGeneratedAd}
-          onDeleteSampleAd={(title) => showToast(`${title} 항목을 보관함에서 삭제했어요.`)}
           onOpenNotifications={() => router.push(buildNotificationHref())}
         />
       ) : null}

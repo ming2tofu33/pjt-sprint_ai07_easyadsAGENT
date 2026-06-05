@@ -7,6 +7,7 @@ import { buildBrief } from "@/lib/chat-flow";
 import { listReferenceTemplates, type ReferenceTemplateCard } from "@/lib/api-client";
 import { hasReferenceTemplateImage, referenceTemplateToCreative } from "@/lib/reference-template-creative";
 import { AdCreativeCard } from "./AdCreativeCard";
+import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
 
 type ReferenceBrowseStepProps = {
@@ -172,6 +173,15 @@ export function ReferenceBrowseStep({
         ))}
       </div>
 
+      <p className={`${styles.browseNote} ${styles.referenceBrowseNote}`}>
+        <Sparkles size={17} aria-hidden="true" />
+        {isStandaloneGallery
+          ? "마음에 드는 레퍼런스를 고르면 다음 광고 생성 요청에 스타일 힌트로 함께 전달돼요."
+          : isGenerationComplete
+          ? "완성된 광고와 비슷한 톤의 레퍼런스를 더 둘러볼 수 있어요."
+          : "광고가 완성되면 알려드릴게요. 기다리는 동안 다른 스타일을 둘러볼 수 있어요."}
+      </p>
+
       <div className={styles.referenceContentScroll}>
         {isLoading ? (
           <section className={styles.skeletonGrid} aria-label="레퍼런스 목록 불러오는 중">
@@ -183,7 +193,7 @@ export function ReferenceBrowseStep({
           </section>
         ) : errorMessage ? (
           <section className={styles.emptyResultPanel} aria-label="레퍼런스 불러오기 실패">
-            <Search size={24} aria-hidden="true" />
+            <MascotImage role="errorWorried" decorative className={styles.emptyMascot} />
             <strong>레퍼런스를 불러오지 못했어요</strong>
             <p>{errorMessage}</p>
             <button className={styles.secondaryButton} type="button" onClick={() => setReloadToken((current) => current + 1)}>
@@ -191,48 +201,36 @@ export function ReferenceBrowseStep({
             </button>
           </section>
         ) : visibleTemplates.length > 0 ? (
-          <>
-            <p className={styles.sampleNotice}>마음에 드는 스타일을 고르면 다음 광고에 그 분위기를 참고해요.</p>
-            <section className={styles.referenceGrid} aria-label="광고 레퍼런스 목록">
-              {visibleTemplates.map((template) => {
-                const creative = referenceTemplateToCreative(template);
-                return (
-                  <AdCreativeCard
-                    creative={creative}
-                    key={template.templateId}
-                    showPlaceholderArt={false}
-                    openLabel={`${template.title} 스타일로 시작`}
-                    openText="이 스타일로 시작"
-                    onOpen={() => {
-                      if (onUseTemplate) {
-                        onUseTemplate(template);
-                        return;
-                      }
-                      onOpenCreative?.(template.templateId);
-                    }}
-                    onSave={() => onSaveCreative?.(template.title)}
-                  />
-                );
-              })}
-            </section>
-          </>
+          <section className={styles.referenceGrid} aria-label="광고 레퍼런스 목록">
+            {visibleTemplates.map((template) => {
+              const creative = referenceTemplateToCreative(template);
+              return (
+                <AdCreativeCard
+                  creative={creative}
+                  key={template.templateId}
+                  showPlaceholderArt={false}
+                  openLabel={`${template.title} 스타일로 시작`}
+                  openText="이 스타일로 시작"
+                  onOpen={() => {
+                    if (onUseTemplate) {
+                      onUseTemplate(template);
+                      return;
+                    }
+                    onOpenCreative?.(template.templateId);
+                  }}
+                  onSave={() => onSaveCreative?.(template.title)}
+                />
+              );
+            })}
+          </section>
         ) : (
           <section className={styles.emptyResultPanel} aria-label="레퍼런스 검색 결과 없음">
-            <Search size={24} aria-hidden="true" />
+            <MascotImage role="referenceSearch" decorative className={styles.emptyMascot} />
             <strong>조건에 맞는 레퍼런스 이미지가 없어요</strong>
             <p>직접 넣은 레퍼런스 이미지가 연결되면 여기에 표시돼요.</p>
           </section>
         )}
       </div>
-
-      <p className={styles.browseNote}>
-        <Sparkles size={17} aria-hidden="true" />
-        {isStandaloneGallery
-          ? "마음에 드는 레퍼런스를 고르면 다음 광고 생성 요청에 스타일 힌트로 함께 전달돼요."
-          : isGenerationComplete
-          ? "완성된 광고와 비슷한 톤의 레퍼런스를 더 둘러볼 수 있어요."
-          : "광고가 완성되면 알려드릴게요. 기다리는 동안 다른 스타일을 둘러볼 수 있어요."}
-      </p>
 
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">
         <button data-active={isStandaloneGallery ? undefined : "true"} type="button" onClick={onGoHome}>
@@ -241,7 +239,7 @@ export function ReferenceBrowseStep({
         </button>
         <button data-active={isStandaloneGallery ? "true" : undefined} type="button" onClick={onOpenReference}>
           <Search size={18} aria-hidden="true" />
-          레퍼런스
+          찾기
         </button>
         <button type="button" onClick={onOpenStudio}>
           <Sparkles size={18} aria-hidden="true" />

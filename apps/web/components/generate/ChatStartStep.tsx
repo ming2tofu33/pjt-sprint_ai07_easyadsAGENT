@@ -138,7 +138,6 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
         </div>
       ) : null}
 
-      <h2 className={styles.sectionTitle}>광고 요청</h2>
       <div className={`${styles.inputCard} ${styles.startInputCard}`}>
         <ImageIcon size={19} aria-hidden="true" />
         <AutosizeTextarea
