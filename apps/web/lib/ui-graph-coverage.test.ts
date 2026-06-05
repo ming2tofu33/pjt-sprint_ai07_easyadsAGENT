@@ -42,6 +42,7 @@ const KNOWN_GRAPH_NODES = new Set([
 const ALL_CAPABILITIES: UiGraphCapability[] = [
   "chat.start",
   "chat.answer-context-question",
+  "generation-job.answer-context-question",
   "copy-mode.suggest-candidates",
   "copy-selection.copy-channel-tone",
   "copy-selection.visual-direction",
@@ -62,6 +63,7 @@ describe("ui graph coverage matrix", () => {
 
     expect(report.coveredIds).toEqual([
       "missing-context-loop",
+      "generation-job-context-loop",
       "chat-suggest-candidates",
       "photo-source-suggest-candidates",
       "custom-visual-direction",
@@ -74,14 +76,15 @@ describe("ui graph coverage matrix", () => {
       "reference-image",
       "validation-feedback",
     ]);
-    expect(report.coveredCount).toBe(8);
-    expect(report.totalCount).toBe(10);
-    expect(report.coverageRatio).toBe(0.8);
+    expect(report.coveredCount).toBe(9);
+    expect(report.totalCount).toBe(11);
+    expect(report.coverageRatio).toBe(9 / 11);
   });
 
   it("shows the exact UI capabilities missing for each uncovered branch", () => {
     const report = buildUiGraphCoverageReport();
 
+    expect(findUiGraphCoverageItem(report, "generation-job-context-loop")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "auto-pilot-copywriting")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "custom-copy-input")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "no-copy-image-only")?.missingCapabilities).toEqual([]);

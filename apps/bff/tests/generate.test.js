@@ -342,6 +342,38 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("proxies generation job answers to the orchestrator", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed", stage_order: [] },
+          metadata: { execution_mode: "graph_execution" }
+        }
+      })
+    );
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs/job_1/answer",
+      payload: { field: "business_type", value: "cafe" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().job.status).toBe("done");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/generation-jobs/job_1/answer",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ field: "business_type", value: "cafe" })
+      })
+    );
+    await app.close();
+  });
+
   it("validates chat start payloads", async () => {
     const app = buildApp({ fetchImpl: vi.fn() });
 

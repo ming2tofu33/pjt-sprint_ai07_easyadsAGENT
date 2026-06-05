@@ -151,6 +151,7 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
     with _GENERATION_JOB_LOCK:
         now = _now_iso()
         effective_run_mode, execution_mode = _initial_run_mode_metadata(request.run_mode)
+        engine_preference = _engine_preference_for_request(request)
 
         if request.thread_id:
             existing_thread = chat_thread_service.get_chat_thread(request.thread_id, user_id=request.user_id)
@@ -202,8 +203,8 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
                 "user_plan": request.user_plan,
                 "selected_reference_template_id": request.selected_reference_template_id,
                 "ad_format": request.ad_format,
-                "engine_preference": _engine_preference(request.run_mode),
-                "t2i_engine": _engine_preference(request.run_mode),
+                "engine_preference": engine_preference,
+                "t2i_engine": engine_preference,
                 **_safe_request_metadata(request.metadata),
             },
         )
@@ -241,6 +242,7 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
             current_request_fields=explicit_fields,
             user_input=request.user_input,
         )
+        _apply_generation_engine_to_state(restored_payload, request)
         changed_fields = calculate_changed_fields(
             latest_snapshot.state_payload if latest_snapshot else None,
             restored_payload
@@ -345,7 +347,8 @@ def mark_generation_job_running(job_id: str, stage: str = "running") -> Generati
     if not existing:
         return None
     progress = existing.progress.model_copy(update={"progress_percent": 50, "current_stage": stage})
-    return update_generation_job(job_id, status="running", progress=progress)
+    metadata = _without_pending_interrupt(existing.metadata or {})
+    return update_generation_job(job_id, status="running", progress=progress, metadata=metadata)
 
 
 def mark_generation_job_done(
@@ -360,7 +363,7 @@ def mark_generation_job_done(
     if not existing:
         return None
     progress = existing.progress.model_copy(update={"progress_percent": 100, "current_stage": "completed"})
-    merged_metadata = {**existing.metadata, **(metadata or {})}
+    merged_metadata = _without_pending_interrupt({**existing.metadata, **(metadata or {})})
     updated = update_generation_job(
         job_id,
         status="done",
@@ -422,7 +425,7 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
     existing = get_generation_job(job_id)
     if not existing:
         return None
-    merged_metadata = {**existing.metadata, **(metadata or {})}
+    merged_metadata = _without_pending_interrupt({**existing.metadata, **(metadata or {})})
     progress = existing.progress.model_copy(update={"current_stage": "failed"})
     updated = update_generation_job(
         job_id,
@@ -492,10 +495,17 @@ def mark_generation_job_waiting_user_input(
         return None
         
     progress = existing.progress.model_copy(update={"current_stage": "waiting_user_input", "progress_percent": 50})
+    pending_interrupt = _pending_interrupt_from_state(result_state)
+    metadata = {
+        **(existing.metadata or {}),
+        "pending_interrupt": pending_interrupt,
+        "assistant_message": assistant_message,
+    }
     updated = update_generation_job(
         job_id,
         status="waiting_user_input",
         progress=progress,
+        metadata=metadata,
     )
     if not updated or not existing.thread_id:
         return updated
@@ -558,6 +568,25 @@ def mark_generation_job_waiting_user_input(
 def reset_generation_job_store_for_tests() -> None:
     with _GENERATION_JOB_LOCK:
         _GENERATION_JOBS.clear()
+
+
+def _pending_interrupt_from_state(result_state: dict) -> dict | None:
+    interrupts = result_state.get("__interrupt__") or []
+    if not isinstance(interrupts, (list, tuple)):
+        return None
+    if not interrupts:
+        return None
+    raw_value = getattr(interrupts[0], "value", None)
+    if not isinstance(raw_value, dict):
+        return None
+    return sanitize_chat_payload(raw_value)
+
+
+def _without_pending_interrupt(metadata: dict | None) -> dict:
+    cleaned = dict(metadata or {})
+    cleaned.pop("pending_interrupt", None)
+    cleaned.pop("assistant_message", None)
+    return cleaned
 
 
 def should_route_generation_job_to_modal(request: GenerationJobCreateRequest) -> bool:
@@ -648,6 +677,24 @@ def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> Generati
     return polled or job
 
 
+def _normalize_engine_preference(value: object) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower().replace("-", "_")
+    aliases = {
+        "gpt_image_2": "gpt_image_2",
+        "gpt_image2": "gpt_image_2",
+        "gptimage2": "gpt_image_2",
+        "flux": "flux",
+        "flux_schnell": "flux",
+        "flux_1_schnell": "flux",
+        "sd35": "sd35_large",
+        "sd35_large": "sd35_large",
+        "sd3_5_large": "sd35_large",
+    }
+    return aliases.get(normalized)
+
+
 def _engine_preference(run_mode: str) -> str | None:
     if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "gpt_image_2"
@@ -656,6 +703,27 @@ def _engine_preference(run_mode: str) -> str | None:
     if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
         return "flux"
     return None
+
+
+def _engine_preference_for_request(request: GenerationJobCreateRequest) -> str | None:
+    metadata = request.metadata or {}
+    for key in ("requested_engine", "t2i_engine", "selected_engine", "engine"):
+        engine = _normalize_engine_preference(metadata.get(key))
+        if engine:
+            return engine
+    return _engine_preference(request.run_mode)
+
+
+def _apply_generation_engine_to_state(restored_payload: dict, request: GenerationJobCreateRequest) -> None:
+    engine = _engine_preference_for_request(request)
+    if not engine:
+        return
+    restored_payload["engine"] = engine
+    current_brief = restored_payload.setdefault("current_brief", {})
+    if isinstance(current_brief, dict):
+        current_brief["requested_engine"] = engine
+        current_brief["engine"] = engine
+
 
 def _model_provider_for_run_mode(run_mode: str) -> str | None:
     if run_mode in {"mock_immediate"}:
@@ -697,6 +765,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
     public_job_id = f"job_{uuid4().hex}"
     prompt_preview = _preview_user_input(request.user_input)
     request_payload = _request_payload_summary(request)
+    engine_preference = _engine_preference_for_request(request)
     with db_transaction() as conn:
         workspace = workspace_repo.ensure_demo_workspace(user_id=user_id, connection=conn)
 
@@ -738,8 +807,8 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             "ad_format": request.ad_format,
             "workspace_id": str(workspace["id"]),
             "public_thread_id": thread.get("public_thread_id"),
-            "engine_preference": _engine_preference(request.run_mode),
-            "t2i_engine": _engine_preference(request.run_mode),
+            "engine_preference": engine_preference,
+            "t2i_engine": engine_preference,
             **_safe_request_metadata(request.metadata),
         }
         row = generation_job_repo.create_generation_job_row(
@@ -756,9 +825,9 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             error=None,
             metadata=metadata,
             run_mode=request.run_mode,
-            engine=_engine_preference(request.run_mode),
+            engine=engine_preference,
             model_provider=_model_provider_for_request(request),
-            model_name=_model_name_for_run_mode(request.run_mode),
+            model_name=engine_preference,
             prompt_hash=hashlib.sha256(request.user_input.encode("utf-8")).hexdigest(),
             prompt_preview=prompt_preview,
             request_payload=request_payload,
@@ -795,6 +864,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             current_request_fields=explicit_fields,
             user_input=request.user_input,
         )
+        _apply_generation_engine_to_state(restored_payload, request)
         changed_fields = calculate_changed_fields(
             latest_snapshot.state_payload if latest_snapshot else None,
             restored_payload
@@ -933,6 +1003,9 @@ def _mark_generation_job_running_db(job_id: str, stage: str) -> GenerationJobRes
         row = generation_job_repo.mark_generation_job_running_row(job_id, current_stage=stage, connection=conn)
         if not row:
             return None
+        cleaned_metadata = _without_pending_interrupt(row.get("metadata") or {})
+        if cleaned_metadata != (row.get("metadata") or {}):
+            row = generation_job_repo.update_generation_job_row(job_id, metadata=cleaned_metadata, connection=conn) or row
         _record_generation_job_event_db(row, "running", message=stage, payload={"current_stage": stage}, connection=conn)
         if row.get("thread_id"):
             chat_thread_repo.update_chat_thread_status(
@@ -965,7 +1038,7 @@ def _mark_generation_job_done_db(
             _record_generation_job_event_db(existing, "stale_completion_ignored", message="Stale job ignored.", connection=conn)
             return _job_response_from_db_row(existing)
             
-        merged_metadata = {**(existing.get("metadata") or {}), **(metadata or {})}
+        merged_metadata = _without_pending_interrupt({**(existing.get("metadata") or {}), **(metadata or {})})
         final_path = _resolve_final_artifact_path(result_payload, output_path)
         row = generation_job_repo.mark_generation_job_done_row(
             job_id,
@@ -1087,7 +1160,7 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
             _record_generation_job_event_db(existing, "stale_failure_ignored", message="Stale failure ignored.", connection=conn)
             return _job_response_from_db_row(existing)
             
-        merged_metadata = {**(existing.get("metadata") or {}), **(metadata or {})}
+        merged_metadata = _without_pending_interrupt({**(existing.get("metadata") or {}), **(metadata or {})})
         row = generation_job_repo.mark_generation_job_failed_row(job_id, error_payload, metadata=merged_metadata, connection=conn)
         if not row:
             return None
@@ -1162,12 +1235,19 @@ def _mark_generation_job_waiting_user_input_db(
         existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
         if not existing:
             return None
+        pending_interrupt = _pending_interrupt_from_state(result_state)
+        metadata = {
+            **(existing.get("metadata") or {}),
+            "pending_interrupt": pending_interrupt,
+            "assistant_message": assistant_message,
+        }
             
         row = generation_job_repo.update_generation_job_row(
             job_id,
             status="waiting_user_input",
             current_stage="waiting_user_input",
             progress_percent=50,
+            metadata=metadata,
             connection=conn,
         )
         if not row:

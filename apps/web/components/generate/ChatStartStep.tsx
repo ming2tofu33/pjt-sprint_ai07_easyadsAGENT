@@ -3,9 +3,11 @@
 import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, PenLine, Send, Sparkles, Utensils } from "lucide-react";
 import { useState } from "react";
 import type { CopyGenerationMode, CustomCopyFields } from "@/types/marketing";
+import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "@/lib/generation-engine";
 import { readGenerationDraftPrompt, readGenerationRequestContext } from "@/lib/generation-request-context";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
+import { GenerationEngineSelector } from "./GenerationEngineSelector";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -24,7 +26,10 @@ const quickStarts = [
 ];
 
 type ChatStartStepProps = {
-  onSubmit: (prompt: string, options?: CustomCopyFields & { copyGenerationMode?: CopyGenerationMode }) => void;
+  onSubmit: (
+    prompt: string,
+    options?: CustomCopyFields & { copyGenerationMode?: CopyGenerationMode; imageGenerationEngine?: ImageGenerationEngine }
+  ) => void;
   onBack: () => void;
   onGoHome: () => void;
 };
@@ -39,6 +44,7 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
     return readGenerationDraftPrompt();
   });
   const [copyGenerationMode, setCopyGenerationMode] = useState<CopyGenerationMode>("suggest_candidates");
+  const [imageGenerationEngine, setImageGenerationEngine] = useState<ImageGenerationEngine>(DEFAULT_IMAGE_GENERATION_ENGINE);
   const [customHeadline, setCustomHeadline] = useState("");
   const [customSubcopy, setCustomSubcopy] = useState("");
   const usesCustomCopy = copyGenerationMode === "custom_input";
@@ -54,6 +60,7 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
     if (prompt.length > 0 && (!usesCustomCopy || customHeadlineText.length > 0)) {
       onSubmit(prompt, {
         copyGenerationMode,
+        imageGenerationEngine,
         userCustomHeadline: usesCustomCopy ? customHeadlineText : undefined,
         userCustomSubcopy: usesCustomCopy && customSubcopyText ? customSubcopyText : undefined
       });
@@ -137,6 +144,9 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
           </label>
         </div>
       ) : null}
+
+      <h2 className={styles.sectionTitle}>이미지 생성 모델</h2>
+      <GenerationEngineSelector value={imageGenerationEngine} onChange={setImageGenerationEngine} />
 
       <div className={`${styles.inputCard} ${styles.startInputCard}`}>
         <ImageIcon size={19} aria-hidden="true" />

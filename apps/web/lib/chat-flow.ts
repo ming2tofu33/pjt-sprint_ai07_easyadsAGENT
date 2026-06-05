@@ -7,6 +7,7 @@ import type {
   InferredContext,
   ToneOption
 } from "@/types/marketing";
+import { DEFAULT_IMAGE_GENERATION_ENGINE } from "./generation-engine";
 
 export const toneOptions: ToneOption[] = [
   { id: "emotional", label: "감성적인", icon: "heart" },
@@ -60,6 +61,7 @@ export function createInitialChatFlowState(): ChatFlowState {
     customDirection: "",
     brief: null,
     generationJob: null,
+    selectedImageGenerationEngine: DEFAULT_IMAGE_GENERATION_ENGINE,
     selectedReferenceTemplateId: null,
     selectedReferenceTemplateTitle: null,
     currentQuestion: null,
@@ -80,6 +82,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         progress: { current: 1, total: 4, label: "정보 입력" },
         userInput: action.prompt,
         copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
+        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
         inferredContext: {
           businessType: "",
           itemOrService: "",
@@ -130,6 +133,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         copyCandidates: nextCopyCandidates,
         copyCandidateSource: action.copyCandidateSource ?? (hasBackendCopyCandidates ? "backend" : "empty"),
         copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
+        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
         selectedCopyId: action.recommendedCopyId || nextCopyCandidates[0]?.id || "",
         currentQuestion: null,
         conversationMessages: [
@@ -161,6 +165,11 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         copyGenerationMode: action.copyGenerationMode
+      };
+    case "setImageGenerationEngine":
+      return {
+        ...state,
+        selectedImageGenerationEngine: action.imageGenerationEngine
       };
     case "continueToCopy":
       return {
@@ -243,7 +252,31 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         generationJob: action.generationJob,
+        currentQuestion: action.generationJob.status === "waiting_user_input" ? state.currentQuestion : null,
         isLoading: false,
+        errorMessage: null
+      };
+
+    case "generationJobQuestionReceived":
+      return {
+        ...state,
+        step: 4,
+        progress: { current: 4, total: 4, label: "추가 정보" },
+        generationJob: action.generationJob,
+        currentQuestion: action.question,
+        conversationMessages: [
+          ...state.conversationMessages,
+          { role: "assistant", text: action.question.question }
+        ],
+        isLoading: false,
+        errorMessage: null
+      };
+
+    case "submitGenerationJobAnswer":
+      return {
+        ...state,
+        conversationMessages: [...state.conversationMessages, { role: "user", text: action.label }],
+        isLoading: true,
         errorMessage: null
       };
 

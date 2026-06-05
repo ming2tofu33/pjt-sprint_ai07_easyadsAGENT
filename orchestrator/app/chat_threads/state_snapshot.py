@@ -28,6 +28,7 @@ PERSISTENT_FIELDS = {
     "missing_fields",
     "final_brief",
     "ad_format",
+    "engine",
     "copy_generation_mode",
     "selected_copy",
     "selected_reference_template_id",

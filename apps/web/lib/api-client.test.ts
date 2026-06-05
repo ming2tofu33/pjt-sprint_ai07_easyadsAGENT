@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  answerGenerationJob,
   createBrandKit,
   createGenerationJob,
   deleteArchiveItem,
@@ -473,6 +474,36 @@ describe("api-client backend contract routes", () => {
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/generation-jobs/job_1");
     expect(created.job.result_payload?.schema_version).toBe("result_artifact_v1");
     expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
+  });
+
+  it("answers generation job questions through the BFF", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed" },
+          metadata: { execution_mode: "graph_execution" }
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await answerGenerationJob("job_1", {
+      field: "business_type",
+      value: "cafe",
+      customText: undefined
+    });
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/generation-jobs/job_1/answer");
+    expect(fetchMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ field: "business_type", value: "cafe" })
+      })
+    );
+    expect(response.job.status).toBe("done");
   });
 
   it("calls archive endpoints through the BFF and maps response fields", async () => {

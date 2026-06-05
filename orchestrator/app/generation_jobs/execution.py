@@ -13,7 +13,11 @@ from orchestrator.app.artifacts.service import (
     get_job_output_dir,
     write_json_artifact,
 )
-from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest, GenerationJobResponse
+from orchestrator.app.api.schemas.generation_jobs import (
+    GenerationJobAnswerRequest,
+    GenerationJobCreateRequest,
+    GenerationJobResponse,
+)
 from orchestrator.app.generation_jobs.service import (
     get_generation_job,
     mark_generation_job_done,
@@ -134,8 +138,13 @@ def execute_generation_job_immediate(job_id: str, request: GenerationJobCreateRe
         raise
 
 
+def get_generation_job_graph():
+    from orchestrator.app.api.marketing_graph import MARKETING_GRAPH
+
+    return MARKETING_GRAPH
+
+
 def execute_generation_job_graph(job_id: str, request: GenerationJobCreateRequest) -> GenerationJobResponse:
-    from orchestrator.app.graph.builder import build_marketing_graph
     from orchestrator.app.chat_threads import state_service
     from orchestrator.app.chat_threads.state_snapshot import restore_persistent_state, calculate_changed_fields
     from orchestrator.app.generation_jobs.service import update_generation_job
@@ -198,7 +207,7 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
         initial_state["user_input"] = request.user_input
 
         # Execute
-        graph = build_marketing_graph()
+        graph = get_generation_job_graph()
         config = {
             "configurable": {
                 "thread_id": job.thread_id,
@@ -282,6 +291,76 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
             metadata={"execution_mode": "graph_execution_failed"},
         )
         return failed or job
+
+
+def resume_generation_job_graph(job_id: str, answer: GenerationJobAnswerRequest) -> GenerationJobResponse:
+    from langgraph.types import Command
+    from orchestrator.app.chat_threads.state_snapshot import calculate_changed_fields
+    from orchestrator.app.generation_jobs.service import mark_generation_job_done, mark_generation_job_failed, mark_generation_job_running, mark_generation_job_waiting_user_input
+
+    job = get_generation_job(job_id)
+    if not job:
+        raise ValueError("generation job was not found")
+    if job.status != "waiting_user_input":
+        raise ValueError("generation job is not waiting for user input")
+    if not job.thread_id:
+        raise ValueError("generation job has no thread_id")
+
+    running = mark_generation_job_running(job_id, stage="planning")
+    job = running or job
+
+    resume_payload = answer.to_resume_payload(job_id=job_id, thread_id=job.thread_id)
+    graph = get_generation_job_graph()
+    result_state = graph.invoke(
+        Command(resume=resume_payload),
+        config={"configurable": {"thread_id": job.thread_id}},
+    )
+    changed_fields = calculate_changed_fields(None, result_state)
+
+    if "__interrupt__" in result_state:
+        last_message = None
+        for message in reversed(result_state.get("messages", [])):
+            if message.get("role") == "assistant":
+                last_message = message
+                break
+        assistant_message = last_message.get("content") if last_message else "추가 정보가 필요해요."
+        updated = mark_generation_job_waiting_user_input(
+            job_id=job_id,
+            result_state=result_state,
+            changed_fields=changed_fields,
+            assistant_message=assistant_message,
+        )
+        return updated or job
+
+    if result_state.get("status") == "done":
+        done = mark_generation_job_done(
+            job_id,
+            result_payload=result_state.get("result_payload") or {},
+            output_path=result_state.get("final_image_path"),
+            metadata={
+                "requested_run_mode": "graph_immediate",
+                "effective_run_mode": "graph_immediate",
+                "execution_mode": "graph_execution",
+                "final_brief": result_state.get("current_brief"),
+            },
+        )
+        return done or job
+
+    if result_state.get("status") == "failed":
+        error_info = result_state.get("error_info") or {}
+        failed = mark_generation_job_failed(
+            job_id,
+            {
+                "error_code": error_info.get("error_code") or "generation_job_execution_failed",
+                "error_type": error_info.get("error_type"),
+                "message": error_info.get("message") or "Graph execution failed",
+                "detail": result_state.get("error_message"),
+            },
+            metadata={"execution_mode": "graph_execution_failed"},
+        )
+        return failed or job
+
+    raise ValueError(f"Unexpected graph result status: {result_state.get('status')}")
 
 
 def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest, engine_name: str) -> GenerationJobResponse:

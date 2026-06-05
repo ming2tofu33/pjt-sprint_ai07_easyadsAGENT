@@ -1,4 +1,5 @@
 import type { GenerationJob } from "@/lib/api-client";
+import type { ImageGenerationEngine } from "@/lib/generation-engine";
 
 export type ChatFlowStep = 1 | 2 | 3 | 4;
 
@@ -83,6 +84,10 @@ export type ReferenceTemplateFields = {
   selectedReferenceTemplateTitle?: string | null;
 };
 
+export type ImageGenerationEngineFields = {
+  imageGenerationEngine?: ImageGenerationEngine;
+};
+
 export type ChatFlowState = {
   entryMode: EntryMode;
   step: ChatFlowStep;
@@ -101,6 +106,7 @@ export type ChatFlowState = {
   customDirection: string;
   brief: ChatBrief | null;
   generationJob?: GenerationJob | null;
+  selectedImageGenerationEngine: ImageGenerationEngine;
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
   currentQuestion: OptionQuestion | null;
@@ -111,7 +117,12 @@ export type ChatFlowState = {
 
 export type ChatFlowAction =
   | { type: "reset" }
-  | { type: "submitPrompt"; prompt: string; copyGenerationMode?: CopyGenerationMode }
+  | {
+      type: "submitPrompt";
+      prompt: string;
+      copyGenerationMode?: CopyGenerationMode;
+      imageGenerationEngine?: ImageGenerationEngine;
+    }
   | {
       type: "backendStartSucceeded";
       prompt: string;
@@ -122,6 +133,7 @@ export type ChatFlowAction =
       recommendedCopyId?: string | null;
       copyCandidateSource?: CopyCandidateSource;
       copyGenerationMode?: CopyGenerationMode;
+      imageGenerationEngine?: ImageGenerationEngine;
     }
   | {
       type: "backendQuestionReceived";
@@ -135,6 +147,7 @@ export type ChatFlowAction =
   | { type: "beginBriefRequest" }
   | { type: "selectTone"; tone: string }
   | { type: "setCopyGenerationMode"; copyGenerationMode: CopyGenerationMode }
+  | { type: "setImageGenerationEngine"; imageGenerationEngine: ImageGenerationEngine }
   | { type: "continueToCopy" }
   | { type: "selectCopy"; copyId: string }
   | { type: "selectChannel"; channelId: string }
@@ -157,4 +170,10 @@ export type ChatFlowAction =
   | { type: "back" }
   | { type: "generationJobRequested" }
   | { type: "generationJobUpdated"; generationJob: GenerationJob }
+  | {
+      type: "generationJobQuestionReceived";
+      generationJob: GenerationJob;
+      question: OptionQuestion;
+    }
+  | { type: "submitGenerationJobAnswer"; label: string }
   | { type: "generationJobFailed"; message: string };

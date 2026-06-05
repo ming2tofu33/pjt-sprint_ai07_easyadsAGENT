@@ -1,6 +1,7 @@
 from pydantic import ValidationError
 
 from orchestrator.app.api.schemas.generation_jobs import (
+    GenerationJobAnswerRequest,
     GenerationJobCreateRequest,
     GenerationJobCreateResponse,
     GenerationJobResponse,
@@ -23,6 +24,37 @@ def test_generation_job_create_request_validation():
         pass
     else:
         raise AssertionError("blank user_input should fail validation")
+
+
+def test_generation_job_answer_request_builds_option_resume_payload():
+    request = GenerationJobAnswerRequest(
+        field="business_type",
+        value="cafe",
+        custom_text=None,
+    )
+
+    payload = request.to_resume_payload(job_id="job_1", thread_id="thread_1")
+
+    assert payload == {
+        "job_id": "job_1",
+        "thread_id": "thread_1",
+        "field": "business_type",
+        "value": "cafe",
+    }
+
+
+def test_generation_job_answer_request_supports_camel_case_custom_text():
+    request = GenerationJobAnswerRequest.model_validate(
+        {
+            "field": "item_or_service",
+            "value": "custom",
+            "customText": "딸기라떼",
+        }
+    )
+
+    payload = request.to_resume_payload(job_id="job_1", thread_id="thread_1")
+
+    assert payload["custom_text"] == "딸기라떼"
 
 
 def test_generation_progress_percent_validation():

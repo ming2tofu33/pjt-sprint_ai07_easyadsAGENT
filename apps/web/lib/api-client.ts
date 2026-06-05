@@ -4,6 +4,7 @@ import type {
   CopyOption,
   CustomCopyFields,
   InferredContext,
+  ImageGenerationEngineFields,
   OptionQuestion,
   PartialInferredContext,
   ReferenceTemplateFields
@@ -59,7 +60,7 @@ export type ChatBriefResponse = {
   brief: ChatBrief;
 };
 
-export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & {
+export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & ImageGenerationEngineFields & {
   copyGenerationMode?: CopyGenerationMode;
   adFormat?: string;
   renderProfile?: string;
@@ -116,6 +117,16 @@ export type PhotoUploadResponse = {
 export type ReferenceQueryParams = Record<string, string | number | boolean | string[] | undefined | null>;
 export type BrandKitPayload = Record<string, unknown>;
 export type GenerationJobPayload = Record<string, unknown>;
+
+export type GenerationJobAnswerPayload = {
+  field?: string;
+  value?: string;
+  customText?: string;
+  selectedCopyId?: string;
+  userCustomHeadline?: string;
+  userCustomSubcopy?: string;
+  payload?: Record<string, unknown>;
+};
 
 export type GenerationJobStatus = "queued" | "running" | "done" | "failed" | string;
 
@@ -302,6 +313,10 @@ async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams
     throw new Error(normalizeApiErrorMessage(payload?.message || payload?.error || "API request failed"));
   }
   return payload as TResponse;
+}
+
+function compactPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined && value !== null));
 }
 
 async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
@@ -579,6 +594,10 @@ export function createGenerationJob(payload: GenerationJobPayload): Promise<Gene
 
 export function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
   return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function answerGenerationJob(jobId: string, payload: GenerationJobAnswerPayload): Promise<GenerationJobResponse> {
+  return postJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}/answer`, compactPayload(payload));
 }
 
 export async function saveArchiveItem(input: ArchiveItemCreateInput): Promise<ArchiveMutationResponse> {

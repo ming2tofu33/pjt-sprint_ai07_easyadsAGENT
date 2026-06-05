@@ -1,5 +1,6 @@
 import { buildGeneratedAssetUrl } from "@/lib/generated-assets";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
+import type { ImageGenerationEngine } from "@/lib/generation-engine";
 import type { ChatBrief, CopyCandidateSource, CopyOption, InferredContext } from "@/types/marketing";
 
 export type GeneratedCreativeSnapshot = {
@@ -16,6 +17,7 @@ export type GeneratedCreativeSnapshot = {
   brief: ChatBrief;
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
+  imageGenerationEngine?: ImageGenerationEngine;
 };
 
 const GENERATED_CREATIVES_STORAGE_KEY = "easyads_generated_creatives_v1";

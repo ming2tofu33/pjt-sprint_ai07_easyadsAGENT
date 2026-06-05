@@ -3,8 +3,10 @@
 import { FileImage, ImagePlus, MessageCircle, PenLine, Send, Sparkles, UploadCloud } from "lucide-react";
 import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CopyGenerationMode, CustomCopyFields } from "@/types/marketing";
+import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "@/lib/generation-engine";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
+import { GenerationEngineSelector } from "./GenerationEngineSelector";
 import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
@@ -13,6 +15,7 @@ type PhotoGenerateInput = {
   file: File;
   prompt: string;
   copyGenerationMode?: CopyGenerationMode;
+  imageGenerationEngine?: ImageGenerationEngine;
 } & CustomCopyFields;
 
 type PhotoGenerateStepProps = {
@@ -41,6 +44,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [copyGenerationMode, setCopyGenerationMode] = useState<CopyGenerationMode>("suggest_candidates");
+  const [imageGenerationEngine, setImageGenerationEngine] = useState<ImageGenerationEngine>(DEFAULT_IMAGE_GENERATION_ENGINE);
   const [customHeadline, setCustomHeadline] = useState("");
   const [customSubcopy, setCustomSubcopy] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -102,6 +106,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
         file: selectedFile,
         prompt: promptText,
         copyGenerationMode,
+        imageGenerationEngine,
         userCustomHeadline: usesCustomCopy ? customHeadlineText : undefined,
         userCustomSubcopy: usesCustomCopy && customSubcopyText ? customSubcopyText : undefined
       });
@@ -207,6 +212,9 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
             </label>
           </div>
         ) : null}
+
+        <h2 className={styles.sectionTitle}>이미지 생성 모델</h2>
+        <GenerationEngineSelector value={imageGenerationEngine} onChange={setImageGenerationEngine} />
 
         {errorMessage ? (
           <p className={styles.photoTip} role="alert">

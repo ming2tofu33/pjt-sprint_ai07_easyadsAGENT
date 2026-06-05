@@ -6,6 +6,7 @@ from fastapi import APIRouter, status
 
 from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.api.schemas.generation_jobs import (
+    GenerationJobAnswerRequest,
     GenerationJobCreateRequest,
     GenerationJobCreateResponse,
     GenerationJobGetResponse,
@@ -14,6 +15,7 @@ from orchestrator.app.generation_jobs.execution import (
     execute_generation_job_immediate,
     execute_generation_job_t2i,
     execute_generation_job_graph,
+    resume_generation_job_graph,
 )
 from orchestrator.app.generation_jobs.service import (
     create_generation_job,
@@ -90,3 +92,20 @@ def get_generation_job_route(job_id: str) -> GenerationJobGetResponse:
         _generation_job_not_found(job_id)
     job = maybe_poll_generation_job_from_modal(job)
     return GenerationJobGetResponse(job=job)
+
+
+@router.post("/generation-jobs/{job_id}/answer", response_model=GenerationJobGetResponse)
+def answer_generation_job_route(job_id: str, request: GenerationJobAnswerRequest) -> GenerationJobGetResponse:
+    job = get_generation_job(job_id)
+    if not job:
+        _generation_job_not_found(job_id)
+    try:
+        resumed = resume_generation_job_graph(job_id, request)
+    except ValueError as exc:
+        raise_api_error(
+            status_code=409,
+            error_code="generation_job_resume_failed",
+            message="Generation job could not be resumed.",
+            detail=str(exc),
+        )
+    return GenerationJobGetResponse(job=resumed)

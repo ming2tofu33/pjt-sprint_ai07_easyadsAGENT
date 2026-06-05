@@ -1,6 +1,7 @@
 export type UiGraphCapability =
   | "chat.start"
   | "chat.answer-context-question"
+  | "generation-job.answer-context-question"
   | "copy-mode.suggest-candidates"
   | "copy-selection.copy-channel-tone"
   | "copy-selection.visual-direction"
@@ -39,6 +40,7 @@ export type UiGraphCoverageReport = {
 export const CURRENT_UI_GRAPH_CAPABILITIES: UiGraphCapability[] = [
   "chat.start",
   "chat.answer-context-question",
+  "generation-job.answer-context-question",
   "copy-mode.suggest-candidates",
   "copy-selection.copy-channel-tone",
   "copy-selection.visual-direction",
@@ -58,6 +60,13 @@ export const UI_GRAPH_COVERAGE_MATRIX: UiGraphCoverageExpectation[] = [
     userFlow: "대화 시작 후 부족한 업종/상품/목적 질문에 답변",
     requiredCapabilities: ["chat.start", "chat.answer-context-question"],
     expectedGraphNodes: ["validator", "options", "state_update"],
+  },
+  {
+    id: "generation-job-context-loop",
+    label: "최종 생성 중 부족 컨텍스트 질문 재개",
+    userFlow: "브리프 확인 후 최종 생성 job이 추가 질문을 요청하면 답변하고 같은 job을 재개",
+    requiredCapabilities: ["chat.start", "generation-job.answer-context-question"],
+    expectedGraphNodes: ["validator", "options", "state_update", "t2i_request_builder"],
   },
   {
     id: "chat-suggest-candidates",

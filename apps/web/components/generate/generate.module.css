@@ -641,6 +641,41 @@
   white-space: nowrap;
 }
 
+.engineGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 9px;
+}
+
+.engineGrid .chip {
+  justify-content: flex-start;
+  min-height: 58px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.engineChipText {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  line-height: 1.15;
+}
+
+.engineChipText strong {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.engineChipText small {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.chipSelected .engineChipText small {
+  color: var(--color-brand-purple-text);
+}
+
 .customCopyFields {
   margin-top: 14px;
   display: grid;
@@ -1293,6 +1328,14 @@
 .statusItem[data-state="done"] .statusIcon {
   background: var(--color-purple);
   color: var(--color-text-inverse);
+}
+
+.engineStatusNote {
+  margin: -2px 0 12px;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 800;
 }
 
 .generationProgress {

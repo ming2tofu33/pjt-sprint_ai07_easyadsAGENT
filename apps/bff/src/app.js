@@ -86,6 +86,16 @@ const generationJobSchema = z.object({
   selectedReferenceTemplateId: z.string().optional()
 }).passthrough();
 
+const generationJobAnswerSchema = z.object({
+  field: z.string().trim().min(1).optional(),
+  value: z.string().optional(),
+  customText: z.string().optional(),
+  selectedCopyId: z.string().optional(),
+  userCustomHeadline: z.string().optional(),
+  userCustomSubcopy: z.string().optional(),
+  payload: z.record(z.unknown()).optional()
+}).passthrough();
+
 const archiveItemSchema = z.object({
   title: z.string().trim().min(1),
   publicJobId: z.string().trim().min(1).optional(),
@@ -420,6 +430,19 @@ export function buildApp(options = {}) {
       url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}`
     })
   );
+
+  app.post("/api/generation-jobs/:jobId/answer", async (request, reply) => {
+    const parsed = generationJobAnswerSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+
+    return proxyJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}/answer`,
+      body: parsed.data
+    });
+  });
 
   app.get("/api/archive/items", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";

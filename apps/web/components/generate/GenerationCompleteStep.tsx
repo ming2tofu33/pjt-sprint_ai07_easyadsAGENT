@@ -11,6 +11,7 @@ import {
   resolveDownloadUrl,
   resolvePreviewImageUrl
 } from "@/lib/generation-result-utils";
+import { getGenerationEngineOption } from "@/lib/generation-engine";
 import type { CreativeTone, MockCreative } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { MascotImage } from "./MascotImage";
@@ -109,13 +110,17 @@ export function GenerationCompleteStep({
   const isDevelopment = process.env.NODE_ENV !== "production";
   const hasResultContext = Boolean(brief || generatedJob);
   const isDoneWithoutPublicUrl = generatedJob?.status === "done" && !generatedImageUrl;
+  const selectedEngineLabel =
+    (typeof generatedJob?.metadata?.selected_engine_label === "string" ? generatedJob.metadata.selected_engine_label : "") ||
+    getGenerationEngineOption(state.selectedImageGenerationEngine).modelName;
   const resultChips = brief
     ? [
         state.inferredContext.businessType,
         brief.item,
         brief.purpose,
         state.selectedTone,
-        channelName(brief.channel)
+        channelName(brief.channel),
+        selectedEngineLabel
       ].map(cleanLabel).filter(Boolean)
     : [];
   const editActions = brief && generatedImageUrl ? buildEditActions(brief) : [];

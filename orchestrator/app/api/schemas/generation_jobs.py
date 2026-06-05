@@ -78,6 +78,38 @@ class GenerationJobCreateRequest(BaseModel):
         return normalized
 
 
+class GenerationJobAnswerRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    field: str | None = None
+    value: str | None = None
+    custom_text: str | None = Field(default=None, alias="customText")
+    selected_copy_id: str | None = Field(default=None, alias="selectedCopyId")
+    user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
+    user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    def to_resume_payload(self, *, job_id: str, thread_id: str) -> dict[str, Any]:
+        resume_payload: dict[str, Any] = {
+            "job_id": job_id,
+            "thread_id": thread_id,
+        }
+        if self.field is not None:
+            resume_payload["field"] = self.field
+        if self.value is not None:
+            resume_payload["value"] = self.value
+        if self.custom_text:
+            resume_payload["custom_text"] = self.custom_text
+        if self.selected_copy_id:
+            resume_payload["selected_copy_id"] = self.selected_copy_id
+        if self.user_custom_headline:
+            resume_payload["user_custom_headline"] = self.user_custom_headline
+        if self.user_custom_subcopy:
+            resume_payload["user_custom_subcopy"] = self.user_custom_subcopy
+        resume_payload.update(self.payload)
+        return resume_payload
+
+
 class GenerationProgress(BaseModel):
     progress_percent: int = Field(default=0, ge=0, le=100)
     current_stage: str = "queued"
