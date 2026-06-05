@@ -45,7 +45,7 @@ async function newPage(browser) {
 async function runReferenceSelectionSmoke(browser) {
   const page = await newPage(browser);
   await page.goto(`${WEB_BASE_URL}/reference`, { waitUntil: "networkidle" });
-  await expect(page.getByRole("heading", { name: "찰떡 레퍼런스 둘러보기" })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole("heading", { name: "찰떡 광고 샘플 둘러보기" })).toBeVisible({ timeout: 10000 });
   const title = "수박주스 블루 여름 피드";
   await page.getByRole("button", { name: `${title} 스타일로 시작` }).scrollIntoViewIfNeeded();
   await page.getByRole("button", { name: `${title} 스타일로 시작` }).click();

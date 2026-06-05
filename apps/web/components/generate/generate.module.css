@@ -146,7 +146,7 @@
 }
 
 .homeHero {
-  margin-top: 18px;
+  margin-top: 12px;
   min-height: 226px;
   border-radius: 18px;
   background:
@@ -318,7 +318,7 @@
 }
 
 .dashboardHero {
-  margin-top: 16px;
+  margin-top: 12px;
   min-height: 202px;
   border-radius: 18px;
   background:
@@ -788,12 +788,25 @@
   gap: 7px;
 }
 
+.secondaryButton[data-danger="true"] {
+  border-color: rgba(220, 78, 65, 0.28);
+  background: #fff6f3;
+  color: var(--color-status-danger);
+}
+
+.secondaryButton[data-danger="true"] svg {
+  color: var(--color-status-danger);
+}
+
 .stepFooter {
   margin-top: auto;
   padding: 18px 0 0;
   position: sticky;
   bottom: 0;
   z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0), var(--color-bg-surface) 18%),
     var(--color-bg-surface);
@@ -1397,7 +1410,7 @@
 }
 
 .searchField {
-  margin-top: 16px;
+  margin-top: 12px;
   min-height: 42px;
   border: 1px solid var(--color-border-soft);
   border-radius: 14px;
@@ -1443,12 +1456,15 @@
 }
 
 .categoryScroller {
+  flex: 0 0 auto;
   margin: 12px calc(var(--screen-padding-x) * -1) 10px 0;
+  min-height: 44px;
   display: flex;
+  align-items: center;
   gap: 8px;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-right: var(--screen-padding-x);
+  padding: 0 var(--screen-padding-x) 0 0;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   touch-action: pan-x;
@@ -1707,7 +1723,7 @@
 }
 
 .sampleLibraryHeader {
-  margin-top: 16px;
+  margin-top: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2633,7 +2649,7 @@
 }
 
 .completeHero {
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .completeHero > span {
@@ -3010,9 +3026,14 @@
 
 .adCreativeVisual {
   position: relative;
+  width: 100%;
   min-height: 72px;
+  border: 0;
   overflow: hidden;
   border-radius: 10px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -3031,6 +3052,32 @@
 .adCreativeCard[data-compact="true"] .adCreativeVisual[data-has-image="true"] {
   min-height: 70px;
   margin: -8px -8px 6px;
+}
+
+.referenceGrid .adCreativeCard[data-gallery="true"] {
+  min-height: 236px;
+  padding: 8px;
+}
+
+.referenceGrid .adCreativeCard[data-gallery="true"] .adCreativeVisual[data-has-image="true"] {
+  width: calc(100% + 16px);
+  aspect-ratio: 1 / 1;
+  min-height: 0;
+  margin: -8px -8px 10px;
+  border-radius: 0 0 12px 12px;
+  background: #f6f2ea;
+  cursor: pointer;
+  display: block;
+}
+
+.referenceGrid .adCreativeCard[data-gallery="true"] .adCreativeImage {
+  object-fit: contain;
+  object-position: center;
+}
+
+.referenceGrid .adCreativeCard[data-gallery="true"] .adCreativeVisual:focus-visible {
+  outline: 3px solid rgba(145, 186, 31, 0.42);
+  outline-offset: -3px;
 }
 
 .adCreativeImage {
@@ -3096,6 +3143,14 @@
   font-weight: 950;
 }
 
+.adCreativeCard[data-gallery="true"] .adCreativeCopy h2 {
+  max-width: 100%;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .adCreativeCard[data-compact="true"] .adCreativeCopy h2 {
   max-width: 96px;
   font-size: 11px;
@@ -3108,6 +3163,14 @@
   font-size: 10px;
   line-height: 1.35;
   font-weight: 800;
+}
+
+.adCreativeCard[data-gallery="true"] .adCreativeCopy p {
+  max-width: 100%;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .adCreativeActionButton {
@@ -3186,7 +3249,7 @@
 .referenceDetailHero {
   position: relative;
   min-height: 270px;
-  margin-top: 14px;
+  margin-top: 10px;
   border: 1px solid var(--color-border-hairline);
   border-radius: 14px;
   overflow: hidden;
@@ -3616,7 +3679,7 @@
 
 .adDetailPreview {
   position: relative;
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .adDetailPreview > button {
@@ -4243,7 +4306,7 @@
 
 .photoDropzone {
   position: relative;
-  margin-top: 18px;
+  margin-top: 12px;
   min-height: 154px;
   border: 1px solid rgba(176, 203, 32, 0.46);
   border-radius: 18px;
@@ -4407,8 +4470,7 @@
 
 .photoRecentCard,
 .photoAnalysisCard,
-.photoBriefPreview,
-.photoPromptCard {
+.photoBriefPreview {
   border: 1px solid var(--color-border-soft);
   border-radius: 16px;
   background: var(--color-bg-card);
@@ -4493,43 +4555,33 @@
   font-weight: 800;
 }
 
-.photoPromptCard {
-  margin-top: 14px;
-  min-height: 56px;
-  display: grid;
-  grid-template-columns: 1fr 28px;
-  align-items: end;
-  gap: 8px;
-  padding: 8px 12px;
-  color: var(--color-text);
-  background: rgba(255, 255, 255, 0.94);
-  position: sticky;
-  bottom: 8px;
-  z-index: 35;
-  isolation: isolate;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 -14px 32px rgba(170, 146, 255, 0.18), 0 10px 30px rgba(17, 17, 17, 0.06);
-}
-
-.photoPromptTextarea {
-  width: 100%;
-  min-height: 38px;
-  max-height: 132px;
-  padding: 8px 0;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  color: var(--color-text);
-  background: transparent;
-  font: inherit;
-  line-height: 1.45;
-  resize: none;
-  overflow-y: auto;
-  overflow-wrap: anywhere;
-}
-
 .photoInputCard {
   min-height: 68px;
+}
+
+.photoStartForm .photoInputCard {
+  margin-top: auto;
+}
+
+.photoChatFallbackButton {
+  min-height: 44px;
+  margin-top: 12px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 14px;
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.photoChatFallbackButton:disabled {
+  cursor: not-allowed;
+  color: var(--color-muted);
+  background: var(--color-neutral-chip);
 }
 
 .photoInputText {
@@ -5020,6 +5072,12 @@
   font-size: 13px;
   line-height: 1.2;
   font-weight: 900;
+}
+
+.notificationActionRow button:disabled {
+  cursor: not-allowed;
+  background: var(--color-neutral-chip);
+  color: var(--color-muted);
 }
 
 .notificationInfoBox {
@@ -5517,16 +5575,30 @@
   width: 72px;
   height: 72px;
   border-radius: 28px;
-  background:
-    radial-gradient(circle at 46% 42%, #111 0 4px, transparent 5px),
-    radial-gradient(circle at 60% 42%, #111 0 4px, transparent 5px),
-    radial-gradient(circle at 54% 58%, #111 0 8px, transparent 9px),
-    linear-gradient(145deg, #f5ffd0, #eaff79);
-  color: transparent;
+  background: linear-gradient(145deg, #f5ffd0, #eaff79);
+  color: var(--color-text-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid rgba(184, 205, 40, 0.24);
+}
+
+.myProfileCard > span > svg {
+  color: currentColor;
+  flex: 0 0 auto;
+}
+
+.myProfileAvatar {
+  background: var(--color-neutral-chip) !important;
+  color: var(--color-text-primary) !important;
+  overflow: hidden;
+}
+
+.myProfileAvatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
 }
 
 .myProfileCard strong,
@@ -5891,6 +5963,26 @@
   margin-top: 14px;
   display: grid;
   gap: 10px;
+}
+
+.accountActionNotice {
+  margin: 14px 0 0;
+  border: 1px solid rgba(220, 78, 65, 0.22);
+  border-radius: var(--radius-md);
+  background: #fff6f3;
+  color: var(--color-status-danger);
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 850;
+}
+
+.accountActionNotice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
 .stepHeader .myPeriodButton {

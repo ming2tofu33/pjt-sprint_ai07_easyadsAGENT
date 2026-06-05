@@ -23,6 +23,7 @@ class RecoveryAction(BaseModel):
 class ErrorResponse(BaseModel):
     success: Literal[False] = False
     error_code: str
+    error_type: str | None = None
     message: str
     detail: str | None = None
     recovery_actions: list[RecoveryAction] = Field(default_factory=list)

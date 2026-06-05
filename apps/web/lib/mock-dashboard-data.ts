@@ -245,13 +245,6 @@ export function getAdCreativeById(id: string): MockCreative | undefined {
   return archivedCreatives.find((creative) => creative.id === id);
 }
 
-export const myProfile = {
-  ownerName: "로그인 사용자",
-  email: "이메일 연결 전",
-  plan: "무료 플랜 사용 중",
-  loginMethod: "이메일 로그인"
-};
-
 export const myActivitySummary = {
   generatedAds: 12,
   savedAds: 8,

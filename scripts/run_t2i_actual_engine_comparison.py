@@ -196,6 +196,7 @@ def _execute_case(client: TestClient | None, case: dict[str, str], engine: str) 
     job = payload.get("job") or {}
     result_payload = job.get("result_payload") or {}
     error = job.get("error") or {}
+    metadata = job.get("metadata") or {}
     return {
         "status": "success" if job.get("status") == "done" else str(job.get("status") or "failed"),
         "job_id": job.get("job_id"),
@@ -207,7 +208,14 @@ def _execute_case(client: TestClient | None, case: dict[str, str], engine: str) 
         "storage_provider": result_payload.get("storage_provider"),
         "object_key_present": bool(result_payload.get("object_key")),
         "error_code": error.get("error_code"),
-        "error_message": error.get("message"),
+        "error_type": error.get("error_type"),
+        "error_message": _sanitize_error_message(error.get("message")),
+        "error_detail": _sanitize_error_message(error.get("detail")),
+        "clip_token_count": metadata.get("clip_token_count"),
+        "clip_max_tokens": metadata.get("clip_max_tokens"),
+        "clip_truncated": metadata.get("clip_truncated"),
+        "prompt_2_used": metadata.get("prompt_2_used"),
+        "critical_constraints_preserved": metadata.get("critical_constraints_preserved"),
     }
 
 
@@ -229,7 +237,14 @@ def _run_stub(case: dict[str, str], engine: str, *, use_actual_run_mode: bool) -
         "storage_provider": None,
         "object_key_present": False,
         "error_code": None,
+        "error_type": None,
         "error_message": None,
+        "error_detail": None,
+        "clip_token_count": None,
+        "clip_max_tokens": None,
+        "clip_truncated": None,
+        "prompt_2_used": None,
+        "critical_constraints_preserved": None,
         "prompt_hash": hashlib.sha256(case["user_input"].encode("utf-8")).hexdigest(),
         "prompt_preview": " ".join(case["user_input"].split())[:180],
         "manual_review_required": True,
@@ -369,6 +384,17 @@ def _dedupe(values: list[str]) -> list[str]:
     return output
 
 
+def _sanitize_error_message(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    for name in SECRET_ENV_NAMES:
+        secret = os.getenv(name)
+        if secret:
+            text = text.replace(secret, "[REDACTED]")
+    return " ".join(text.split())[:500]
+
+
 def _parse_csv(value: str | None) -> list[str] | None:
     if not value:
         return None
@@ -405,7 +431,30 @@ def main(argv: list[str] | None = None) -> int:
         include_comparison=args.include_comparison,
         output_json=Path(args.output_json) if args.output_json else None,
     )
-    print(json.dumps({"status": report["status"], "report_path": report["report_path"]}, ensure_ascii=False))
+    safe_runs = [
+        {
+            "engine": run.get("engine"),
+            "case_id": run.get("case_id"),
+            "status": run.get("status"),
+            "error_code": run.get("error_code"),
+            "error_type": run.get("error_type"),
+            "error_message": run.get("error_message"),
+            "clip_token_count": run.get("clip_token_count"),
+            "clip_max_tokens": run.get("clip_max_tokens"),
+            "clip_truncated": run.get("clip_truncated"),
+            "prompt_2_used": run.get("prompt_2_used"),
+            "critical_constraints_preserved": run.get("critical_constraints_preserved"),
+        }
+        for run in report["runs"]
+    ]
+    print(
+        json.dumps(
+            {"status": report["status"], "report_path": report["report_path"], "runs": safe_runs},
+            ensure_ascii=False,
+        )
+    )
+    if report["status"] in {"failed", "blocked"}:
+        return 1
     return 0
 
 

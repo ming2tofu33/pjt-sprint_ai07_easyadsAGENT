@@ -140,8 +140,8 @@ test("home dashboard opens reference gallery and returns home", async ({ page })
   await page.goto("/");
 
   await page.getByRole("button", { name: /레퍼런스 보고 만들기/ }).click();
-  await expect(page.getByText("REFERENCE GALLERY")).toBeVisible();
-  await expect(page.getByText("찰떡 레퍼런스 둘러보기")).toBeVisible();
+  await expect(page.getByText("SAMPLE GALLERY")).toBeVisible();
+  await expect(page.getByText("찰떡 광고 샘플 둘러보기")).toBeVisible();
 
   await page.getByLabel("홈으로").click();
   await expect(page.getByText("레퍼런스 보고 만들기")).toBeVisible();
@@ -153,15 +153,13 @@ test("reference style flow reaches style-based start", async ({ page }) => {
   await page.getByRole("button", { name: "샘플 레퍼런스 보기" }).click();
   await page.getByRole("button", { name: "감성 카페 신메뉴 포스터 상세 보기" }).click();
   await expect(page).toHaveURL(/\/reference\/ref-strawberry-poster$/);
-  await expect(page.getByText("레퍼런스 상세")).toBeVisible();
+  await expect(page.getByText("샘플 상세")).toBeVisible();
+  await expect(page.getByRole("button", { name: "비슷한 스타일 더 보기 (준비 중)" })).toBeDisabled();
 
   await page.getByRole("button", { name: /이 스타일로 내 광고 만들기/ }).click();
   await expect(page).toHaveURL(/\/reference\/ref-strawberry-poster\/analysis$/);
   await expect(page.getByText("AI 스타일 분석")).toBeVisible();
-
-  await page.getByRole("button", { name: "비슷한 스타일 더 탐색하기" }).click();
-  await expect(page).toHaveURL(/\/reference\/ref-strawberry-poster\/similar$/);
-  await expect(page.getByText("비슷한 스타일 추천")).toBeVisible();
+  await expect(page.getByRole("button", { name: "비슷한 스타일 더 탐색하기 (준비 중)" })).toBeDisabled();
 
   await page.getByRole("button", { name: "이 스타일로 내 광고 만들기" }).click();
   await expect(page).toHaveURL(/\/reference\/ref-strawberry-poster\/start$/);
@@ -392,7 +390,7 @@ test("photo upload flow reaches brief and generation", async ({ page }) => {
 
   await page.getByRole("button", { name: /내 사진으로 만들기/ }).click();
   await expect(page).toHaveURL(/\/generate\/photo$/);
-  await expect(page.getByText("사진과 광고 방향을 함께 보내주세요.")).toBeVisible();
+  await expect(page.getByText("광고에 쓸 사진을 올려주세요")).toBeVisible();
   await expect(page.getByRole("button", { name: "사진 선택하기" })).toBeVisible();
 
   await page.getByLabel("광고 사진 선택").setInputFiles({
@@ -427,7 +425,7 @@ test("exception state screens guide recovery actions", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "검색 결과가 없어요" })).toBeVisible();
   await page.getByRole("button", { name: /전체 레퍼런스 보기/ }).click();
   await expect(page).toHaveURL(/\/reference$/);
-  await expect(page.getByText("REFERENCE GALLERY")).toBeVisible();
+  await expect(page.getByText("SAMPLE GALLERY")).toBeVisible();
 
   await page.goto("/ads/empty");
   await expect(page.getByRole("heading", { name: "아직 만든 광고가 없어요" })).toBeVisible();
@@ -439,7 +437,7 @@ test("exception state screens guide recovery actions", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "사진을 업로드하지 못했어요" })).toBeVisible();
   await page.getByRole("button", { name: /다시 업로드하기/ }).click();
   await expect(page).toHaveURL(/\/generate\/photo$/);
-  await expect(page.getByText("사진과 광고 방향을 함께 보내주세요.")).toBeVisible();
+  await expect(page.getByText("광고에 쓸 사진을 올려주세요")).toBeVisible();
 
   await page.goto("/generate/chat/failed");
   await expect(page.getByRole("heading", { name: "광고 생성에 실패했어요" })).toBeVisible();
@@ -470,7 +468,7 @@ test("dashboard surfaces are directly addressable", async ({ page }) => {
   await expect(page.getByText("어떻게 시작할까요?")).toBeVisible();
 
   await page.goto("/reference");
-  await expect(page.getByText("REFERENCE GALLERY")).toBeVisible();
+  await expect(page.getByText("SAMPLE GALLERY")).toBeVisible();
 
   await page.goto("/reference/empty");
   await expect(page.getByRole("heading", { name: "검색 결과가 없어요" })).toBeVisible();
@@ -530,7 +528,7 @@ test("dashboard surfaces are directly addressable", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "알림 설정" })).toBeVisible();
 
   await page.goto("/generate/photo");
-  await expect(page.getByText("사진과 광고 방향을 함께 보내주세요.")).toBeVisible();
+  await expect(page.getByText("광고에 쓸 사진을 올려주세요")).toBeVisible();
 
   await page.goto("/generate/photo/upload-failed");
   await expect(page.getByRole("heading", { name: "사진을 업로드하지 못했어요" })).toBeVisible();
