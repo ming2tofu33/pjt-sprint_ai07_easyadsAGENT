@@ -174,18 +174,7 @@ CORS_ORIGIN=https://<vercel-domain>
 ```
 
 현재 BFF의 사진 업로드 경로는 로컬 디스크(`data/uploads`) 기반입니다.
-R2 연동 전까지는 운영 사진 업로드 저장소로 사용하지 않습니다.
-
-R2 연동 후 추가될 값:
-
-```text
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET=
-R2_PUBLIC_BASE_URL=
-R2_ENDPOINT=
-```
+R2 업로드와 레퍼런스 이미지 URL 생성은 orchestrator가 담당하므로 BFF에는 R2 secret을 넣지 않습니다.
 
 Supabase 연동 후 추가될 값:
 
@@ -311,10 +300,9 @@ Railway처럼 장시간 떠 있는 서버는 Supabase connection pooler 또는 �
 
 ### 4.5 Cloudflare R2
 
-Cloudflare dashboard에서 준비할 값:
+Cloudflare dashboard에서 준비할 값은 orchestrator 서비스에 등록합니다.
 
 ```text
-R2_ACCOUNT_ID=...
 EASYADS_R2_ACCESS_KEY_ID=...
 EASYADS_R2_SECRET_ACCESS_KEY=...
 EASYADS_R2_BUCKET=easyads-assets-prod
@@ -325,6 +313,25 @@ EASYADS_R2_SIGNED_URL_TTL_SECONDS=3600
 ```
 
 초기 프로덕션은 `signed` 모드를 권장합니다. 이 모드는 bucket을 공개하지 않고 orchestrator가 만료 시간이 있는 presigned URL을 생성해 UI에 전달합니다. public bucket 또는 custom domain을 쓸 때만 `EASYADS_R2_URL_MODE=public`과 `EASYADS_R2_PUBLIC_BASE_URL=https://...`를 추가합니다.
+
+서비스 레퍼런스 갤러리처럼 공개해도 되는 이미지가 public R2 bucket에 올라가 있다면 아래 값을 orchestrator에 추가합니다.
+
+```text
+EASYADS_R2_URL_MODE=public
+EASYADS_R2_PUBLIC_BASE_URL=https://<public-r2-or-cdn-base-url>
+```
+
+배포 사이트에서 레퍼런스 이미지가 보이는지 확인할 때는 BFF 응답에서 `thumbnail_url`이 `null`이 아닌지 먼저 확인합니다.
+
+```bash
+curl -s https://<railway-bff-domain>/api/references?limit=1 | jq '.items[0].thumbnail_url'
+```
+
+정상 예시:
+
+```text
+"https://<public-r2-or-cdn-base-url>/reference-templates/v1/ref_cafe_1_0_007/source.png"
+```
 
 추천 버킷:
 
