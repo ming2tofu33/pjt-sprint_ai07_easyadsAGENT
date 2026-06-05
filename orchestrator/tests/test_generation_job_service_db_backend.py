@@ -42,9 +42,14 @@ def _row(public_job_id="job_db", status="queued", metadata=None, result_payload=
     }
 
 
+from unittest.mock import MagicMock
+
 @contextmanager
 def fake_db_transaction():
-    yield object()
+    conn = MagicMock()
+    cur = MagicMock()
+    conn.cursor.return_value.__enter__.return_value = cur
+    yield conn
 
 
 def _patch_noop_side_effects(monkeypatch):
@@ -61,6 +66,8 @@ def _patch_noop_side_effects(monkeypatch):
     monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
     monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: {"snapshot_id": "snap_uuid"})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: {"id": "event_uuid", **kwargs})
+    monkeypatch.setattr(service.chat_thread_repo, "get_chat_thread_by_public_id", lambda thread_id, **kwargs: {"id": "thread_uuid", "active_job_id": "job_uuid"})
+    monkeypatch.setattr(service.chat_message_repo, "append_generation_job_chat_event", lambda **kwargs: {"id": "msg_uuid"})
 
 
 def test_memory_backend_uses_existing_store(monkeypatch):

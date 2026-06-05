@@ -545,6 +545,13 @@ def mark_generation_job_waiting_user_input(
         user_id=existing.user_id,
     )
     
+    # Release thread active job so next turn can start
+    chat_thread_service.clear_thread_active_job(
+        existing.thread_id,
+        status="draft",
+        expected_public_job_id=job_id,
+    )
+    
     return updated
 
 
@@ -1216,6 +1223,14 @@ def _mark_generation_job_waiting_user_input_db(
             parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
             snapshot_key=f"{job_id}:waiting",
             created_by=user_id,
+            connection=conn,
+        )
+        
+        # Release thread active job so next turn can start
+        chat_thread_repo.pause_chat_thread_generation(
+            public_thread_id=public_thread_id,
+            workspace_id=workspace_id,
+            expected_active_job_id=str(row["id"]),
             connection=conn,
         )
         
