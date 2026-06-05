@@ -36,7 +36,7 @@ from orchestrator.app.core.config import _get_env
 
 # Bump whenever PRICES changes so every llm_calls / job_cost_summary row records
 # which rate card produced its cost (Langfuse calls this the "price version").
-PRICING_VERSION = "2026-06-02-gpt5.4"
+PRICING_VERSION = "2026-06-05-gpt5.4+gpu"
 
 
 @dataclass(frozen=True)
@@ -139,6 +139,82 @@ def _apply_t2i_env_overrides() -> None:
 
 
 _apply_t2i_env_overrides()
+
+
+# ── Self-hosted (GPU-billed) pricing ────────────────────────────────────────
+# Self-hosted models (Gemma local LLM via local_openai_compat; FLUX/SD3.5 T2I on
+# Modal) are NOT token-billed — you pay for GPU time. The product's native cost
+# primitive is gpu_seconds (the Modal worker returns it; modal/service.py emits a
+# "modal_gpu_seconds" billing event). So the standard for these lanes is:
+#     cost = gpu_seconds * (gpu_$per_hour / 3600)
+# when gpu_seconds is surfaced into the call record, else $0 marginal cost
+# (source="self_hosted") — never a fabricated per-token price.
+#
+# GPU_PRICES is USD/hour keyed by gpu_type (T2IResult/worker report e.g. "L40S").
+# Left EMPTY by default on purpose: a Modal GPU $/hr rate is deployment-specific
+# and was not in any captured source, so we do not hardcode an unverified number.
+# Set it per environment via EVAL_GPU_PRICES_JSON, e.g. {"L40S": 1.95, "A100": 3.7}.
+# Until a rate is set, GPU lanes record cost as "gpu_unpriced" (NULL), not $0.
+SELF_HOSTED_LLM_CLASSES: set[str] = {"local_fast", "local_quality", "local_gemma"}
+
+GPU_PRICES: dict[str, float] = {}
+
+
+def _apply_gpu_env_overrides() -> None:
+    raw = _get_env("EVAL_GPU_PRICES_JSON", "")
+    if not raw or not raw.strip():
+        return
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return
+    if not isinstance(data, dict):
+        return
+    for gpu_type, rate in data.items():
+        try:
+            GPU_PRICES[str(gpu_type).strip()] = float(rate)
+        except (TypeError, ValueError):
+            continue
+
+
+_apply_gpu_env_overrides()
+
+
+def gpu_cost(gpu_type: str | None, gpu_seconds: float | int | None) -> tuple[float | None, str]:
+    """GPU-time cost: gpu_seconds × (USD/hr ÷ 3600) → (cost_usd, source).
+
+    source: gpu_exact (priced) | self_hosted ($0, no GPU time billed) |
+            gpu_unpriced (no rate for this gpu_type) | gpu_seconds_missing.
+    """
+    if gpu_seconds is None:
+        return None, "gpu_seconds_missing"
+    try:
+        secs = float(gpu_seconds)
+    except (TypeError, ValueError):
+        return None, "gpu_seconds_missing"
+    if secs <= 0:
+        return 0.0, "self_hosted"
+    rate = GPU_PRICES.get((gpu_type or "").strip())
+    if rate is None:
+        return None, "gpu_unpriced"
+    return round(secs / 3600.0 * rate, 8), "gpu_exact"
+
+
+def self_hosted_llm_cost(usage: dict | None) -> tuple[float | None, str]:
+    """Cost for a self-hosted LLM call. GPU-billed, not token-billed.
+
+    Prices by gpu_seconds/gpu_type when the endpoint or worker surfaces them in the
+    usage dict; otherwise returns $0 marginal cost (source="self_hosted") — running
+    an owned/self-hosted model has no per-call API charge. Never fabricates a
+    per-token price for a model you host.
+    """
+    gpu_seconds = gpu_type = None
+    if isinstance(usage, dict):
+        gpu_seconds = usage.get("gpu_seconds")
+        gpu_type = usage.get("gpu_type")
+    if gpu_seconds is None:
+        return 0.0, "self_hosted"
+    return gpu_cost(gpu_type, gpu_seconds)
 
 
 def t2i_image_cost(engine: str | None, n_images: int) -> tuple[float | None, str]:

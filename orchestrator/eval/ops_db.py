@@ -10,7 +10,13 @@ from typing import Any, Generator
 
 from orchestrator.app.graph.state import now_iso
 from orchestrator.eval.config import OPS_DB_PATH
-from orchestrator.eval.pricing import PRICING_VERSION, compute_cost_usd, t2i_image_cost
+from orchestrator.eval.pricing import (
+    PRICING_VERSION,
+    SELF_HOSTED_LLM_CLASSES,
+    compute_cost_usd,
+    self_hosted_llm_cost,
+    t2i_image_cost,
+)
 
 _SENSITIVE_KEYS = {"prompt", "api_key", "openai_api_key", "OPENAI_API_KEY"}
 
@@ -451,12 +457,18 @@ class OpsDBWriter:
             # means something different (router downgraded the model CLASS) and is False
             # for the common free-plan/api-disabled fallbacks — so do NOT read it here.
             fallback_used = 0 if r.get("success") else 1
+            # Sub-calls (e.g. prompt_critic, brief_interpreter) run via run_structured_node
+            # INSIDE a graph node (image_prompt_planner, validator). The entry carries the
+            # real selection node_name; prefer it so per-node cost is attributed correctly
+            # instead of being folded into the parent graph node. node_exec_id still ties
+            # the row to the graph node that executed it.
+            call_node = r.get("node_name") or node_name
             cost, source, p_tok, c_tok, t_tok = self._cost_of(r, model_class)
             rows.append((
                 exec_id,
                 job_id,
                 thread_id,
-                node_name,
+                call_node,
                 model_class,
                 provider,
                 cost_tier,
@@ -492,10 +504,15 @@ class OpsDBWriter:
     ) -> tuple[float | None, str, int | None, int | None, int | None]:
         """Per-call (cost_usd, source, prompt_tok, completion_tok, total_tok).
 
-        Price book (eval/pricing.py) is authoritative when token usage is present.
-        If usage is absent but the adapter pre-computed cost_estimate, honor that
+        Self-hosted models (local Gemma etc.) are GPU-billed, not token-billed →
+        priced by gpu_seconds when present, else $0 (source="self_hosted").
+        For API models the token price book is authoritative when usage is present;
+        if usage is absent but the adapter pre-computed cost_estimate, honor that
         (source="adapter"). Otherwise cost is NULL — never fabricated.
         """
+        if model_class in SELF_HOSTED_LLM_CLASSES:
+            cost, source = self_hosted_llm_cost(result.get("token_usage"))
+            return cost, source, None, None, None
         cr = compute_cost_usd(model_class, result.get("token_usage"))
         if cr.source == "exact":
             return cr.cost_usd, "exact", cr.prompt_tokens, cr.completion_tokens, cr.total_tokens
@@ -556,7 +573,11 @@ class OpsDBWriter:
             sum_total += t_tok or 0
             if cost is not None:
                 sum_cost += cost
+            # incomplete pricing: an API call without exact token cost, or a
+            # self-hosted call that had GPU time but no rate to price it.
             if mc.startswith("api_") and source != "exact":
+                cost_estimated = 1
+            elif source in {"gpu_unpriced", "gpu_seconds_missing"}:
                 cost_estimated = 1
 
         t2i_result = state.get("t2i_result") or {}
