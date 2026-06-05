@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, Bookmark, Briefcase, Download, Eye, Home, MoreHorizontal, RefreshCcw, Search, SlidersHorizontal, Sparkles, Star, Trash2, User, X } from "lucide-react";
 import Image from "next/image";
-import { archivedCreatives, type CreativeTone, type MockCreative } from "@/lib/mock-dashboard-data";
+import type { CreativeTone, MockCreative } from "@/lib/mock-dashboard-data";
+import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
 
 type RecentAdsStepProps = {
@@ -13,12 +14,9 @@ type RecentAdsStepProps = {
   onOpenStudio: () => void;
   onOpenBrandKit: () => void;
   onRegenerate: () => void;
-  onShowProgress: () => void;
   onOpenGeneratedAd: (creativeId: string) => void;
-  onOpenAd: (creativeId: string) => void;
   onDownloadGeneratedAd: (title: string) => void;
   onDeleteGeneratedAd: (creativeId: string, title: string) => void;
-  onDeleteSampleAd: (title: string) => void;
   onOpenNotifications: () => void;
 };
 
@@ -51,19 +49,6 @@ function matchesArchiveSearch(creative: MockCreative, query: string) {
     .includes(query);
 }
 
-function getStatusLabel(creative: MockCreative) {
-  if (creative.status === "generating") {
-    return "생성 중";
-  }
-  if (creative.status === "favorite") {
-    return "즐겨찾기";
-  }
-  if (creative.status === "draft") {
-    return "삭제";
-  }
-  return "저장됨";
-}
-
 export function RecentAdsStep({
   generatedCreatives = [],
   onGoHome,
@@ -71,32 +56,19 @@ export function RecentAdsStep({
   onOpenStudio,
   onOpenBrandKit,
   onRegenerate,
-  onShowProgress,
   onOpenGeneratedAd,
-  onOpenAd,
   onDownloadGeneratedAd,
   onDeleteGeneratedAd,
-  onDeleteSampleAd,
   onOpenNotifications
 }: RecentAdsStepProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [hiddenSampleIds, setHiddenSampleIds] = useState<string[]>([]);
-  const [showSampleLibrary, setShowSampleLibrary] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const sampleCreatives = useMemo(
-    () => archivedCreatives.filter((creative) => !hiddenSampleIds.includes(creative.id)),
-    [hiddenSampleIds]
-  );
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   const filteredGeneratedCreatives = useMemo(
     () => generatedCreatives.filter((creative) => matchesArchiveSearch(creative, normalizedSearchTerm)),
     [generatedCreatives, normalizedSearchTerm]
-  );
-  const filteredSampleCreatives = useMemo(
-    () => sampleCreatives.filter((creative) => matchesArchiveSearch(creative, normalizedSearchTerm)),
-    [sampleCreatives, normalizedSearchTerm]
   );
   const hasActiveSearch = normalizedSearchTerm.length > 0;
 
@@ -175,7 +147,6 @@ export function RecentAdsStep({
               {filteredGeneratedCreatives.map((ad) => (
                 <ArchiveCard
                   ad={ad}
-                  isGenerated
                   key={ad.id}
                   menuOpen={openMenuId === ad.id}
                   onDelete={() => {
@@ -191,7 +162,7 @@ export function RecentAdsStep({
             </section>
           ) : (
             <section className={styles.emptyResultPanel} aria-label="최근 실제 생성 검색 결과 없음">
-              <Search size={24} aria-hidden="true" />
+              <MascotImage role="referenceSearch" decorative className={styles.emptyMascot} />
               <strong>검색 결과가 없어요</strong>
               <p>다른 광고 제목이나 채널명으로 다시 찾아보세요.</p>
             </section>
@@ -199,7 +170,7 @@ export function RecentAdsStep({
         </>
       ) : (
         <section className={styles.emptyResultPanel} aria-label="실제 생성 광고 없음">
-          <Briefcase size={24} aria-hidden="true" />
+          <MascotImage role="archiveEmpty" decorative className={styles.emptyMascot} />
           <strong>{hasActiveSearch ? "검색할 실제 생성 결과가 없어요" : "아직 저장된 실제 생성 결과가 없어요"}</strong>
           <p>
             {hasActiveSearch
@@ -214,43 +185,6 @@ export function RecentAdsStep({
         </section>
       )}
 
-      <div className={styles.sampleLibraryHeader}>
-        <h2 className={styles.archiveSectionTitle}>샘플 광고</h2>
-        <button type="button" onClick={() => setShowSampleLibrary((current) => !current)}>
-          {showSampleLibrary ? "숨기기" : "보기"}
-        </button>
-      </div>
-      <p className={styles.sampleNotice}>
-        아래 항목은 실제 생성 결과가 아니라 화면 확인용 샘플입니다. 보관함의 실제 결과와 분리해서 표시합니다.
-      </p>
-      {showSampleLibrary && filteredSampleCreatives.length > 0 ? (
-        <section className={styles.archiveGrid} aria-label="샘플 광고 보관함">
-          {filteredSampleCreatives.map((ad) => (
-            <ArchiveCard
-              ad={ad}
-              key={ad.id}
-              menuOpen={openMenuId === ad.id}
-              onDelete={() => {
-                closeMenu();
-                setHiddenSampleIds((current) => [...current, ad.id]);
-                onDeleteSampleAd(ad.title);
-              }}
-              onOpen={() => onOpenAd(ad.id)}
-              onRegenerate={ad.status === "generating" ? onShowProgress : onRegenerate}
-              onShowProgress={onShowProgress}
-              onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
-            />
-          ))}
-        </section>
-      ) : null}
-      {showSampleLibrary && filteredSampleCreatives.length === 0 ? (
-        <section className={styles.emptyResultPanel} aria-label="샘플 광고 검색 결과 없음">
-          <Search size={24} aria-hidden="true" />
-          <strong>샘플 광고 검색 결과가 없어요</strong>
-          <p>다른 키워드로 다시 검색해보세요.</p>
-        </section>
-      ) : null}
-
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">
         <button type="button" onClick={onGoHome}>
           <Home size={18} aria-hidden="true" />
@@ -258,7 +192,7 @@ export function RecentAdsStep({
         </button>
         <button type="button" onClick={onOpenReference}>
           <Search size={18} aria-hidden="true" />
-          레퍼런스
+          찾기
         </button>
         <button type="button" onClick={onOpenStudio}>
           <Sparkles size={18} aria-hidden="true" />
@@ -279,28 +213,22 @@ export function RecentAdsStep({
 
 function ArchiveCard({
   ad,
-  isGenerated = false,
   menuOpen,
   onDelete,
   onDownload,
   onOpen,
   onRegenerate,
-  onShowProgress,
   onToggleMenu
 }: {
   ad: MockCreative;
-  isGenerated?: boolean;
   menuOpen: boolean;
   onDelete: () => void;
   onDownload?: () => void;
   onOpen: () => void;
   onRegenerate: () => void;
-  onShowProgress?: () => void;
   onToggleMenu: () => void;
 }) {
   const hasImage = Boolean(ad.imageUrl);
-  const isGenerating = ad.status === "generating";
-  const viewLabel = isGenerated ? "결과 보기" : isGenerating ? "진행 상황 보기" : "보기";
   function runMenuAction(action: () => void) {
     onToggleMenu();
     action();
@@ -309,7 +237,7 @@ function ArchiveCard({
   return (
     <article className={styles.archiveCard}>
       <button
-        aria-label={`${ad.title} ${isGenerated ? "실제 생성 결과 보기" : "다시 보기"}`}
+        aria-label={`${ad.title} 실제 생성 결과 보기`}
         className={`${styles.archiveVisual} ${styles[toneClassByCreativeTone[ad.tone]]}`}
         data-has-image={hasImage ? "true" : undefined}
         type="button"
@@ -318,7 +246,7 @@ function ArchiveCard({
         {hasImage ? (
           <Image alt="" className={styles.archiveImage} fill sizes="170px" src={ad.imageUrl!} unoptimized />
         ) : null}
-        <span data-status={ad.status ?? "saved"}>{isGenerated ? "실제 생성" : getStatusLabel(ad)}</span>
+        <span data-status={ad.status ?? "saved"}>실제 생성</span>
         <Bookmark size={17} aria-hidden="true" />
         {ad.progress ? (
           <small className={styles.archiveProgress}>
@@ -340,17 +268,15 @@ function ArchiveCard({
         </div>
         {menuOpen ? (
           <div className={styles.archiveActionMenu} role="menu" aria-label={`${ad.title} 작업 메뉴`}>
-            <button role="menuitem" type="button" onClick={() => runMenuAction(isGenerating && onShowProgress ? onShowProgress : onOpen)}>
+            <button role="menuitem" type="button" onClick={() => runMenuAction(onOpen)}>
               <Eye size={15} aria-hidden="true" />
-              {viewLabel}
+              결과 보기
             </button>
-            {!isGenerating ? (
-              <button role="menuitem" type="button" onClick={() => runMenuAction(onRegenerate)}>
-                <RefreshCcw size={15} aria-hidden="true" />
-                비슷하게 만들기
-              </button>
-            ) : null}
-            {isGenerated && !isGenerating && onDownload ? (
+            <button role="menuitem" type="button" onClick={() => runMenuAction(onRegenerate)}>
+              <RefreshCcw size={15} aria-hidden="true" />
+              비슷하게 만들기
+            </button>
+            {onDownload ? (
               <button role="menuitem" type="button" onClick={() => runMenuAction(onDownload)}>
                 <Download size={15} aria-hidden="true" />
                 다운로드

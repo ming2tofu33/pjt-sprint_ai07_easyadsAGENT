@@ -2,7 +2,6 @@
 
 import {
   Bookmark,
-  Check,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -22,6 +21,7 @@ import { buildAdHref, type AdSaveStep } from "@/lib/ad-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
 import { getAdCreativeById, resultCreatives, type MockCreative } from "@/lib/mock-dashboard-data";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -71,7 +71,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
       <>
         <StepHeader title="찰떡 광고 시안" canGoBack onBack={() => router.push(buildDashboardHref("ads"))} onHome={goHome} />
         <section className={styles.emptyResultPanel} aria-label="보관함 항목 없음">
-          <Sparkles size={24} aria-hidden="true" />
+          <MascotImage role="archiveEmpty" decorative className={styles.emptyMascot} />
           <strong>{creativeId.startsWith("generated-") && !sessionChecked ? "보관함 항목을 불러오는 중이에요" : "보관함에서 이 항목을 찾지 못했어요"}</strong>
           <p>
             {creativeId.startsWith("generated-")
@@ -213,9 +213,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
     return (
       <>
         <section className={styles.savedCompleteHero}>
-          <span>
-            <Check size={34} aria-hidden="true" />
-          </span>
+          <MascotImage role="saveComplete" decorative className={styles.savedMascot} />
           <h1>광고 이미지가 저장됐어요!</h1>
           <p>바로 사용하거나, 보관함에서 다시 확인할 수 있어요.</p>
         </section>

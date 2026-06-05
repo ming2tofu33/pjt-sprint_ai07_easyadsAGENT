@@ -97,7 +97,8 @@ def test_image_prompt_planner_disabled_keeps_safety_fields():
     assert spec["must_not_include_text"] is True
     assert spec["reserved_text_areas"] == state["text_layout_spec"]["reserved_text_areas"]
     assert "hangul" in spec["negative_prompt_en"].lower()
-    assert output["llm_call_results"][0]["error"] == "api_call_disabled"
+    assert output["llm_call_results"] == []
+    assert spec["metadata"]["prompt_critic"]["fallback_used"] is True
 
 
 def test_image_prompt_planner_adapter_success_is_safety_corrected(monkeypatch):

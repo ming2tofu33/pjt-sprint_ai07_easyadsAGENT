@@ -20,9 +20,9 @@ from orchestrator.app.api.schemas.references import (
 from orchestrator.app.reference_catalog.service import (
     find_similar_templates,
     get_reference_template,
+    reference_template_asset_url,
     search_reference_templates,
     temporary_reference_asset_path,
-    temporary_reference_asset_url,
     temporary_references_enabled,
 )
 from orchestrator.app.schemas.reference_catalog import ReferenceTemplate, ReferenceTemplateSearchQuery
@@ -32,8 +32,8 @@ router = APIRouter()
 
 def to_reference_card_response(template: ReferenceTemplate) -> ReferenceTemplateCardResponse:
     card = ReferenceTemplateCardResponse.from_template(template)
-    card.thumbnail_url = temporary_reference_asset_url(template, "thumbnail")
-    card.preview_url = temporary_reference_asset_url(template, "preview")
+    card.thumbnail_url = reference_template_asset_url(template, "thumbnail")
+    card.preview_url = reference_template_asset_url(template, "preview")
     return card
 
 

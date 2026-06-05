@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from orchestrator.app.llm.plan_policy import build_default_plan_policy, normalize_user_plan
+from orchestrator.app.llm.settings import get_llm_settings
 from orchestrator.app.schemas.llm_model_policy import AdapterProvider, LatencyBudget, ModelClass, ModelSelection, PlanPolicy, RiskLevel, UserPlan
 
 
@@ -58,11 +59,16 @@ def choose_model(
         fallback_used = True
         reason_parts.append("economic plan blocks api_full/api_vision")
 
+    provider, provider_metadata = route_provider_for_model_class(selected, normalized_plan)
+    if provider_metadata.get("fallback_used"):
+        fallback_used = True
+        reason_parts.append(str(provider_metadata.get("fallback_reason")))
+
     return ModelSelection(
         node_name=node_name,
         user_plan=normalized_plan,
         selected_model_class=selected,
-        provider=provider_for_model_class(selected),
+        provider=provider,
         structured_output=structured_output,
         fallback_used=fallback_used,
         reason="; ".join(reason_parts),
@@ -70,7 +76,9 @@ def choose_model(
         confidence=confidence,
         latency_budget=latency,
         estimated_cost_tier=cost_tier_for_model_class(selected),
-        metadata={"vision_required": bool(vision_required), "policy_source": policy.metadata.get("source")},
+        model_name=provider_metadata.get("model_name"),
+        provider_profile=provider_metadata.get("provider_profile"),
+        metadata={"vision_required": bool(vision_required), "policy_source": policy.metadata.get("source"), **provider_metadata},
     )
 
 
@@ -113,7 +121,7 @@ def select_for_vision(user_plan: UserPlan, policy: PlanPolicy, node_allowed: lis
 def select_for_premium(node_name: str, latency: LatencyBudget | None, node_allowed: list[ModelClass], plan_allowed: list[ModelClass]) -> ModelClass:
     if latency == "interactive":
         return first_allowed(["api_mini", "api_nano", "local_fast", "mock"], node_allowed, plan_allowed)
-    if node_name in {"image_prompt_planner", "auto_pilot_copywriting", "copy_candidate_generation"}:
+    if node_name in {"image_prompt_planner", "prompt_critic", "auto_pilot_copywriting", "copy_candidate_generation"}:
         return first_allowed(["api_full", "api_mini", "api_nano", "mock"], node_allowed, plan_allowed)
     if node_name in {"background_validation", "final_validation"}:
         return first_allowed(["api_vision", "api_mini", "api_nano", "mock"], node_allowed, plan_allowed)
@@ -134,10 +142,43 @@ def provider_for_model_class(model_class: ModelClass) -> AdapterProvider:
     if model_class == "mock":
         return "mock"
     if model_class in {"local_fast", "local_quality"}:
-        return "local_gemma"
+        return "local_openai_compat"
     if model_class in {"api_nano", "api_mini", "api_full"}:
         return "openai"
-    return "vision_api"
+    if model_class == "api_vision":
+        return "vision_api"
+    return "mock"
+
+
+def route_provider_for_model_class(model_class: ModelClass, user_plan: UserPlan) -> tuple[AdapterProvider, dict[str, Any]]:
+    settings = get_llm_settings()
+    if model_class in {"local_fast", "local_quality"}:
+        if settings.local_llm_base_url and settings.local_llm_model:
+            return (
+                "local_openai_compat",
+                {
+                    "provider_profile": "local_gemma_e4b",
+                    "model_name": settings.local_llm_model,
+                    "direct_model_load": False,
+                    "base_url_configured": True,
+                },
+            )
+        return (
+            "mock",
+            {
+                "fallback_used": True,
+                "fallback_reason": "local_openai_compat_not_configured",
+                "direct_model_load": False,
+                "base_url_configured": False,
+            },
+        )
+    if model_class in {"api_nano", "api_mini", "api_full"}:
+        if user_plan == "free":
+            return "mock", {"fallback_used": True, "fallback_reason": "free_plan_api_disabled"}
+        if settings.default_provider in {"openai", "openai_compatible"}:
+            return settings.default_provider, {"provider_profile": settings.default_provider}
+        return "openai", {"provider_profile": "openai"}
+    return provider_for_model_class(model_class), {}
 
 
 def cost_tier_for_model_class(model_class: ModelClass) -> str:

@@ -16,13 +16,19 @@ import {
   Utensils
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import Image from "next/image";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { fetchReferenceDetail, type ReferenceTemplateDetailResponse } from "@/lib/api-client";
 import { readSavedBrandKit } from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
-import { clearGenerationDraftPrompt, writeGenerationDraftPrompt } from "@/lib/generation-request-context";
-import { getReferenceCreativeById, getSimilarReferenceCreatives, referenceCreatives } from "@/lib/mock-dashboard-data";
+import { clearGenerationDraftPrompt, saveGenerationRequestContext } from "@/lib/generation-request-context";
+import {
+  hasReferenceTemplateImage,
+  referenceTemplateImageUrl,
+  referenceTemplateToCreative
+} from "@/lib/reference-template-creative";
 import { buildReferenceStyleHref, type ReferenceStyleStep } from "@/lib/reference-navigation";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { StepHeader } from "./StepHeader";
@@ -42,18 +48,58 @@ const businessTypes = [
   { label: "기타", icon: MoreHorizontal }
 ];
 
-const similarCategories = ["전체", "카페", "음료", "디저트", "신메뉴", "감성"];
-
 export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowStepProps) {
   const router = useRouter();
-  const creative = getReferenceCreativeById(creativeId) ?? referenceCreatives[0];
-  const similarCreatives = useMemo(() => getSimilarReferenceCreatives(creative.id), [creative.id]);
+  const [detail, setDetail] = useState<ReferenceTemplateDetailResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [businessType, setBusinessType] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const template = detail?.template ?? null;
+  const creative = useMemo(() => (template ? referenceTemplateToCreative(template) : null), [template]);
+  const similarCreatives = useMemo(
+    () =>
+      (detail?.similarTemplates ?? [])
+        .filter(hasReferenceTemplateImage)
+        .map((item) => referenceTemplateToCreative(item)),
+    [detail]
+  );
+  const tags = useMemo(() => {
+    if (!creative) {
+      return [];
+    }
+    return creative.tags?.length ? creative.tags : [creative.format, creative.badge ?? ""].filter(Boolean);
+  }, [creative]);
+  const similarCategories = useMemo(() => uniqueLabels(["전체", ...tags.slice(0, 5)]), [tags]);
   const canContinue = Boolean(businessType && businessName.trim());
 
-  const styleProfile = creative.styleProfile ?? referenceCreatives[0].styleProfile!;
-  const tags = creative.tags ?? [creative.format, creative.badge ?? "추천 스타일"];
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    fetchReferenceDetail(creativeId)
+      .then((response) => {
+        if (!cancelled) {
+          setDetail(response);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setDetail(null);
+          setErrorMessage(error instanceof Error ? error.message : "레퍼런스를 불러오지 못했어요.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [creativeId]);
 
   useEffect(() => {
     const savedBrandKit = readSavedBrandKit();
@@ -71,7 +117,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
       return;
     }
 
-    router.push(buildReferenceStyleHref(creative.id));
+    router.push(buildReferenceStyleHref(creativeId));
   }
 
   function goHome() {
@@ -79,19 +125,25 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
   }
 
   function goTo(nextStep: ReferenceStyleStep) {
-    router.push(buildReferenceStyleHref(creative.id, nextStep));
+    router.push(buildReferenceStyleHref(creativeId, nextStep));
   }
 
   function buildStyleDraftPrompt(): string {
-    return `${creative.title} 스타일로 ${businessName.trim()}의 ${businessType} 광고를 만들어줘`;
+    return `${creative?.title ?? "선택한 레퍼런스"} 스타일로 ${businessName.trim()}의 ${businessType} 광고를 만들어줘`;
   }
 
   function startChatFlow() {
-    if (!canContinue) {
+    if (!canContinue || !template) {
       return;
     }
 
-    writeGenerationDraftPrompt(buildStyleDraftPrompt());
+    const draftPrompt = buildStyleDraftPrompt();
+    saveGenerationRequestContext({
+      selectedReferenceTemplateId: template.templateId,
+      selectedReferenceTemplateTitle: template.title,
+      draftPrompt,
+      source: "manual"
+    });
     router.push(buildDashboardHref("chat"));
   }
 
@@ -99,6 +151,38 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
     clearGenerationDraftPrompt();
     router.push(buildDashboardHref("chat"));
   }
+
+  if (isLoading) {
+    return (
+      <>
+        <StepHeader title="레퍼런스 상세" canGoBack onBack={goBack} onHome={goHome} />
+        <section className={styles.emptyResultPanel} aria-label="레퍼런스 불러오는 중">
+          <Search size={24} aria-hidden="true" />
+          <strong>레퍼런스를 불러오는 중이에요</strong>
+          <p>선택한 스타일 정보를 확인하고 있어요.</p>
+        </section>
+      </>
+    );
+  }
+
+  if (errorMessage || !creative || !template || !hasReferenceTemplateImage(template)) {
+    return (
+      <>
+        <StepHeader title="레퍼런스 상세" canGoBack onBack={goBack} onHome={goHome} />
+        <section className={styles.emptyResultPanel} aria-label="레퍼런스 상세 없음">
+          <Search size={24} aria-hidden="true" />
+          <strong>표시할 레퍼런스 이미지가 없어요</strong>
+          <p>{errorMessage ?? "직접 넣은 이미지가 연결된 레퍼런스만 확인할 수 있어요."}</p>
+          <button className={styles.secondaryButton} type="button" onClick={() => router.push(buildDashboardHref("reference"))}>
+            레퍼런스 목록으로
+          </button>
+        </section>
+      </>
+    );
+  }
+
+  const styleProfile = creative.styleProfile!;
+  const imageUrl = referenceTemplateImageUrl(template)!;
 
   if (step === "analysis") {
     return (
@@ -108,13 +192,13 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         <section className={styles.styleInsightHero}>
           <Sparkles size={18} aria-hidden="true" />
           <div>
-            <strong>AI가 선택한 레퍼런스를 분석했어요!</strong>
+            <strong>선택한 레퍼런스 스타일을 정리했어요</strong>
             <p>이 스타일을 참고해 내 가게 광고를 만들 수 있어요.</p>
           </div>
         </section>
 
-        <section className={styles.styleAnalysisList} aria-label="AI 스타일 분석 결과">
-          <StyleInsight icon={Palette} title="색감" copy="크림톤 베이스에 코랄 포인트를 사용해 따뜻하고 부드러운 느낌을 줘요.">
+        <section className={styles.styleAnalysisList} aria-label="스타일 분석 결과">
+          <StyleInsight icon={Palette} title="색감" copy="레퍼런스에 연결된 주요 색상을 광고 분위기 힌트로 사용해요.">
             <span className={styles.styleSwatches} aria-label="스타일 색상">
               {styleProfile.colors.map((color) => (
                 <i key={color} style={{ background: color }} />
@@ -144,33 +228,41 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
       <>
         <StepHeader title="비슷한 스타일 추천" canGoBack onBack={goBack} onHome={goHome} />
 
-        <p className={styles.styleIntroText}>이 스타일과 비슷한 레퍼런스를 추천해드려요.</p>
-        <div className={styles.categoryScroller} aria-label="유사 스타일 카테고리">
-          {similarCategories.map((category) => (
-            <button className={category === "전체" ? styles.categoryActive : undefined} key={category} type="button">
+        <p className={styles.styleIntroText}>선택한 레퍼런스와 가까운 스타일을 모아봤어요.</p>
+        <div className={styles.categoryScroller} aria-label="유사 스타일 태그">
+          {similarCategories.map((category, index) => (
+            <button className={index === 0 ? styles.categoryActive : undefined} key={category} type="button">
               {category}
             </button>
           ))}
         </div>
 
-        <section className={styles.referenceGrid} aria-label="비슷한 스타일 레퍼런스">
-          {similarCreatives.map((item) => (
-            <AdCreativeCard
-              creative={item}
-              key={item.id}
-              openLabel={`${item.title} 상세 보기`}
-              openText="상세 보기"
-              onOpen={() => router.push(buildReferenceStyleHref(item.id))}
-              onSave={() => undefined}
-            />
-          ))}
-        </section>
+        {similarCreatives.length > 0 ? (
+          <section className={styles.referenceGrid} aria-label="비슷한 스타일 레퍼런스">
+            {similarCreatives.map((item) => (
+              <AdCreativeCard
+                creative={item}
+                key={item.id}
+                openLabel={`${item.title} 상세 보기`}
+                openText="상세 보기"
+                showPlaceholderArt={false}
+                onOpen={() => router.push(buildReferenceStyleHref(item.id))}
+              />
+            ))}
+          </section>
+        ) : (
+          <section className={styles.emptyResultPanel} aria-label="비슷한 스타일 없음">
+            <Search size={24} aria-hidden="true" />
+            <strong>비슷한 레퍼런스 이미지가 아직 없어요</strong>
+            <p>이미지가 더 등록되면 가까운 스타일을 함께 보여드릴게요.</p>
+          </section>
+        )}
 
         <button className={styles.savedReferenceBar} type="button" onClick={() => goTo("detail")}>
           <Heart size={18} aria-hidden="true" />
           <span>
-            <strong>저장한 레퍼런스</strong>
-            <small>{creative.savedCount ?? 12}개</small>
+            <strong>비슷한 레퍼런스</strong>
+            <small>{similarCreatives.length}개</small>
           </span>
           <ChevronRight size={18} aria-hidden="true" />
         </button>
@@ -190,8 +282,8 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         <StepHeader title="이 스타일로 시작하기" canGoBack onBack={goBack} onHome={goHome} />
 
         <section className={styles.selectedStyleCard} aria-label="선택한 스타일">
-          <div className={styles.selectedStyleVisual} data-tone={creative.tone} aria-hidden="true">
-            <span />
+          <div className={styles.selectedStyleVisual} data-has-image="true">
+            <Image alt="" className={styles.selectedStyleImage} fill sizes="112px" src={imageUrl} unoptimized />
           </div>
           <div>
             <small>선택한 스타일</small>
@@ -253,15 +345,15 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         </div>
       </div>
 
-      <section className={styles.referenceDetailHero} data-tone={creative.tone} aria-label={`${creative.title} 상세 미리보기`}>
+      <section className={styles.referenceDetailHero} data-has-image="true" aria-label={`${creative.title} 상세 미리보기`}>
+        <Image alt="" className={styles.referenceDetailImage} fill sizes="360px" src={imageUrl} unoptimized />
         <button aria-label={`${creative.title} 저장`} type="button">
           <Bookmark size={19} aria-hidden="true" />
         </button>
-        <div>
-          <strong>{creative.subtitle}</strong>
-          <small>{creative.badge ?? creative.format}</small>
+        <div className={styles.referenceDetailOverlay}>
+          <strong>{creative.title}</strong>
+          <small>{creative.subtitle}</small>
         </div>
-        <span aria-hidden="true" />
       </section>
 
       <div className={styles.inlineTags}>
@@ -274,7 +366,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         <button type="button">
           <Heart size={18} aria-hidden="true" />
           <strong>저장</strong>
-          <small>{creative.savedCount ?? 12}</small>
+          <small>준비 중</small>
         </button>
         <button type="button">
           <Bookmark size={18} aria-hidden="true" />
@@ -323,4 +415,16 @@ function StyleInsight({ icon: Icon, title, copy, children }: StyleInsightProps) 
       </div>
     </article>
   );
+}
+
+function uniqueLabels(labels: string[]): string[] {
+  const seen = new Set<string>();
+  return labels.filter((label) => {
+    const trimmed = label.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return false;
+    }
+    seen.add(trimmed);
+    return true;
+  });
 }

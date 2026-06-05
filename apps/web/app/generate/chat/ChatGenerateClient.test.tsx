@@ -274,9 +274,28 @@ vi.mock("@/lib/api-client", () => ({
         typographyHint: "extra_bold_condensed_headline",
         popularityScore: 0.5,
         isSaved: false
+      },
+      {
+        templateId: "seed_no_image_reference",
+        title: "이미지 없는 seed 레퍼런스",
+        description: "이미지가 없는 내부 메타데이터",
+        category: "cafe",
+        tags: ["카페"],
+        businessTypes: ["cafe"],
+        adFormats: ["instagram_feed"],
+        platforms: ["instagram"],
+        aspectRatio: "1:1",
+        thumbnailUrl: null,
+        previewUrl: null,
+        styleKeywords: ["mock"],
+        colorPalette: ["#FFFFFF"],
+        layoutHint: "placeholder",
+        typographyHint: "placeholder",
+        popularityScore: 0.9,
+        isSaved: false
       }
     ],
-    pagination: { limit: 40, offset: 0, total: 1, hasMore: false }
+    pagination: { limit: 40, offset: 0, total: 2, hasMore: false }
   })),
   saveArchiveItem: vi.fn(async () => ({
     item: {
@@ -1096,7 +1115,7 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByRole("button", { name: /광고 만들기/ }));
     expect(navigationMock.push).toHaveBeenCalledWith("/studio");
 
-    fireEvent.click(screen.getAllByRole("button", { name: /레퍼런스/ }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: /찾기/ }).at(-1)!);
     expect(navigationMock.push).toHaveBeenCalledWith("/reference");
   });
 
@@ -1132,7 +1151,9 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="reference" />);
 
     await waitFor(() => expect(screen.getByText("수박주스 블루 여름 피드")).toBeTruthy());
-    expect(screen.getByText("임시 레퍼런스")).toBeTruthy();
+    expect(screen.queryByText("임시 레퍼런스")).toBeNull();
+    expect(screen.queryByText("테스트용 레퍼런스가 포함되어 있어요. 마음에 드는 스타일을 골라 다음 광고에 참고할 수 있어요.")).toBeNull();
+    expect(screen.queryByText("이미지 없는 seed 레퍼런스")).toBeNull();
     expect(screen.getByText("파란 배경과 큼직한 음료 중심의 여름 음료 레퍼런스")).toBeTruthy();
     expect(screen.queryByText("SPRING SALE")).toBeNull();
   });
@@ -1150,15 +1171,15 @@ describe("ChatGenerateClient", () => {
     expect(screen.queryByText("수박주스 블루 여름 피드를 보관함에 저장했어요.")).toBeNull();
   });
 
-  it("shows feedback for recent ad and brand kit actions", async () => {
+  it("does not render sample archive ads and keeps brand kit actions available", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
     const { rerender } = render(<ChatGenerateClient initialSurface="ads" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "보기" }));
-    fireEvent.click(screen.getByRole("button", { name: "봄을 닮은 한 잔 다시 보기" }));
-    expect(navigationMock.push).toHaveBeenCalledWith("/ads/result-1");
+    expect(screen.queryByText("샘플 광고")).toBeNull();
+    expect(screen.queryByText("아래 항목은 실제 생성 결과가 아니라 화면 확인용 샘플입니다. 보관함의 실제 결과와 분리해서 표시합니다.")).toBeNull();
+    expect(screen.getByText("아직 저장된 실제 생성 결과가 없어요")).toBeTruthy();
 
     rerender(<ChatGenerateClient initialSurface="my" />);
     fireEvent.click(screen.getByRole("button", { name: /브랜드 키트 관리/ }));
@@ -1166,22 +1187,43 @@ describe("ChatGenerateClient", () => {
   });
 
   it("opens archive overflow actions and deletes an archive item", async () => {
+    window.sessionStorage.setItem(
+      "easyads_generated_creatives_v1",
+      JSON.stringify([
+        {
+          id: "generated-job_selected",
+          title: "직접 클릭한 생성 광고",
+          subtitle: "베이커리 · 포스터",
+          format: "4:5",
+          imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_selected%2Ffinal_composite.png",
+          tone: "cream",
+          badge: "실제 생성",
+          status: "saved",
+          channel: "포스터",
+          fileName: "final_composite.png",
+          fileType: "PNG",
+          storage: "보관함",
+          savedAt: "방금 생성",
+          tags: ["베이커리", "포스터"]
+        }
+      ])
+    );
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
     render(<ChatGenerateClient initialSurface="ads" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "보기" }));
-    fireEvent.click(screen.getByRole("button", { name: "봄을 닮은 한 잔 더보기" }));
+    await waitFor(() => expect(screen.getByText("직접 클릭한 생성 광고")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "직접 클릭한 생성 광고 더보기" }));
 
-    expect(screen.getByRole("menu", { name: "봄을 닮은 한 잔 작업 메뉴" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "보기" })).toBeTruthy();
+    expect(screen.getByRole("menu", { name: "직접 클릭한 생성 광고 작업 메뉴" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "결과 보기" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "비슷하게 만들기" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("menuitem", { name: "삭제" }));
 
-    expect(screen.queryByRole("button", { name: "봄을 닮은 한 잔 다시 보기" })).toBeNull();
-    expect(screen.getByText("봄을 닮은 한 잔 항목을 보관함에서 삭제했어요.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "직접 클릭한 생성 광고 실제 생성 결과 보기" })).toBeNull();
+    expect(screen.getByText("직접 클릭한 생성 광고 항목을 보관함에서 삭제했어요.")).toBeTruthy();
   });
 
   it("opens notifications from home and recent ads headers", async () => {

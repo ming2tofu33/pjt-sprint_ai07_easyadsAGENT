@@ -10,7 +10,7 @@
 
 When `postgres` is selected, `DATABASE_URL` is required. The app does not open a DB connection at import time; connections are created lazily through `get_db_connection()`.
 
-Postgres repository path requires `psycopg` at runtime. This milestone keeps `psycopg` as an optional lazy dependency for CI safety and does not change `pyproject.toml` or `uv.lock`. Actual Supabase smoke requires installing `psycopg` or adding it to project dependencies in the deployment PR.
+Postgres repository path requires `psycopg` at runtime. It is included in `pyproject.toml`, `uv.lock`, and `requirements.txt` so the Railway orchestrator image can connect to Supabase when `EASYADS_DB_BACKEND=postgres` is enabled.
 
 R2 upload path also remains lazy and optional. `boto3` is not added to project dependencies in this milestone; actual R2 smoke or deployment needs a runtime `boto3` installation.
 

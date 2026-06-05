@@ -102,7 +102,7 @@ export function BrandKitStep({
         </button>
         <button type="button" onClick={onOpenReference}>
           <Search size={18} aria-hidden="true" />
-          레퍼런스
+          찾기
         </button>
         <button type="button" onClick={onOpenStudio}>
           <Sparkles size={18} aria-hidden="true" />

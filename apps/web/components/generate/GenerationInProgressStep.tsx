@@ -1,8 +1,9 @@
 "use client";
 
-import { Check, Clock3, Sparkles } from "lucide-react";
+import { Check, Clock3 } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -28,9 +29,7 @@ export function GenerationInProgressStep({ state, progress, onBrowse }: Generati
       <StepHeader title="광고 생성 중" />
 
       <section className={styles.generationHero} aria-label="광고 생성 진행 상황">
-        <span className={styles.generatingOrb}>
-          <Sparkles size={24} aria-hidden="true" />
-        </span>
+        <MascotImage role="generatingWait" decorative className={styles.generationMascot} />
         <h1>생성 결과를 준비하고 있어요</h1>
         <p>{brief.item} 광고 이미지가 준비되면 실제 결과 화면으로 이동해요.</p>
       </section>

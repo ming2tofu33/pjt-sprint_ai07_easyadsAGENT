@@ -12,7 +12,16 @@ from orchestrator.app.modal.client import poll_modal_t2i_result, submit_modal_t2
 from orchestrator.app.modal.errors import ModalExecutionError, ModalResultError
 from orchestrator.app.modal.schemas import ModalPollResult, ModalSubmitResult, ModalT2IRequest
 
-MODAL_ELIGIBLE_RUN_MODES = {"sd35_local", "sd35_local_smoke", "flux_local", "flux_local_smoke", "flux", "flux_smoke"}
+MODAL_ELIGIBLE_RUN_MODES = {
+    "sd35_local",
+    "sd35_local_smoke",
+    "sd35_large_real",
+    "flux_local",
+    "flux_local_smoke",
+    "flux_schnell_real",
+    "flux",
+    "flux_smoke",
+}
 
 
 def is_modal_eligible_run_mode(run_mode: str | None) -> bool:
@@ -38,6 +47,19 @@ def build_modal_t2i_request_from_job(
     )
     run_mode = str(job_row.get("run_mode") or metadata.get("requested_run_mode") or "")
     engine = str(job_row.get("engine") or metadata.get("t2i_engine") or _engine_from_run_mode(run_mode) or "unknown")
+    request_metadata = getattr(generation_request, "metadata", None) or {}
+    params = {
+        **_safe_t2i_params(request_metadata),
+        **(t2i_request.get("params") or {}),
+    }
+    if run_mode == "flux_schnell_real":
+        params.setdefault("render_mode", "flux_schnell")
+        params.setdefault("num_inference_steps", 4)
+        params.setdefault("guidance_scale", 0.0)
+    if run_mode == "sd35_large_real":
+        params.setdefault("render_mode", "sd35_large")
+        params.setdefault("num_inference_steps", 8)
+        params.setdefault("guidance_scale", 4.0)
     return ModalT2IRequest(
         job_id=public_job_id,
         thread_id=str(metadata.get("public_thread_id") or job_row.get("thread_id") or "") or None,
@@ -46,13 +68,13 @@ def build_modal_t2i_request_from_job(
         engine=engine,
         prompt=str(prompt),
         negative_prompt=t2i_request.get("negative_prompt"),
-        width=int(t2i_request.get("width") or 1024),
-        height=int(t2i_request.get("height") or 1024),
+        width=_safe_int(t2i_request.get("width") or request_metadata.get("width"), 1024),
+        height=_safe_int(t2i_request.get("height") or request_metadata.get("height"), 1024),
         num_images=1,
-        seed=t2i_request.get("seed"),
+        seed=t2i_request.get("seed") or request_metadata.get("seed"),
         model_name=job_row.get("model_name") or engine,
         model_version=job_row.get("model_version"),
-        params=t2i_request.get("params") or {},
+        params=params,
         metadata={
             "selected_reference_template_id": job_row.get("selected_reference_template_id"),
             "modal_result_transport": "inline_base64",
@@ -203,11 +225,34 @@ def _record_usage(row: dict, poll_result: ModalPollResult):
 
 
 def _engine_from_run_mode(run_mode: str | None) -> str | None:
-    if run_mode in {"sd35_local", "sd35_local_smoke"}:
+    if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         return "sd35_large"
-    if run_mode in {"flux_local", "flux_local_smoke", "flux", "flux_smoke"}:
+    if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
         return "flux"
     return None
+
+
+def _safe_t2i_params(metadata: dict) -> dict:
+    params = metadata.get("t2i_params") if isinstance(metadata, dict) else None
+    if not isinstance(params, dict):
+        params = {}
+    allowed_keys = {
+        "width",
+        "height",
+        "seed",
+        "num_inference_steps",
+        "guidance_scale",
+        "max_sequence_length",
+        "model_id",
+    }
+    return {key: value for key, value in params.items() if key in allowed_keys}
+
+
+def _safe_int(value: object, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def _safe_error(error: dict | None) -> dict:

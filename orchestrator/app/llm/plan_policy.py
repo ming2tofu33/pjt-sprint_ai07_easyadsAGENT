@@ -51,7 +51,13 @@ def build_default_plan_policy(user_plan: UserPlan | str) -> PlanPolicy:
         vision_gate_enabled=vision_gate,
         allow_api_fallback=allow_api_fallback,
         node_policies=get_default_node_policies(plan),
-        metadata={"source": "default_plan_policy"},
+        metadata={
+            "source": "default_plan_policy",
+            "local_fast_max_calls": 2 if plan == "free" else None,
+            "local_quality_max_calls": 1 if plan == "free" else None,
+            "auto_pilot_copywriting": "merged_with_copy_candidate_generation" if plan == "free" else "separate_node",
+            "prompt_optimization": "conditional" if plan == "free" else "standard",
+        },
     )
 
 
@@ -94,6 +100,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "custom_copy_validation": "local_fast",
             "copy_spec_parser": "local_fast",
             "image_prompt_planner": "local_quality",
+            "prompt_critic": "mock",
             "background_validation": "mock",
             "final_validation": "mock",
             "revision_intent_classifier": "local_fast",
@@ -108,6 +115,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "custom_copy_validation": "local_fast",
             "copy_spec_parser": "local_fast",
             "image_prompt_planner": "api_nano",
+            "prompt_critic": "api_mini",
             "background_validation": "mock",
             "final_validation": "api_nano",
             "revision_intent_classifier": "api_nano",
@@ -122,6 +130,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "custom_copy_validation": "api_mini",
             "copy_spec_parser": "api_nano",
             "image_prompt_planner": "api_full",
+            "prompt_critic": "api_mini",
             "background_validation": "api_vision",
             "final_validation": "api_mini",
             "revision_intent_classifier": "api_mini",
@@ -135,6 +144,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
         "custom_copy_validation": "api_mini",
         "copy_spec_parser": "api_mini",
         "image_prompt_planner": "api_full",
+        "prompt_critic": "api_full",
         "background_validation": "api_vision",
         "final_validation": "api_vision",
         "revision_intent_classifier": "api_mini",
