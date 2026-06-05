@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import Image from "next/image";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchReferenceDetail, type ReferenceTemplateDetailResponse } from "@/lib/api-client";
@@ -87,7 +87,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
       .catch((error) => {
         if (!cancelled) {
           setDetail(null);
-          setErrorMessage(error instanceof Error ? error.message : "레퍼런스를 불러오지 못했어요.");
+          setErrorMessage(error instanceof Error ? error.message : "샘플을 불러오지 못했어요.");
         }
       })
       .finally(() => {
@@ -129,7 +129,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
   }
 
   function buildStyleDraftPrompt(): string {
-    return `${creative?.title ?? "선택한 레퍼런스"} 스타일로 ${businessName.trim()}의 ${businessType} 광고를 만들어줘`;
+    return `${creative?.title ?? "선택한 샘플"} 스타일로 ${businessName.trim()}의 ${businessType} 광고를 만들어줘`;
   }
 
   function startChatFlow() {
@@ -152,13 +152,37 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
     router.push(buildDashboardHref("chat"));
   }
 
+  async function shareReferenceStyle() {
+    if (!creative) {
+      return;
+    }
+
+    const shareUrl = window.location.href;
+    const shareData = {
+      title: creative.title,
+      text: creative.subtitle,
+      url: shareUrl
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+
+      await navigator.clipboard?.writeText(shareUrl);
+    } catch {
+      // Sharing can be cancelled by the user; no UI recovery is needed.
+    }
+  }
+
   if (isLoading) {
     return (
       <>
         <StepHeader title="샘플 상세" canGoBack onBack={goBack} onHome={goHome} />
-        <section className={styles.emptyResultPanel} aria-label="레퍼런스 불러오는 중">
+        <section className={styles.emptyResultPanel} aria-label="샘플 불러오는 중">
           <Search size={24} aria-hidden="true" />
-          <strong>레퍼런스를 불러오는 중이에요</strong>
+          <strong>샘플을 불러오는 중이에요</strong>
           <p>선택한 스타일 정보를 확인하고 있어요.</p>
         </section>
       </>
@@ -171,10 +195,10 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         <StepHeader title="샘플 상세" canGoBack onBack={goBack} onHome={goHome} />
         <section className={styles.emptyResultPanel} aria-label="샘플 상세 없음">
           <Search size={24} aria-hidden="true" />
-          <strong>표시할 레퍼런스 이미지가 없어요</strong>
-          <p>{errorMessage ?? "직접 넣은 이미지가 연결된 레퍼런스만 확인할 수 있어요."}</p>
+          <strong>표시할 샘플 이미지가 없어요</strong>
+          <p>{errorMessage ?? "직접 넣은 이미지가 연결된 샘플만 확인할 수 있어요."}</p>
           <button className={styles.secondaryButton} type="button" onClick={() => router.push(buildDashboardHref("reference"))}>
-            레퍼런스 목록으로
+            샘플 목록으로
           </button>
         </section>
       </>
@@ -183,6 +207,9 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
 
   const styleProfile = creative.styleProfile!;
   const imageUrl = referenceTemplateImageUrl(template)!;
+  const referenceDetailImageStyle = {
+    "--reference-detail-aspect-ratio": referenceAspectRatioCss(template.aspectRatio)
+  } as CSSProperties;
 
   if (step === "analysis") {
     return (
@@ -192,13 +219,13 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         <section className={styles.styleInsightHero}>
           <Sparkles size={18} aria-hidden="true" />
           <div>
-            <strong>선택한 레퍼런스 스타일을 정리했어요</strong>
+            <strong>선택한 샘플 스타일을 정리했어요</strong>
             <p>이 스타일을 참고해 내 가게 광고를 만들 수 있어요.</p>
           </div>
         </section>
 
         <section className={styles.styleAnalysisList} aria-label="스타일 분석 결과">
-          <StyleInsight icon={Palette} title="색감" copy="레퍼런스에 연결된 주요 색상을 광고 분위기 힌트로 사용해요.">
+          <StyleInsight icon={Palette} title="색감" copy="샘플에 연결된 주요 색상을 광고 분위기 힌트로 사용해요.">
             <span className={styles.styleSwatches} aria-label="스타일 색상">
               {styleProfile.colors.map((color) => (
                 <i key={color} style={{ background: color }} />
@@ -228,7 +255,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
       <>
         <StepHeader title="비슷한 스타일 추천" canGoBack onBack={goBack} onHome={goHome} />
 
-        <p className={styles.styleIntroText}>선택한 레퍼런스와 가까운 스타일을 모아봤어요.</p>
+        <p className={styles.styleIntroText}>선택한 샘플과 가까운 스타일을 모아봤어요.</p>
         <div className={styles.categoryScroller} aria-label="유사 스타일 태그">
           {similarCategories.map((category, index) => (
             <button className={index === 0 ? styles.categoryActive : undefined} key={category} type="button">
@@ -238,7 +265,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         </div>
 
         {similarCreatives.length > 0 ? (
-          <section className={styles.referenceGrid} aria-label="비슷한 스타일 레퍼런스">
+          <section className={styles.referenceGrid} aria-label="비슷한 스타일 샘플">
             {similarCreatives.map((item) => (
               <AdCreativeCard
                 creative={item}
@@ -253,7 +280,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         ) : (
           <section className={styles.emptyResultPanel} aria-label="비슷한 스타일 없음">
             <Search size={24} aria-hidden="true" />
-            <strong>비슷한 레퍼런스 이미지가 아직 없어요</strong>
+            <strong>비슷한 샘플 이미지가 아직 없어요</strong>
             <p>이미지가 더 등록되면 가까운 스타일을 함께 보여드릴게요.</p>
           </section>
         )}
@@ -261,7 +288,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         <button className={styles.savedReferenceBar} type="button" onClick={() => goTo("detail")}>
           <Heart size={18} aria-hidden="true" />
           <span>
-            <strong>비슷한 레퍼런스</strong>
+            <strong>비슷한 샘플</strong>
             <small>{similarCreatives.length}개</small>
           </span>
           <ChevronRight size={18} aria-hidden="true" />
@@ -298,7 +325,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
 
         <p className={styles.styleNotice}>
           <Sparkles size={17} aria-hidden="true" />
-          AI가 이 스타일을 참고해 브리프를 변환할 거예요. 이제 우리 가게 정보를 알려주세요.
+          AI가 이 스타일을 참고해 광고 이미지 생성에 반영할 거예요.
         </p>
 
         <h2 className={styles.sectionTitle}>어떤 가게의 광고인가요?</h2>
@@ -331,29 +358,20 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
   return (
     <>
       <div className={styles.styleTopNav}>
-        <button aria-label="레퍼런스 목록으로" type="button" onClick={goBack}>
+        <button aria-label="샘플 목록으로" type="button" onClick={goBack}>
           <ChevronRight size={22} aria-hidden="true" />
         </button>
         <h1>샘플 상세</h1>
-        <div>
-          <button aria-label="공유하기" type="button">
-            <Share2 size={18} aria-hidden="true" />
-          </button>
-          <button aria-label="더보기" type="button">
-            <MoreHorizontal size={20} aria-hidden="true" />
-          </button>
-        </div>
+        <span aria-hidden="true" />
       </div>
 
-      <section className={styles.referenceDetailHero} data-has-image="true" aria-label={`${creative.title} 상세 미리보기`}>
-        <Image alt="" className={styles.referenceDetailImage} fill sizes="360px" src={imageUrl} unoptimized />
-        <button aria-label={`${creative.title} 저장`} type="button">
-          <Bookmark size={19} aria-hidden="true" />
-        </button>
-        <div className={styles.referenceDetailOverlay}>
-          <strong>{creative.title}</strong>
-          <small>{creative.subtitle}</small>
-        </div>
+      <section className={styles.referenceDetailHero} data-has-image="true" aria-label={`${creative.title} 상세 미리보기`} style={referenceDetailImageStyle}>
+        <Image alt="" className={styles.referenceDetailImage} fill sizes="calc(100vw - 48px)" src={imageUrl} unoptimized />
+      </section>
+
+      <section className={styles.referenceDetailInfo} aria-label="샘플 정보">
+        <h2>{creative.title}</h2>
+        <p>{creative.subtitle}</p>
       </section>
 
       <div className={styles.inlineTags}>
@@ -372,15 +390,15 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
           <Bookmark size={18} aria-hidden="true" />
           <strong>컬렉션에 저장</strong>
         </button>
-        <button type="button">
-          <MoreHorizontal size={18} aria-hidden="true" />
-          <strong>더보기</strong>
+        <button type="button" onClick={shareReferenceStyle}>
+          <Share2 size={18} aria-hidden="true" />
+          <strong>공유하기</strong>
         </button>
       </div>
 
       <p className={styles.styleNotice}>
         <Sparkles size={17} aria-hidden="true" />
-        AI가 이 레퍼런스의 스타일을 분석해서 내 광고에 맞게 변형해드릴게요.
+        AI가 이 샘플의 스타일을 분석해서 내 광고에 맞게 반영해요.
       </p>
 
       <div className={styles.stepFooter}>
@@ -427,4 +445,28 @@ function uniqueLabels(labels: string[]): string[] {
     seen.add(trimmed);
     return true;
   });
+}
+
+function referenceAspectRatioCss(value?: string | null): string {
+  if (!value) {
+    return "1 / 1";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  const knownRatios: Record<string, string> = {
+    a4: "1240 / 1754",
+    a4_vertical: "1240 / 1754",
+    instagram_feed: "1 / 1",
+    instagram_story: "9 / 16",
+    banner: "16 / 9",
+    flyer: "1240 / 1754",
+    poster: "4 / 5"
+  };
+  const numericRatio = normalized.match(/^(\d+(?:\.\d+)?)\s*[:/x]\s*(\d+(?:\.\d+)?)$/);
+
+  if (numericRatio) {
+    return `${numericRatio[1]} / ${numericRatio[2]}`;
+  }
+
+  return knownRatios[normalized] ?? "1 / 1";
 }

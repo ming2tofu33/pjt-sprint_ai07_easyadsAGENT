@@ -104,7 +104,7 @@ EasyAds Web은 모바일 웹앱을 390x844 화면 기준으로 먼저 설계합�
 | --- | --- | --- |
 | `card` | 기본 정보 그룹 | 흰 배경, soft border, card shadow |
 | action cards | 시작 방식/메뉴/알림 | 전체 영역 클릭 가능, 44px 이상 |
-| preview cards | 광고/레퍼런스 시안 | 콘텐츠 색은 mock art 색상으로 분리 |
+| preview cards | 광고/샘플 시안 | 콘텐츠 색은 mock art 색상으로 분리 |
 | list cards | 설정/사용량/알림 목록 | row divider는 soft border |
 | empty/error cards | 예외 상태 | 상태 색 + 회복 액션 CTA |
 
@@ -138,7 +138,7 @@ EasyAds Web은 모바일 웹앱을 390x844 화면 기준으로 먼저 설계합�
 
 ### Allowed As Art Colors
 
-광고 시안 mock, 레퍼런스 포스터, 컵/상품 일러스트, 배경 그라디언트처럼 콘텐츠 자체를 표현하는 색상은 raw hex를 남길 수 있습니다. 단, 버튼/텍스트/경계선/카드 같은 UI 시스템 색으로 재사용하지 않습니다.
+광고 시안 mock, 샘플 포스터, 컵/상품 일러스트, 배경 그라디언트처럼 콘텐츠 자체를 표현하는 색상은 raw hex를 남길 수 있습니다. 단, 버튼/텍스트/경계선/카드 같은 UI 시스템 색으로 재사용하지 않습니다.
 
 ### Current Audit Status
 
@@ -171,7 +171,7 @@ success progress: --color-status-success / --color-status-success-soft
 
 - mock 광고 시안 안의 컵/상품 하이라이트
 - 온보딩/대시보드 일러스트의 검정 라인 아트
-- 레퍼런스 포스터별 고유 배경 그라디언트
+- 샘플 포스터별 고유 배경 그라디언트
 - 상태를 설명하는 소형 mock 그래픽
 
 다음 감사 작업에서는 남은 raw 색을 지울 때 화면별로 먼저 확인합니다. 특히 `#fff`와 `#111`은 일러스트 색으로도 쓰이므로 전역 치환하지 않습니다.

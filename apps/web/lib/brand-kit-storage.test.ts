@@ -19,6 +19,7 @@ describe("brand-kit-storage", () => {
 
     expect(draft.status).toBe("draft");
     expect(draft.businessName).toBe("");
+    expect(draft.logoFileName).toBe("");
     expect(readSavedBrandKit()).toBeNull();
   });
 
@@ -44,6 +45,8 @@ describe("brand-kit-storage", () => {
       businessType: "카페",
       region: "연남동",
       sns: "@test_cafe",
+      logoFileName: "test-logo.png",
+      logoDataUrl: "data:image/png;base64,test",
       tones: ["따뜻한", "깔끔한"],
       colors: ["#FFD7C9"],
       phrases: ["예약은 DM 주세요"],
@@ -52,6 +55,7 @@ describe("brand-kit-storage", () => {
 
     expect(saved.status).toBe("saved");
     expect(readSavedBrandKit()?.businessName).toBe("연남 테스트 카페");
+    expect(readSavedBrandKit()?.logoFileName).toBe("test-logo.png");
     expect(brandKitMeta(saved)).toBe("카페 · 연남동 · @test_cafe");
     expect(brandKitProducts(saved)).toBe("라떼, 케이크");
     expect(window.sessionStorage.getItem(BRAND_KIT_STORAGE_KEY)).toContain("연남 테스트 카페");

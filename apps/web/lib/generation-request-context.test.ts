@@ -37,16 +37,16 @@ describe("generation-request-context", () => {
     });
 
     expect(buildBrandKitGenerationContext(brandKit)).toContain("가게 이름: 연남 테스트 카페");
-    expect(appendSavedBrandKitContext("신메뉴 광고 만들어줘")).toContain("[브랜드 키트]");
+    expect(appendSavedBrandKitContext("신메뉴 광고 만들어줘")).toContain("[브랜드 파일]");
     expect(appendSavedBrandKitContext("신메뉴 광고 만들어줘")).toContain("대표 상품/서비스: 대표 메뉴");
   });
 
   it("keeps a cross-route draft prompt until the generation flow clears it", () => {
-    writeGenerationDraftPrompt("레퍼런스 스타일로 광고 만들어줘");
+    writeGenerationDraftPrompt("샘플 스타일로 광고 만들어줘");
 
-    expect(window.sessionStorage.getItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY)).toBe("레퍼런스 스타일로 광고 만들어줘");
-    expect(readGenerationDraftPrompt()).toBe("레퍼런스 스타일로 광고 만들어줘");
-    expect(readGenerationDraftPrompt()).toBe("레퍼런스 스타일로 광고 만들어줘");
+    expect(window.sessionStorage.getItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY)).toBe("샘플 스타일로 광고 만들어줘");
+    expect(readGenerationDraftPrompt()).toBe("샘플 스타일로 광고 만들어줘");
+    expect(readGenerationDraftPrompt()).toBe("샘플 스타일로 광고 만들어줘");
 
     clearGenerationDraftPrompt();
 

@@ -4,8 +4,10 @@ import type {
   CopyOption,
   CustomCopyFields,
   InferredContext,
+  ImageGenerationEngineFields,
   OptionQuestion,
   PartialInferredContext,
+  ReferenceImageFields,
   ReferenceTemplateFields
 } from "@/types/marketing";
 
@@ -59,7 +61,7 @@ export type ChatBriefResponse = {
   brief: ChatBrief;
 };
 
-export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & {
+export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & ReferenceImageFields & ImageGenerationEngineFields & {
   copyGenerationMode?: CopyGenerationMode;
   adFormat?: string;
   renderProfile?: string;
@@ -113,6 +115,13 @@ export type PhotoUploadResponse = {
   sizeBytes: number;
 };
 
+export type ReferenceImageUploadResponse = {
+  referenceImagePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
 export type ReferenceQueryParams = Record<string, string | number | boolean | string[] | undefined | null>;
 export type BrandKitPayload = Record<string, unknown>;
 export interface GenerationJobCreateInput {
@@ -121,12 +130,30 @@ export interface GenerationJobCreateInput {
   brandKitId?: string | null;
   entryMode?: string;
   selectedReferenceTemplateId?: string | null;
+  sourceImagePath?: string | null;
+  referenceImagePath?: string | null;
   copyGenerationMode?: string | null;
+  selectedCopyId?: string | null;
+  selectedChannelId?: string | null;
+  selectedTone?: string | null;
+  customDirection?: string | null;
+  userCustomHeadline?: string | null;
+  userCustomSubcopy?: string | null;
   userPlan?: string;
   adFormat?: string | null;
   runMode?: string;
   metadata?: Record<string, unknown>;
 }
+
+export type GenerationJobAnswerPayload = {
+  field?: string;
+  value?: string;
+  customText?: string;
+  selectedCopyId?: string;
+  userCustomHeadline?: string;
+  userCustomSubcopy?: string;
+  payload?: Record<string, unknown>;
+};
 
 export type GenerationJobStatus = "queued" | "running" | "done" | "failed" | string;
 
@@ -315,6 +342,10 @@ async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams
   return payload as TResponse;
 }
 
+function compactPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined && value !== null));
+}
+
 async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
   const url = new URL(buildBffUrl(path));
   Object.entries(params ?? {}).forEach(([key, value]) => {
@@ -385,7 +416,8 @@ export function startChatGeneration(userInput: string, options: GenerationStartO
     copyGenerationMode: options.copyGenerationMode ?? undefined,
     userCustomHeadline: options.userCustomHeadline ?? undefined,
     userCustomSubcopy: options.userCustomSubcopy ?? undefined,
-    selectedReferenceTemplateId: options.selectedReferenceTemplateId ?? undefined
+    selectedReferenceTemplateId: options.selectedReferenceTemplateId ?? undefined,
+    referenceImagePath: options.referenceImagePath ?? undefined
   });
 }
 
@@ -419,9 +451,20 @@ export async function uploadPhotoAsset(file: File): Promise<PhotoUploadResponse>
   });
 }
 
+export async function uploadReferenceAsset(file: File): Promise<ReferenceImageUploadResponse> {
+  const upload = await uploadPhotoAsset(file);
+  return {
+    referenceImagePath: upload.sourceImagePath,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+    sizeBytes: upload.sizeBytes
+  };
+}
+
 export function startPhotoGeneration(input: {
   userInput: string;
   sourceImagePath: string;
+  referenceImagePath?: string | null;
   adFormat?: string;
   renderProfile?: string;
   copyGenerationMode?: CopyGenerationMode;
@@ -437,7 +480,8 @@ export function startPhotoGeneration(input: {
     copyGenerationMode: input.copyGenerationMode ?? undefined,
     userCustomHeadline: input.userCustomHeadline ?? undefined,
     userCustomSubcopy: input.userCustomSubcopy ?? undefined,
-    selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? undefined
+    selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? undefined,
+    referenceImagePath: input.referenceImagePath ?? undefined
   });
 }
 
@@ -591,6 +635,10 @@ export async function createGenerationJob(payload: GenerationJobCreateInput): Pr
 
 export function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
   return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`);
+}
+
+export function answerGenerationJob(jobId: string, payload: GenerationJobAnswerPayload): Promise<GenerationJobResponse> {
+  return postJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}/answer`, compactPayload(payload));
 }
 
 export async function saveArchiveItem(input: ArchiveItemCreateInput): Promise<ArchiveMutationResponse> {

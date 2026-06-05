@@ -36,7 +36,7 @@ const modeIconById = {
 
 const mascotRoleByKind = {
   searchEmpty: "referenceSearch",
-  archiveEmpty: "archiveEmpty",
+  archiveEmpty: "archiveBox",
   uploadFailed: "errorStressed",
   generationFailed: "errorWorried"
 } as const;
@@ -105,7 +105,7 @@ export function ExceptionStateStep({ kind }: ExceptionStateStepProps) {
       {kind === "searchEmpty" ? (
         <label className={styles.exceptionSearchField}>
           <Search size={17} aria-hidden="true" />
-          <input aria-label="레퍼런스 검색어" readOnly value={exceptionStateContent.searchEmpty.query} />
+          <input aria-label="샘플 검색어" readOnly value={exceptionStateContent.searchEmpty.query} />
           <SearchX size={16} aria-hidden="true" />
         </label>
       ) : null}
@@ -129,7 +129,7 @@ export function ExceptionStateStep({ kind }: ExceptionStateStepProps) {
             ))}
           </div>
           <button className={styles.primaryButton} type="button" onClick={openReference}>
-            전체 레퍼런스 보기 <ArrowRight size={18} aria-hidden="true" />
+            전체 샘플 보기 <ArrowRight size={18} aria-hidden="true" />
           </button>
         </>
       ) : null}

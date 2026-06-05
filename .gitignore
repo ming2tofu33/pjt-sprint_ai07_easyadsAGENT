@@ -16,6 +16,7 @@ models/
 docs/api_key.env
 node_modules/
 .next/
+*.tsbuildinfo
 playwright-report/
 test-results/
 .agents/

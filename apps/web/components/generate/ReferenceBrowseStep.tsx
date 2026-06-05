@@ -91,7 +91,7 @@ export function ReferenceBrowseStep({
           return;
         }
         setTemplates([]);
-        setErrorMessage(error instanceof Error ? error.message : "레퍼런스 목록을 불러오지 못했어요.");
+        setErrorMessage(error instanceof Error ? error.message : "샘플 목록을 불러오지 못했어요.");
       })
       .finally(() => {
         if (!cancelled) {
@@ -148,14 +148,14 @@ export function ReferenceBrowseStep({
       <label className={styles.searchField}>
         <Search size={17} aria-hidden="true" />
         <input
-          aria-label="레퍼런스 검색어"
+          aria-label="샘플 검색어"
           placeholder="음료, 여름, 포스터처럼 검색해보세요"
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
         />
       </label>
 
-      <div className={styles.categoryScroller} aria-label="레퍼런스 카테고리">
+      <div className={styles.categoryScroller} aria-label="샘플 카테고리">
         {categories.map((category) => (
           <button
             className={selectedCategory === category.value ? styles.categoryActive : undefined}
@@ -172,14 +172,14 @@ export function ReferenceBrowseStep({
         <p className={`${styles.browseNote} ${styles.referenceBrowseNote}`}>
           <Sparkles size={17} aria-hidden="true" />
           {isStandaloneGallery
-            ? "마음에 드는 샘플을 고르면 광고 생성 요청에 스타일 힌트로 함께 전달돼요."
+            ? "마음에 드는 샘플을 고르면 생성할 광고 이미지에 반영돼요."
             : isGenerationComplete
-            ? "완성된 광고와 비슷한 톤의 레퍼런스를 더 둘러볼 수 있어요."
+            ? "완성된 광고와 비슷한 톤의 샘플을 더 둘러볼 수 있어요."
             : "광고가 완성되면 알려드릴게요. 기다리는 동안 다른 스타일을 둘러볼 수 있어요."}
         </p>
 
         {isLoading ? (
-          <section className={styles.skeletonGrid} aria-label="레퍼런스 목록 불러오는 중">
+          <section className={styles.skeletonGrid} aria-label="샘플 목록 불러오는 중">
             {Array.from({ length: 4 }).map((_, index) => (
               <div className={styles.skeletonCreative} key={index}>
                 <span />
@@ -187,22 +187,23 @@ export function ReferenceBrowseStep({
             ))}
           </section>
         ) : errorMessage ? (
-          <section className={styles.emptyResultPanel} aria-label="레퍼런스 불러오기 실패">
+          <section className={styles.emptyResultPanel} aria-label="샘플 불러오기 실패">
             <MascotImage role="errorWorried" decorative className={styles.emptyMascot} />
-            <strong>레퍼런스를 불러오지 못했어요</strong>
+            <strong>샘플을 불러오지 못했어요</strong>
             <p>{errorMessage}</p>
             <button className={styles.secondaryButton} type="button" onClick={() => setReloadToken((current) => current + 1)}>
               다시 시도
             </button>
           </section>
         ) : visibleTemplates.length > 0 ? (
-          <section className={styles.referenceGrid} aria-label="광고 레퍼런스 목록">
+          <section className={styles.referenceGrid} aria-label="광고 샘플 목록">
             {visibleTemplates.map((template) => {
               const creative = referenceTemplateToCreative(template);
               return (
                 <AdCreativeCard
                   creative={creative}
                   key={template.templateId}
+                  savePlacement="copy"
                   showPlaceholderArt={false}
                   openOnImage
                   openLabel={`${template.title} 상세 보기`}
@@ -219,10 +220,10 @@ export function ReferenceBrowseStep({
             })}
           </section>
         ) : (
-          <section className={styles.emptyResultPanel} aria-label="레퍼런스 검색 결과 없음">
+          <section className={styles.emptyResultPanel} aria-label="샘플 검색 결과 없음">
             <MascotImage role="referenceSearch" decorative className={styles.emptyMascot} />
-            <strong>조건에 맞는 레퍼런스 이미지가 없어요</strong>
-            <p>직접 넣은 레퍼런스 이미지가 연결되면 여기에 표시돼요.</p>
+            <strong>조건에 맞는 샘플 이미지가 없어요</strong>
+            <p>직접 넣은 샘플 이미지가 연결되면 여기에 표시돼요.</p>
           </section>
         )}
       </div>

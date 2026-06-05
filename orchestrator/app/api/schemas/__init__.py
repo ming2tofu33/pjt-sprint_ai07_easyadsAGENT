@@ -22,6 +22,7 @@ from orchestrator.app.api.schemas.common import (
     RecoveryAction,
 )
 from orchestrator.app.api.schemas.generation_jobs import (
+    GenerationJobAnswerRequest,
     GenerationJobCreateRequest,
     GenerationJobCreateResponse,
     GenerationJobGetResponse,
@@ -56,6 +57,7 @@ __all__ = [
     "EmptyState",
     "ErrorResponse",
     "GenerationJobCreateRequest",
+    "GenerationJobAnswerRequest",
     "GenerationJobCreateResponse",
     "GenerationJobGetResponse",
     "GenerationJobResponse",

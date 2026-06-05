@@ -34,7 +34,11 @@ describe("generate chat routes", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/generate/chat/start",
-      payload: { userInput: "우리 카페 딸기라떼 광고", renderProfile: "premium_api" }
+      payload: {
+        userInput: "우리 카페 딸기라떼 광고",
+        renderProfile: "premium_api",
+        referenceImagePath: "data/uploads/reference_1.png"
+      }
     });
 
     expect(response.statusCode).toBe(200);
@@ -43,7 +47,11 @@ describe("generate chat routes", () => {
       "http://orchestrator/v1/marketing/chat/start",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ userInput: "우리 카페 딸기라떼 광고", renderProfile: "premium_api" })
+        body: JSON.stringify({
+          userInput: "우리 카페 딸기라떼 광고",
+          renderProfile: "premium_api",
+          referenceImagePath: "data/uploads/reference_1.png"
+        })
       })
     );
     await app.close();
@@ -311,7 +319,13 @@ describe("generate chat routes", () => {
       payload: {
         userInput: "Supabase 연결 확인",
         runMode: "queued_only",
-        selectedReferenceTemplateId: "seed_1"
+        selectedReferenceTemplateId: "seed_1",
+        selectedCopyId: "copy_1",
+        selectedChannelId: "instagram-feed",
+        selectedTone: "깔끔한",
+        customDirection: "제품을 크게",
+        userCustomHeadline: "오늘만 반값",
+        userCustomSubcopy: "오후 5시까지"
       }
     });
     const getResponse = await app.inject({
@@ -330,7 +344,13 @@ describe("generate chat routes", () => {
         body: JSON.stringify({
           userInput: "Supabase 연결 확인",
           runMode: "queued_only",
-          selected_reference_template_id: "seed_1"
+          selectedReferenceTemplateId: "seed_1",
+          selectedCopyId: "copy_1",
+          selectedChannelId: "instagram-feed",
+          selectedTone: "깔끔한",
+          customDirection: "제품을 크게",
+          userCustomHeadline: "오늘만 반값",
+          userCustomSubcopy: "오후 5시까지"
         })
       })
     );
@@ -338,6 +358,38 @@ describe("generate chat routes", () => {
       2,
       "http://orchestrator/api/v1/generation-jobs/job_1",
       expect.objectContaining({ method: "GET" })
+    );
+    await app.close();
+  });
+
+  it("proxies generation job answers to the orchestrator", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed", stage_order: [] },
+          metadata: { execution_mode: "graph_execution" }
+        }
+      })
+    );
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs/job_1/answer",
+      payload: { field: "business_type", value: "cafe" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().job.status).toBe("done");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/generation-jobs/job_1/answer",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ field: "business_type", value: "cafe" })
+      })
     );
     await app.close();
   });
@@ -744,7 +796,7 @@ describe("generate chat routes", () => {
           copy: "여름엔 수박주스",
           tone: "브랜드에 맞춘 분위기",
           channel: "인스타 피드 (1:1)",
-          imageDirection: "선택한 레퍼런스 템플릿을 반영한 여름 음료 광고",
+          imageDirection: "선택한 샘플 템플릿을 반영한 여름 음료 광고",
           finalImagePath: "data/outputs/job_reference_template/final_composite.png"
         },
         copyGenerationMode: "auto_pilot"

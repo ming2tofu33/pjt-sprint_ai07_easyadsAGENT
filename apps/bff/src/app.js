@@ -15,6 +15,9 @@ const customCopyFieldsSchema = {
 const referenceTemplateFieldsSchema = {
   selectedReferenceTemplateId: z.string().trim().min(1).optional()
 };
+const referenceImageFieldsSchema = {
+  referenceImagePath: z.string().trim().min(1).optional()
+};
 
 const chatStartSchema = z.object({
   userInput: z.string().min(1),
@@ -22,7 +25,8 @@ const chatStartSchema = z.object({
   renderProfile: z.string().optional(),
   copyGenerationMode: z.enum(copyGenerationModes).optional(),
   ...customCopyFieldsSchema,
-  ...referenceTemplateFieldsSchema
+  ...referenceTemplateFieldsSchema,
+  ...referenceImageFieldsSchema
 }).superRefine((data, context) => {
   if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
     context.addIssue({
@@ -68,7 +72,8 @@ const photoStartSchema = z.object({
   renderProfile: z.string().optional(),
   copyGenerationMode: z.enum(copyGenerationModes).optional(),
   ...customCopyFieldsSchema,
-  ...referenceTemplateFieldsSchema
+  ...referenceTemplateFieldsSchema,
+  ...referenceImageFieldsSchema
 }).superRefine((data, context) => {
   if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
     context.addIssue({
@@ -89,7 +94,33 @@ const generationJobSchema = z.object({
   run_mode: z.string().optional(),
   runMode: z.string().optional(),
   selected_reference_template_id: z.string().optional(),
-  selectedReferenceTemplateId: z.string().optional()
+  selectedReferenceTemplateId: z.string().optional(),
+  selected_copy_id: z.string().optional(),
+  selectedCopyId: z.string().optional(),
+  selected_channel_id: z.string().optional(),
+  selectedChannelId: z.string().optional(),
+  selected_tone: z.string().optional(),
+  selectedTone: z.string().optional(),
+  custom_direction: z.string().optional(),
+  customDirection: z.string().optional(),
+  user_custom_headline: z.string().optional(),
+  userCustomHeadline: z.string().optional(),
+  user_custom_subcopy: z.string().optional(),
+  userCustomSubcopy: z.string().optional(),
+  source_image_path: z.string().optional(),
+  sourceImagePath: z.string().optional(),
+  reference_image_path: z.string().optional(),
+  referenceImagePath: z.string().optional()
+}).passthrough();
+
+const generationJobAnswerSchema = z.object({
+  field: z.string().trim().min(1).optional(),
+  value: z.string().optional(),
+  customText: z.string().optional(),
+  selectedCopyId: z.string().optional(),
+  userCustomHeadline: z.string().optional(),
+  userCustomSubcopy: z.string().optional(),
+  payload: z.record(z.unknown()).optional()
 }).passthrough();
 
 const archiveItemSchema = z.object({
@@ -467,12 +498,28 @@ export function buildApp(options = {}) {
       ...(userId ? { userId } : {}),
       userInput: parsed.data.userInput ?? parsed.data.user_input,
       threadId: parsed.data.threadId ?? parsed.data.thread_id,
-      selectedReferenceTemplateId: parsed.data.selectedReferenceTemplateId ?? parsed.data.selected_reference_template_id
+      selectedReferenceTemplateId: parsed.data.selectedReferenceTemplateId ?? parsed.data.selected_reference_template_id,
+      selectedCopyId: parsed.data.selectedCopyId ?? parsed.data.selected_copy_id,
+      selectedChannelId: parsed.data.selectedChannelId ?? parsed.data.selected_channel_id,
+      selectedTone: parsed.data.selectedTone ?? parsed.data.selected_tone,
+      customDirection: parsed.data.customDirection ?? parsed.data.custom_direction,
+      userCustomHeadline: parsed.data.userCustomHeadline ?? parsed.data.user_custom_headline,
+      userCustomSubcopy: parsed.data.userCustomSubcopy ?? parsed.data.user_custom_subcopy,
+      sourceImagePath: parsed.data.sourceImagePath ?? parsed.data.source_image_path,
+      referenceImagePath: parsed.data.referenceImagePath ?? parsed.data.reference_image_path
     };
-    
+
     delete body.user_input;
     delete body.thread_id;
     delete body.selected_reference_template_id;
+    delete body.selected_copy_id;
+    delete body.selected_channel_id;
+    delete body.selected_tone;
+    delete body.custom_direction;
+    delete body.user_custom_headline;
+    delete body.user_custom_subcopy;
+    delete body.source_image_path;
+    delete body.reference_image_path;
 
     return proxyJson({
       fetchImpl,
@@ -487,6 +534,19 @@ export function buildApp(options = {}) {
       url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}`
     })
   );
+
+  app.post("/api/generation-jobs/:jobId/answer", async (request, reply) => {
+    const parsed = generationJobAnswerSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+
+    return proxyJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}/answer`,
+      body: parsed.data
+    });
+  });
 
   app.get("/api/archive/items", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";

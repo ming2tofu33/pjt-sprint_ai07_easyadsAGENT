@@ -108,7 +108,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
       <>
         <StepHeader title="찰떡 광고 시안" canGoBack onBack={() => router.push(buildDashboardHref("ads"))} onHome={goHome} />
         <section className={styles.emptyResultPanel} aria-label="보관함 항목 없음">
-          <MascotImage role="archiveEmpty" decorative className={styles.emptyMascot} />
+          <MascotImage role="archiveBox" decorative className={styles.emptyMascot} />
           <strong>{!sessionChecked ? "보관함 항목을 불러오는 중이에요" : "보관함에서 이 항목을 찾지 못했어요"}</strong>
           <p>
             {creativeId.startsWith("generated-")
@@ -161,7 +161,10 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
         </section>
 
         <section className={styles.generatedImageSummary} aria-label="생성 이미지 정보">
-          <span>실제 생성</span>
+          <div className={styles.generatedSummaryHeader}>
+            <MascotImage role="downloadFile" decorative className={styles.generatedSummaryMascot} />
+            <span>실제 생성</span>
+          </div>
           <h2>{activeCreative.title}</h2>
           <p>생성된 이미지만 확인하고 다운로드할 수 있어요.</p>
           <dl>
@@ -195,7 +198,10 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
         <StepHeader title="광고 저장하기" canGoBack onBack={goBack} onHome={goHome} />
 
         <h2 className={styles.sectionTitle}>어디에 사용할까요?</h2>
-        <p className={styles.saveHelper}>채널에 맞게 이미지 크기와 여백을 자동으로 맞춰드려요.</p>
+        <div className={styles.saveHelperCard}>
+          <MascotImage role="downloadFile" decorative className={styles.saveFlowMascot} />
+          <p>채널에 맞게 이미지 크기와 여백을 자동으로 맞춰드려요.</p>
+        </div>
         <div className={styles.saveChannelGrid}>
           {channels.map(({ id, label, ratio, icon: Icon }) => (
             <button data-active={channel === id ? "true" : undefined} key={id} type="button" onClick={() => setChannel(id)}>
@@ -252,7 +258,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
     return (
       <>
         <section className={styles.savedCompleteHero}>
-          <MascotImage role="saveComplete" decorative className={styles.savedMascot} />
+          <MascotImage role="saveGift" decorative className={styles.savedMascot} />
           <h1>광고 이미지가 저장됐어요!</h1>
           <p>바로 사용하거나, 보관함에서 다시 확인할 수 있어요.</p>
         </section>

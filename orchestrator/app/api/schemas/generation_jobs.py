@@ -53,6 +53,12 @@ class GenerationJobCreateRequest(BaseModel):
     source_image_path: str | None = Field(default=None, alias="sourceImagePath")
     reference_image_path: str | None = Field(default=None, alias="referenceImagePath")
     copy_generation_mode: str | None = Field(default=None, alias="copyGenerationMode")
+    selected_copy_id: str | None = Field(default=None, alias="selectedCopyId")
+    selected_channel_id: str | None = Field(default=None, alias="selectedChannelId")
+    selected_tone: str | None = Field(default=None, alias="selectedTone")
+    custom_direction: str | None = Field(default=None, alias="customDirection")
+    user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
+    user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
     user_plan: str = Field(default="free", alias="userPlan")
     ad_format: str | None = Field(default=None, alias="adFormat")
     run_mode: GenerationRunMode = Field(default="queued_only", alias="runMode")
@@ -76,6 +82,38 @@ class GenerationJobCreateRequest(BaseModel):
         if not normalized.startswith("thread_"):
             raise ValueError("thread_id must start with 'thread_'")
         return normalized
+
+
+class GenerationJobAnswerRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    field: str | None = None
+    value: str | None = None
+    custom_text: str | None = Field(default=None, alias="customText")
+    selected_copy_id: str | None = Field(default=None, alias="selectedCopyId")
+    user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
+    user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    def to_resume_payload(self, *, job_id: str, thread_id: str) -> dict[str, Any]:
+        resume_payload: dict[str, Any] = {
+            "job_id": job_id,
+            "thread_id": thread_id,
+        }
+        if self.field is not None:
+            resume_payload["field"] = self.field
+        if self.value is not None:
+            resume_payload["value"] = self.value
+        if self.custom_text:
+            resume_payload["custom_text"] = self.custom_text
+        if self.selected_copy_id:
+            resume_payload["selected_copy_id"] = self.selected_copy_id
+        if self.user_custom_headline:
+            resume_payload["user_custom_headline"] = self.user_custom_headline
+        if self.user_custom_subcopy:
+            resume_payload["user_custom_subcopy"] = self.user_custom_subcopy
+        resume_payload.update(self.payload)
+        return resume_payload
 
 
 class GenerationProgress(BaseModel):

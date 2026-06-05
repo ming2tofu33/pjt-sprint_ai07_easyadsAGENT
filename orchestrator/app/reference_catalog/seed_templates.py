@@ -7,7 +7,7 @@ SEED_REFERENCE_TEMPLATES = [
     {
         "template_id": "seed_cafe_strawberry_feed_001",
         "title": "딸기 디저트 감성 피드",
-        "description": "핑크/크림톤의 카페 신메뉴 홍보용 정사각형 레퍼런스",
+        "description": "핑크/크림톤의 카페 신메뉴 홍보용 정사각형 샘플",
         "category": "cafe",
         "sub_category": "dessert",
         "tags": ["딸기", "디저트", "감성", "신메뉴"],
@@ -33,7 +33,7 @@ SEED_REFERENCE_TEMPLATES = [
     {
         "template_id": "seed_restaurant_bbq_story_001",
         "title": "따뜻한 고기집 스토리",
-        "description": "저녁 예약 유도에 맞는 세로형 음식점 레퍼런스",
+        "description": "저녁 예약 유도에 맞는 세로형 음식점 샘플",
         "category": "restaurant",
         "tags": ["삼겹살", "회식", "예약", "따뜻한"],
         "business_types": ["restaurant", "bbq"],
