@@ -83,7 +83,7 @@ def test_list_count_and_soft_delete_archive_items(monkeypatch):
     deleted = repo.soft_delete_archive_item_row(archive_item_id="archive_uuid", workspace_id="workspace_uuid", connection=conn)
 
     joined = "\n".join(call[0] for call in conn.cursor_obj.calls)
-    assert "from archive_items where workspace_id = %s and deleted_at is null order by saved_at desc" in joined
+    assert "i.workspace_id = %s and i.deleted_at is null order by i.saved_at desc" in joined
     assert "select count(*) as total from archive_items" in joined
     assert "set deleted_at = now(), updated_at = now()" in joined
     assert rows[0]["id"] == "archive_uuid"
@@ -101,7 +101,7 @@ def test_archive_item_queries_can_filter_by_creator(monkeypatch):
 
     joined = "\n".join(call[0] for call in conn.cursor_obj.calls)
     params = [call[1] for call in conn.cursor_obj.calls]
-    assert "created_by = %s" in joined
+    assert "i.created_by = %s" in joined
     assert params[0] == ("workspace_uuid", "user_1", 20, 0)
     assert params[1] == ("workspace_uuid", "user_1")
     assert params[2] == ("archive_uuid", "workspace_uuid", "user_1")

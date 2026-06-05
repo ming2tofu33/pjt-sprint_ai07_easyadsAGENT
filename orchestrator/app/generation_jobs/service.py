@@ -1341,7 +1341,7 @@ def _create_output_records_for_done_job_db(
         workspace_id=str(row["workspace_id"]),
         thread_id=str(row["thread_id"]),
         job_id=str(row["id"]),
-        asset_id=str(asset["id"]),
+        asset_id=str(asset["id"]) if asset else None,
         variant_index=0,
         is_final=False,
         result_payload=effective_result_payload,
@@ -1349,6 +1349,14 @@ def _create_output_records_for_done_job_db(
         connection=connection,
     )
     final_output = generation_output_repo.mark_output_final(str(output["id"]), connection=connection)
+    
+    from orchestrator.app.archive.service import sync_archive_for_output
+    sync_archive_for_output(
+        workspace_id=str(row["workspace_id"]),
+        internal_output_id=str(output["id"]),
+        connection=connection,
+    )
+    _record_generation_job_event_db(row, "archive_linked", payload={"public_output_id": output.get("public_output_id")}, connection=connection)
 
     if final_output:
         return {**output, **final_output}, row
