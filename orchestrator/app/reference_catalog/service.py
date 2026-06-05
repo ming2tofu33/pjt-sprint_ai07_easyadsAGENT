@@ -15,8 +15,13 @@ from orchestrator.app.schemas.reference_catalog import (
     ReferenceTemplateSearchResult,
     ReferenceTemplateSelection,
 )
+from orchestrator.app.storage.url_policy import build_public_r2_url
 
 
+PERMANENT_REFERENCE_MANIFEST_ENV = "EASYADS_PERMANENT_REFERENCE_MANIFEST"
+DEFAULT_PERMANENT_REFERENCE_MANIFEST = Path(__file__).with_name("permanent_templates.json")
+PERMANENT_REFERENCE_LICENSE_NOTE = "owned or licensed EasyAds service reference"
+R2_REFERENCE_ASSET_PREFIX = "r2://"
 TEMP_REFERENCE_FLAG_ENV = "EASYADS_ENABLE_TEMP_REFERENCES"
 TEMP_REFERENCE_ROOT_ENV = "EASYADS_TEMP_REFERENCE_ROOT"
 TEMP_REFERENCE_MANIFEST_NAME = "catalog.local.json"
@@ -62,12 +67,60 @@ def temporary_reference_root(root: str | Path | None = None) -> Path:
     return Path(os.environ.get(TEMP_REFERENCE_ROOT_ENV, DEFAULT_TEMP_REFERENCE_ROOT))
 
 
-def load_reference_templates(include_temporary: bool | None = None) -> list[ReferenceTemplate]:
+def permanent_reference_manifest_path(path: str | Path | None = None) -> Path:
+    if path is not None:
+        return Path(path)
+    return Path(os.environ.get(PERMANENT_REFERENCE_MANIFEST_ENV, DEFAULT_PERMANENT_REFERENCE_MANIFEST))
+
+
+def load_reference_templates(
+    include_temporary: bool | None = None,
+    include_permanent: bool = True,
+) -> list[ReferenceTemplate]:
     templates = [ReferenceTemplate(**item) for item in SEED_REFERENCE_TEMPLATES]
+    if include_permanent:
+        templates.extend(load_permanent_reference_templates())
     should_include_temporary = temporary_references_enabled() if include_temporary is None else include_temporary
     if should_include_temporary:
         templates.extend(load_temporary_reference_templates())
     return unique_templates_by_id(templates)
+
+
+def load_permanent_reference_templates(manifest_path: str | Path | None = None) -> list[ReferenceTemplate]:
+    path = permanent_reference_manifest_path(manifest_path)
+    if not path.is_file():
+        return []
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        items = payload
+    elif isinstance(payload, dict):
+        items = payload.get("items") or payload.get("templates") or []
+    else:
+        return []
+
+    return [permanent_template_from_item(item) for item in items if isinstance(item, dict)]
+
+
+def permanent_template_from_item(item: dict[str, Any]) -> ReferenceTemplate:
+    data = dict(item)
+    assets = dict(data.get("assets") or {})
+    if assets.get("thumbnail_path") and not assets.get("preview_path"):
+        assets["preview_path"] = assets["thumbnail_path"]
+    if (assets.get("preview_path") or assets.get("thumbnail_path")) and not assets.get("source_image_path"):
+        assets["source_image_path"] = assets.get("preview_path") or assets.get("thumbnail_path")
+
+    metadata = dict(data.get("metadata") or {})
+    metadata.setdefault("permanent", True)
+    metadata.setdefault("storage_provider", "r2")
+    metadata.setdefault("copyright_status", "owned_or_licensed")
+
+    data["assets"] = assets
+    data["metadata"] = metadata
+    data.setdefault("source", "admin_upload")
+    data.setdefault("status", "active")
+    data.setdefault("license_note", PERMANENT_REFERENCE_LICENSE_NOTE)
+    return ReferenceTemplate(**data)
 
 
 def load_temporary_reference_templates(root: str | Path | None = None) -> list[ReferenceTemplate]:
@@ -160,6 +213,28 @@ def temporary_reference_asset_url(template: ReferenceTemplate, asset_kind: str) 
     if not filename:
         return None
     return f"/api/v1/references/temp-assets/{quote(str(removal_group), safe='')}/{quote(filename, safe='')}"
+
+
+def permanent_reference_asset_url(template: ReferenceTemplate, asset_kind: str) -> str | None:
+    if not template.metadata.get("permanent"):
+        return None
+
+    asset_path = getattr(template.assets, f"{asset_kind}_path", None)
+    if not asset_path:
+        return None
+
+    value = str(asset_path).strip()
+    if value.startswith(("http://", "https://")):
+        return value
+    if value.startswith(R2_REFERENCE_ASSET_PREFIX):
+        return build_public_r2_url(value.removeprefix(R2_REFERENCE_ASSET_PREFIX))
+    if template.metadata.get("storage_provider") == "r2":
+        return build_public_r2_url(value)
+    return None
+
+
+def reference_template_asset_url(template: ReferenceTemplate, asset_kind: str) -> str | None:
+    return temporary_reference_asset_url(template, asset_kind) or permanent_reference_asset_url(template, asset_kind)
 
 
 def temporary_reference_asset_path(removal_group: str, filename: str, root: str | Path | None = None) -> Path | None:

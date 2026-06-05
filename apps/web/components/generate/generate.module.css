@@ -4,6 +4,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
 }
 
 .phone {
@@ -24,6 +25,7 @@
   border-radius: var(--radius-phone);
   box-shadow: var(--shadow-phone);
   overflow: hidden;
+  position: relative;
   display: flex;
   flex-direction: column;
 }
@@ -35,9 +37,17 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  scroll-padding-bottom: 156px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
+}
+
+.body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .body button {
@@ -501,6 +511,35 @@
   font-weight: 750;
 }
 
+.mascotArt {
+  display: block;
+  width: var(--mascot-width, 112px);
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+
+.dashboardHeroMascot {
+  --mascot-width: 132px;
+  align-self: end;
+  justify-self: end;
+  margin: 0 -16px -14px 0;
+  filter: drop-shadow(0 14px 24px rgba(103, 128, 16, 0.16));
+}
+
+.emptyMascot {
+  --mascot-width: 118px;
+  margin-bottom: 2px;
+  filter: drop-shadow(0 12px 22px rgba(17, 17, 17, 0.07));
+}
+
+.resultsMascot {
+  --mascot-width: 92px;
+  margin-bottom: 8px;
+}
+
 .hero {
   margin-top: 14px;
   padding: 28px 22px;
@@ -653,11 +692,30 @@
 }
 
 .inputCard.startInputCard {
-  margin-top: 0;
+  margin-top: 8px;
 }
 
 .contextAnswerInputCard {
   grid-template-columns: minmax(0, 1fr) 42px;
+}
+
+.startInputCard + .helperText {
+  display: none;
+}
+
+.startInputCard,
+.contextAnswerInputCard {
+  position: sticky;
+  bottom: 0;
+  z-index: 35;
+  isolation: isolate;
+  box-shadow: 0 10px 26px rgba(17, 17, 17, 0.06);
+}
+
+.startInputCard {
+  bottom: 8px;
+  border-color: #aa92ff;
+  box-shadow: 0 0 0 1px rgba(170, 146, 255, 0.18), 0 10px 26px rgba(17, 17, 17, 0.06);
 }
 
 .input {
@@ -732,7 +790,18 @@
 
 .stepFooter {
   margin-top: auto;
-  padding-top: 28px;
+  padding: 18px 0 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0), var(--color-bg-surface) 18%),
+    var(--color-bg-surface);
+  box-shadow: 0 -18px 34px rgba(255, 255, 255, 0.92);
+}
+
+.stepFooter:has(+ .bottomTabs) {
+  bottom: 66px;
 }
 
 .progressWrap {
@@ -1152,6 +1221,12 @@
   animation: pulseGlow 1.4s ease-in-out infinite;
 }
 
+.generationMascot {
+  --mascot-width: 124px;
+  margin: -4px auto 6px;
+  filter: drop-shadow(0 14px 24px rgba(125, 95, 219, 0.13));
+}
+
 .statusCard {
   margin-top: 12px;
   padding: 15px;
@@ -1368,14 +1443,16 @@
 }
 
 .categoryScroller {
-  margin: 12px -18px 14px 0;
+  margin: 12px calc(var(--screen-padding-x) * -1) 10px 0;
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-right: 18px;
+  overflow-y: hidden;
+  padding-right: var(--screen-padding-x);
   overscroll-behavior-x: contain;
   scrollbar-width: none;
   touch-action: pan-x;
+  white-space: nowrap;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -1402,16 +1479,28 @@
 }
 
 .referenceContentScroll {
-  flex: 1 1 280px;
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: clamp(260px, 48dvh, 430px);
+  max-height: none;
   margin-right: -4px;
-  padding: 0 4px 2px 0;
+  margin-bottom: 10px;
+  padding: 0 4px 10px 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+}
+
+.referenceContentScroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.referenceContentScroll .emptyResultPanel {
+  margin-top: 0;
 }
 
 .referenceCard,
@@ -1515,13 +1604,22 @@
   color: var(--color-brand-mint-text);
 }
 
+.referenceBrowseNote {
+  flex: 0 0 auto;
+  margin: 0 0 12px;
+}
+
 .bottomTabs {
   margin: auto calc(var(--screen-padding-x) * -1) calc(var(--screen-padding-bottom) * -1);
   border-top: 1px solid var(--color-border-soft);
   background: var(--color-bg-surface);
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  padding: 9px 8px 10px;
+  padding: 8px 8px 6px;
+  position: sticky;
+  bottom: calc((var(--screen-padding-bottom) * -1) + 4px);
+  z-index: 40;
+  box-shadow: 0 -14px 26px rgba(17, 17, 17, 0.07);
 }
 
 .bottomTabs span,
@@ -2266,6 +2364,13 @@
   box-shadow: 0 18px 36px rgba(176, 203, 32, 0.2);
 }
 
+.brandStartMascot {
+  --mascot-width: 136px;
+  justify-self: end;
+  margin: -4px -12px -18px 0;
+  filter: drop-shadow(0 18px 28px rgba(103, 128, 16, 0.16));
+}
+
 .brandInfoCard,
 .brandSummaryCard {
   margin-top: 16px;
@@ -2464,6 +2569,12 @@
   font-weight: 800;
 }
 
+.brandHeroMascot {
+  --mascot-width: 116px;
+  margin-bottom: -2px;
+  filter: drop-shadow(0 12px 22px rgba(17, 17, 17, 0.08));
+}
+
 .brandSummaryCard .brandIdentity {
   margin-top: 0;
 }
@@ -2596,6 +2707,10 @@
 .emptyResultPanel .secondaryButton {
   width: min(100%, 190px);
   margin-top: 6px;
+}
+
+.emptyResultPanel .emptyMascot {
+  --mascot-width: 112px;
 }
 
 .resultCard {
@@ -3975,6 +4090,12 @@
   justify-content: center;
 }
 
+.savedMascot {
+  --mascot-width: 126px;
+  margin-bottom: -4px;
+  filter: drop-shadow(0 16px 28px rgba(40, 169, 142, 0.14));
+}
+
 .savedCompleteHero h1 {
   margin: 0;
   font-size: 20px;
@@ -4187,6 +4308,12 @@
   box-shadow: inset 0 0 0 1px rgba(17, 17, 17, 0.06);
 }
 
+.photoDropMascot {
+  --mascot-width: 132px;
+  margin: -8px auto -2px;
+  filter: drop-shadow(0 14px 24px rgba(90, 64, 177, 0.12));
+}
+
 .photoDropzone h2,
 .photoAnalysisCard h2 {
   margin: 0;
@@ -4375,6 +4502,13 @@
   gap: 8px;
   padding: 8px 12px;
   color: var(--color-text);
+  background: rgba(255, 255, 255, 0.94);
+  position: sticky;
+  bottom: 8px;
+  z-index: 35;
+  isolation: isolate;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 -14px 32px rgba(170, 146, 255, 0.18), 0 10px 30px rgba(17, 17, 17, 0.06);
 }
 
 .photoPromptTextarea {
@@ -4760,6 +4894,12 @@
   color: var(--color-text-inverse);
 }
 
+.notificationDetailMascot {
+  --mascot-width: 126px;
+  margin-bottom: -2px;
+  filter: drop-shadow(0 14px 24px rgba(17, 17, 17, 0.08));
+}
+
 .notificationDetailHero[data-variant="complete"] span {
   background: #83bf46;
 }
@@ -4969,40 +5109,35 @@
 
 .exceptionIllustration {
   width: 172px;
-  height: 136px;
+  height: 148px;
   border-radius: 40px;
   color: var(--color-text-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  overflow: hidden;
 }
 
 .exceptionIllustration::before {
-  content: "";
-  position: absolute;
-  inset: 24px 20px;
-  border: 2px solid #111;
-  border-radius: 32px 32px 18px 18px;
-  background: var(--color-bg-card);
+  content: none;
 }
 
 .exceptionIllustration::after {
-  content: "";
-  position: absolute;
-  left: 70px;
-  top: 60px;
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #111;
-  box-shadow: 24px 0 0 #111, 12px 20px 0 3px #111;
+  content: none;
 }
 
 .exceptionIllustration svg {
   position: relative;
   z-index: 1;
   transform: translateY(32px);
+}
+
+.exceptionMascot {
+  --mascot-width: 152px;
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 14px 24px rgba(17, 17, 17, 0.08));
 }
 
 .exceptionHero[data-tone="lime"] .exceptionIllustration {
@@ -5979,6 +6114,10 @@
   font-size: 11px;
   line-height: 1.4;
   font-weight: 780;
+}
+
+.usageDetailsButton {
+  margin-top: 12px;
 }
 
 .usageDetailsPanel {
