@@ -39,13 +39,13 @@ export function buildBrandKitGenerationContext(brandKit: StoredBrandKit | null):
   }
 
   return compactLines([
-    "[브랜드 키트]",
+    "[브랜드 파일]",
     `가게 이름: ${brandKit.businessName}`,
     `가게 정보: ${brandKitMeta(brandKit)}`,
     `브랜드 톤: ${brandKitTone(brandKit)}`,
     `대표 상품/서비스: ${brandKitProducts(brandKit)}`,
     `자주 쓰는 문구: ${brandKitPhrases(brandKit)}`,
-    "[/브랜드 키트]"
+    "[/브랜드 파일]"
   ]);
 }
 

@@ -9,6 +9,7 @@ type AdCreativeCardProps = {
   creative: MockCreative;
   index?: number;
   compact?: boolean;
+  savePlacement?: "overlay" | "copy";
   showPlaceholderArt?: boolean;
   openOnImage?: boolean;
   openLabel?: string;
@@ -21,6 +22,7 @@ export function AdCreativeCard({
   creative,
   index,
   compact = false,
+  savePlacement = "overlay",
   showPlaceholderArt = true,
   openOnImage = false,
   openLabel,
@@ -46,15 +48,23 @@ export function AdCreativeCard({
   ) : (
     <span className={styles.adCreativeImageMissing}>이미지 준비 중</span>
   );
+  const saveButton = onSave ? (
+    <button
+      aria-label={`${creative.title} 저장`}
+      className={styles.adCreativeSaveButton}
+      data-placement={savePlacement}
+      type="button"
+      onClick={onSave}
+    >
+      <Bookmark size={savePlacement === "copy" ? 18 : 15} aria-hidden="true" />
+    </button>
+  ) : null;
+  const shouldShowCopyHeader = Boolean(creative.badge || (saveButton && savePlacement === "copy"));
 
   return (
     <article className={styles.adCreativeCard} data-tone={creative.tone} data-compact={compact} data-gallery={openOnImage ? "true" : undefined}>
       {typeof index === "number" ? <strong className={styles.adCreativeNumber}>{index + 1}</strong> : null}
-      {onSave ? (
-        <button aria-label={`${creative.title} 저장`} className={styles.adCreativeSaveButton} type="button" onClick={onSave}>
-          <Bookmark size={15} aria-hidden="true" />
-        </button>
-      ) : null}
+      {savePlacement === "overlay" ? saveButton : null}
       {onOpen && openOnImage ? (
         <button
           aria-label={openLabel ?? `${creative.title} 상세 보기`}
@@ -71,7 +81,12 @@ export function AdCreativeCard({
         </div>
       )}
       <div className={styles.adCreativeCopy}>
-        {creative.badge ? <em>{creative.badge}</em> : null}
+        {shouldShowCopyHeader ? (
+          <div className={styles.adCreativeCopyHeader}>
+            {creative.badge ? <em>{creative.badge}</em> : <span aria-hidden="true" />}
+            {savePlacement === "copy" ? saveButton : null}
+          </div>
+        ) : null}
         <h2>{creative.title}</h2>
         <p>{creative.subtitle}</p>
         {onOpen && !openOnImage ? (
