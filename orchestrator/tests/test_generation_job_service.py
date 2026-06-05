@@ -80,8 +80,8 @@ def test_create_generation_job_graph_immediate_degrades_metadata():
 
     assert job.status == "queued"
     assert job.metadata["requested_run_mode"] == "graph_immediate"
-    assert job.metadata["effective_run_mode"] == "queued_only"
-    assert job.metadata["execution_mode"] == "degraded_no_graph_execution"
+    assert job.metadata["effective_run_mode"] == "graph_immediate"
+    assert job.metadata["execution_mode"] == "pending_graph_execution"
     assert job.output_path is None
     assert job.result_payload is None
 

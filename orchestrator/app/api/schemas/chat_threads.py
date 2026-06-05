@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from orchestrator.app.api.schemas.common import ApiMeta
+from orchestrator.app.schemas.chat_state_snapshots import ChatStateSnapshotResponse
 
 # ---------------------------------------------------------------------------
 # 기본 타입
@@ -115,6 +116,8 @@ class ChatMessageResponse(BaseModel):
     content: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     created_by: str | None = None
+    job_id: str | None = None
+    event_type: str | None = None
     created_at: str
 
 
@@ -152,4 +155,10 @@ class ChatMessageListResponse(BaseModel):
 class ChatMessageCreateResponse(BaseModel):
     success: Literal[True] = True
     message: ChatMessageResponse
+    meta: ApiMeta = Field(default_factory=ApiMeta)
+
+
+class ChatThreadStateGetResponse(BaseModel):
+    success: Literal[True] = True
+    snapshot: ChatStateSnapshotResponse | None = None
     meta: ApiMeta = Field(default_factory=ApiMeta)

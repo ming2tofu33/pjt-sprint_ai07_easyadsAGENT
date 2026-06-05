@@ -10,7 +10,11 @@ from orchestrator.app.api.schemas.generation_jobs import (
     GenerationJobCreateResponse,
     GenerationJobGetResponse,
 )
-from orchestrator.app.generation_jobs.execution import execute_generation_job_immediate, execute_generation_job_t2i
+from orchestrator.app.generation_jobs.execution import (
+    execute_generation_job_immediate,
+    execute_generation_job_t2i,
+    execute_generation_job_graph,
+)
 from orchestrator.app.generation_jobs.service import (
     create_generation_job,
     get_generation_job,
@@ -68,6 +72,8 @@ def create_generation_job_route(request: GenerationJobCreateRequest) -> Generati
         job = maybe_submit_generation_job_to_modal(job, request)
     elif request.run_mode == "mock_immediate":
         job = execute_generation_job_immediate(job.job_id, request)
+    elif request.run_mode == "graph_immediate":
+        job = execute_generation_job_graph(job.job_id, request)
     elif request.run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_2")
     elif request.run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:

@@ -7,8 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from uuid import UUID
+from uuid import UUID
 from uuid import uuid4
 
+from orchestrator.app.api.schemas.chat_threads import ChatMessageCreateRequest
 from orchestrator.app.api.schemas.generation_jobs import (
     GenerationJobCreateRequest,
     GenerationJobResponse,
@@ -22,6 +24,7 @@ from orchestrator.app.artifacts.service import (
 )
 from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.repositories import assets as asset_repo
+from orchestrator.app.db.repositories import chat_messages as chat_message_repo
 from orchestrator.app.db.repositories import chat_threads as chat_thread_repo
 from orchestrator.app.db.repositories import generation_job_events as generation_job_event_repo
 from orchestrator.app.db.repositories import generation_jobs as generation_job_repo
@@ -35,6 +38,8 @@ from orchestrator.app.chat_threads.errors import (
 )
 from orchestrator.app.chat_threads import service as chat_thread_service
 from orchestrator.app.chat_threads.sanitization import sanitize_chat_payload
+from orchestrator.app.chat_threads import state_service
+from orchestrator.app.chat_threads.state_snapshot import calculate_changed_fields
 from orchestrator.app.modal import settings as modal_settings
 from orchestrator.app.modal.errors import ModalExecutionError, ModalJobPollError
 from orchestrator.app.modal.service import (
@@ -126,7 +131,7 @@ def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
     if run_mode == "mock_immediate":
         return "mock_immediate", "pending_deterministic_mock"
     if run_mode == "graph_immediate":
-        return "queued_only", "degraded_no_graph_execution"
+        return "graph_immediate", "pending_graph_execution"
     if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "gpt_image_2_actual", "pending_t2i_actual"
     if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
@@ -202,11 +207,113 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
                 **_safe_request_metadata(request.metadata),
             },
         )
+
         try:
             chat_thread_service.set_thread_active_job(public_thread_id, job.job_id, job.job_id, status="generating")
         except Exception:
             _GENERATION_JOBS.pop(job.job_id, None)
             raise
+            
+        # Parity: user_input message
+        chat_thread_service.append_chat_message(
+            public_thread_id,
+            ChatMessageCreateRequest(
+                role="user",
+                content=request.user_input,
+                payload={"source": "generation_job_input", "job_id": job.job_id, "event_type": "user_input"},
+            ),
+            user_id=request.user_id,
+        )
+        
+        # Snapshot parity
+        latest_snapshot = state_service.get_latest_thread_state_for_user(
+            public_thread_id=public_thread_id,
+            user_id=request.user_id,
+        )
+        
+        explicit_fields = {}
+        for k in request.model_fields_set:
+            if k in ["ad_format", "copy_generation_mode", "selected_reference_template_id", "brand_kit_id", "user_plan"]:
+                explicit_fields[k] = getattr(request, k)
+                
+        restored_payload = state_service.restore_thread_state(
+            latest_snapshot,
+            current_request_fields=explicit_fields,
+            user_input=request.user_input,
+        )
+        changed_fields = calculate_changed_fields(
+            latest_snapshot.state_payload if latest_snapshot else None,
+            restored_payload
+        )
+        
+        from orchestrator.app.reference_catalog.service import get_reference_template
+        from orchestrator.app.brand_kits.service import get_brand_kit
+        
+        def _build_ref_snapshot(tid: str | None):
+            if not tid: return {}
+            t = get_reference_template(tid)
+            if not t: return {}
+            d = t.model_dump(mode="json")
+            return {
+                "template_id": d.get("template_id"),
+                "category": d.get("category"),
+                "business_type": d.get("business_types", d.get("business_type")),
+                "style_keywords": d.get("style_keywords"),
+                "color_palette": d.get("color_palette"),
+                "composition": d.get("composition"),
+                "reserved_text_areas": d.get("reserved_text_areas"),
+                "aspect_ratio": d.get("aspect_ratio"),
+            }
+            
+        def _build_brand_snapshot(bid: str | None):
+            if not bid: return {}
+            b = get_brand_kit(bid)
+            if not b: return {}
+            d = b.model_dump(mode="json")
+            return {
+                "brand_kit_id": d.get("brand_kit_id"),
+                "brand_name": d.get("brand_name"),
+                "primary_color": d.get("primary_color"),
+                "secondary_color": d.get("secondary_color"),
+                "fonts": d.get("fonts"),
+            }
+        
+        # Use restored effective IDs if request didn't explicitly override
+        effective_reference_id = restored_payload.get("selected_reference_template_id")
+        effective_brand_kit_id = restored_payload.get("brand_kit_id")
+        
+        ref_snap = _build_ref_snapshot(effective_reference_id)
+        brand_snap = _build_brand_snapshot(effective_brand_kit_id)
+        
+        snapshot_kind = "restored_input" if latest_snapshot else "input"
+        state_service.save_thread_state_snapshot(
+            public_thread_id=public_thread_id,
+            workspace_id="mem_workspace",
+            snapshot_kind=snapshot_kind,
+            state_payload=restored_payload,
+            changed_fields=changed_fields,
+            generation_job_id=job.job_id,
+            source_message_id=None,
+            parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
+            selected_reference_template_id=effective_reference_id,
+            reference_template_snapshot=ref_snap,
+            brand_kit_snapshot=brand_snap,
+            snapshot_key=f"{job.job_id}:input",
+            created_by=request.user_id,
+            user_id=request.user_id,
+        )
+        
+        # Queued event
+        chat_thread_service.append_chat_message(
+            public_thread_id,
+            ChatMessageCreateRequest(
+                role="system",
+                content=None,
+                payload={"job_id": job.job_id, "status": "queued", "event_type": "generation_queued"},
+            ),
+            user_id=request.user_id,
+        )
+        
         _GENERATION_JOBS[job.job_id] = job
         return job
 
@@ -272,7 +379,40 @@ def mark_generation_job_done(
                 final_brief=(result_payload or {}).get("final_brief") or merged_metadata.get("final_brief"),
                 expected_public_job_id=job_id,
             )
-        chat_thread_service.clear_thread_active_job(existing.thread_id, status="completed", expected_public_job_id=job_id)
+        transitioned = chat_thread_service.clear_thread_active_job(existing.thread_id, status="completed", expected_public_job_id=job_id)
+        if not transitioned:
+            return updated
+
+        # completion event
+        chat_thread_service.append_chat_message(
+            existing.thread_id,
+            ChatMessageCreateRequest(
+                role="system",
+                content="Generation completed.",
+                payload={"job_id": job_id, "has_output": True, "event_type": "generation_completed"},
+            ),
+            user_id=existing.user_id,
+        )
+        
+        # completed snapshot
+        latest_snapshot = state_service.get_latest_thread_state_for_user(
+            public_thread_id=existing.thread_id,
+            user_id=existing.user_id,
+        )
+        state_service.save_thread_state_snapshot(
+            public_thread_id=existing.thread_id,
+            workspace_id="mem_workspace",
+            snapshot_kind="job_completed",
+            state_payload=latest_snapshot.state_payload if latest_snapshot else {},
+            changed_fields=[],
+            generation_job_id=job_id,
+            source_message_id=None,
+            parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
+            snapshot_key=f"{job_id}:completed",
+            created_by=existing.user_id,
+            user_id=existing.user_id,
+        )
+        
     return updated
 
 
@@ -297,7 +437,114 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
         metadata=merged_metadata,
     )
     if updated and existing.thread_id:
-        chat_thread_service.clear_thread_active_job(existing.thread_id, status="failed", expected_public_job_id=job_id)
+        transitioned = chat_thread_service.clear_thread_active_job(existing.thread_id, status="failed", expected_public_job_id=job_id)
+        if not transitioned:
+            return updated
+            
+        # failure event
+        chat_thread_service.append_chat_message(
+            existing.thread_id,
+            ChatMessageCreateRequest(
+                role="system",
+                content=None,
+                payload={"job_id": job_id, "error_code": error.get("error_code"), "event_type": "generation_failed"},
+            ),
+            user_id=existing.user_id,
+        )
+        
+        # failed snapshot
+        latest_snapshot = state_service.get_latest_thread_state_for_user(
+            public_thread_id=existing.thread_id,
+            user_id=existing.user_id,
+        )
+        state_service.save_thread_state_snapshot(
+            public_thread_id=existing.thread_id,
+            workspace_id="mem_workspace",
+            snapshot_kind="job_failed",
+            state_payload=latest_snapshot.state_payload if latest_snapshot else {},
+            changed_fields=[],
+            generation_job_id=job_id,
+            source_message_id=None,
+            parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
+            snapshot_key=f"{job_id}:failed",
+            metadata={
+                "status": "failed",
+                "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
+                "error_type": str(error.get("error_type") or ""),
+            },
+            created_by=existing.user_id,
+            user_id=existing.user_id,
+        )
+        
+    return updated
+
+def mark_generation_job_waiting_user_input(
+    job_id: str,
+    result_state: dict,
+    changed_fields: list[str],
+    assistant_message: str | None = None,
+) -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        return _mark_generation_job_waiting_user_input_db(job_id, result_state, changed_fields, assistant_message)
+    
+    existing = get_generation_job(job_id)
+    if not existing:
+        return None
+        
+    progress = existing.progress.model_copy(update={"current_stage": "waiting_user_input", "progress_percent": 50})
+    updated = update_generation_job(
+        job_id,
+        status="waiting_user_input",
+        progress=progress,
+    )
+    if not updated or not existing.thread_id:
+        return updated
+        
+    # Waiting event
+    chat_thread_service.append_chat_message(
+        existing.thread_id,
+        ChatMessageCreateRequest(
+            role="system",
+            content=None,
+            payload={"job_id": job_id, "status": "waiting_user_input", "event_type": "generation_waiting"},
+        ),
+        user_id=existing.user_id,
+    )
+    
+    # Assistant message (if any)
+    source_message_id = None
+    if assistant_message:
+        msg = chat_thread_service.append_chat_message(
+            existing.thread_id,
+            ChatMessageCreateRequest(
+                role="assistant",
+                content=assistant_message,
+                payload={"source": "graph_interrupt", "job_id": job_id, "event_type": "graph_interrupt_message"},
+            ),
+            user_id=existing.user_id,
+        )
+        if msg:
+            source_message_id = msg.message_id
+            
+    # Snapshot
+    latest_snapshot = state_service.get_latest_thread_state_for_user(
+        public_thread_id=existing.thread_id,
+        user_id=existing.user_id,
+    )
+    state_service.save_thread_state_snapshot(
+        public_thread_id=existing.thread_id,
+        workspace_id="mem_workspace",
+        snapshot_kind="waiting_user_input",
+        state_payload=result_state,
+        changed_fields=changed_fields,
+        generation_job_id=job_id,
+        source_message_id=source_message_id,
+        parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
+        snapshot_key=f"{job_id}:waiting",
+        created_by=existing.user_id,
+        user_id=existing.user_id,
+    )
+    
     return updated
 
 
@@ -510,6 +757,96 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             request_payload=request_payload,
             connection=conn,
         )
+
+        # 1. User message save
+        msg_row = chat_message_repo.append_chat_message(
+            public_thread_id=thread.get("public_thread_id"),
+            workspace_id=str(workspace["id"]),
+            role="user",
+            content=request.user_input,
+            payload={"source": "generation_job_input"},
+            created_by=user_id,
+            generation_job_id=str(row["id"]),
+            event_type="user_input",
+            connection=conn,
+        )
+
+        # 2. State snapshot merge and save
+        latest_snapshot = state_service.get_latest_thread_state_snapshot(
+            public_thread_id=thread.get("public_thread_id"),
+            workspace_id=str(workspace["id"]),
+            connection=conn,
+        )
+        
+        explicit_fields = {}
+        for k in request.model_fields_set:
+            if k in ["ad_format", "copy_generation_mode", "selected_reference_template_id", "brand_kit_id", "user_plan"]:
+                explicit_fields[k] = getattr(request, k)
+                
+        restored_payload = state_service.restore_thread_state(
+            latest_snapshot,
+            current_request_fields=explicit_fields,
+            user_input=request.user_input,
+        )
+        changed_fields = calculate_changed_fields(
+            latest_snapshot.state_payload if latest_snapshot else None,
+            restored_payload
+        )
+        
+        from orchestrator.app.reference_catalog.service import get_reference_template
+        from orchestrator.app.brand_kits.service import get_brand_kit
+        
+        def _build_ref_snapshot_db(tid: str | None):
+            if not tid: return {}
+            t = get_reference_template(tid)
+            if not t: return {}
+            d = t.model_dump(mode="json")
+            return {
+                "template_id": d.get("template_id"),
+                "category": d.get("category"),
+                "business_type": d.get("business_types", d.get("business_type")),
+                "style_keywords": d.get("style_keywords"),
+                "color_palette": d.get("color_palette"),
+                "composition": d.get("composition"),
+                "reserved_text_areas": d.get("reserved_text_areas"),
+                "aspect_ratio": d.get("aspect_ratio"),
+            }
+            
+        def _build_brand_snapshot_db(bid: str | None):
+            if not bid: return {}
+            b = get_brand_kit(bid)
+            if not b: return {}
+            d = b.model_dump(mode="json")
+            return {
+                "brand_kit_id": d.get("brand_kit_id"),
+                "brand_name": d.get("brand_name"),
+                "primary_color": d.get("primary_color"),
+                "secondary_color": d.get("secondary_color"),
+                "fonts": d.get("fonts"),
+            }
+        
+        # Use restored effective IDs if request didn't explicitly override
+        effective_reference_id = restored_payload.get("selected_reference_template_id")
+        effective_brand_kit_id = restored_payload.get("brand_kit_id")
+
+        snapshot_kind = "restored_input" if latest_snapshot else "input"
+        state_service.save_thread_state_snapshot(
+            public_thread_id=thread.get("public_thread_id"),
+            workspace_id=str(workspace["id"]),
+            snapshot_kind=snapshot_kind,
+            state_payload=restored_payload,
+            changed_fields=changed_fields,
+            generation_job_id=str(row["id"]),
+            source_message_id=str(msg_row["id"]) if msg_row else None,
+            parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
+            selected_reference_template_id=effective_reference_id,
+            reference_template_snapshot=_build_ref_snapshot_db(effective_reference_id),
+            brand_kit_snapshot=_build_brand_snapshot_db(effective_brand_kit_id),
+            snapshot_key=f"{public_job_id}:input",
+            created_by=user_id,
+            connection=conn,
+        )
+
         claimed = chat_thread_repo.set_chat_thread_active_job(
             thread.get("public_thread_id") or str(thread["id"]),
             active_job_id=str(row["id"]) if row.get("id") else None,
@@ -519,6 +856,19 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
         )
         if not claimed:
             raise ChatThreadHasActiveJobError()
+            
+        # Queued event
+        chat_message_repo.append_generation_job_chat_event(
+            public_thread_id=thread.get("public_thread_id"),
+            workspace_id=str(workspace["id"]),
+            generation_job_id=str(row["id"]),
+            event_type="generation_queued",
+            role="system",
+            content=None,
+            payload={"job_id": public_job_id, "status": "queued"},
+            created_by=user_id,
+            connection=conn,
+        )
         _record_generation_job_event_db(row, "queued", payload={"run_mode": request.run_mode}, connection=conn)
     response = _job_response_from_db_row(row)
     if response:
@@ -597,6 +947,17 @@ def _mark_generation_job_done_db(
         existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
         if not existing:
             return None
+            
+        thread_row = chat_thread_repo.get_chat_thread_by_public_id(
+            _thread_public_or_internal(existing),
+            workspace_id=str(existing["workspace_id"]),
+            connection=conn,
+            for_update=True,
+        )
+        if thread_row and str(thread_row.get("active_job_id")) != str(existing.get("id")):
+            _record_generation_job_event_db(existing, "stale_completion_ignored", message="Stale job ignored.", connection=conn)
+            return _job_response_from_db_row(existing)
+            
         merged_metadata = {**(existing.get("metadata") or {}), **(metadata or {})}
         final_path = _resolve_final_artifact_path(result_payload, output_path)
         row = generation_job_repo.mark_generation_job_done_row(
@@ -635,12 +996,52 @@ def _mark_generation_job_done_db(
             connection=conn,
         )
         final_brief = (row.get("result_payload") or {}).get("final_brief") or merged_metadata.get("final_brief")
-        chat_thread_repo.complete_chat_thread_generation(
+        completed_thread = chat_thread_repo.complete_chat_thread_generation(
             public_thread_id=_thread_public_or_internal(row),
             workspace_id=str(row["workspace_id"]),
             expected_active_job_id=str(row["id"]) if row.get("id") else None,
             final_output_id=str(output["id"]) if output and output.get("id") else None,
             final_brief=sanitize_chat_payload(final_brief) if final_brief is not None else None,
+            connection=conn,
+        )
+
+        if not completed_thread:
+            _record_generation_job_event_db(row, "stale_completion_ignored", message="Stale job ignored.", connection=conn)
+            return _job_response_from_db_row(row)
+
+        # 1. system event for completion
+        chat_message_repo.append_generation_job_chat_event(
+            public_thread_id=_thread_public_or_internal(row),
+            workspace_id=str(row["workspace_id"]),
+            generation_job_id=str(row["id"]),
+            event_type="generation_completed",
+            role="system",
+            content="Generation completed.",
+            payload={"job_id": job_id, "has_output": True},
+            created_by=row.get("requested_by"),
+            connection=conn,
+        )
+
+        # 2. completed snapshot
+        latest_snapshot = state_service.get_latest_thread_state_snapshot(
+            public_thread_id=_thread_public_or_internal(row),
+            workspace_id=str(row["workspace_id"]),
+            connection=conn,
+        )
+        final_payload = latest_snapshot.state_payload if latest_snapshot else {}
+        # If result_payload has new data, merge it safely. In execution phase graph_completed handles full state.
+        
+        state_service.save_thread_state_snapshot(
+            public_thread_id=_thread_public_or_internal(row),
+            workspace_id=str(row["workspace_id"]),
+            snapshot_kind="job_completed",
+            state_payload=final_payload,
+            changed_fields=[],
+            generation_job_id=str(row["id"]),
+            source_message_id=None,
+            parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
+            snapshot_key=f"{job_id}:completed",
+            created_by=row.get("requested_by"),
             connection=conn,
         )
 
@@ -668,6 +1069,17 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
         existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
         if not existing:
             return None
+            
+        thread_row = chat_thread_repo.get_chat_thread_by_public_id(
+            _thread_public_or_internal(existing),
+            workspace_id=str(existing["workspace_id"]),
+            connection=conn,
+            for_update=True,
+        )
+        if thread_row and str(thread_row.get("active_job_id")) != str(existing.get("id")):
+            _record_generation_job_event_db(existing, "stale_failure_ignored", message="Stale failure ignored.", connection=conn)
+            return _job_response_from_db_row(existing)
+            
         merged_metadata = {**(existing.get("metadata") or {}), **(metadata or {})}
         row = generation_job_repo.mark_generation_job_failed_row(job_id, error_payload, metadata=merged_metadata, connection=conn)
         if not row:
@@ -683,12 +1095,130 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
             },
             connection=conn,
         )
-        chat_thread_repo.fail_chat_thread_generation(
+        failed_thread = chat_thread_repo.fail_chat_thread_generation(
             public_thread_id=_thread_public_or_internal(row),
             workspace_id=str(row["workspace_id"]),
             expected_active_job_id=str(row["id"]) if row.get("id") else None,
             connection=conn,
         )
+
+        if not failed_thread:
+            _record_generation_job_event_db(row, "stale_failure_ignored", message="Stale failure ignored.", connection=conn)
+            return _job_response_from_db_row(row)
+
+        # 1. system event for failure
+        chat_message_repo.append_generation_job_chat_event(
+            public_thread_id=_thread_public_or_internal(row),
+            workspace_id=str(row["workspace_id"]),
+            generation_job_id=str(row["id"]),
+            event_type="generation_failed",
+            role="system",
+            content=None,
+            payload={"job_id": job_id, "error_code": error_payload["error_code"]},
+            created_by=row.get("requested_by"),
+            connection=conn,
+        )
+
+        # 2. failed snapshot
+        latest_snapshot = state_service.get_latest_thread_state_snapshot(
+            public_thread_id=_thread_public_or_internal(row),
+            workspace_id=str(row["workspace_id"]),
+            connection=conn,
+        )
+        state_service.save_thread_state_snapshot(
+            public_thread_id=_thread_public_or_internal(row),
+            workspace_id=str(row["workspace_id"]),
+            snapshot_kind="job_failed",
+            state_payload=latest_snapshot.state_payload if latest_snapshot else {},
+            changed_fields=[],
+            generation_job_id=str(row["id"]),
+            source_message_id=None,
+            parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
+            snapshot_key=f"{job_id}:failed",
+            metadata={
+                "status": "failed",
+                "error_code": error_payload["error_code"],
+                "error_type": error_payload.get("error_type", ""),
+            },
+            created_by=row.get("requested_by"),
+            connection=conn,
+        )
+    return _job_response_from_db_row(row)
+
+def _mark_generation_job_waiting_user_input_db(
+    job_id: str,
+    result_state: dict,
+    changed_fields: list[str],
+    assistant_message: str | None = None,
+) -> GenerationJobResponse | None:
+    with db_transaction() as conn:
+        existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if not existing:
+            return None
+            
+        row = generation_job_repo.update_generation_job_row(
+            job_id,
+            status="waiting_user_input",
+            current_stage="waiting_user_input",
+            progress_percent=50,
+            connection=conn,
+        )
+        if not row:
+            return None
+            
+        public_thread_id = _thread_public_or_internal(row)
+        workspace_id = str(row["workspace_id"])
+        user_id = row.get("requested_by")
+        
+        # Waiting event
+        chat_message_repo.append_generation_job_chat_event(
+            public_thread_id=public_thread_id,
+            workspace_id=workspace_id,
+            generation_job_id=str(row["id"]),
+            event_type="generation_waiting",
+            role="system",
+            content=None,
+            payload={"job_id": job_id, "status": "waiting_user_input"},
+            created_by=user_id,
+            connection=conn,
+        )
+        
+        # Assistant message (if any)
+        msg_row = None
+        if assistant_message:
+            msg_row = chat_message_repo.append_chat_message(
+                public_thread_id=public_thread_id,
+                workspace_id=workspace_id,
+                role="assistant",
+                content=assistant_message,
+                payload={"source": "graph_interrupt"},
+                created_by=user_id,
+                generation_job_id=str(row["id"]),
+                event_type="graph_interrupt_message",
+                connection=conn,
+            )
+            
+        # Snapshot
+        latest_snapshot = state_service.get_latest_thread_state_snapshot(
+            public_thread_id=public_thread_id,
+            workspace_id=workspace_id,
+            connection=conn,
+        )
+        
+        state_service.save_thread_state_snapshot(
+            public_thread_id=public_thread_id,
+            workspace_id=workspace_id,
+            snapshot_kind="waiting_user_input",
+            state_payload=result_state,
+            changed_fields=changed_fields,
+            generation_job_id=str(row["id"]),
+            source_message_id=str(msg_row["id"]) if msg_row else None,
+            parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
+            snapshot_key=f"{job_id}:waiting",
+            created_by=user_id,
+            connection=conn,
+        )
+        
     return _job_response_from_db_row(row)
 
 

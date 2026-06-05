@@ -45,7 +45,13 @@ def test_postgres_create_records_queued_event_and_active_thread(monkeypatch):
 
     monkeypatch.setattr(service.workspace_repo, "ensure_demo_workspace", lambda user_id=None, connection=None: {"id": "workspace_uuid"})
     monkeypatch.setattr(service.chat_thread_repo, "create_chat_thread", lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_db"})
+    monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
+    monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
+    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: {"snapshot_id": "snap_uuid"})
     monkeypatch.setattr(service.chat_thread_repo, "set_chat_thread_active_job", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
+    monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
+    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: {"snapshot_id": "snap_uuid"})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
 
     def create_row(**kwargs):
@@ -99,6 +105,9 @@ def test_postgres_mark_running_updates_row_and_records_event(monkeypatch):
     monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_running_row", mark_running)
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
     monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
+    monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
+    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: {"snapshot_id": "snap_uuid"})
 
     job = service.mark_generation_job_running("job_db", "t2i_running")
 
@@ -125,6 +134,9 @@ def test_postgres_mark_failed_updates_row_thread_and_event(monkeypatch):
     monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_failed_row", mark_failed)
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
     monkeypatch.setattr(service.chat_thread_repo, "fail_chat_thread_generation", lambda **kwargs: thread_updates.append(kwargs) or {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
+    monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
+    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: {"snapshot_id": "snap_uuid"})
 
     failed = service.mark_generation_job_failed("job_db", {"error_code": "x", "message": "failed"})
 
