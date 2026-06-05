@@ -1,12 +1,13 @@
 "use client";
 
-import { ArrowLeft, ArrowRight, Check, Info, RotateCcw, TriangleAlert } from "lucide-react";
+import { ArrowLeft, ArrowRight, Info, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { buildAdHref } from "@/lib/ad-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { resultCreatives } from "@/lib/mock-dashboard-data";
 import { goBackOrPush } from "@/lib/navigation-history";
 import { buildNotificationHref } from "@/lib/notification-navigation";
+import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
 
 type NotificationDetailStepProps = {
@@ -45,7 +46,7 @@ export function NotificationDetailStep({ variant }: NotificationDetailStepProps)
       </header>
 
       <section className={styles.notificationDetailHero} data-variant={variant}>
-        <span>{isComplete ? <Check size={34} aria-hidden="true" /> : <TriangleAlert size={34} aria-hidden="true" />}</span>
+        <MascotImage role={isComplete ? "completeCheck" : "errorWorried"} decorative className={styles.notificationDetailMascot} />
         <h2>{isComplete ? "광고 시안이 완성됐어요!" : "광고 생성에 실패했어요"}</h2>
         <p>{isComplete ? "딸기라떼 신메뉴 광고" : "일시적인 문제로 광고 시안을 만들지 못했어요."}</p>
       </section>

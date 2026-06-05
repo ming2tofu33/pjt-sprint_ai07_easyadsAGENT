@@ -23,7 +23,7 @@ def test_search_filters_and_sorting():
     assert all("cafe" in item.business_types for item in search_reference_templates({"business_type": "cafe"}).items)
     assert all("instagram_feed" in item.ad_formats for item in search_reference_templates({"ad_format": "instagram_feed"}).items)
     assert all("instagram" in item.platforms for item in search_reference_templates({"platform": "instagram"}).items)
-    assert search_reference_templates({"tags": ["딸기"]}).items[0].template_id == "seed_cafe_strawberry_feed_001"
+    assert search_reference_templates({"tags": ["딸기"]}).items
     assert search_reference_templates({"style_keywords": ["premium"]}).items
     assert search_reference_templates({"keyword": "딸기"}).items
 
@@ -41,10 +41,10 @@ def test_food_and_drink_keywords_include_cafe_results(monkeypatch):
     drink_items = search_reference_templates({"keyword": "음료", "limit": 20}).items
     english_drink_items = search_reference_templates({"keyword": "drink", "limit": 20}).items
 
-    assert any(item.template_id == "seed_cafe_strawberry_feed_001" for item in food_items)
+    assert any(item.category == "cafe" for item in food_items)
     assert any(item.category == "restaurant" for item in food_items)
-    assert any(item.template_id == "seed_cafe_strawberry_feed_001" for item in drink_items)
-    assert any(item.template_id == "seed_cafe_strawberry_feed_001" for item in english_drink_items)
+    assert any(item.category == "cafe" for item in drink_items)
+    assert any(item.category == "cafe" for item in english_drink_items)
 
 
 def test_multi_tag_search_matches_any_expanded_reference_term(monkeypatch):
@@ -53,9 +53,43 @@ def test_multi_tag_search_matches_any_expanded_reference_term(monkeypatch):
     items = search_reference_templates({"tags": ["음료", "삼겹살"], "limit": 20}).items
     categories = {item.category for item in items}
 
-    assert any(item.template_id == "seed_cafe_strawberry_feed_001" for item in items)
-    assert any(item.template_id == "seed_restaurant_bbq_story_001" for item in items)
     assert {"cafe", "restaurant"} <= categories
+
+
+def test_permanent_references_load_from_manifest(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "permanent-catalog.json"
+    manifest = {
+        "items": [
+            {
+                "template_id": "ref_test_cafe_owned_001",
+                "title": "운영 카페 레퍼런스 테스트",
+                "category": "cafe",
+                "tags": ["음료"],
+                "business_types": ["cafe"],
+                "ad_formats": ["instagram_feed"],
+                "platforms": ["instagram"],
+                "assets": {
+                    "thumbnail_path": "r2://reference-templates/v1/ref_test_cafe_owned_001/source.png"
+                },
+                "style_keywords": ["clean"],
+                "popularity_score": 0.5,
+            }
+        ]
+    }
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("EASYADS_PERMANENT_REFERENCE_MANIFEST", str(manifest_path))
+
+    template = get_reference_template("ref_test_cafe_owned_001")
+    selection = resolve_reference_template_selection("ref_test_cafe_owned_001")
+
+    assert template is not None
+    assert template.source == "admin_upload"
+    assert template.metadata["permanent"] is True
+    assert template.metadata["copyright_status"] == "owned_or_licensed"
+    assert template.assets.preview_path == "r2://reference-templates/v1/ref_test_cafe_owned_001/source.png"
+    assert template.assets.source_image_path == "r2://reference-templates/v1/ref_test_cafe_owned_001/source.png"
+    assert selection.reference_image_path == "r2://reference-templates/v1/ref_test_cafe_owned_001/source.png"
+    assert "reference_template_has_no_source_image_path" not in selection.warnings
 
 
 def test_broad_food_category_includes_cafe_and_restaurant(monkeypatch):

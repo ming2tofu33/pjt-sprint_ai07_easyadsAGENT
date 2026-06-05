@@ -44,6 +44,9 @@ def tone_binding_node(state: MarketingState) -> dict[str, Any]:
     if not isinstance(output, ToneBindingOutput):
         output = build_deterministic_tone_binding_output(state)
         llm_metadata = {**llm_metadata, "fallback_used": True, "fallback_reason": "invalid_tone_binding_output"}
+    if not is_business_compatible_tone_binding(state, output):
+        output = build_deterministic_tone_binding_output(state)
+        llm_metadata = {**llm_metadata, "fallback_used": True, "fallback_reason": "business_incompatible_tone_binding"}
     output = output.model_copy(
         update={
             "metadata": {
@@ -75,6 +78,20 @@ def build_deterministic_tone_binding_output(state: MarketingState) -> ToneBindin
         typography_hint=context.brand_tone,
         metadata={"business_type": context.business_type, "ad_format": ad_format, "tone_profile": tone},
     )
+
+
+def is_business_compatible_tone_binding(state: MarketingState, output: ToneBindingOutput) -> bool:
+    context = context_to_model(state.get("context"))
+    business_type = str(context.business_type or "").lower()
+    tone_profile = str(output.tone_profile or "").lower()
+    forbidden_claims = " ".join(output.forbidden_claims or []).lower()
+    if business_type in {"cafe", "restaurant", "restaurant_bbq"}:
+        if any(term in tone_profile for term in ["medical", "clinical", "skin", "derma"]):
+            return False
+    if business_type in {"beauty", "beauty_salon", "beauty_skincare"}:
+        if any(term in forbidden_claims for term in ["100% cure", "guaranteed cure", "medical guarantee"]):
+            return False
+    return True
 
 
 def build_tone_binding_prompt(state: MarketingState) -> str:

@@ -13,6 +13,7 @@ import {
 } from "@/lib/generation-result-utils";
 import type { CreativeTone, MockCreative } from "@/lib/mock-dashboard-data";
 import { AdCreativeCard } from "./AdCreativeCard";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -154,6 +155,7 @@ export function GenerationCompleteStep({
       <StepHeader title="GENERATED RESULTS" canGoBack onBack={onGoHome} />
 
       <header className={styles.resultsHeader}>
+        {generatedImageUrl ? <MascotImage role="completeCheck" decorative className={styles.resultsMascot} /> : null}
         <h1>
           {generatedImageUrl
             ? "찰떡 광고 시안이 완성됐어요"
@@ -191,7 +193,7 @@ export function GenerationCompleteStep({
         </section>
       ) : (
         <section className={styles.emptyResultPanel} aria-label="생성 결과 없음">
-          <ImageOff size={24} aria-hidden="true" />
+          <MascotImage role={hasResultContext ? "errorWorried" : "copyEmpty"} decorative className={styles.emptyMascot} />
           <strong>{hasResultContext ? "실제 이미지 파일을 받지 못했어요" : "표시할 생성 결과가 없어요"}</strong>
           <p>
             {hasResultContext

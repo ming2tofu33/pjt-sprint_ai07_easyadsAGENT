@@ -65,6 +65,7 @@ dev = [
 
 [project.optional-dependencies]
 gpu-cu118 = [
+    "torch==2.7.1",
     "diffusers==0.32.2",
     "transformers==4.46.3",
     "accelerate",
@@ -76,3 +77,13 @@ gpu-cu118 = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu118", extra = "gpu-cu118" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true

@@ -207,3 +207,47 @@ def test_temporary_reference_assets_use_safe_urls(monkeypatch, tmp_path):
     asset_response = client().get(payload["items"][0]["thumbnail_url"])
     assert asset_response.status_code == 200
     assert asset_response.content == b"temporary image"
+
+
+def test_permanent_reference_assets_use_r2_public_urls(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "permanent-catalog.json"
+    object_key = "reference-templates/v1/ref_test_cafe_owned_001/source.png"
+    manifest = {
+        "items": [
+            {
+                "template_id": "ref_test_cafe_owned_001",
+                "title": "운영 레퍼런스 테스트",
+                "category": "cafe",
+                "tags": ["음료"],
+                "business_types": ["cafe"],
+                "ad_formats": ["instagram_feed"],
+                "platforms": ["instagram"],
+                "assets": {
+                    "thumbnail_path": f"r2://{object_key}",
+                    "preview_path": f"r2://{object_key}",
+                },
+                "style_keywords": ["clean"],
+                "popularity_score": 0.5,
+                "metadata": {
+                    "source_file": "owned-cafe.png",
+                    "r2_object_key": object_key,
+                },
+            }
+        ]
+    }
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("EASYADS_PERMANENT_REFERENCE_MANIFEST", str(manifest_path))
+    monkeypatch.setenv("EASYADS_R2_PUBLIC_BASE_URL", "https://assets.example.com/easyads")
+
+    response = client().get("/api/v1/references", params={"keyword": "운영 레퍼런스"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["template_id"] == "ref_test_cafe_owned_001"
+    assert payload["items"][0]["thumbnail_url"] == f"https://assets.example.com/easyads/{object_key}"
+    assert payload["items"][0]["preview_url"] == f"https://assets.example.com/easyads/{object_key}"
+    assert_no_local_paths(payload)
+
+    detail = client().get("/api/v1/references/ref_test_cafe_owned_001")
+    assert detail.status_code == 200
+    assert_no_local_paths(detail.json())

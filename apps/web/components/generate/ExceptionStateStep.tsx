@@ -6,9 +6,7 @@ import {
   Bell,
   Briefcase,
   Camera,
-  CircleAlert,
   FileImage,
-  FolderOpen,
   Home,
   Image as ImageIcon,
   MessageCircle,
@@ -17,13 +15,13 @@ import {
   Search,
   SearchX,
   Sparkles,
-  UploadCloud,
   User
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import type { ExceptionStateKind } from "@/lib/exception-state-navigation";
 import { exceptionStateContent } from "@/lib/mock-dashboard-data";
+import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
 
 type ExceptionStateStepProps = {
@@ -35,6 +33,13 @@ const modeIconById = {
   photo: Camera,
   chat: MessageCircle
 };
+
+const mascotRoleByKind = {
+  searchEmpty: "referenceSearch",
+  archiveEmpty: "archiveEmpty",
+  uploadFailed: "errorStressed",
+  generationFailed: "errorWorried"
+} as const;
 
 export function ExceptionStateStep({ kind }: ExceptionStateStepProps) {
   const router = useRouter();
@@ -107,10 +112,7 @@ export function ExceptionStateStep({ kind }: ExceptionStateStepProps) {
 
       <section className={styles.exceptionHero} data-tone={content.tone}>
         <div className={styles.exceptionIllustration} aria-hidden="true">
-          {kind === "searchEmpty" ? <SearchX size={54} /> : null}
-          {kind === "archiveEmpty" ? <FolderOpen size={56} /> : null}
-          {kind === "uploadFailed" ? <UploadCloud size={56} /> : null}
-          {kind === "generationFailed" ? <CircleAlert size={56} /> : null}
+          <MascotImage role={mascotRoleByKind[kind]} decorative className={styles.exceptionMascot} />
         </div>
         <h2>{content.title}</h2>
         <p>{content.description}</p>
@@ -216,7 +218,7 @@ export function ExceptionStateStep({ kind }: ExceptionStateStepProps) {
           </button>
           <button data-active={kind === "searchEmpty" ? "true" : undefined} type="button" onClick={openReference}>
             <Search size={18} aria-hidden="true" />
-            레퍼런스
+            찾기
           </button>
           <button type="button" onClick={openStudio}>
             <Sparkles size={18} aria-hidden="true" />

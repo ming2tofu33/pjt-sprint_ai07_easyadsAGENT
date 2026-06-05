@@ -105,7 +105,7 @@ export function NotificationSettingsStep() {
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("reference"))}>
           <Search size={18} aria-hidden="true" />
-          레퍼런스
+          찾기
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("studio"))}>
           <Sparkles size={18} aria-hidden="true" />

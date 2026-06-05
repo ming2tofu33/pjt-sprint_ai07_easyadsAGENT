@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { brandKitMeta, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
+import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
 
 type HomeStartStepProps = {
@@ -68,9 +69,7 @@ export function HomeStartStep({
             광고 만들기 <Sparkles size={17} aria-hidden="true" />
           </button>
         </div>
-        <div className={styles.heroDog} aria-hidden="true">
-          <span />
-        </div>
+        <MascotImage role="homeReady" decorative priority className={styles.dashboardHeroMascot} />
       </section>
 
       <h2 className={styles.sectionTitle}>빠른 시작</h2>
@@ -116,7 +115,7 @@ export function HomeStartStep({
         </button>
         <button type="button" onClick={onOpenReference}>
           <Search size={18} aria-hidden="true" />
-          레퍼런스
+          찾기
         </button>
         <button type="button" onClick={onOpenStudio}>
           <Sparkles size={18} aria-hidden="true" />
