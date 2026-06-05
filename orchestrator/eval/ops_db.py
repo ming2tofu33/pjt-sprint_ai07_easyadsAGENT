@@ -438,8 +438,14 @@ class OpsDBWriter:
         now = now_iso()
         rows: list[tuple] = []
         for r in new_results:
+            # Entry shape changed on develop: node_runner.safe_llm_call_result now
+            # flattens these fields to the top level instead of nesting them under
+            # "model_selection". Read flat first, fall back to nested for back-compat.
             ms = r.get("model_selection") or {}
-            model_class = ms.get("selected_model_class", "mock")
+            model_class = r.get("selected_model_class") or ms.get("selected_model_class") or "mock"
+            provider = r.get("provider") or ms.get("provider") or "mock"
+            cost_tier = r.get("estimated_cost_tier") or ms.get("estimated_cost_tier") or "none"
+            model_name = r.get("model_name") or ms.get("model_name") or model_class
             # fallback_used: every fallback path builds an LLMCallResult(success=False),
             # while a real LLM call returns success=True. ModelSelection.fallback_used
             # means something different (router downgraded the model CLASS) and is False
@@ -452,14 +458,14 @@ class OpsDBWriter:
                 thread_id,
                 node_name,
                 model_class,
-                ms.get("provider", "mock"),
-                ms.get("estimated_cost_tier", "none"),
+                provider,
+                cost_tier,
                 1 if r.get("success") else 0,
                 fallback_used,
                 0 if r.get("error") in {"api_call_disabled", "free_plan_deterministic_fallback"} else 1,
                 r.get("error"),
                 r.get("latency_ms"),
-                model_class,
+                model_name,
                 p_tok,
                 c_tok,
                 t_tok,
@@ -525,9 +531,10 @@ class OpsDBWriter:
         _tier_rank = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
         for r in llm_results:
+            # flat shape (develop) first, nested model_selection for back-compat
             ms = r.get("model_selection") or {}
-            mc = ms.get("selected_model_class", "mock")
-            tier = ms.get("estimated_cost_tier", "none")
+            mc = r.get("selected_model_class") or ms.get("selected_model_class") or "mock"
+            tier = r.get("estimated_cost_tier") or ms.get("estimated_cost_tier") or "none"
             if mc.startswith("api_"):
                 total += 1
                 if mc == "api_nano":

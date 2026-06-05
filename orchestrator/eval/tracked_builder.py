@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from orchestrator.app.graph.builder import build_intake_graph as _build_intake
 from orchestrator.app.graph.builder import build_marketing_graph as _build_marketing
+from orchestrator.eval._patches import enable_llm_usage_capture
 from orchestrator.eval.ops_db import OpsDBWriter
 from orchestrator.eval.tracking import make_tracking_wrapper
 
@@ -22,6 +23,10 @@ def _build_with_tracking(
     db_writer: OpsDBWriter,
 ) -> Any:
     from langgraph.graph import StateGraph
+
+    # Eval-only: re-capture token_usage that prod's safe_llm_call_result drops, so
+    # cost can be priced exact. Persists for this (eval) process; prod untouched.
+    enable_llm_usage_capture()
 
     _original = StateGraph.add_node  # type: ignore[attr-defined]
 
