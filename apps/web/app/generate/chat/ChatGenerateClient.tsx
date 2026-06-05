@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ChatHistoryStep } from "@/components/generate/ChatHistoryStep";
 import { BriefConfirmStep } from "@/components/generate/BriefConfirmStep";
 import { ChatContextQuestionStep } from "@/components/generate/ChatContextQuestionStep";
 import { ChatStartStep } from "@/components/generate/ChatStartStep";
@@ -23,7 +24,8 @@ import {
   deleteArchiveItem,
   listArchiveItems,
   saveArchiveItem,
-  startChatGeneration,
+  createGenerationJob,
+  getChatThreadState,
   startPhotoGeneration,
   uploadPhotoAsset,
   type ChatTurnResponse,
@@ -54,7 +56,7 @@ import {
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildReferenceStyleHref } from "@/lib/reference-navigation";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
-import type { ChatBrief, CopyGenerationMode, InferredContext } from "@/types/marketing";
+import type { ChatBrief, CopyGenerationMode, InferredContext, PartialInferredContext } from "@/types/marketing";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing";
 
@@ -143,6 +145,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [generationProgress, setGenerationProgress] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [generatedCreatives, setGeneratedCreatives] = useState<MockCreative[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const searchParams = useSearchParams();
+  const threadIdParam = searchParams?.get("threadId");
   const lastPrimedStageRef = useRef<DashboardStage | null>(null);
   const appSurface = optimisticSurface ?? initialSurface;
 
@@ -300,6 +305,40 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
+    if (threadIdParam) {
+      getChatThreadState(threadIdParam).then((res) => {
+        if (res.snapshot && res.snapshot.state_payload) {
+          const payload = res.snapshot.state_payload;
+          dispatch({ type: "reset" });
+          dispatch({
+            type: "backendStartSucceeded",
+            prompt: (payload.prompt || payload.user_input || "") as string,
+            jobId: res.snapshot.job_id || "",
+            threadId: res.snapshot.thread_id,
+            context: (payload.context || {}) as InferredContext,
+            copyCandidates: (payload.copyCandidates || []) as never[],
+            recommendedCopyId: null,
+            copyCandidateSource: "empty",
+            copyGenerationMode: (payload.copyGenerationMode || "no_copy") as CopyGenerationMode
+          });
+          if (res.snapshot.snapshot_kind === "waiting_user_input") {
+             // resume polling or handle question
+          } else {
+             if (payload.brief) {
+               dispatch({ type: "backendBriefSucceeded", brief: payload.brief as ChatBrief });
+               dispatch({ type: "continueToBrief" });
+               setGenerationProgress(100);
+               setGenerationStage("brief");
+             }
+          }
+          setShowHistory(false);
+        }
+      }).catch(() => {
+        showToast("대화 기록을 불러오는데 실패했습니다.");
+      });
+      return;
+    }
+
     if (initialStage === "start") {
       const snapshot = readChatFlowSnapshot();
       if (snapshot) {
@@ -346,7 +385,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     setGenerationProgress(0);
     setGenerationStage("complete");
     lastPrimedStageRef.current = initialStage;
-  }, [appSurface, applyTurnResponse, initialStage, restoreBriefSnapshot]);
+  }, [appSurface, applyTurnResponse, initialStage, restoreBriefSnapshot, threadIdParam]);
 
   useEffect(() => {
     if (generationStage !== "generating" && generationStage !== "browsing") {
@@ -380,8 +419,38 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     clearGenerationDraftPrompt();
     dispatch({ type: "submitPrompt", prompt, copyGenerationMode: options.copyGenerationMode });
     try {
-      const response = await startChatGeneration(appendSavedBrandKitContext(prompt), startOptions);
-      applyTurnResponse(prompt, response);
+      const response = await createGenerationJob({
+        userInput: appendSavedBrandKitContext(prompt),
+        threadId: threadIdParam || undefined,
+        adFormat: options.adFormat ?? "instagram_feed",
+        runMode: "graph_immediate",
+        copyGenerationMode: options.copyGenerationMode ?? undefined,
+        selectedReferenceTemplateId: selectedReferenceTemplateId ?? undefined
+      });
+      
+      const turnResponse: ChatTurnResponse = response.job.status === "waiting_user_input" 
+        ? {
+            type: "option_question",
+            jobId: response.job.job_id,
+            threadId: response.job.thread_id!,
+            status: "waiting",
+            context: (response.job.result_payload?.context || {}) as PartialInferredContext,
+            question: (response.job.result_payload?.question || { field: "unknown", message: "추가 정보가 필요합니다.", options: [] }) as never
+          }
+        : {
+            type: "brief_ready",
+            jobId: response.job.job_id,
+            threadId: response.job.thread_id!,
+            status: "done",
+            context: (response.job.result_payload?.context || {}) as InferredContext,
+            brief: (response.job.result_payload?.brief || {}) as ChatBrief,
+            copyGenerationMode: options.copyGenerationMode ?? "no_copy"
+          };
+      applyTurnResponse(prompt, turnResponse);
+      
+      if (!threadIdParam && response.job.thread_id) {
+         router.replace(`?threadId=${response.job.thread_id}`);
+      }
     } catch (error) {
       if (selectedReferenceTemplateId) {
         writeGenerationDraftReferenceTemplateId(selectedReferenceTemplateId);
@@ -658,8 +727,22 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 1 ? (
-        <ChatStartStep onSubmit={handleSubmitPrompt} onBack={() => router.back()} onGoHome={() => navigateTo("home")} />
+      {showHistory ? (
+        <ChatHistoryStep
+          onBack={() => setShowHistory(false)}
+          onGoHome={() => navigateTo("home")}
+          onSelectThread={(threadId) => {
+            router.push(`?threadId=${threadId}`);
+            setShowHistory(false);
+          }}
+        />
+      ) : appSurface === "chat" && state.step === 1 ? (
+        <ChatStartStep 
+          onSubmit={handleSubmitPrompt} 
+          onBack={() => router.back()} 
+          onGoHome={() => navigateTo("home")} 
+          onHistory={() => setShowHistory(true)}
+        />
       ) : null}
 
       {appSurface === "chat" && state.step === 2 && state.currentQuestion ? (

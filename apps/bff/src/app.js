@@ -82,6 +82,12 @@ const photoStartSchema = z.object({
 const generationJobSchema = z.object({
   user_input: z.string().optional(),
   userInput: z.string().optional(),
+  thread_id: z.string().trim().min(1).optional(),
+  threadId: z.string().trim().min(1).optional(),
+  user_id: z.string().optional(),
+  userId: z.string().optional(),
+  run_mode: z.string().optional(),
+  runMode: z.string().optional(),
   selected_reference_template_id: z.string().optional(),
   selectedReferenceTemplateId: z.string().optional()
 }).passthrough();
@@ -117,6 +123,7 @@ async function proxyJson({ fetchImpl, url, body }) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
+    error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
     throw error;
   }
   return payload;
@@ -132,6 +139,7 @@ async function proxyDeleteJson({ fetchImpl, url }) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
+    error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
     throw error;
   }
   return payload;
@@ -147,6 +155,7 @@ async function proxyGetJson({ fetchImpl, url }) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
+    error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
     throw error;
   }
   return payload;
@@ -177,11 +186,20 @@ function createHttpError(statusCode, message) {
 }
 
 function appendQueryParam(url, key, value) {
-  if (!value) {
-    return url;
+  if (!url.includes("?")) {
+    return value ? `${url}?${encodeURIComponent(key)}=${encodeURIComponent(value)}` : url;
   }
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+  const [base, queryStr] = url.split("?", 2);
+  const params = new URLSearchParams(queryStr);
+  if (key === "userId" || key === "user_id") {
+    params.delete("userId");
+    params.delete("user_id");
+  }
+  if (value) {
+    params.set(key, value);
+  }
+  const str = params.toString();
+  return str ? `${base}?${str}` : base;
 }
 
 function normalizeBearerHeader(value) {
@@ -324,6 +342,42 @@ export function buildApp(options = {}) {
     })
   );
 
+  app.get("/api/chat-threads", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads${queryString}`, "userId", userId)
+    });
+  });
+
+  app.get("/api/chat-threads/:threadId", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}${queryString}`, "userId", userId)
+    });
+  });
+
+  app.get("/api/chat-threads/:threadId/messages", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/messages${queryString}`, "userId", userId)
+    });
+  });
+
+  app.get("/api/chat-threads/:threadId/state", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/state${queryString}`, "userId", userId)
+    });
+  });
+
   app.post("/api/generate/chat/start", async (request, reply) => {
     const parsed = chatStartSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -401,11 +455,24 @@ export function buildApp(options = {}) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const {
+      userId: _clientUserId,
+      user_id: _clientUserIdSnake,
+      ...clientPayload
+    } = parsed.data;
+
     const body = {
-      ...parsed.data,
-      selected_reference_template_id: parsed.data.selected_reference_template_id ?? parsed.data.selectedReferenceTemplateId
+      ...clientPayload,
+      ...(userId ? { userId } : {}),
+      userInput: parsed.data.userInput ?? parsed.data.user_input,
+      threadId: parsed.data.threadId ?? parsed.data.thread_id,
+      selectedReferenceTemplateId: parsed.data.selectedReferenceTemplateId ?? parsed.data.selected_reference_template_id
     };
-    delete body.selectedReferenceTemplateId;
+    
+    delete body.user_input;
+    delete body.thread_id;
+    delete body.selected_reference_template_id;
 
     return proxyJson({
       fetchImpl,
@@ -459,7 +526,7 @@ export function buildApp(options = {}) {
 
   app.setErrorHandler((error, _request, reply) => {
     reply.code(error.statusCode || 502).send({
-      error: "upstream_error",
+      error: error.errorCode ?? "upstream_error",
       message: error.message
     });
   });
