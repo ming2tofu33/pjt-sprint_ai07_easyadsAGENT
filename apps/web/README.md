@@ -121,6 +121,51 @@ POST /api/generate/chat/start
 POST /api/generate/chat/brief
 ```
 
+## 사용자 로그인과 관리자 권한
+
+일반 사용자와 관리자는 모두 Supabase Google OAuth로 로그인합니다. 로그인한 사용자는 `profiles`에 계정 정보가 저장되고, 관리자는 추가로 `admin_users`에 Supabase Auth UUID가 등록되어 있어야 `/admin`에 접근할 수 있습니다. 이메일 allowlist 환경변수는 쓰지 않습니다.
+
+필요한 프론트 환경변수:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<supabase-anon-key>
+```
+
+Supabase Auth redirect URL에는 배포/로컬 callback 주소를 추가합니다.
+
+```text
+https://<vercel-domain>/auth/callback
+http://localhost:3000/auth/callback
+http://127.0.0.1:3000/auth/callback
+```
+
+일반 로그인 화면:
+
+```text
+/login
+```
+
+로그인 성공 시 callback은 `profiles`를 upsert합니다. 사용자 프로필 RLS는 `supabase/migrations/20260605_profiles_auth_rls.sql`에 정의되어 있습니다.
+
+팀원을 관리자로 추가하는 순서:
+
+1. 팀원이 `/login` 또는 `/admin/login`에서 Google 계정으로 한 번 로그인합니다.
+2. Supabase Dashboard의 Auth users 화면에서 해당 사용자의 UUID를 확인합니다.
+3. SQL Editor에서 `admin_users`에 UUID를 등록합니다.
+
+```sql
+insert into public.admin_users (user_id, email, role, active)
+values ('00000000-0000-0000-0000-000000000000', 'admin@example.com', 'owner', true)
+on conflict (user_id) do update
+set email = excluded.email,
+    role = excluded.role,
+    active = excluded.active,
+    updated_at = now();
+```
+
+관리자 권한 테이블은 `supabase/migrations/20260605_admin_users.sql`에 정의되어 있습니다.
+
 백엔드까지 연결해서 실행할 때는 터미널 3개를 사용합니다.
 
 터미널 1: orchestrator 실행

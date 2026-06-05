@@ -9,6 +9,7 @@ import {
   HelpCircle,
   Home,
   Image,
+  LogIn,
   LogOut,
   Mail,
   MessageCircle,
@@ -19,12 +20,15 @@ import {
   User
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { buildLoginHref } from "@/lib/auth-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { appSettings } from "@/lib/mock-dashboard-data";
 import { buildMyHref } from "@/lib/my-navigation";
 import { goBackOrPush } from "@/lib/navigation-history";
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildOnboardingHref } from "@/lib/onboarding-navigation";
+import { getCurrentAppUserProfile, signOutAppUser } from "@/lib/user-auth-client";
 import styles from "./generate.module.css";
 
 function iconForSetting(id: string) {
@@ -39,11 +43,28 @@ function iconForSetting(id: string) {
 
 export function AppSettingsStep() {
   const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    void getCurrentAppUserProfile().then((profile) => setIsLoggedIn(Boolean(profile)));
+  }, []);
 
   function handleSettingClick(id: string) {
     if (id === "notifications") {
       router.push(buildNotificationHref("settings"));
     }
+  }
+
+  async function handleAuthClick() {
+    if (!isLoggedIn) {
+      router.push(buildLoginHref(buildMyHref("settings")));
+      return;
+    }
+
+    await signOutAppUser();
+    setIsLoggedIn(false);
+    router.replace(buildMyHref());
+    router.refresh();
   }
 
   return (
@@ -102,9 +123,9 @@ export function AppSettingsStep() {
           <strong>이용약관</strong>
           <ChevronRight size={16} aria-hidden="true" />
         </button>
-        <button data-danger="true" type="button">
-          <LogOut size={18} aria-hidden="true" />
-          <strong>로그아웃</strong>
+        <button data-danger={isLoggedIn ? "true" : undefined} type="button" onClick={handleAuthClick}>
+          {isLoggedIn ? <LogOut size={18} aria-hidden="true" /> : <LogIn size={18} aria-hidden="true" />}
+          <strong>{isLoggedIn ? "로그아웃" : "로그인"}</strong>
           <ChevronRight size={16} aria-hidden="true" />
         </button>
       </section>

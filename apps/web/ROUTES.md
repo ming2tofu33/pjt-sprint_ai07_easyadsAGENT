@@ -11,6 +11,8 @@
 | `/onboarding/modes` | 온보딩 호환 주소 | `/onboarding`과 같은 플로우로 연결 |
 | `/onboarding/brief` | 온보딩 호환 주소 | `/onboarding`과 같은 플로우로 연결 |
 | `/onboarding/start` | 온보딩 호환 주소 | `/onboarding`과 같은 플로우로 연결 |
+| `/auth/callback` | Supabase OAuth callback | Google 로그인 완료 후 세션 저장 |
+| `/login` | 일반 사용자 로그인 | Google OAuth 시작 |
 
 ## Dashboard
 
@@ -99,6 +101,15 @@ result-8
 | `/notifications/settings` | 알림 설정 | 채널/종류별 설정 |
 | `/notifications/complete` | 알림 처리 완료 | 성공 상태 UI |
 | `/notifications/failed` | 알림 처리 실패 | 예외 상태 UI |
+
+## Admin
+
+관리자 권한은 일반 로그인 후 Supabase Auth UUID와 `public.admin_users` 테이블로 확인합니다. 이메일 allowlist 환경변수는 사용하지 않습니다.
+
+| Route | Screen | Notes |
+| --- | --- | --- |
+| `/admin/login` | 관리자 Google 로그인 | Supabase OAuth 시작 |
+| `/admin` | 관리자 홈 | `admin_users.user_id = auth.users.id`인 활성 관리자만 접근 |
 
 ## QA Checklist
 

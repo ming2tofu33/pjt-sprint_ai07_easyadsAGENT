@@ -705,7 +705,7 @@ describe("ChatGenerateClient", () => {
 
     expect(screen.queryByRole("button", { name: "전체 보기" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /남은 생성 횟수/ }));
+    fireEvent.click(screen.getByRole("button", { name: /사용량 정보/ }));
     expect(navigationMock.push).toHaveBeenCalledWith("/my/usage");
   });
 

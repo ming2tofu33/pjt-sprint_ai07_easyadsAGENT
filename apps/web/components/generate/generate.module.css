@@ -788,6 +788,16 @@
   gap: 7px;
 }
 
+.secondaryButton[data-danger="true"] {
+  border-color: rgba(220, 78, 65, 0.28);
+  background: #fff6f3;
+  color: var(--color-status-danger);
+}
+
+.secondaryButton[data-danger="true"] svg {
+  color: var(--color-status-danger);
+}
+
 .stepFooter {
   margin-top: auto;
   padding: 18px 0 0;
@@ -5529,6 +5539,23 @@
   border: 1px solid rgba(184, 205, 40, 0.24);
 }
 
+.myProfileCard > span > svg {
+  color: var(--color-text-primary);
+}
+
+.myProfileAvatar {
+  background: var(--color-neutral-chip) !important;
+  color: inherit !important;
+  overflow: hidden;
+}
+
+.myProfileAvatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
 .myProfileCard strong,
 .myBrandBanner strong,
 .myLinkedBrandCard strong,
@@ -5891,6 +5918,26 @@
   margin-top: 14px;
   display: grid;
   gap: 10px;
+}
+
+.accountActionNotice {
+  margin: 14px 0 0;
+  border: 1px solid rgba(220, 78, 65, 0.22);
+  border-radius: var(--radius-md);
+  background: #fff6f3;
+  color: var(--color-status-danger);
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 850;
+}
+
+.accountActionNotice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
 .stepHeader .myPeriodButton {
