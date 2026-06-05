@@ -8,6 +8,7 @@ from orchestrator.app.api.schemas.archive import ArchiveItemCreateRequest, Archi
 from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.errors import DatabaseConfigurationError
 from orchestrator.app.db.repositories import archive_items as archive_item_repo
+from orchestrator.app.db.repositories import workspaces as workspace_repo
 
 
 class ArchivePersistenceUnavailable(RuntimeError):
@@ -31,8 +32,13 @@ def _ensure_postgres_enabled() -> None:
         raise ArchivePersistenceUnavailable("Postgres DB backend is not enabled.")
 
 
-def _resolve_workspace_id(workspace_id: str | None) -> str:
-    resolved = (workspace_id or db_settings.get_demo_workspace_id() or "").strip()
+def _resolve_workspace_id(workspace_id: str | None, user_id: str | None = None) -> str:
+    if workspace_id and workspace_id.strip():
+        return workspace_id.strip()
+    if user_id and user_id.strip():
+        workspace = workspace_repo.ensure_user_workspace(user_id=user_id.strip())
+        return str(workspace["id"])
+    resolved = (db_settings.get_demo_workspace_id() or "").strip()
     if not resolved:
         raise ArchiveWorkspaceRequired("workspace_id or EASYADS_DEMO_WORKSPACE_ID is required.")
     return resolved
@@ -71,10 +77,11 @@ def archive_item_from_row(row: dict) -> ArchiveItemResponse:
 
 def create_archive_item(request: ArchiveItemCreateRequest) -> ArchiveItemResponse:
     _ensure_postgres_enabled()
-    workspace_id = _resolve_workspace_id(request.workspace_id)
+    user_id = _resolve_user_id(request.user_id)
+    workspace_id = _resolve_workspace_id(request.workspace_id, user_id=user_id)
     row = archive_item_repo.create_archive_item_row(
         workspace_id=workspace_id,
-        created_by=_resolve_user_id(request.user_id),
+        created_by=user_id,
         title=request.title.strip(),
         public_job_id=request.public_job_id,
         thumbnail_url=request.thumbnail_url,
@@ -88,24 +95,28 @@ def create_archive_item(request: ArchiveItemCreateRequest) -> ArchiveItemRespons
     return archive_item_from_row(row)
 
 
-def list_archive_items(*, workspace_id: str | None = None, limit: int = 50, offset: int = 0) -> tuple[list[ArchiveItemResponse], int]:
+def list_archive_items(*, workspace_id: str | None = None, user_id: str | None = None, limit: int = 50, offset: int = 0) -> tuple[list[ArchiveItemResponse], int]:
     _ensure_postgres_enabled()
-    resolved_workspace_id = _resolve_workspace_id(workspace_id)
+    resolved_user_id = _resolve_user_id(user_id)
+    resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
     rows = archive_item_repo.list_archive_item_rows(
         workspace_id=resolved_workspace_id,
+        created_by=resolved_user_id,
         limit=limit,
         offset=offset,
     )
-    total = archive_item_repo.count_archive_item_rows(workspace_id=resolved_workspace_id)
+    total = archive_item_repo.count_archive_item_rows(workspace_id=resolved_workspace_id, created_by=resolved_user_id)
     return [archive_item_from_row(row) for row in rows], total
 
 
-def delete_archive_item(*, archive_item_id: str, workspace_id: str | None = None) -> ArchiveItemResponse:
+def delete_archive_item(*, archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveItemResponse:
     _ensure_postgres_enabled()
-    resolved_workspace_id = _resolve_workspace_id(workspace_id)
+    resolved_user_id = _resolve_user_id(user_id)
+    resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
     row = archive_item_repo.soft_delete_archive_item_row(
         archive_item_id=archive_item_id,
         workspace_id=resolved_workspace_id,
+        created_by=resolved_user_id,
     )
     if not row:
         raise ArchiveItemNotFound(f"archive_item_id={archive_item_id}")

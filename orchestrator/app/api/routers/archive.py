@@ -55,11 +55,12 @@ def create_archive_item_route(request: ArchiveItemCreateRequest) -> ArchiveMutat
 @router.get("/archive/items", response_model=ArchiveListResponse)
 def list_archive_items_route(
     workspace_id: str | None = None,
+    user_id: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> ArchiveListResponse:
     try:
-        items, total = list_archive_items(workspace_id=workspace_id, limit=limit, offset=offset)
+        items, total = list_archive_items(workspace_id=workspace_id, user_id=user_id, limit=limit, offset=offset)
     except ArchivePersistenceUnavailable as exc:
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:
@@ -79,9 +80,9 @@ def list_archive_items_route(
 
 
 @router.delete("/archive/items/{archive_item_id}", response_model=ArchiveMutationResponse)
-def delete_archive_item_route(archive_item_id: str, workspace_id: str | None = None) -> ArchiveMutationResponse:
+def delete_archive_item_route(archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveMutationResponse:
     try:
-        item = delete_archive_item(archive_item_id=archive_item_id, workspace_id=workspace_id)
+        item = delete_archive_item(archive_item_id=archive_item_id, workspace_id=workspace_id, user_id=user_id)
     except ArchivePersistenceUnavailable as exc:
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:

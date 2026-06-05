@@ -115,14 +115,6 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
     <>
       <StepHeader title="내 사진으로 만들기" canGoBack backLabel="이전 화면" onBack={onBack} onHome={onGoHome} />
 
-      <section className={styles.hero}>
-        <span className={styles.heroIcon}>
-          <ImagePlus size={25} strokeWidth={2.4} aria-hidden="true" />
-        </span>
-        <h2 className={styles.heroTitle}>사진과 광고 방향을 함께 보내주세요.</h2>
-        <p className={styles.heroCopy}>AI가 사진을 참고해 필요한 정보를 확인하고 어울리는 문구를 제안해드려요.</p>
-      </section>
-
       <form ref={formRef} className={styles.photoStartForm} onSubmit={handleSubmit}>
         <div
           className={styles.photoDropzone}
@@ -216,9 +208,22 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
           </div>
         ) : null}
 
-        <label className={styles.photoPromptCard}>
+        {errorMessage ? (
+          <p className={styles.photoTip} role="alert">
+            <Sparkles size={17} aria-hidden="true" />
+            {errorMessage}
+          </p>
+        ) : null}
+
+        <button className={styles.photoChatFallbackButton} disabled={isSubmitting} type="button" onClick={onOpenChat}>
+          <MessageCircle size={17} aria-hidden="true" />
+          이미지 없이 대화로 시작하기
+        </button>
+
+        <div className={`${styles.inputCard} ${styles.startInputCard} ${styles.photoInputCard}`}>
+          <FileImage size={19} aria-hidden="true" />
           <AutosizeTextarea
-            className={styles.photoPromptTextarea}
+            className={`${styles.input} ${styles.promptTextarea}`}
             aria-label="사진 광고 요청 입력"
             placeholder="광고 방향을 입력해주세요"
             value={prompt}
@@ -230,33 +235,8 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
             }}
             onSubmit={() => formRef.current?.requestSubmit()}
           />
-          <Send size={17} aria-hidden="true" />
-        </label>
-
-        {errorMessage ? (
-          <p className={styles.photoTip} role="alert">
-            <Sparkles size={17} aria-hidden="true" />
-            {errorMessage}
-          </p>
-        ) : (
-          <p className={styles.photoTip}>
-            <Sparkles size={17} aria-hidden="true" />
-            선택한 사진과 입력한 방향을 바탕으로 다음 단계가 이어집니다.
-          </p>
-        )}
-
-        <div className={styles.stepFooter}>
-          <div className={styles.progressWrap} aria-label="사진 생성 준비">
-            <span>사진 입력</span>
-            <span className={styles.progressTrack}>
-              <span className={styles.progressBar} style={{ width: selectedFile ? "50%" : "18%" }} />
-            </span>
-          </div>
-          <button className={styles.primaryButton} disabled={!canSubmit} type="submit">
-            {isSubmitting ? "사진을 보내는 중..." : "사진 기반 생성 시작"} <Sparkles size={18} aria-hidden="true" />
-          </button>
-          <button className={styles.secondaryButton} disabled={isSubmitting} type="button" onClick={onOpenChat}>
-            대화로 시작하기 <MessageCircle size={17} aria-hidden="true" />
+          <button className={styles.sendButton} type="submit" aria-label={isSubmitting ? "사진을 보내는 중" : "사진 기반 생성 시작"} disabled={!canSubmit}>
+            {isSubmitting ? <Sparkles size={18} aria-hidden="true" /> : <Send size={18} aria-hidden="true" />}
           </button>
         </div>
       </form>

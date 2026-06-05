@@ -58,35 +58,47 @@ def create_archive_item_row(
 def list_archive_item_rows(
     *,
     workspace_id: str,
+    created_by: str | None = None,
     limit: int = 50,
     offset: int = 0,
     connection: object | None = None,
 ) -> list[dict]:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
+            filters = ["workspace_id = %s", "deleted_at is null"]
+            params: list[object] = [workspace_id]
+            if created_by:
+                filters.append("created_by = %s")
+                params.append(created_by)
+            params.extend([limit, offset])
             cur.execute(
-                """
+                f"""
                 select *
                 from archive_items
-                where workspace_id = %s and deleted_at is null
+                where {" and ".join(filters)}
                 order by saved_at desc
                 limit %s offset %s
                 """,
-                (workspace_id, limit, offset),
+                tuple(params),
             )
             return list(cur.fetchall())
 
 
-def count_archive_item_rows(*, workspace_id: str, connection: object | None = None) -> int:
+def count_archive_item_rows(*, workspace_id: str, created_by: str | None = None, connection: object | None = None) -> int:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
+            filters = ["workspace_id = %s", "deleted_at is null"]
+            params: list[object] = [workspace_id]
+            if created_by:
+                filters.append("created_by = %s")
+                params.append(created_by)
             cur.execute(
-                """
+                f"""
                 select count(*) as total
                 from archive_items
-                where workspace_id = %s and deleted_at is null
+                where {" and ".join(filters)}
                 """,
-                (workspace_id,),
+                tuple(params),
             )
             row = cur.fetchone()
             return int(row["total"]) if row else 0
@@ -96,17 +108,23 @@ def soft_delete_archive_item_row(
     *,
     archive_item_id: str,
     workspace_id: str,
+    created_by: str | None = None,
     connection: object | None = None,
 ) -> dict | None:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
+            filters = ["id = %s", "workspace_id = %s", "deleted_at is null"]
+            params: list[object] = [archive_item_id, workspace_id]
+            if created_by:
+                filters.append("created_by = %s")
+                params.append(created_by)
             cur.execute(
-                """
+                f"""
                 update archive_items
                 set deleted_at = now(), updated_at = now()
-                where id = %s and workspace_id = %s and deleted_at is null
+                where {" and ".join(filters)}
                 returning *
                 """,
-                (archive_item_id, workspace_id),
+                tuple(params),
             )
             return cur.fetchone()
