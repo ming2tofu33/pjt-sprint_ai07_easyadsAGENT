@@ -49,12 +49,11 @@ def test_image_prompt_planner_uses_reserved_text_areas_and_no_text_negative():
         assert phrase in spec["negative_prompt_en"]
     assert spec["target_width"] == 1080
     assert spec["target_height"] == 1080
-    metadata = update["llm_call_results"][0]["metadata"]
-    assert metadata["trace"]["node_name"] == "image_prompt_planner"
-    assert metadata["available_state"]["text_layout_spec"]
-    assert metadata["available_state"]["reserved_text_areas"] == spec["reserved_text_areas"]
-    assert metadata["constraints"]["render_text_in_image"] is False
-    assert metadata["constraints"]["must_not_include_text"] is True
+    assert update["llm_call_results"] == []
+    metadata = spec["metadata"]
+    assert metadata["source_node"] == "image_prompt_planner"
+    assert metadata["render_text_in_image"] is False
+    assert metadata["prompt_critic"]["fallback_used"] is True
 
 
 def test_image_prompt_planner_includes_frontend_visual_choices():
