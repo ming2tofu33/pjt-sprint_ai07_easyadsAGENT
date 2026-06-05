@@ -18,6 +18,7 @@ NodeModelName = Literal[
     "custom_copy_validation",
     "copy_spec_parser",
     "image_prompt_planner",
+    "prompt_critic",
     "background_validation",
     "final_validation",
     "revision_intent_classifier",
