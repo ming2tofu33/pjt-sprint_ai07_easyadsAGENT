@@ -1,7 +1,5 @@
-import { notFound } from "next/navigation";
 import { AdSaveFlowStep } from "@/components/generate/AdSaveFlowStep";
 import { MobileShell } from "@/components/generate/MobileShell";
-import { archivedCreatives, getAdCreativeById } from "@/lib/mock-dashboard-data";
 
 type AdSavedPageProps = {
   params: {
@@ -10,14 +8,10 @@ type AdSavedPageProps = {
 };
 
 export function generateStaticParams() {
-  return archivedCreatives.map((creative) => ({ creativeId: creative.id }));
+  return [];
 }
 
 export default function AdSavedPage({ params }: AdSavedPageProps) {
-  if (!params.creativeId.startsWith("generated-") && !getAdCreativeById(params.creativeId)) {
-    notFound();
-  }
-
   return (
     <MobileShell>
       <AdSaveFlowStep creativeId={params.creativeId} step="saved" />

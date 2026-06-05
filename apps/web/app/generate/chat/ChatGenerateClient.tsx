@@ -20,6 +20,8 @@ import { StudioEntryStep } from "@/components/generate/StudioEntryStep";
 import {
   answerChatQuestion,
   createChatBrief,
+  deleteArchiveItem,
+  listArchiveItems,
   saveArchiveItem,
   startChatGeneration,
   startPhotoGeneration,
@@ -29,6 +31,7 @@ import {
   type ReferenceTemplateCard
 } from "@/lib/api-client";
 import { buildAdHref } from "@/lib/ad-navigation";
+import { archiveItemToCreative } from "@/lib/archive-creative";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 import {
   buildDashboardHref,
@@ -260,9 +263,35 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }, [initialSurface]);
 
   useEffect(() => {
-    if (appSurface === "ads") {
-      setGeneratedCreatives(readGeneratedCreatives());
+    if (appSurface !== "ads") {
+      return;
     }
+
+    let isActive = true;
+    const sessionCreatives = readGeneratedCreatives();
+    setGeneratedCreatives(sessionCreatives);
+
+    void listArchiveItems({ limit: 50 })
+      .then((response) => {
+        if (!isActive) {
+          return;
+        }
+
+        const archivedCreatives = response.items
+          .map(archiveItemToCreative)
+          .filter((creative): creative is MockCreative => Boolean(creative));
+
+        setGeneratedCreatives(archivedCreatives.length > 0 ? archivedCreatives : sessionCreatives);
+      })
+      .catch(() => {
+        if (isActive) {
+          setGeneratedCreatives(sessionCreatives);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
   }, [appSurface]);
 
   useEffect(() => {
@@ -494,9 +523,20 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     handleOpenFreshChat();
   }
 
-  function handleDeleteGeneratedAd(creativeId: string, title: string) {
-    setGeneratedCreatives(removeGeneratedCreative(creativeId));
-    showToast(`${title} 항목을 보관함에서 삭제했어요.`);
+  async function handleDeleteGeneratedAd(creativeId: string, title: string) {
+    if (creativeId.startsWith("generated-")) {
+      setGeneratedCreatives(removeGeneratedCreative(creativeId));
+      showToast(`${title} 항목을 보관함에서 삭제했어요.`);
+      return;
+    }
+
+    try {
+      await deleteArchiveItem(creativeId);
+      setGeneratedCreatives((current) => current.filter((item) => item.id !== creativeId));
+      showToast(`${title} 항목을 보관함에서 삭제했어요.`);
+    } catch {
+      showToast(`${title} 항목을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.`);
+    }
   }
 
   async function handleSaveGeneratedCreative(creative: MockCreative) {
@@ -507,7 +547,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     const publicJobId = state.jobId || (creative.id.startsWith("generated-") ? creative.id.replace(/^generated-/, "") : undefined);
     try {
-      await saveArchiveItem({
+      const response = await saveArchiveItem({
         title: creative.title,
         publicJobId,
         imageUrl: creative.imageUrl,
@@ -523,9 +563,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           tags: creative.tags ?? []
         }
       });
-      setGeneratedCreatives((current) =>
-        current.map((item) => (item.id === creative.id ? { ...item, storage: "내 광고 보관함" } : item))
-      );
+      const archivedCreative = archiveItemToCreative(response.item);
+      setGeneratedCreatives((current) => {
+        const updated = current.map((item) => (item.id === creative.id ? { ...item, storage: "내 광고 보관함" } : item));
+        if (!archivedCreative) {
+          return updated;
+        }
+        return [archivedCreative, ...updated.filter((item) => item.id !== archivedCreative.id)];
+      });
       showToast(`${creative.title}를 보관함에 저장했어요.`);
     } catch {
       showToast(`${creative.title}를 보관함에 저장하지 못했어요. 잠시 후 다시 시도해주세요.`);
@@ -577,6 +622,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
+          onOpenNotifications={() => router.push(buildNotificationHref())}
           onShowProgress={() => navigateTo("studio")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={showArchiveStoragePendingToast}
@@ -666,6 +712,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
+          onOpenNotifications={() => router.push(buildNotificationHref())}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={showArchiveStoragePendingToast}
           onUseTemplate={handleUseReferenceTemplate}
@@ -701,6 +748,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
+          onOpenNotifications={() => router.push(buildNotificationHref())}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={showArchiveStoragePendingToast}
           onUseTemplate={handleUseReferenceTemplate}

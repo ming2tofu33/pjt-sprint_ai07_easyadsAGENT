@@ -18,6 +18,7 @@ from orchestrator.app.generation_jobs.service import (
     maybe_submit_generation_job_to_modal,
     should_route_generation_job_to_modal,
 )
+from orchestrator.app.chat_threads.errors import ChatThreadServiceError
 from orchestrator.app.reference_catalog.service import get_reference_template
 
 router = APIRouter()
@@ -41,11 +42,28 @@ def _reference_template_not_found(template_id: str) -> None:
     )
 
 
+def _chat_thread_error(exc: ChatThreadServiceError) -> None:
+    if exc.error_code == "chat_thread_not_found":
+        status_code = 404
+    elif exc.error_code in {"chat_thread_archived", "chat_thread_has_active_job"}:
+        status_code = 409
+    else:
+        status_code = 400
+    raise_api_error(
+        status_code=status_code,
+        error_code=exc.error_code,
+        message=exc.message,
+    )
+
+
 @router.post("/generation-jobs", response_model=GenerationJobCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_generation_job_route(request: GenerationJobCreateRequest) -> GenerationJobCreateResponse:
     if request.selected_reference_template_id and not get_reference_template(request.selected_reference_template_id):
         _reference_template_not_found(request.selected_reference_template_id)
-    job = create_generation_job(request)
+    try:
+        job = create_generation_job(request)
+    except ChatThreadServiceError as exc:
+        _chat_thread_error(exc)
     if should_route_generation_job_to_modal(request):
         job = maybe_submit_generation_job_to_modal(job, request)
     elif request.run_mode == "mock_immediate":

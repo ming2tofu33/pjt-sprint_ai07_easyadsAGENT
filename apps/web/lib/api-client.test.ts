@@ -60,6 +60,16 @@ describe("api-client photo generation", () => {
     expect(body.dataUrl).toMatch(/^data:image\/png;base64,/);
   });
 
+  it("shows a friendly message when the photo upload body is too large", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({ message: "Request body is too large" }, { status: 413 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File([new Uint8Array([1, 2, 3])], "menu.png", { type: "image/png" });
+
+    await expect(uploadPhotoAsset(file)).rejects.toThrow("사진 용량이 너무 커요. 더 작은 사진으로 다시 시도해주세요.");
+  });
+
   it("normalizes a trailing slash in the BFF base URL", async () => {
     vi.resetModules();
     vi.stubEnv("NEXT_PUBLIC_BFF_BASE_URL", "https://bff.example.com/");
@@ -466,6 +476,13 @@ describe("api-client backend contract routes", () => {
   });
 
   it("calls archive endpoints through the BFF and maps response fields", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST") {
         return jsonResponse({
@@ -533,6 +550,15 @@ describe("api-client backend contract routes", () => {
     });
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
     expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
+    expect(fetchMock.mock.calls[1][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
+    expect(fetchMock.mock.calls[2][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
     expect(saved.item.adId).toBe("archive_1");
     expect(saved.item.savedAt).toBe("2026-06-04T00:00:00+00:00");
     expect(listed.items[0].jobId).toBe("job_1");

@@ -5,8 +5,10 @@ import {
   Briefcase,
   ChevronRight,
   Home,
+  LogIn,
   Palette,
   Search,
+  Shield,
   Settings,
   Sparkles,
   Store,
@@ -14,25 +16,56 @@ import {
   Zap
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { buildBrandKitHref } from "@/lib/brand-kit-navigation";
 import { brandKitMeta, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
+import { buildLoginHref } from "@/lib/auth-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
-import { myProfile } from "@/lib/mock-dashboard-data";
+import { listArchiveItems } from "@/lib/api-client";
 import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
 import { buildMyHref } from "@/lib/my-navigation";
 import { buildNotificationHref } from "@/lib/notification-navigation";
+import { getCurrentAppUserAccess } from "@/lib/user-auth-client";
+import type { AppUserProfile } from "@/lib/user-profile";
 import styles from "./generate.module.css";
 
 export function MyPageStep() {
   const router = useRouter();
   const [sessionCreativeCount, setSessionCreativeCount] = useState(0);
   const [brandKit, setBrandKit] = useState<StoredBrandKit | null>(null);
+  const [userProfile, setUserProfile] = useState<AppUserProfile | null>(null);
+  const [canSeeAdminMode, setCanSeeAdminMode] = useState(false);
+  const [savedArchiveCount, setSavedArchiveCount] = useState<number | null>(null);
+  const [isArchiveCountLoading, setIsArchiveCountLoading] = useState(false);
 
   useEffect(() => {
     setSessionCreativeCount(readGeneratedCreatives().length);
     setBrandKit(readSavedBrandKit());
+    void getCurrentAppUserAccess().then((access) => {
+      setUserProfile(access.profile);
+      setCanSeeAdminMode(access.isAdmin);
+      if (!access.profile) {
+        setSavedArchiveCount(null);
+        setIsArchiveCountLoading(false);
+        return;
+      }
+
+      setIsArchiveCountLoading(true);
+      void listArchiveItems({ limit: 1 })
+        .then((response) => {
+          setSavedArchiveCount(response.pagination.total);
+        })
+        .catch(() => {
+          setSavedArchiveCount(null);
+        })
+        .finally(() => {
+          setIsArchiveCountLoading(false);
+        });
+    });
   }, []);
+
+  const profileCardHref = userProfile ? buildMyHref("account") : buildLoginHref(buildMyHref("account"));
 
   return (
     <>
@@ -48,14 +81,14 @@ export function MyPageStep() {
         </div>
       </header>
 
-      <button className={styles.myProfileCard} type="button" onClick={() => router.push(buildMyHref("account"))}>
-        <span aria-hidden="true">
-          <User size={30} />
+      <button className={styles.myProfileCard} type="button" onClick={() => router.push(profileCardHref)}>
+        <span className={userProfile?.avatarUrl ? styles.myProfileAvatar : undefined} aria-hidden="true">
+          {userProfile?.avatarUrl ? <Image src={userProfile.avatarUrl} alt="" width={72} height={72} unoptimized /> : userProfile ? <User size={30} /> : <LogIn size={30} />}
         </span>
         <div>
-          <strong>{myProfile.ownerName}</strong>
-          <p>{myProfile.email}</p>
-          <small>{myProfile.plan}</small>
+          <strong>{userProfile ? userProfile.displayName : "로그인하고 내 광고 관리하기"}</strong>
+          <p>{userProfile ? userProfile.email : "Google 계정으로 결과를 이어서 확인해요"}</p>
+          <small>{userProfile ? userProfile.loginMethod : "로그인 필요"}</small>
         </div>
         <ChevronRight size={18} aria-hidden="true" />
       </button>
@@ -64,27 +97,27 @@ export function MyPageStep() {
         <Store size={24} aria-hidden="true" />
         <strong>
           {brandKit ? "브랜드 키트 사용 중" : "브랜드 키트 연결 전"}
-          <small>{brandKit ? `${brandKit.businessName} · ${brandKitTone(brandKit)} · ${brandKitMeta(brandKit)}` : "현재는 입력 흐름만 확인할 수 있어요"}</small>
+          <small>{brandKit ? `${brandKit.businessName} · ${brandKitTone(brandKit)} · ${brandKitMeta(brandKit)}` : "가게 정보를 등록하면 광고 요청에 함께 반영돼요"}</small>
         </strong>
         <ChevronRight size={18} aria-hidden="true" />
       </button>
 
       <section className={styles.myStatsGrid} aria-label="활동 요약">
         <button type="button" onClick={() => router.push(buildDashboardHref("ads"))}>
-          <strong>{sessionCreativeCount}개</strong>
-          <span>이번에 생성한 결과</span>
+          <strong>{userProfile ? `${sessionCreativeCount}개` : "로그인 전"}</strong>
+          <span>{userProfile ? "이번 기기에서 만든 결과" : "생성 내역"}</span>
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("ads"))}>
-          <strong>{sessionCreativeCount}개</strong>
-          <span>저장 가능 결과</span>
+          <strong>{userProfile ? (isArchiveCountLoading ? "확인 중" : savedArchiveCount !== null ? `${savedArchiveCount}개` : "연결 필요") : "로그인 전"}</strong>
+          <span>저장한 결과</span>
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("chat", "generating"))}>
           <strong>0개</strong>
           <span>생성 중 작업</span>
         </button>
         <button type="button" onClick={() => router.push(buildMyHref("usage"))}>
-          <strong>연결 전</strong>
-          <span>남은 생성 횟수</span>
+          <strong>연동 전</strong>
+          <span>사용량 정보</span>
         </button>
       </section>
 
@@ -108,6 +141,16 @@ export function MyPageStep() {
           </strong>
           <ChevronRight size={17} aria-hidden="true" />
         </button>
+        {canSeeAdminMode ? (
+          <button type="button" onClick={() => router.push("/admin")}>
+            <Shield size={18} aria-hidden="true" />
+            <strong>
+              운영자 모드
+              <small>레퍼런스와 운영 설정을 관리해요</small>
+            </strong>
+            <ChevronRight size={17} aria-hidden="true" />
+          </button>
+        ) : null}
       </section>
 
       <button className={styles.myFloatingCta} type="button" onClick={() => router.push(buildDashboardHref("studio"))}>

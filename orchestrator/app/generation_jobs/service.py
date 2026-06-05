@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import RLock
+from uuid import UUID
 from uuid import uuid4
 
 from orchestrator.app.api.schemas.generation_jobs import (
@@ -26,6 +28,13 @@ from orchestrator.app.db.repositories import generation_jobs as generation_job_r
 from orchestrator.app.db.repositories import generation_outputs as generation_output_repo
 from orchestrator.app.db.repositories import workspaces as workspace_repo
 from orchestrator.app.db.session import db_transaction
+from orchestrator.app.chat_threads.errors import (
+    ChatThreadArchivedError,
+    ChatThreadHasActiveJobError,
+    ChatThreadNotFoundError,
+)
+from orchestrator.app.chat_threads import service as chat_thread_service
+from orchestrator.app.chat_threads.sanitization import sanitize_chat_payload
 from orchestrator.app.modal import settings as modal_settings
 from orchestrator.app.modal.errors import ModalExecutionError, ModalJobPollError
 from orchestrator.app.modal.service import (
@@ -40,6 +49,7 @@ from orchestrator.app.storage.object_keys import build_generation_object_key
 from orchestrator.app.storage.r2_service import upload_file_to_r2
 
 _GENERATION_JOBS: dict[str, GenerationJobResponse] = {}
+_GENERATION_JOB_LOCK = RLock()
 _BLOCKED_METADATA_KEYS = {
     "api_key",
     "openai_api_key",
@@ -133,51 +143,79 @@ def create_generation_job(request: GenerationJobCreateRequest) -> GenerationJobR
 
 
 def _create_generation_job_memory(request: GenerationJobCreateRequest) -> GenerationJobResponse:
-    now = _now_iso()
-    effective_run_mode, execution_mode = _initial_run_mode_metadata(request.run_mode)
-    job = GenerationJobResponse(
-        job_id=f"job_{uuid4().hex}",
-        thread_id=f"thread_{uuid4().hex}",
-        user_id=request.user_id,
-        brand_kit_id=request.brand_kit_id,
-        status="queued",
-        progress=GenerationProgress(
-            progress_percent=0,
-            current_stage="queued",
-            estimated_seconds_remaining=None,
-            stage_order=DEFAULT_STAGE_ORDER,
-        ),
-        selected_reference_template_id=request.selected_reference_template_id,
-        output_path=None,
-        result_payload=None,
-        error=None,
-        created_at=now,
-        updated_at=now,
-        metadata={
-            "requested_run_mode": request.run_mode,
-            "effective_run_mode": effective_run_mode,
-            "execution_mode": execution_mode,
-            "user_input_preview": _preview_user_input(request.user_input),
-            "brand_kit_id": request.brand_kit_id,
-            "user_id": request.user_id,
-            "entry_mode": request.entry_mode,
-            "copy_generation_mode": request.copy_generation_mode,
-            "user_plan": request.user_plan,
-            "selected_reference_template_id": request.selected_reference_template_id,
-            "ad_format": request.ad_format,
-            "engine_preference": _engine_preference(request.run_mode),
-            "t2i_engine": _engine_preference(request.run_mode),
-            **_safe_request_metadata(request.metadata),
-        },
-    )
-    _GENERATION_JOBS[job.job_id] = job
-    return job
+    with _GENERATION_JOB_LOCK:
+        now = _now_iso()
+        effective_run_mode, execution_mode = _initial_run_mode_metadata(request.run_mode)
+
+        if request.thread_id:
+            existing_thread = chat_thread_service.get_chat_thread(request.thread_id, user_id=request.user_id)
+            if not existing_thread:
+                raise ChatThreadNotFoundError()
+            if existing_thread.archived_at:
+                raise ChatThreadArchivedError()
+            if existing_thread.active_job_id:
+                raise ChatThreadHasActiveJobError()
+            public_thread_id = existing_thread.thread_id
+        else:
+            from orchestrator.app.api.schemas.chat_threads import ChatThreadCreateRequest
+            new_thread = chat_thread_service.create_chat_thread(
+                ChatThreadCreateRequest(
+                    user_id=request.user_id,
+                    title=_preview_user_input(request.user_input, max_length=80),
+                    brand_kit_id=request.brand_kit_id,
+                )
+            )
+            public_thread_id = new_thread.thread_id
+
+        job = GenerationJobResponse(
+            job_id=f"job_{uuid4().hex}",
+            thread_id=public_thread_id,
+            user_id=request.user_id,
+            brand_kit_id=request.brand_kit_id,
+            status="queued",
+            progress=GenerationProgress(
+                progress_percent=0,
+                current_stage="queued",
+                estimated_seconds_remaining=None,
+                stage_order=DEFAULT_STAGE_ORDER,
+            ),
+            selected_reference_template_id=request.selected_reference_template_id,
+            output_path=None,
+            result_payload=None,
+            error=None,
+            created_at=now,
+            updated_at=now,
+            metadata={
+                "requested_run_mode": request.run_mode,
+                "effective_run_mode": effective_run_mode,
+                "execution_mode": execution_mode,
+                "user_input_preview": _preview_user_input(request.user_input),
+                "brand_kit_id": request.brand_kit_id,
+                "user_id": request.user_id,
+                "entry_mode": request.entry_mode,
+                "copy_generation_mode": request.copy_generation_mode,
+                "user_plan": request.user_plan,
+                "selected_reference_template_id": request.selected_reference_template_id,
+                "ad_format": request.ad_format,
+                "engine_preference": _engine_preference(request.run_mode),
+                "t2i_engine": _engine_preference(request.run_mode),
+                **_safe_request_metadata(request.metadata),
+            },
+        )
+        try:
+            chat_thread_service.set_thread_active_job(public_thread_id, job.job_id, job.job_id, status="generating")
+        except Exception:
+            _GENERATION_JOBS.pop(job.job_id, None)
+            raise
+        _GENERATION_JOBS[job.job_id] = job
+        return job
 
 
 def get_generation_job(job_id: str) -> GenerationJobResponse | None:
     if _use_postgres_backend():
         return _get_generation_job_db(job_id)
-    return _GENERATION_JOBS.get(job_id)
+    with _GENERATION_JOB_LOCK:
+        return _GENERATION_JOBS.get(job_id)
 
 
 def update_generation_job(job_id: str, **fields) -> GenerationJobResponse | None:
@@ -188,7 +226,8 @@ def update_generation_job(job_id: str, **fields) -> GenerationJobResponse | None
     if not existing:
         return None
     updated = existing.model_copy(update={**fields, "updated_at": _now_iso()})
-    _GENERATION_JOBS[job_id] = updated
+    with _GENERATION_JOB_LOCK:
+        _GENERATION_JOBS[job_id] = updated
     return updated
 
 
@@ -215,7 +254,7 @@ def mark_generation_job_done(
         return None
     progress = existing.progress.model_copy(update={"progress_percent": 100, "current_stage": "completed"})
     merged_metadata = {**existing.metadata, **(metadata or {})}
-    return update_generation_job(
+    updated = update_generation_job(
         job_id,
         status="done",
         progress=progress,
@@ -224,6 +263,17 @@ def mark_generation_job_done(
         error=None,
         metadata=merged_metadata,
     )
+    if updated and existing.thread_id:
+        has_output = bool(output_path or (result_payload or {}).get("final_image_path") or (result_payload or {}).get("final_image_url") or (result_payload or {}).get("final_asset_id"))
+        if has_output:
+            chat_thread_service.set_thread_final_output(
+                existing.thread_id,
+                internal_output_id="memory_final_output",
+                final_brief=(result_payload or {}).get("final_brief") or merged_metadata.get("final_brief"),
+                expected_public_job_id=job_id,
+            )
+        chat_thread_service.clear_thread_active_job(existing.thread_id, status="completed", expected_public_job_id=job_id)
+    return updated
 
 
 def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None = None) -> GenerationJobResponse | None:
@@ -234,21 +284,26 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
         return None
     merged_metadata = {**existing.metadata, **(metadata or {})}
     progress = existing.progress.model_copy(update={"current_stage": "failed"})
-    return update_generation_job(
+    updated = update_generation_job(
         job_id,
         status="failed",
         progress=progress,
         error=ErrorResponse(
             error_code=str(error.get("error_code") or "generation_job_execution_failed"),
+            error_type=error.get("error_type"),
             message=str(error.get("message") or "Generation job execution failed."),
             detail=error.get("detail"),
         ),
         metadata=merged_metadata,
     )
+    if updated and existing.thread_id:
+        chat_thread_service.clear_thread_active_job(existing.thread_id, status="failed", expected_public_job_id=job_id)
+    return updated
 
 
 def reset_generation_job_store_for_tests() -> None:
-    _GENERATION_JOBS.clear()
+    with _GENERATION_JOB_LOCK:
+        _GENERATION_JOBS.clear()
 
 
 def should_route_generation_job_to_modal(request: GenerationJobCreateRequest) -> bool:
@@ -367,6 +422,16 @@ def _model_provider_for_request(request: GenerationJobCreateRequest) -> str | No
 def _model_name_for_run_mode(run_mode: str) -> str | None:
     return _engine_preference(run_mode)
 
+
+def _db_uuid_or_none(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return str(UUID(str(value)))
+    except (TypeError, ValueError):
+        return None
+
+
 def _use_postgres_backend() -> bool:
     return db_settings.get_db_backend() == "postgres"
 
@@ -380,13 +445,31 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
     request_payload = _request_payload_summary(request)
     with db_transaction() as conn:
         workspace = workspace_repo.ensure_demo_workspace(user_id=user_id, connection=conn)
-        thread = chat_thread_repo.create_chat_thread(
-            workspace_id=str(workspace["id"]),
-            created_by=user_id,
-            title=_preview_user_input(request.user_input, max_length=80),
-            brand_kit_id=request.brand_kit_id,
-            connection=conn,
-        )
+
+        # thread reuse or create
+        if request.thread_id:
+            thread_row = chat_thread_repo.get_chat_thread_by_public_id(
+                request.thread_id,
+                workspace_id=str(workspace["id"]),
+                connection=conn,
+                for_update=True,
+            )
+            if not thread_row:
+                raise ChatThreadNotFoundError()
+            if thread_row.get("archived_at"):
+                raise ChatThreadArchivedError()
+            if thread_row.get("active_job_id"):
+                raise ChatThreadHasActiveJobError()
+            thread = thread_row
+        else:
+            thread = chat_thread_repo.create_chat_thread(
+                workspace_id=str(workspace["id"]),
+                created_by=user_id,
+                title=_preview_user_input(request.user_input, max_length=80),
+                brand_kit_id=_db_uuid_or_none(request.brand_kit_id),
+                connection=conn,
+            )
+
         metadata = {
             "requested_run_mode": request.run_mode,
             "effective_run_mode": effective_run_mode,
@@ -427,12 +510,15 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             request_payload=request_payload,
             connection=conn,
         )
-        chat_thread_repo.update_chat_thread_status(
+        claimed = chat_thread_repo.set_chat_thread_active_job(
             thread.get("public_thread_id") or str(thread["id"]),
-            status="generating",
             active_job_id=str(row["id"]) if row.get("id") else None,
+            status="generating",
+            workspace_id=str(workspace["id"]),
             connection=conn,
         )
+        if not claimed:
+            raise ChatThreadHasActiveJobError()
         _record_generation_job_event_db(row, "queued", payload={"run_mode": request.run_mode}, connection=conn)
     response = _job_response_from_db_row(row)
     if response:
@@ -548,11 +634,13 @@ def _mark_generation_job_done_db(
             },
             connection=conn,
         )
-        chat_thread_repo.update_chat_thread_status(
-            _thread_public_or_internal(row),
-            status="completed",
-            active_job_id=None,
+        final_brief = (row.get("result_payload") or {}).get("final_brief") or merged_metadata.get("final_brief")
+        chat_thread_repo.complete_chat_thread_generation(
+            public_thread_id=_thread_public_or_internal(row),
+            workspace_id=str(row["workspace_id"]),
+            expected_active_job_id=str(row["id"]) if row.get("id") else None,
             final_output_id=str(output["id"]) if output and output.get("id") else None,
+            final_brief=sanitize_chat_payload(final_brief) if final_brief is not None else None,
             connection=conn,
         )
 
@@ -572,6 +660,7 @@ def _mark_generation_job_done_db(
 def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | None = None) -> GenerationJobResponse | None:
     error_payload = {
         "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
+        "error_type": error.get("error_type"),
         "message": str(error.get("message") or "Generation job execution failed."),
         "detail": error.get("detail"),
     }
@@ -587,13 +676,17 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
             row,
             "failed",
             message=error_payload["message"],
-            payload={"error_code": error_payload["error_code"], "message": error_payload["message"]},
+            payload={
+                "error_code": error_payload["error_code"],
+                "error_type": error_payload.get("error_type"),
+                "message": error_payload["message"],
+            },
             connection=conn,
         )
-        chat_thread_repo.update_chat_thread_status(
-            _thread_public_or_internal(row),
-            status="failed",
-            active_job_id=None,
+        chat_thread_repo.fail_chat_thread_generation(
+            public_thread_id=_thread_public_or_internal(row),
+            workspace_id=str(row["workspace_id"]),
+            expected_active_job_id=str(row["id"]) if row.get("id") else None,
             connection=conn,
         )
     return _job_response_from_db_row(row)
@@ -792,7 +885,7 @@ def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
     safe_result_payload = sanitize_result_artifact_payload_for_api(row.get("result_payload"))
     return GenerationJobResponse(
         job_id=str(row.get("public_job_id")),
-        thread_id=metadata.get("public_thread_id") or _string_or_none(row.get("thread_id")),
+        thread_id=row.get("public_thread_id") or metadata.get("public_thread_id"),
         user_id=metadata.get("user_id"),
         brand_kit_id=metadata.get("brand_kit_id"),
         status=row.get("status") or "queued",
@@ -824,7 +917,7 @@ def _string_or_none(value) -> str | None:
 
 def _thread_public_or_internal(row: dict) -> str:
     metadata = row.get("metadata") or {}
-    return str(metadata.get("public_thread_id") or row.get("thread_id"))
+    return str(row.get("public_thread_id") or metadata.get("public_thread_id") or row.get("thread_id"))
 
 
 def _should_attempt_r2_upload() -> bool:
@@ -849,6 +942,7 @@ def _mark_generation_job_failed_from_row_db(
 ) -> GenerationJobResponse | None:
     error_payload = {
         "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
+        "error_type": error.get("error_type"),
         "message": str(error.get("message") or "Generation job execution failed."),
         "detail": error.get("detail"),
     }
@@ -864,13 +958,17 @@ def _mark_generation_job_failed_from_row_db(
         failed_row,
         "failed",
         message=error_payload["message"],
-        payload={"error_code": error_payload["error_code"], "message": error_payload["message"]},
+        payload={
+            "error_code": error_payload["error_code"],
+            "error_type": error_payload.get("error_type"),
+            "message": error_payload["message"],
+        },
         connection=connection,
     )
-    chat_thread_repo.update_chat_thread_status(
-        _thread_public_or_internal(failed_row),
-        status="failed",
-        active_job_id=None,
+    chat_thread_repo.fail_chat_thread_generation(
+        public_thread_id=_thread_public_or_internal(failed_row),
+        workspace_id=str(failed_row["workspace_id"]),
+        expected_active_job_id=str(failed_row["id"]) if failed_row.get("id") else None,
         connection=connection,
     )
     return _job_response_from_db_row(failed_row)
