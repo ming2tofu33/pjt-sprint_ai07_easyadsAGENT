@@ -44,3 +44,30 @@ def ensure_demo_workspace(workspace_id: str | None = None, user_id: str | None =
                 (f"Demo Workspace {uuid4().hex[:8]}", user_id, jsonb_param({"source": "demo_fallback"})),
             )
             return cur.fetchone()
+
+
+def ensure_user_workspace(user_id: str, connection: object | None = None) -> dict:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select *
+                from workspaces
+                where owner_user_id = %s
+                order by created_at asc
+                limit 1
+                """,
+                (user_id,),
+            )
+            existing = cur.fetchone()
+            if existing:
+                return existing
+            cur.execute(
+                """
+                insert into workspaces (name, owner_user_id, metadata)
+                values (%s, %s, %s::jsonb)
+                returning *
+                """,
+                ("User Workspace", user_id, jsonb_param({"source": "supabase_auth"})),
+            )
+            return cur.fetchone()

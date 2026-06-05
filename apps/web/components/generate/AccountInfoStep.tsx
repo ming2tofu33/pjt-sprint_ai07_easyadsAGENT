@@ -1,23 +1,91 @@
 "use client";
 
-import { ArrowLeft, Briefcase, ChevronRight, Home, Mail, MapPin, Search, Sparkles, Store, User } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Briefcase, ChevronRight, Home, LogIn, LogOut, Mail, MapPin, Search, Sparkles, Store, Trash2, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { buildLoginHref } from "@/lib/auth-navigation";
 import { buildBrandKitHref } from "@/lib/brand-kit-navigation";
 import { brandKitMeta, brandKitProducts, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
-import { myProfile } from "@/lib/mock-dashboard-data";
 import { buildMyHref } from "@/lib/my-navigation";
 import { goBackOrPush } from "@/lib/navigation-history";
+import { deleteCurrentAccount } from "@/lib/account-delete";
+import { getCurrentAppUserProfile, signOutAppUser } from "@/lib/user-auth-client";
+import type { AppUserProfile } from "@/lib/user-profile";
 import styles from "./generate.module.css";
+
+type AccountAuthState = "loading" | "guest" | "signedIn";
 
 export function AccountInfoStep() {
   const router = useRouter();
   const [brandKit, setBrandKit] = useState<StoredBrandKit | null>(null);
+  const [userProfile, setUserProfile] = useState<AppUserProfile | null>(null);
+  const [authState, setAuthState] = useState<AccountAuthState>("loading");
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [accountActionMessage, setAccountActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    let isActive = true;
     setBrandKit(readSavedBrandKit());
+    void getCurrentAppUserProfile().then((profile) => {
+      if (!isActive) {
+        return;
+      }
+      setUserProfile(profile);
+      setAuthState(profile ? "signedIn" : "guest");
+    });
+
+    return () => {
+      isActive = false;
+    };
   }, []);
+
+  async function handleSignOut() {
+    setAccountActionMessage(null);
+    setIsSigningOut(true);
+    await signOutAppUser();
+    setUserProfile(null);
+    setAuthState("guest");
+    setIsSigningOut(false);
+    router.replace(buildMyHref());
+    router.refresh();
+  }
+
+  async function handleDeleteAccount() {
+    if (!userProfile || isDeletingAccount) {
+      return;
+    }
+
+    const confirmed = window.confirm("계정을 삭제하면 로그인 정보와 프로필이 삭제됩니다. 계속할까요?");
+    if (!confirmed) {
+      return;
+    }
+
+    setAccountActionMessage(null);
+    setIsDeletingAccount(true);
+    const result = await deleteCurrentAccount();
+
+    if (!result.success) {
+      setIsDeletingAccount(false);
+      setAccountActionMessage(result.message);
+      return;
+    }
+
+    await signOutAppUser().catch(() => {
+      // The server already removed the user; this only clears local session state.
+    });
+    setUserProfile(null);
+    setAuthState("guest");
+    setIsDeletingAccount(false);
+    router.replace(buildMyHref());
+    router.refresh();
+  }
+
+  const isBusy = authState === "loading" || isSigningOut || isDeletingAccount;
+  const accountName = authState === "loading" ? "계정 확인 중" : userProfile?.displayName ?? "Google 로그인 필요";
+  const accountEmail = authState === "loading" ? "로그인 상태를 확인하고 있어요." : userProfile?.email ?? "Google 계정으로 로그인하면 표시됩니다.";
+  const loginMethod = authState === "loading" ? "확인 중" : userProfile?.loginMethod ?? "Google 계정 로그인 전";
 
   return (
     <>
@@ -37,18 +105,18 @@ export function AccountInfoStep() {
               <User size={17} aria-hidden="true" />
               이름
             </dt>
-            <dd>{myProfile.ownerName}</dd>
+            <dd>{accountName}</dd>
           </div>
           <div>
             <dt>
               <Mail size={17} aria-hidden="true" />
               이메일
             </dt>
-            <dd>{myProfile.email}</dd>
+            <dd>{accountEmail}</dd>
           </div>
           <div>
-            <dt>로그인 방식</dt>
-            <dd>{myProfile.loginMethod}</dd>
+            <dt>연결 계정</dt>
+            <dd>{loginMethod}</dd>
           </div>
         </dl>
       </section>
@@ -92,13 +160,34 @@ export function AccountInfoStep() {
         <ChevronRight size={18} aria-hidden="true" />
       </button>
 
+      {accountActionMessage ? (
+        <p className={styles.accountActionNotice} role="alert">
+          <AlertTriangle size={16} aria-hidden="true" />
+          {accountActionMessage}
+        </p>
+      ) : null}
+
       <div className={styles.myStackedActions}>
-        <button className={styles.secondaryButton} type="button">
-          계정 정보 수정
-        </button>
+        {authState === "signedIn" ? (
+          <button className={styles.secondaryButton} disabled={isBusy} type="button" onClick={handleSignOut}>
+            <LogOut size={17} aria-hidden="true" />
+            {isSigningOut ? "로그아웃 중" : "로그아웃"}
+          </button>
+        ) : (
+          <button className={styles.secondaryButton} disabled={isBusy} type="button" onClick={() => router.push(buildLoginHref(buildMyHref("account")))}>
+            <LogIn size={17} aria-hidden="true" />
+            {authState === "loading" ? "계정 확인 중" : "Google 계정으로 로그인"}
+          </button>
+        )}
         <button className={styles.secondaryButton} type="button" onClick={() => router.push(buildBrandKitHref("info"))}>
           브랜드 키트 수정
         </button>
+        {authState === "signedIn" ? (
+          <button className={styles.secondaryButton} data-danger="true" disabled={isBusy} type="button" onClick={handleDeleteAccount}>
+            <Trash2 size={17} aria-hidden="true" />
+            {isDeletingAccount ? "계정 삭제 중" : "계정 삭제"}
+          </button>
+        ) : null}
       </div>
 
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">

@@ -194,6 +194,90 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("verifies Supabase sessions before forwarding archive user ids", async () => {
+    const fetchImpl = vi.fn(async (url, init) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1", email: "owner@example.com" });
+      }
+      return jsonResponse(
+        {
+          success: true,
+          item: {
+            ad_id: "archive_1",
+            title: "봄을 닮은 한 잔",
+            status: "saved",
+            source: "generated"
+          }
+        },
+        { status: init?.method === "POST" ? 201 : 200 }
+      );
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/archive/items",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: {
+        title: "봄을 닮은 한 잔",
+        publicJobId: "job_1",
+        userId: "spoofed_user"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://supabase.example.com/auth/v1/user",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: "anon_key",
+          authorization: "Bearer access_token_1"
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/archive/items",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          title: "봄을 닮은 한 잔",
+          public_job_id: "job_1",
+          status: "saved",
+          user_id: "user_uuid_1"
+        })
+      })
+    );
+    await app.close();
+  });
+
+  it("rejects invalid archive authorization headers", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ id: "user_uuid_1" }));
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/archive/items",
+      headers: { authorization: "not-a-bearer-token" }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("proxies generation job create and get requests", async () => {
     const fetchImpl = vi.fn(async (_url, init) => {
       if (init?.method === "GET") {
@@ -396,6 +480,30 @@ describe("generate chat routes", () => {
     await app.close();
     await fs.rm(uploadDir, { recursive: true, force: true });
   });
+
+  it("accepts phone-sized JSON photo uploads larger than the previous body limit", async () => {
+    const uploadDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyads-upload-large-"));
+    const app = buildApp({ fetchImpl: vi.fn(), uploadDir });
+    const imageBytes = Buffer.alloc(20 * 1024 * 1024, 7);
+    const dataUrl = `data:image/png;base64,${imageBytes.toString("base64")}`;
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/photo/upload",
+      payload: {
+        filename: "large-menu.png",
+        mimeType: "image/png",
+        dataUrl
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.sizeBytes).toBe(imageBytes.length);
+    await expect(fs.stat(path.join(uploadDir, path.basename(payload.sourceImagePath)))).resolves.toMatchObject({ size: imageBytes.length });
+    await app.close();
+    await fs.rm(uploadDir, { recursive: true, force: true });
+  }, 20_000);
 
   it("uses the repo data/uploads directory by default", async () => {
     const app = buildApp({ fetchImpl: vi.fn() });
