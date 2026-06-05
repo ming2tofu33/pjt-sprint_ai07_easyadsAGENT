@@ -27,9 +27,10 @@ type ChatStartStepProps = {
   onSubmit: (prompt: string, options?: CustomCopyFields & { copyGenerationMode?: CopyGenerationMode }) => void;
   onBack: () => void;
   onGoHome: () => void;
+  onHistory?: () => void;
 };
 
-export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps) {
+export function ChatStartStep({ onSubmit, onBack, onGoHome, onHistory }: ChatStartStepProps) {
   const [referenceTemplateTitle] = useState(() => readGenerationRequestContext()?.selectedReferenceTemplateTitle ?? "");
   const [value, setValue] = useState(() => {
     const requestContext = readGenerationRequestContext();
@@ -62,7 +63,7 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
 
   return (
     <>
-      <StepHeader title="대화로 찰떡 만들기" canGoBack backLabel="이전 화면" onBack={onBack} onHome={onGoHome} />
+      <StepHeader title="대화로 찰떡 만들기" canGoBack backLabel="이전 화면" onBack={onBack} onHome={onHistory ? undefined : onGoHome} onHistory={onHistory} />
       <section className={styles.hero}>
         <span className={styles.heroIcon}>
           <MessageCircle size={25} strokeWidth={2.4} />

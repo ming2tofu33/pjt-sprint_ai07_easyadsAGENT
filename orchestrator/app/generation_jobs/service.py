@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from uuid import UUID
-from uuid import UUID
 from uuid import uuid4
 
 from orchestrator.app.api.schemas.chat_threads import ChatMessageCreateRequest
@@ -215,13 +214,13 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
             raise
             
         # Parity: user_input message
-        chat_thread_service.append_chat_message(
-            public_thread_id,
-            ChatMessageCreateRequest(
-                role="user",
-                content=request.user_input,
-                payload={"source": "generation_job_input", "job_id": job.job_id, "event_type": "user_input"},
-            ),
+        user_message = chat_thread_service.append_generation_job_chat_event_memory(
+            thread_id=public_thread_id,
+            job_id=job.job_id,
+            event_type="user_input",
+            role="user",
+            content=request.user_input,
+            payload={"source": "generation_job_input"},
             user_id=request.user_id,
         )
         
@@ -293,7 +292,7 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
             state_payload=restored_payload,
             changed_fields=changed_fields,
             generation_job_id=job.job_id,
-            source_message_id=None,
+            source_message_id=user_message.message_id if user_message else None,
             parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
             selected_reference_template_id=effective_reference_id,
             reference_template_snapshot=ref_snap,
@@ -304,13 +303,13 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
         )
         
         # Queued event
-        chat_thread_service.append_chat_message(
-            public_thread_id,
-            ChatMessageCreateRequest(
-                role="system",
-                content=None,
-                payload={"job_id": job.job_id, "status": "queued", "event_type": "generation_queued"},
-            ),
+        chat_thread_service.append_generation_job_chat_event_memory(
+            thread_id=public_thread_id,
+            job_id=job.job_id,
+            event_type="generation_queued",
+            role="system",
+            content=None,
+            payload={"job_id": job.job_id, "status": "queued"},
             user_id=request.user_id,
         )
         
@@ -384,13 +383,13 @@ def mark_generation_job_done(
             return updated
 
         # completion event
-        chat_thread_service.append_chat_message(
-            existing.thread_id,
-            ChatMessageCreateRequest(
-                role="system",
-                content="Generation completed.",
-                payload={"job_id": job_id, "has_output": True, "event_type": "generation_completed"},
-            ),
+        chat_thread_service.append_generation_job_chat_event_memory(
+            thread_id=existing.thread_id,
+            job_id=job_id,
+            event_type="generation_completed",
+            role="system",
+            content="Generation completed.",
+            payload={"job_id": job_id, "has_output": True},
             user_id=existing.user_id,
         )
         
@@ -442,13 +441,13 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
             return updated
             
         # failure event
-        chat_thread_service.append_chat_message(
-            existing.thread_id,
-            ChatMessageCreateRequest(
-                role="system",
-                content=None,
-                payload={"job_id": job_id, "error_code": error.get("error_code"), "event_type": "generation_failed"},
-            ),
+        chat_thread_service.append_generation_job_chat_event_memory(
+            thread_id=existing.thread_id,
+            job_id=job_id,
+            event_type="generation_failed",
+            role="system",
+            content=None,
+            payload={"job_id": job_id, "error_code": error.get("error_code")},
             user_id=existing.user_id,
         )
         
@@ -500,31 +499,37 @@ def mark_generation_job_waiting_user_input(
     if not updated or not existing.thread_id:
         return updated
         
-    # Waiting event
-    chat_thread_service.append_chat_message(
-        existing.thread_id,
-        ChatMessageCreateRequest(
-            role="system",
-            content=None,
-            payload={"job_id": job_id, "status": "waiting_user_input", "event_type": "generation_waiting"},
-        ),
-        user_id=existing.user_id,
-    )
-    
     # Assistant message (if any)
     source_message_id = None
     if assistant_message:
-        msg = chat_thread_service.append_chat_message(
-            existing.thread_id,
-            ChatMessageCreateRequest(
-                role="assistant",
-                content=assistant_message,
-                payload={"source": "graph_interrupt", "job_id": job_id, "event_type": "graph_interrupt_message"},
-            ),
+        msg = chat_thread_service.append_generation_job_chat_event_memory(
+            thread_id=existing.thread_id,
+            job_id=job_id,
+            event_type="waiting_user_input",
+            role="assistant",
+            content=assistant_message,
+            payload={
+                "source": "graph_interrupt",
+                "status": "waiting_user_input",
+            },
             user_id=existing.user_id,
         )
-        if msg:
-            source_message_id = msg.message_id
+    else:
+        msg = chat_thread_service.append_generation_job_chat_event_memory(
+            thread_id=existing.thread_id,
+            job_id=job_id,
+            event_type="waiting_user_input",
+            role="system",
+            content=None,
+            payload={
+                "job_id": job_id,
+                "status": "waiting_user_input",
+            },
+            user_id=existing.user_id,
+        )
+
+    if msg:
+        source_message_id = msg.message_id
             
     # Snapshot
     latest_snapshot = state_service.get_latest_thread_state_for_user(
@@ -1163,6 +1168,22 @@ def _mark_generation_job_waiting_user_input_db(
         if not existing:
             return None
             
+        public_thread_id = _thread_public_or_internal(existing)
+        workspace_id = str(existing["workspace_id"])
+        user_id = existing.get("requested_by")
+
+        # Release thread active job so next turn can start
+        paused_thread = chat_thread_repo.pause_chat_thread_generation(
+            public_thread_id=public_thread_id,
+            workspace_id=workspace_id,
+            expected_active_job_id=str(existing["id"]),
+            connection=conn,
+        )
+
+        if not paused_thread:
+            _record_generation_job_event_db(existing, "stale_waiting_ignored", message="Stale waiting ignored.", connection=conn)
+            return _job_response_from_db_row(existing)
+            
         row = generation_job_repo.update_generation_job_row(
             job_id,
             status="waiting_user_input",
@@ -1172,25 +1193,7 @@ def _mark_generation_job_waiting_user_input_db(
         )
         if not row:
             return None
-            
-        public_thread_id = _thread_public_or_internal(row)
-        workspace_id = str(row["workspace_id"])
-        user_id = row.get("requested_by")
         
-        # Waiting event
-        chat_message_repo.append_generation_job_chat_event(
-            public_thread_id=public_thread_id,
-            workspace_id=workspace_id,
-            generation_job_id=str(row["id"]),
-            event_type="generation_waiting",
-            role="system",
-            content=None,
-            payload={"job_id": job_id, "status": "waiting_user_input"},
-            created_by=user_id,
-            connection=conn,
-        )
-        
-        # Assistant message (if any)
         msg_row = None
         if assistant_message:
             msg_row = chat_message_repo.append_chat_message(
@@ -1198,10 +1201,25 @@ def _mark_generation_job_waiting_user_input_db(
                 workspace_id=workspace_id,
                 role="assistant",
                 content=assistant_message,
-                payload={"source": "graph_interrupt"},
+                payload={
+                    "source": "graph_interrupt",
+                    "status": "waiting_user_input",
+                },
                 created_by=user_id,
                 generation_job_id=str(row["id"]),
-                event_type="graph_interrupt_message",
+                event_type="waiting_user_input",
+                connection=conn,
+            )
+        else:
+            msg_row = chat_message_repo.append_generation_job_chat_event(
+                public_thread_id=public_thread_id,
+                workspace_id=workspace_id,
+                generation_job_id=str(row["id"]),
+                event_type="waiting_user_input",
+                role="system",
+                content=None,
+                payload={"job_id": job_id, "status": "waiting_user_input"},
+                created_by=user_id,
                 connection=conn,
             )
             
@@ -1223,14 +1241,6 @@ def _mark_generation_job_waiting_user_input_db(
             parent_snapshot_id=latest_snapshot.snapshot_id if latest_snapshot else None,
             snapshot_key=f"{job_id}:waiting",
             created_by=user_id,
-            connection=conn,
-        )
-        
-        # Release thread active job so next turn can start
-        chat_thread_repo.pause_chat_thread_generation(
-            public_thread_id=public_thread_id,
-            workspace_id=workspace_id,
-            expected_active_job_id=str(row["id"]),
             connection=conn,
         )
         
