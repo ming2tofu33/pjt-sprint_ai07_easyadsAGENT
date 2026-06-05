@@ -63,7 +63,7 @@ def test_mark_done_r2_disabled_keeps_local_dev_placeholder(monkeypatch):
     monkeypatch.setattr(service.generation_output_repo, "create_generation_output", lambda **kwargs: outputs.append({"id": "output_uuid", "asset_id": kwargs["asset_id"], **kwargs}) or outputs[-1])
     monkeypatch.setattr(service.generation_output_repo, "mark_output_final", lambda output_id, connection=None: {"id": output_id, "asset_id": "asset_uuid", "is_final": True})
     thread_updates = []
-    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "complete_chat_thread_generation", lambda **kwargs: thread_updates.append(kwargs) or {"id": "thread_uuid"})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
 
     done = service.mark_generation_job_done(
@@ -81,9 +81,8 @@ def test_mark_done_r2_disabled_keeps_local_dev_placeholder(monkeypatch):
     assert done.result_payload.get("final_image_url") is None
     assert done.result_payload.get("download_url") is None
     assert "r2_upload_started" not in [event["event_type"] for event in events]
-    assert thread_updates[0][1]["status"] == "completed"
-    assert thread_updates[0][1]["active_job_id"] is None
-    assert thread_updates[0][1]["final_output_id"] == "output_uuid"
+    assert thread_updates[0]["expected_active_job_id"] == "job_uuid"
+    assert thread_updates[0]["final_output_id"] == "output_uuid"
 
 def test_mark_done_r2_success_persists_r2_asset_and_urls(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
@@ -130,7 +129,7 @@ def test_mark_done_r2_success_persists_r2_asset_and_urls(monkeypatch):
     monkeypatch.setattr(service.generation_output_repo, "create_generation_output", lambda **kwargs: outputs.append({"id": "output_uuid", "asset_id": kwargs["asset_id"], **kwargs}) or outputs[-1])
     monkeypatch.setattr(service.generation_output_repo, "mark_output_final", lambda output_id, connection=None: {"id": output_id, "asset_id": "asset_r2_uuid", "is_final": True})
     thread_updates = []
-    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "complete_chat_thread_generation", lambda **kwargs: thread_updates.append(kwargs) or {"id": "thread_uuid"})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
 
     done = service.mark_generation_job_done(
@@ -146,8 +145,8 @@ def test_mark_done_r2_success_persists_r2_asset_and_urls(monkeypatch):
     assert done.result_payload["download_url"] == "https://signed.example/final_0.png"
     assert done.result_payload["final_asset_id"] == "asset_r2_uuid"
     assert [event["event_type"] for event in events] == ["r2_upload_started", "r2_upload_completed", "done", "output_created"]
-    assert thread_updates[0][1]["status"] == "completed"
-    assert thread_updates[0][1]["final_output_id"] == "output_uuid"
+    assert thread_updates[0]["expected_active_job_id"] == "job_uuid"
+    assert thread_updates[0]["final_output_id"] == "output_uuid"
 
 
 def test_mark_done_r2_failure_falls_back_to_local_dev_when_not_required(monkeypatch):
@@ -167,7 +166,7 @@ def test_mark_done_r2_failure_falls_back_to_local_dev_when_not_required(monkeypa
     monkeypatch.setattr(service.generation_output_repo, "create_generation_output", lambda **kwargs: {"id": "output_uuid", "asset_id": kwargs["asset_id"], **kwargs})
     monkeypatch.setattr(service.generation_output_repo, "mark_output_final", lambda output_id, connection=None: {"id": output_id, "asset_id": "asset_local_uuid", "is_final": True})
     thread_updates = []
-    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "complete_chat_thread_generation", lambda **kwargs: thread_updates.append(kwargs) or {"id": "thread_uuid"})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
 
     done = service.mark_generation_job_done(
@@ -186,8 +185,8 @@ def test_mark_done_r2_failure_falls_back_to_local_dev_when_not_required(monkeypa
     assert done.result_payload["storage_provider"] == "local_dev"
     assert done.result_payload["bucket"] == "local-dev"
     assert done.result_payload["object_key"] == "data/outputs/job_db/final_0.png"
-    assert thread_updates[0][1]["status"] == "completed"
-    assert thread_updates[0][1]["final_output_id"] == "output_uuid"
+    assert thread_updates[0]["expected_active_job_id"] == "job_uuid"
+    assert thread_updates[0]["final_output_id"] == "output_uuid"
 
 def test_mark_done_r2_failure_required_marks_job_failed(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
@@ -221,7 +220,7 @@ def test_mark_done_r2_failure_required_marks_job_failed(monkeypatch):
     monkeypatch.setattr(service, "upload_file_to_r2", lambda **kwargs: (_ for _ in ()).throw(R2UploadError("R2 upload failed.")))
     monkeypatch.setattr(service.asset_repo, "create_asset", lambda **kwargs: (_ for _ in ()).throw(AssertionError("local asset fallback should not run")))
     monkeypatch.setattr(service.generation_output_repo, "create_generation_output", lambda **kwargs: (_ for _ in ()).throw(AssertionError("output should not be created")))
-    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "fail_chat_thread_generation", lambda **kwargs: {"id": "thread_uuid"})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
 
     failed = service.mark_generation_job_done(

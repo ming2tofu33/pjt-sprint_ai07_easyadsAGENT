@@ -64,7 +64,11 @@ export function HomeStartStep({
             <br />
             만들어볼까요?
           </h2>
-          <p>대충 말해도 AI가 광고 브리프로 정리해드려요.</p>
+          <p>
+            대충 말해도 AI가 광고 브리프로{" "}
+            <br />
+            정리해드려요.
+          </p>
           <button type="button" onClick={onOpenStudio}>
             광고 만들기 <Sparkles size={17} aria-hidden="true" />
           </button>
@@ -74,18 +78,30 @@ export function HomeStartStep({
 
       <h2 className={styles.sectionTitle}>빠른 시작</h2>
       <div className={styles.quickDashboardGrid}>
-        <button type="button" onClick={onOpenReference}>
+        <button aria-label="레퍼런스 보고 만들기" type="button" onClick={onOpenReference}>
           <span data-tone="lime">
             <ImageIcon size={24} aria-hidden="true" />
           </span>
-          <strong>레퍼런스 보고 만들기</strong>
-          <small>마음에 드는 광고 스타일을 골라요</small>
+          <strong>
+            레퍼런스 보고{" "}
+            <br />
+            만들기
+          </strong>
+          <small>
+            마음에 드는 광고{" "}
+            <br />
+            스타일을 골라요
+          </small>
         </button>
-        <button type="button" onClick={onOpenPhoto}>
+        <button aria-label="내 사진으로 만들기" type="button" onClick={onOpenPhoto}>
           <span data-tone="purple">
             <Camera size={24} aria-hidden="true" />
           </span>
-          <strong>내 사진으로 만들기</strong>
+          <strong>
+            내 사진으로{" "}
+            <br />
+            만들기
+          </strong>
           <small>사진을 올리면 AI가 제안해요</small>
         </button>
         <button type="button" onClick={onOpenChat}>

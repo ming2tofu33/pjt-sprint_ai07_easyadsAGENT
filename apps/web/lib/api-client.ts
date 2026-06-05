@@ -249,10 +249,32 @@ type RawArchiveMutationResponse = {
   item: RawArchiveItem;
 };
 
-async function postJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
+type RequestHeaders = Record<string, string>;
+
+async function getSupabaseAuthorizationHeader(): Promise<RequestHeaders> {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const { createSupabaseBrowserClient } = await import("./supabase/browser");
+    const supabase = createSupabaseBrowserClient();
+    if (!supabase) {
+      return {};
+    }
+    const {
+      data: { session }
+    } = await supabase.auth.getSession();
+    return session?.access_token ? { authorization: `Bearer ${session.access_token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
+async function postJson<TResponse>(path: string, body: unknown, headers: RequestHeaders = {}): Promise<TResponse> {
   const response = await fetch(buildBffUrl(path), {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
@@ -262,7 +284,7 @@ async function postJson<TResponse>(path: string, body: unknown): Promise<TRespon
   return payload as TResponse;
 }
 
-async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams): Promise<TResponse> {
+async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
   const url = new URL(buildBffUrl(path));
   Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value === undefined || value === null) {
@@ -273,7 +295,7 @@ async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams
 
   const response = await fetch(url.toString(), {
     method: "DELETE",
-    headers: { accept: "application/json" }
+    headers: { accept: "application/json", ...headers }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -282,7 +304,7 @@ async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams
   return payload as TResponse;
 }
 
-async function getJson<TResponse>(path: string, params?: ReferenceQueryParams): Promise<TResponse> {
+async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
   const url = new URL(buildBffUrl(path));
   Object.entries(params ?? {}).forEach(([key, value]) => {
     if (value === undefined || value === null) {
@@ -297,7 +319,7 @@ async function getJson<TResponse>(path: string, params?: ReferenceQueryParams): 
 
   const response = await fetch(url.toString(), {
     method: "GET",
-    headers: { accept: "application/json" }
+    headers: { accept: "application/json", ...headers }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -328,6 +350,9 @@ function normalizeApiErrorMessage(message: string): string {
   }
   if (message.includes("input image not found")) {
     return "업로드한 사진 파일을 생성 서버에서 찾지 못했어요. BFF_UPLOAD_DIR와 orchestrator 실행 위치를 확인해주세요.";
+  }
+  if (message.includes("Request body is too large") || message.includes("Payload Too Large")) {
+    return "사진 용량이 너무 커요. 더 작은 사진으로 다시 시도해주세요.";
   }
   return message;
 }
@@ -556,7 +581,8 @@ export function getGenerationJob(jobId: string): Promise<GenerationJobResponse> 
   return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`);
 }
 
-export function saveArchiveItem(input: ArchiveItemCreateInput): Promise<ArchiveMutationResponse> {
+export async function saveArchiveItem(input: ArchiveItemCreateInput): Promise<ArchiveMutationResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
   return postJson<RawArchiveMutationResponse>("/api/archive/items", {
     title: input.title,
     publicJobId: input.publicJobId ?? undefined,
@@ -569,19 +595,20 @@ export function saveArchiveItem(input: ArchiveItemCreateInput): Promise<ArchiveM
     workspaceId: input.workspaceId ?? undefined,
     userId: input.userId ?? undefined,
     metadata: input.metadata ?? undefined
-  }).then((payload) => ({ item: mapArchiveItem(payload.item) }));
+  }, authHeaders).then((payload) => ({ item: mapArchiveItem(payload.item) }));
 }
 
-export function listArchiveItems(params: {
+export async function listArchiveItems(params: {
   workspaceId?: string;
   limit?: number;
   offset?: number;
 } = {}): Promise<ArchiveListResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
   return getJson<RawArchiveListResponse>("/api/archive/items", {
     workspace_id: params.workspaceId,
     limit: params.limit,
     offset: params.offset
-  }).then((payload) => ({
+  }, authHeaders).then((payload) => ({
     items: (payload.items ?? []).map(mapArchiveItem),
     pagination: {
       limit: payload.pagination?.limit ?? params.limit ?? 50,
@@ -592,10 +619,11 @@ export function listArchiveItems(params: {
   }));
 }
 
-export function deleteArchiveItem(archiveItemId: string, params?: { workspaceId?: string }): Promise<ArchiveMutationResponse> {
+export async function deleteArchiveItem(archiveItemId: string, params?: { workspaceId?: string }): Promise<ArchiveMutationResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
   return deleteJson<RawArchiveMutationResponse>(`/api/archive/items/${encodeURIComponent(archiveItemId)}`, {
     workspace_id: params?.workspaceId
-  }).then((payload) => ({ item: mapArchiveItem(payload.item) }));
+  }, authHeaders).then((payload) => ({ item: mapArchiveItem(payload.item) }));
 }
 
 function mapArchiveItem(item: RawArchiveItem): ArchiveItem {

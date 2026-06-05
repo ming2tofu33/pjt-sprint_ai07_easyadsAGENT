@@ -45,6 +45,7 @@ class GenerationJobCreateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     user_id: str | None = Field(default=None, alias="userId")
+    thread_id: str | None = Field(default=None, alias="threadId")
     brand_kit_id: str | None = Field(default=None, alias="brandKitId")
     entry_mode: str = Field(default="chat_start", alias="entryMode")
     user_input: str = Field(alias="userInput")
@@ -63,6 +64,18 @@ class GenerationJobCreateRequest(BaseModel):
         if not value or not value.strip():
             raise ValueError("user_input must not be empty")
         return value.strip()
+
+    @field_validator("thread_id", mode="before")
+    @classmethod
+    def normalize_thread_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        normalized = str(v).strip()
+        if not normalized:
+            return None
+        if not normalized.startswith("thread_"):
+            raise ValueError("thread_id must start with 'thread_'")
+        return normalized
 
 
 class GenerationProgress(BaseModel):
