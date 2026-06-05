@@ -194,6 +194,90 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("verifies Supabase sessions before forwarding archive user ids", async () => {
+    const fetchImpl = vi.fn(async (url, init) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1", email: "owner@example.com" });
+      }
+      return jsonResponse(
+        {
+          success: true,
+          item: {
+            ad_id: "archive_1",
+            title: "봄을 닮은 한 잔",
+            status: "saved",
+            source: "generated"
+          }
+        },
+        { status: init?.method === "POST" ? 201 : 200 }
+      );
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/archive/items",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: {
+        title: "봄을 닮은 한 잔",
+        publicJobId: "job_1",
+        userId: "spoofed_user"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://supabase.example.com/auth/v1/user",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: "anon_key",
+          authorization: "Bearer access_token_1"
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/archive/items",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          title: "봄을 닮은 한 잔",
+          public_job_id: "job_1",
+          status: "saved",
+          user_id: "user_uuid_1"
+        })
+      })
+    );
+    await app.close();
+  });
+
+  it("rejects invalid archive authorization headers", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ id: "user_uuid_1" }));
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/archive/items",
+      headers: { authorization: "not-a-bearer-token" }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("proxies generation job create and get requests", async () => {
     const fetchImpl = vi.fn(async (_url, init) => {
       if (init?.method === "GET") {

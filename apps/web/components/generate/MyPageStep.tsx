@@ -22,6 +22,7 @@ import { buildBrandKitHref } from "@/lib/brand-kit-navigation";
 import { brandKitMeta, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
 import { buildLoginHref } from "@/lib/auth-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
+import { listArchiveItems } from "@/lib/api-client";
 import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
 import { buildMyHref } from "@/lib/my-navigation";
 import { buildNotificationHref } from "@/lib/notification-navigation";
@@ -35,6 +36,8 @@ export function MyPageStep() {
   const [brandKit, setBrandKit] = useState<StoredBrandKit | null>(null);
   const [userProfile, setUserProfile] = useState<AppUserProfile | null>(null);
   const [canSeeAdminMode, setCanSeeAdminMode] = useState(false);
+  const [savedArchiveCount, setSavedArchiveCount] = useState<number | null>(null);
+  const [isArchiveCountLoading, setIsArchiveCountLoading] = useState(false);
 
   useEffect(() => {
     setSessionCreativeCount(readGeneratedCreatives().length);
@@ -42,6 +45,23 @@ export function MyPageStep() {
     void getCurrentAppUserAccess().then((access) => {
       setUserProfile(access.profile);
       setCanSeeAdminMode(access.isAdmin);
+      if (!access.profile) {
+        setSavedArchiveCount(null);
+        setIsArchiveCountLoading(false);
+        return;
+      }
+
+      setIsArchiveCountLoading(true);
+      void listArchiveItems({ limit: 1 })
+        .then((response) => {
+          setSavedArchiveCount(response.pagination.total);
+        })
+        .catch(() => {
+          setSavedArchiveCount(null);
+        })
+        .finally(() => {
+          setIsArchiveCountLoading(false);
+        });
     });
   }, []);
 
@@ -88,7 +108,7 @@ export function MyPageStep() {
           <span>{userProfile ? "이번 기기에서 만든 결과" : "생성 내역"}</span>
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("ads"))}>
-          <strong>{userProfile ? "연동 전" : "로그인 전"}</strong>
+          <strong>{userProfile ? (isArchiveCountLoading ? "확인 중" : savedArchiveCount !== null ? `${savedArchiveCount}개` : "연결 필요") : "로그인 전"}</strong>
           <span>저장한 결과</span>
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("chat", "generating"))}>

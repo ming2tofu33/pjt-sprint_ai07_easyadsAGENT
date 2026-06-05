@@ -169,6 +169,63 @@ async function proxyBinary({ fetchImpl, url, reply }) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+function createHttpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function appendQueryParam(url, key, value) {
+  if (!value) {
+    return url;
+  }
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+}
+
+function normalizeBearerHeader(value) {
+  if (!value) {
+    return null;
+  }
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return null;
+  }
+  if (!normalized.toLowerCase().startsWith("bearer ")) {
+    throw createHttpError(401, "invalid authorization header");
+  }
+  return normalized;
+}
+
+async function resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey }) {
+  const authorization = normalizeBearerHeader(request.headers.authorization);
+  if (!authorization) {
+    return null;
+  }
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw createHttpError(503, "supabase auth configuration is missing");
+  }
+
+  const response = await fetchImpl(`${supabaseUrl.replace(/\/+$/, "")}/auth/v1/user`, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      apikey: supabaseAnonKey,
+      authorization
+    }
+  });
+
+  if (!response.ok) {
+    throw createHttpError(401, "invalid or expired session");
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  if (!payload?.id) {
+    throw createHttpError(401, "invalid or expired session");
+  }
+  return String(payload.id);
+}
+
 function extensionForMimeType(mimeType) {
   if (mimeType === "image/jpeg") {
     return ".jpg";
@@ -218,6 +275,8 @@ export function buildApp(options = {}) {
   const orchestratorBaseUrl = options.orchestratorBaseUrl ?? process.env.ORCHESTRATOR_BASE_URL ?? "http://127.0.0.1:8000";
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const uploadDir = options.uploadDir ?? process.env.BFF_UPLOAD_DIR ?? DEFAULT_UPLOAD_DIR;
+  const supabaseUrl = options.supabaseUrl ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = options.supabaseAnonKey ?? process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   app.register(cors, {
     origin: options.corsOrigin ?? process.env.CORS_ORIGIN ?? true
@@ -355,9 +414,10 @@ export function buildApp(options = {}) {
 
   app.get("/api/archive/items", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: `${orchestratorBaseUrl}/api/v1/archive/items${queryString}`
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/archive/items${queryString}`, "user_id", userId)
     });
   });
 
@@ -367,19 +427,24 @@ export function buildApp(options = {}) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
 
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     const payload = await proxyJson({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/archive/items`,
-      body: toArchiveItemPayload(parsed.data)
+      body: {
+        ...toArchiveItemPayload(parsed.data),
+        ...(userId ? { user_id: userId } : {})
+      }
     });
     return reply.code(201).send(payload);
   });
 
   app.delete("/api/archive/items/:archiveItemId", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyDeleteJson({
       fetchImpl,
-      url: `${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`, "user_id", userId)
     });
   });
 

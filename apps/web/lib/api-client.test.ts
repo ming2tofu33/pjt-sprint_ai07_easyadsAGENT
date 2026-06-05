@@ -466,6 +466,13 @@ describe("api-client backend contract routes", () => {
   });
 
   it("calls archive endpoints through the BFF and maps response fields", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       if (init?.method === "POST") {
         return jsonResponse({
@@ -533,6 +540,15 @@ describe("api-client backend contract routes", () => {
     });
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
     expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
+    expect(fetchMock.mock.calls[1][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
+    expect(fetchMock.mock.calls[2][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
     expect(saved.item.adId).toBe("archive_1");
     expect(saved.item.savedAt).toBe("2026-06-04T00:00:00+00:00");
     expect(listed.items[0].jobId).toBe("job_1");

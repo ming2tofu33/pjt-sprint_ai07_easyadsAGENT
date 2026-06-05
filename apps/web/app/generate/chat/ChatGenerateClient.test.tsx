@@ -308,6 +308,19 @@ vi.mock("@/lib/api-client", () => ({
       source: "generated",
       metadata: {}
     }
+  })),
+  listArchiveItems: vi.fn(async () => ({
+    items: [],
+    pagination: { limit: 50, offset: 0, total: 0, hasMore: false }
+  })),
+  deleteArchiveItem: vi.fn(async (archiveItemId: string) => ({
+    item: {
+      adId: archiveItemId,
+      title: "삭제된 광고",
+      status: "saved",
+      source: "generated",
+      metadata: {}
+    }
   }))
 }));
 
@@ -1104,6 +1117,51 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "다운로드" }));
 
     expect(screen.getByText("직접 클릭한 생성 광고 다운로드는 실제 파일 저장 연결 후 활성화돼요.")).toBeTruthy();
+  });
+
+  it("loads and deletes persisted archive items through the archive API", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listArchiveItems).mockResolvedValueOnce({
+      items: [
+        {
+          adId: "archive_db_1",
+          jobId: "job_db_1",
+          title: "DB 저장 광고",
+          imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_db_1%2Ffinal.png",
+          thumbnailUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_db_1%2Ffinal.png",
+          status: "saved",
+          adFormat: "1:1",
+          platform: "인스타 피드",
+          source: "generated",
+          savedAt: "2026-06-05T00:00:00+00:00",
+          metadata: {
+            subtitle: "카페 · 인스타 피드",
+            fileName: "final.png",
+            fileType: "PNG",
+            tags: ["카페", "피드"]
+          }
+        }
+      ],
+      pagination: { limit: 50, offset: 0, total: 1, hasMore: false }
+    });
+    vi.mocked(api.deleteArchiveItem).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="ads" />);
+
+    await waitFor(() => expect(api.listArchiveItems).toHaveBeenCalledWith({ limit: 50 }));
+    await waitFor(() => expect(screen.getByText("DB 저장 광고")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "DB 저장 광고 실제 생성 결과 보기" }));
+    expect(navigationMock.push).toHaveBeenCalledWith("/ads/archive_db_1");
+
+    fireEvent.click(screen.getByRole("button", { name: "DB 저장 광고 더보기" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "삭제" }));
+
+    await waitFor(() => expect(api.deleteArchiveItem).toHaveBeenCalledWith("archive_db_1"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "DB 저장 광고 실제 생성 결과 보기" })).toBeNull());
+    expect(screen.getByText("DB 저장 광고 항목을 보관함에서 삭제했어요.")).toBeTruthy();
   });
 
   it("pushes stable URLs when top-level tabs are selected", async () => {

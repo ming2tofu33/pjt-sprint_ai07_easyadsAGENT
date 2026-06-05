@@ -18,6 +18,8 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildAdHref, type AdSaveStep } from "@/lib/ad-navigation";
+import { archiveItemToCreative } from "@/lib/archive-creative";
+import { listArchiveItems } from "@/lib/api-client";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
 import { getAdCreativeById, resultCreatives, type MockCreative } from "@/lib/mock-dashboard-data";
@@ -56,9 +58,44 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
   const creative = staticCreative ?? sessionCreative;
 
   useEffect(() => {
-    setSessionCreative(readGeneratedCreatives().find((item) => item.id === creativeId) ?? null);
-    setSessionChecked(true);
-  }, [creativeId]);
+    let isActive = true;
+    const generatedCreative = readGeneratedCreatives().find((item) => item.id === creativeId) ?? null;
+    setSessionCreative(generatedCreative);
+
+    if (staticCreative || generatedCreative) {
+      setSessionChecked(true);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    setSessionChecked(false);
+    void listArchiveItems({ limit: 100 })
+      .then((response) => {
+        if (!isActive) {
+          return;
+        }
+
+        const archiveCreative = response.items
+          .map(archiveItemToCreative)
+          .find((item) => item?.id === creativeId) ?? null;
+        setSessionCreative(archiveCreative);
+      })
+      .catch(() => {
+        if (isActive) {
+          setSessionCreative(null);
+        }
+      })
+      .finally(() => {
+        if (isActive) {
+          setSessionChecked(true);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [creativeId, staticCreative]);
 
   useEffect(() => {
     if (creative?.fileType) {
@@ -72,7 +109,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
         <StepHeader title="찰떡 광고 시안" canGoBack onBack={() => router.push(buildDashboardHref("ads"))} onHome={goHome} />
         <section className={styles.emptyResultPanel} aria-label="보관함 항목 없음">
           <MascotImage role="archiveEmpty" decorative className={styles.emptyMascot} />
-          <strong>{creativeId.startsWith("generated-") && !sessionChecked ? "보관함 항목을 불러오는 중이에요" : "보관함에서 이 항목을 찾지 못했어요"}</strong>
+          <strong>{!sessionChecked ? "보관함 항목을 불러오는 중이에요" : "보관함에서 이 항목을 찾지 못했어요"}</strong>
           <p>
             {creativeId.startsWith("generated-")
               ? "이 브라우저에 임시 보관된 실제 생성 결과가 삭제됐거나 다른 브라우저에서 만든 항목일 수 있어요."
@@ -83,7 +120,9 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
     );
   }
   const activeCreative = creative;
-  const isGeneratedCreative = activeCreative.id.startsWith("generated-") && Boolean(activeCreative.imageUrl);
+  const isGeneratedCreative =
+    Boolean(activeCreative.imageUrl) &&
+    (activeCreative.id.startsWith("generated-") || activeCreative.storage === "내 광고 보관함");
 
   function goBack() {
     if (step === "detail") {
