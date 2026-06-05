@@ -29,7 +29,11 @@ def get_db_connection() -> Iterator[object]:
 @contextmanager
 def db_transaction(connection: object | None = None) -> Iterator[object]:
     if connection is not None:
-        with connection.transaction():
+        if hasattr(connection, "transaction"):
+            with connection.transaction():
+                yield connection
+        else:
+            # For tests with mock connections
             yield connection
         return
     with get_db_connection() as new_connection:

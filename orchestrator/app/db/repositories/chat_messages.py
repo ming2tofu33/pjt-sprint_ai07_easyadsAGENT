@@ -14,6 +14,8 @@ def append_chat_message(
     content: str | None,
     payload: dict | None = None,
     created_by: str | None = None,
+    generation_job_id: str | None = None,
+    event_type: str | None = None,
     connection: object | None = None,
 ) -> dict:
     with db_transaction(connection) as conn:
@@ -42,11 +44,11 @@ def append_chat_message(
             sequence_no = cur.fetchone()["next_seq"]
             cur.execute(
                 """
-                insert into chat_messages (workspace_id, thread_id, sequence_no, role, content, payload, created_by)
-                values (%s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s)
+                insert into chat_messages (workspace_id, thread_id, sequence_no, role, content, payload, created_by, generation_job_id, event_type)
+                values (%s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s, %s::uuid, %s)
                 returning *
                 """,
-                (workspace_id, thread_uuid, sequence_no, role, content, jsonb_param(payload or {}), created_by),
+                (workspace_id, thread_uuid, sequence_no, role, content, jsonb_param(payload or {}), created_by, generation_job_id, event_type),
             )
             msg = cur.fetchone()
             cur.execute(
@@ -62,6 +64,78 @@ def append_chat_message(
                 where id = %s::uuid
                 """,
                 (role, thread_uuid),
+            )
+            return msg
+
+
+def append_generation_job_chat_event(
+    *,
+    public_thread_id: str,
+    workspace_id: str,
+    generation_job_id: str,
+    event_type: str,
+    role: str,
+    content: str | None,
+    payload: dict,
+    created_by: str | None = None,
+    connection: object | None = None,
+) -> dict:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select id, workspace_id, archived_at
+                from chat_threads
+                where public_thread_id = %s
+                  and workspace_id = %s::uuid
+                for update
+                """,
+                (public_thread_id, workspace_id),
+            )
+            thread = cur.fetchone()
+            if not thread:
+                raise ValueError(f"chat_thread not found: {public_thread_id}")
+            if thread.get("archived_at") is not None:
+                raise ValueError(f"chat_thread is archived: {public_thread_id}")
+
+            thread_uuid = str(thread["id"])
+            
+            # Idempotency check
+            cur.execute(
+                """
+                select * from chat_messages 
+                where generation_job_id = %s::uuid 
+                  and event_type = %s 
+                limit 1
+                """,
+                (generation_job_id, event_type),
+            )
+            existing = cur.fetchone()
+            if existing:
+                return existing
+
+            cur.execute(
+                "select coalesce(max(sequence_no), 0) + 1 as next_seq from chat_messages where thread_id = %s::uuid",
+                (thread_uuid,),
+            )
+            sequence_no = cur.fetchone()["next_seq"]
+            cur.execute(
+                """
+                insert into chat_messages (workspace_id, thread_id, sequence_no, role, content, payload, created_by, generation_job_id, event_type)
+                values (%s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s, %s::uuid, %s)
+                returning *
+                """,
+                (workspace_id, thread_uuid, sequence_no, role, content, jsonb_param(payload or {}), created_by, generation_job_id, event_type),
+            )
+            msg = cur.fetchone()
+            cur.execute(
+                """
+                update chat_threads
+                set last_message_at = now(),
+                    updated_at = now()
+                where id = %s::uuid
+                """,
+                (thread_uuid,),
             )
             return msg
 
@@ -84,14 +158,24 @@ def list_chat_messages(
                 return []
             cur.execute(
                 """
-                select * from chat_messages
-                where thread_id = %s::uuid
-                order by sequence_no asc
+                select cm.*, gj.public_job_id
+                from chat_messages cm
+                left join generation_jobs gj on gj.id = cm.generation_job_id
+                where cm.thread_id = %s::uuid
+                order by cm.sequence_no asc
                 limit %s offset %s
                 """,
                 (str(row["id"]), limit, offset),
             )
-            return list(cur.fetchall())
+            
+            results = []
+            for item in cur.fetchall():
+                public_job_id = item.pop("public_job_id", None)
+                if public_job_id:
+                    item["job_id"] = public_job_id
+                results.append(item)
+                
+            return results
 
 
 def count_chat_messages(

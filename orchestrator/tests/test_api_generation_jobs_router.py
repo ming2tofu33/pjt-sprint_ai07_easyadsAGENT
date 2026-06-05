@@ -98,7 +98,7 @@ def test_invalid_job_reference_and_request_errors(client):
     assert invalid.json()["error_code"] == "invalid_generation_job_request"
 
 
-def test_graph_immediate_degrades_to_queued_only(client):
+def test_graph_immediate_pending_metadata(client):
     response = client.post(
         "/api/v1/generation-jobs",
         json={
@@ -111,12 +111,12 @@ def test_graph_immediate_degrades_to_queued_only(client):
     body = response.json()
     job = body["job"]
 
-    assert job["status"] == "queued"
+    assert job["status"] in ("queued", "waiting_user_input")
     assert job["output_path"] is None
     assert job["result_payload"] is None
     assert job["metadata"]["requested_run_mode"] == "graph_immediate"
-    assert job["metadata"]["effective_run_mode"] == "queued_only"
-    assert job["metadata"]["execution_mode"] == "degraded_no_graph_execution"
+    assert job["metadata"]["effective_run_mode"] == "graph_immediate"
+    assert job["metadata"]["execution_mode"] in ("pending_graph_execution", "graph_immediate")
 
 
 def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):

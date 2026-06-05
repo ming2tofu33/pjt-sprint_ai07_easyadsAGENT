@@ -287,6 +287,31 @@ def fail_chat_thread_generation(
             return cur.fetchone()
 
 
+def pause_chat_thread_generation(
+    *,
+    public_thread_id: str,
+    workspace_id: str,
+    expected_active_job_id: str,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update chat_threads
+                set active_job_id = null,
+                    status = 'draft',
+                    updated_at = now()
+                where public_thread_id = %s
+                  and workspace_id = %s::uuid
+                  and active_job_id = %s::uuid
+                returning *
+                """,
+                (public_thread_id, workspace_id, expected_active_job_id),
+            )
+            return cur.fetchone()
+
+
 def clear_chat_thread_active_job(
     public_thread_id: str,
     status: str,
