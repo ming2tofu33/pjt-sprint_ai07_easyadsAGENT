@@ -3864,6 +3864,1609 @@
         "r2_object_key": "reference-templates/v1/ref_bar_37_067/source.png",
         "catalog_version": "v1"
       }
+    },
+    {
+      "template_id": "ref_restaurant_0001_068",
+      "title": "햇살 김밥 정갈한 한식 피드",
+      "description": "햇살 김밥 정갈한 한식 피드 스타일의 레퍼런스",
+      "category": "restaurant",
+      "sub_category": "kimbap",
+      "tags": [
+        "김밥",
+        "한식",
+        "분식",
+        "정갈한",
+        "자연광"
+      ],
+      "business_types": [
+        "restaurant",
+        "korean_food",
+        "snack"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_restaurant_0001_068/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_restaurant_0001_068/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_restaurant_0001_068/source.png"
+      },
+      "style_keywords": [
+        "appetizing",
+        "warm",
+        "food",
+        "bold"
+      ],
+      "color_palette": [
+        "#8B1E18",
+        "#F5C76A",
+        "#FFF2D6"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "appetizing warm food bold",
+      "popularity_score": 0.685,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "0001.png",
+        "r2_object_key": "reference-templates/v1/ref_restaurant_0001_068/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_restaurant_0002_069",
+      "title": "매콤 떡볶이 분식 세트 피드",
+      "description": "매콤 떡볶이 분식 세트 피드 스타일의 레퍼런스",
+      "category": "restaurant",
+      "sub_category": "tteokbokki",
+      "tags": [
+        "떡볶이",
+        "분식",
+        "매콤한",
+        "튀김",
+        "세트"
+      ],
+      "business_types": [
+        "restaurant",
+        "snack",
+        "korean_food"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_restaurant_0002_069/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_restaurant_0002_069/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_restaurant_0002_069/source.png"
+      },
+      "style_keywords": [
+        "appetizing",
+        "warm",
+        "food",
+        "bold"
+      ],
+      "color_palette": [
+        "#8B1E18",
+        "#F5C76A",
+        "#FFF2D6"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "appetizing warm food bold",
+      "popularity_score": 0.682,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "0002.png",
+        "r2_object_key": "reference-templates/v1/ref_restaurant_0002_069/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_restaurant_0003_070",
+      "title": "바삭 치킨 다이내믹 피드",
+      "description": "바삭 치킨 다이내믹 피드 스타일의 레퍼런스",
+      "category": "restaurant",
+      "sub_category": "fried_chicken",
+      "tags": [
+        "치킨",
+        "튀김",
+        "바삭한",
+        "매콤한",
+        "딥소스"
+      ],
+      "business_types": [
+        "restaurant",
+        "chicken",
+        "delivery"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "527:746",
+      "width": 1054,
+      "height": 1492,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_restaurant_0003_070/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_restaurant_0003_070/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_restaurant_0003_070/source.png"
+      },
+      "style_keywords": [
+        "appetizing",
+        "warm",
+        "food",
+        "bold"
+      ],
+      "color_palette": [
+        "#8B1E18",
+        "#F5C76A",
+        "#FFF2D6"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "appetizing warm food bold",
+      "popularity_score": 0.679,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "0003.png",
+        "r2_object_key": "reference-templates/v1/ref_restaurant_0003_070/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_cafe_0004_071",
+      "title": "따뜻한 크루아상 베이커리 피드",
+      "description": "따뜻한 크루아상 베이커리 피드 스타일의 레퍼런스",
+      "category": "cafe",
+      "sub_category": "bakery",
+      "tags": [
+        "크루아상",
+        "베이커리",
+        "빵",
+        "따뜻한",
+        "브런치"
+      ],
+      "business_types": [
+        "cafe",
+        "bakery",
+        "dessert"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_cafe_0004_071/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_cafe_0004_071/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_cafe_0004_071/source.png"
+      },
+      "style_keywords": [
+        "soft",
+        "warm",
+        "dessert",
+        "natural_light"
+      ],
+      "color_palette": [
+        "#F5E7D0",
+        "#C68A55",
+        "#5A3B2A"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "soft warm dessert natural_light",
+      "popularity_score": 0.676,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "0004.png",
+        "r2_object_key": "reference-templates/v1/ref_cafe_0004_071/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_cafe_0005_072",
+      "title": "아보카도 브런치 카페 피드",
+      "description": "아보카도 브런치 카페 피드 스타일의 레퍼런스",
+      "category": "cafe",
+      "sub_category": "brunch",
+      "tags": [
+        "브런치",
+        "아보카도",
+        "샐러드",
+        "카페",
+        "자연광"
+      ],
+      "business_types": [
+        "cafe",
+        "brunch",
+        "restaurant"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_cafe_0005_072/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_cafe_0005_072/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_cafe_0005_072/source.png"
+      },
+      "style_keywords": [
+        "soft",
+        "warm",
+        "dessert",
+        "natural_light"
+      ],
+      "color_palette": [
+        "#F5E7D0",
+        "#C68A55",
+        "#5A3B2A"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "soft warm dessert natural_light",
+      "popularity_score": 0.673,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "0005.png",
+        "r2_object_key": "reference-templates/v1/ref_cafe_0005_072/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_restaurant_0006_073",
+      "title": "프리미엄 샤브샤브 세로 포스터",
+      "description": "프리미엄 샤브샤브 세로 포스터 스타일의 레퍼런스",
+      "category": "restaurant",
+      "sub_category": "shabu",
+      "tags": [
+        "샤브샤브",
+        "고기",
+        "프리미엄",
+        "다크",
+        "메뉴판"
+      ],
+      "business_types": [
+        "restaurant",
+        "shabu",
+        "meat"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "2:3",
+      "width": 1024,
+      "height": 1536,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_restaurant_0006_073/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_restaurant_0006_073/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_restaurant_0006_073/source.png"
+      },
+      "style_keywords": [
+        "appetizing",
+        "warm",
+        "food",
+        "bold"
+      ],
+      "color_palette": [
+        "#8B1E18",
+        "#F5C76A",
+        "#FFF2D6"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "appetizing warm food bold",
+      "popularity_score": 0.67,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "0006.png",
+        "r2_object_key": "reference-templates/v1/ref_restaurant_0006_073/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_restaurant_0008_074",
+      "title": "바삭 돈가스 정식 포스터",
+      "description": "바삭 돈가스 정식 포스터 스타일의 레퍼런스",
+      "category": "restaurant",
+      "sub_category": "tonkatsu",
+      "tags": [
+        "돈가스",
+        "정식",
+        "일식",
+        "바삭한",
+        "소스"
+      ],
+      "business_types": [
+        "restaurant",
+        "japanese_food",
+        "lunch"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "527:746",
+      "width": 1054,
+      "height": 1492,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_restaurant_0008_074/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_restaurant_0008_074/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_restaurant_0008_074/source.png"
+      },
+      "style_keywords": [
+        "appetizing",
+        "warm",
+        "food",
+        "bold"
+      ],
+      "color_palette": [
+        "#8B1E18",
+        "#F5C76A",
+        "#FFF2D6"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "appetizing warm food bold",
+      "popularity_score": 0.667,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "0008.png",
+        "r2_object_key": "reference-templates/v1/ref_restaurant_0008_074/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_cafe_1000_075",
+      "title": "창가 케이크 라떼 피드",
+      "description": "창가 케이크 라떼 피드 스타일의 레퍼런스",
+      "category": "cafe",
+      "sub_category": "cake_latte",
+      "tags": [
+        "케이크",
+        "라떼",
+        "카페",
+        "디저트",
+        "햇살"
+      ],
+      "business_types": [
+        "cafe",
+        "dessert",
+        "beverage"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_cafe_1000_075/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_cafe_1000_075/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_cafe_1000_075/source.png"
+      },
+      "style_keywords": [
+        "soft",
+        "warm",
+        "dessert",
+        "natural_light"
+      ],
+      "color_palette": [
+        "#F5E7D0",
+        "#C68A55",
+        "#5A3B2A"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "soft warm dessert natural_light",
+      "popularity_score": 0.664,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "1000.png",
+        "r2_object_key": "reference-templates/v1/ref_cafe_1000_075/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_cafe_1001_076",
+      "title": "컬러풀 아이스크림 콘 포스터",
+      "description": "컬러풀 아이스크림 콘 포스터 스타일의 레퍼런스",
+      "category": "cafe",
+      "sub_category": "icecream",
+      "tags": [
+        "아이스크림",
+        "디저트",
+        "여름",
+        "컬러풀",
+        "콘"
+      ],
+      "business_types": [
+        "cafe",
+        "dessert",
+        "icecream"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "527:746",
+      "width": 1054,
+      "height": 1492,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_cafe_1001_076/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_cafe_1001_076/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_cafe_1001_076/source.png"
+      },
+      "style_keywords": [
+        "soft",
+        "warm",
+        "dessert",
+        "natural_light"
+      ],
+      "color_palette": [
+        "#F5E7D0",
+        "#C68A55",
+        "#5A3B2A"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "soft warm dessert natural_light",
+      "popularity_score": 0.661,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "1001.png",
+        "r2_object_key": "reference-templates/v1/ref_cafe_1001_076/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_flower_3000_077",
+      "title": "봄날 꽃다발 여백 피드",
+      "description": "봄날 꽃다발 여백 피드 스타일의 레퍼런스",
+      "category": "flower",
+      "sub_category": "bouquet",
+      "tags": [
+        "꽃다발",
+        "플라워",
+        "봄",
+        "선물",
+        "여백"
+      ],
+      "business_types": [
+        "flower",
+        "gift",
+        "retail"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_flower_3000_077/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_flower_3000_077/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_flower_3000_077/source.png"
+      },
+      "style_keywords": [
+        "pastel",
+        "romantic",
+        "fresh",
+        "airy"
+      ],
+      "color_palette": [
+        "#F7DDE7",
+        "#A8CFA3",
+        "#6B4E5F"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "pastel romantic fresh airy",
+      "popularity_score": 0.658,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3000.png",
+        "r2_object_key": "reference-templates/v1/ref_flower_3000_077/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_beauty_3001_078",
+      "title": "차분한 헤어살롱 인테리어 피드",
+      "description": "차분한 헤어살롱 인테리어 피드 스타일의 레퍼런스",
+      "category": "beauty",
+      "sub_category": "hair_salon",
+      "tags": [
+        "헤어살롱",
+        "미용실",
+        "인테리어",
+        "차분한",
+        "프리미엄"
+      ],
+      "business_types": [
+        "beauty",
+        "hair_salon",
+        "service"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_beauty_3001_078/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_beauty_3001_078/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_beauty_3001_078/source.png"
+      },
+      "style_keywords": [
+        "clean",
+        "premium",
+        "pastel",
+        "soft"
+      ],
+      "color_palette": [
+        "#F5DDE7",
+        "#C9A7D8",
+        "#3A2D35"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "clean premium pastel soft",
+      "popularity_score": 0.655,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3001.png",
+        "r2_object_key": "reference-templates/v1/ref_beauty_3001_078/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_beauty_3002_079",
+      "title": "파스텔 네일 코스메틱 피드",
+      "description": "파스텔 네일 코스메틱 피드 스타일의 레퍼런스",
+      "category": "beauty",
+      "sub_category": "nail_cosmetics",
+      "tags": [
+        "네일",
+        "화장품",
+        "파스텔",
+        "뷰티",
+        "여성스러운"
+      ],
+      "business_types": [
+        "beauty",
+        "nail",
+        "cosmetics"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_beauty_3002_079/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_beauty_3002_079/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_beauty_3002_079/source.png"
+      },
+      "style_keywords": [
+        "clean",
+        "premium",
+        "pastel",
+        "soft"
+      ],
+      "color_palette": [
+        "#F5DDE7",
+        "#C9A7D8",
+        "#3A2D35"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "clean premium pastel soft",
+      "popularity_score": 0.652,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3002.png",
+        "r2_object_key": "reference-templates/v1/ref_beauty_3002_079/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_pet_3003_080",
+      "title": "파스텔 반려동물 용품 피드",
+      "description": "파스텔 반려동물 용품 피드 스타일의 레퍼런스",
+      "category": "pet",
+      "sub_category": "pet_supplies",
+      "tags": [
+        "반려동물",
+        "강아지",
+        "펫용품",
+        "파스텔",
+        "귀여운"
+      ],
+      "business_types": [
+        "pet",
+        "pet_supplies",
+        "grooming"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_pet_3003_080/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_pet_3003_080/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_pet_3003_080/source.png"
+      },
+      "style_keywords": [
+        "cute",
+        "friendly",
+        "pastel",
+        "clean"
+      ],
+      "color_palette": [
+        "#DFF2E5",
+        "#F6C8A8",
+        "#3D463E"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "cute friendly pastel clean",
+      "popularity_score": 0.649,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3003.png",
+        "r2_object_key": "reference-templates/v1/ref_pet_3003_080/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_retail_3004_081",
+      "title": "신선 과일 마켓 피드",
+      "description": "신선 과일 마켓 피드 스타일의 레퍼런스",
+      "category": "retail",
+      "sub_category": "fruit_market",
+      "tags": [
+        "과일",
+        "신선식품",
+        "마켓",
+        "제철",
+        "자연광"
+      ],
+      "business_types": [
+        "retail",
+        "grocery",
+        "food"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_retail_3004_081/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_retail_3004_081/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_retail_3004_081/source.png"
+      },
+      "style_keywords": [
+        "fresh",
+        "bright",
+        "market",
+        "natural"
+      ],
+      "color_palette": [
+        "#F6E4B8",
+        "#8FB45E",
+        "#4E3A1F"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "fresh bright market natural",
+      "popularity_score": 0.646,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3004.png",
+        "r2_object_key": "reference-templates/v1/ref_retail_3004_081/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_service_3005_082",
+      "title": "스니커즈 세탁 클린 피드",
+      "description": "스니커즈 세탁 클린 피드 스타일의 레퍼런스",
+      "category": "service",
+      "sub_category": "shoe_cleaning",
+      "tags": [
+        "운동화",
+        "세탁",
+        "클리닝",
+        "깨끗한",
+        "블루"
+      ],
+      "business_types": [
+        "service",
+        "laundry",
+        "shoe_cleaning"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_service_3005_082/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_service_3005_082/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_service_3005_082/source.png"
+      },
+      "style_keywords": [
+        "clean",
+        "practical",
+        "trustworthy",
+        "focused"
+      ],
+      "color_palette": [
+        "#E7F2F7",
+        "#4E8FA8",
+        "#1F2A33"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "clean practical trustworthy focused",
+      "popularity_score": 0.643,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3005.png",
+        "r2_object_key": "reference-templates/v1/ref_service_3005_082/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_service_3006_083",
+      "title": "입주 청소 서비스 피드",
+      "description": "입주 청소 서비스 피드 스타일의 레퍼런스",
+      "category": "service",
+      "sub_category": "home_cleaning",
+      "tags": [
+        "청소",
+        "입주청소",
+        "집",
+        "이사",
+        "깔끔한"
+      ],
+      "business_types": [
+        "service",
+        "cleaning",
+        "home"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_service_3006_083/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_service_3006_083/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_service_3006_083/source.png"
+      },
+      "style_keywords": [
+        "clean",
+        "practical",
+        "trustworthy",
+        "focused"
+      ],
+      "color_palette": [
+        "#E7F2F7",
+        "#4E8FA8",
+        "#1F2A33"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "clean practical trustworthy focused",
+      "popularity_score": 0.64,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3006.png",
+        "r2_object_key": "reference-templates/v1/ref_service_3006_083/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_service_3007_084",
+      "title": "자동차 정비 다크 피드",
+      "description": "자동차 정비 다크 피드 스타일의 레퍼런스",
+      "category": "service",
+      "sub_category": "car_repair",
+      "tags": [
+        "자동차",
+        "정비",
+        "수리",
+        "공구",
+        "다크"
+      ],
+      "business_types": [
+        "service",
+        "car_repair",
+        "automotive"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_service_3007_084/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_service_3007_084/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_service_3007_084/source.png"
+      },
+      "style_keywords": [
+        "clean",
+        "practical",
+        "trustworthy",
+        "focused"
+      ],
+      "color_palette": [
+        "#E7F2F7",
+        "#4E8FA8",
+        "#1F2A33"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "clean practical trustworthy focused",
+      "popularity_score": 0.637,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3007.png",
+        "r2_object_key": "reference-templates/v1/ref_service_3007_084/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_restaurant_3008_085",
+      "title": "프리미엄 고기 메뉴판 포스터",
+      "description": "프리미엄 고기 메뉴판 포스터 스타일의 레퍼런스",
+      "category": "restaurant",
+      "sub_category": "bbq_menu",
+      "tags": [
+        "고기",
+        "구이",
+        "정육",
+        "프리미엄",
+        "메뉴판"
+      ],
+      "business_types": [
+        "restaurant",
+        "bbq",
+        "meat"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "2:3",
+      "width": 1024,
+      "height": 1536,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_restaurant_3008_085/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_restaurant_3008_085/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_restaurant_3008_085/source.png"
+      },
+      "style_keywords": [
+        "appetizing",
+        "warm",
+        "food",
+        "bold"
+      ],
+      "color_palette": [
+        "#8B1E18",
+        "#F5C76A",
+        "#FFF2D6"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "appetizing warm food bold",
+      "popularity_score": 0.634,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3008.png",
+        "r2_object_key": "reference-templates/v1/ref_restaurant_3008_085/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_restaurant_3009_086",
+      "title": "마블링 소고기 강렬한 포스터",
+      "description": "마블링 소고기 강렬한 포스터 스타일의 레퍼런스",
+      "category": "restaurant",
+      "sub_category": "marbled_beef",
+      "tags": [
+        "소고기",
+        "마블링",
+        "정육",
+        "강렬한",
+        "레드"
+      ],
+      "business_types": [
+        "restaurant",
+        "meat",
+        "bbq"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "527:746",
+      "width": 1054,
+      "height": 1492,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_restaurant_3009_086/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_restaurant_3009_086/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_restaurant_3009_086/source.png"
+      },
+      "style_keywords": [
+        "appetizing",
+        "warm",
+        "food",
+        "bold"
+      ],
+      "color_palette": [
+        "#8B1E18",
+        "#F5C76A",
+        "#FFF2D6"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "appetizing warm food bold",
+      "popularity_score": 0.631,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3009.png",
+        "r2_object_key": "reference-templates/v1/ref_restaurant_3009_086/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_service_3010_087",
+      "title": "운동화 세탁 정보형 포스터",
+      "description": "운동화 세탁 정보형 포스터 스타일의 레퍼런스",
+      "category": "service",
+      "sub_category": "shoe_laundry",
+      "tags": [
+        "운동화",
+        "세탁",
+        "클리닝",
+        "정보형",
+        "블루"
+      ],
+      "business_types": [
+        "service",
+        "laundry",
+        "shoe_cleaning"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "2:3",
+      "width": 1024,
+      "height": 1536,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_service_3010_087/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_service_3010_087/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_service_3010_087/source.png"
+      },
+      "style_keywords": [
+        "clean",
+        "practical",
+        "trustworthy",
+        "focused"
+      ],
+      "color_palette": [
+        "#E7F2F7",
+        "#4E8FA8",
+        "#1F2A33"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "clean practical trustworthy focused",
+      "popularity_score": 0.628,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3010.png",
+        "r2_object_key": "reference-templates/v1/ref_service_3010_087/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_flower_3011_088",
+      "title": "플라워 클래스 여백 피드",
+      "description": "플라워 클래스 여백 피드 스타일의 레퍼런스",
+      "category": "flower",
+      "sub_category": "flower_workshop",
+      "tags": [
+        "꽃",
+        "플라워클래스",
+        "공방",
+        "여백",
+        "파스텔"
+      ],
+      "business_types": [
+        "flower",
+        "workshop",
+        "class"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_flower_3011_088/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_flower_3011_088/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_flower_3011_088/source.png"
+      },
+      "style_keywords": [
+        "pastel",
+        "romantic",
+        "fresh",
+        "airy"
+      ],
+      "color_palette": [
+        "#F7DDE7",
+        "#A8CFA3",
+        "#6B4E5F"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "pastel romantic fresh airy",
+      "popularity_score": 0.625,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3011.png",
+        "r2_object_key": "reference-templates/v1/ref_flower_3011_088/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_beauty_3012_089",
+      "title": "네일살롱 손 관리 피드",
+      "description": "네일살롱 손 관리 피드 스타일의 레퍼런스",
+      "category": "beauty",
+      "sub_category": "nail_salon",
+      "tags": [
+        "네일",
+        "손관리",
+        "뷰티",
+        "살롱",
+        "파스텔"
+      ],
+      "business_types": [
+        "beauty",
+        "nail_salon",
+        "service"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_beauty_3012_089/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_beauty_3012_089/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_beauty_3012_089/source.png"
+      },
+      "style_keywords": [
+        "clean",
+        "premium",
+        "pastel",
+        "soft"
+      ],
+      "color_palette": [
+        "#F5DDE7",
+        "#C9A7D8",
+        "#3A2D35"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "clean premium pastel soft",
+      "popularity_score": 0.622,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3012.png",
+        "r2_object_key": "reference-templates/v1/ref_beauty_3012_089/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_pet_3013_090",
+      "title": "강아지 미용 펫살롱 피드",
+      "description": "강아지 미용 펫살롱 피드 스타일의 레퍼런스",
+      "category": "pet",
+      "sub_category": "pet_grooming",
+      "tags": [
+        "강아지",
+        "펫미용",
+        "반려동물",
+        "살롱",
+        "귀여운"
+      ],
+      "business_types": [
+        "pet",
+        "grooming",
+        "service"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_pet_3013_090/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_pet_3013_090/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_pet_3013_090/source.png"
+      },
+      "style_keywords": [
+        "cute",
+        "friendly",
+        "pastel",
+        "clean"
+      ],
+      "color_palette": [
+        "#DFF2E5",
+        "#F6C8A8",
+        "#3D463E"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "cute friendly pastel clean",
+      "popularity_score": 0.619,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3013.png",
+        "r2_object_key": "reference-templates/v1/ref_pet_3013_090/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_flower_3014_091",
+      "title": "식물가게 내추럴 피드",
+      "description": "식물가게 내추럴 피드 스타일의 레퍼런스",
+      "category": "flower",
+      "sub_category": "plant_shop",
+      "tags": [
+        "식물",
+        "화분",
+        "플랜트샵",
+        "인테리어",
+        "내추럴"
+      ],
+      "business_types": [
+        "flower",
+        "plant_shop",
+        "retail"
+      ],
+      "ad_formats": [
+        "instagram_feed"
+      ],
+      "platforms": [
+        "instagram"
+      ],
+      "aspect_ratio": "1:1",
+      "width": 1254,
+      "height": 1254,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_flower_3014_091/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_flower_3014_091/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_flower_3014_091/source.png"
+      },
+      "style_keywords": [
+        "pastel",
+        "romantic",
+        "fresh",
+        "airy"
+      ],
+      "color_palette": [
+        "#F7DDE7",
+        "#A8CFA3",
+        "#6B4E5F"
+      ],
+      "layout_hint": "square_product_or_scene_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "pastel romantic fresh airy",
+      "popularity_score": 0.616,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3014.png",
+        "r2_object_key": "reference-templates/v1/ref_flower_3014_091/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_flower_3015_092",
+      "title": "핑크 꽃다발 선물 포스터",
+      "description": "핑크 꽃다발 선물 포스터 스타일의 레퍼런스",
+      "category": "flower",
+      "sub_category": "pink_bouquet",
+      "tags": [
+        "꽃다발",
+        "핑크",
+        "선물",
+        "플라워",
+        "러블리"
+      ],
+      "business_types": [
+        "flower",
+        "gift",
+        "retail"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "527:746",
+      "width": 1054,
+      "height": 1492,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_flower_3015_092/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_flower_3015_092/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_flower_3015_092/source.png"
+      },
+      "style_keywords": [
+        "pastel",
+        "romantic",
+        "fresh",
+        "airy"
+      ],
+      "color_palette": [
+        "#F7DDE7",
+        "#A8CFA3",
+        "#6B4E5F"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "pastel romantic fresh airy",
+      "popularity_score": 0.613,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3015.png",
+        "r2_object_key": "reference-templates/v1/ref_flower_3015_092/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_education_3016_093",
+      "title": "스터디 카페 감성 피드",
+      "description": "스터디 카페 감성 피드 스타일의 레퍼런스",
+      "category": "education",
+      "sub_category": "study_cafe",
+      "tags": [
+        "스터디카페",
+        "책",
+        "공부",
+        "카페",
+        "차분한"
+      ],
+      "business_types": [
+        "education",
+        "study_cafe",
+        "cafe"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "527:746",
+      "width": 1054,
+      "height": 1492,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_education_3016_093/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_education_3016_093/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_education_3016_093/source.png"
+      },
+      "style_keywords": [
+        "calm",
+        "warm",
+        "editorial",
+        "focused"
+      ],
+      "color_palette": [
+        "#E8D1A7",
+        "#344235",
+        "#F6EFE3"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "soft_sans",
+      "background_style": "calm warm editorial focused",
+      "popularity_score": 0.61,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3016.png",
+        "r2_object_key": "reference-templates/v1/ref_education_3016_093/source.png",
+        "catalog_version": "v1"
+      }
+    },
+    {
+      "template_id": "ref_service_3017_094",
+      "title": "자전거 정비 스포츠 피드",
+      "description": "자전거 정비 스포츠 피드 스타일의 레퍼런스",
+      "category": "service",
+      "sub_category": "bike_repair",
+      "tags": [
+        "자전거",
+        "정비",
+        "수리",
+        "스포츠",
+        "오렌지"
+      ],
+      "business_types": [
+        "service",
+        "bike_repair",
+        "sports"
+      ],
+      "ad_formats": [
+        "poster"
+      ],
+      "platforms": [
+        "offline",
+        "instagram"
+      ],
+      "aspect_ratio": "527:746",
+      "width": 1054,
+      "height": 1492,
+      "assets": {
+        "thumbnail_path": "r2://reference-templates/v1/ref_service_3017_094/source.png",
+        "preview_path": "r2://reference-templates/v1/ref_service_3017_094/source.png",
+        "source_image_path": "r2://reference-templates/v1/ref_service_3017_094/source.png"
+      },
+      "style_keywords": [
+        "clean",
+        "practical",
+        "trustworthy",
+        "focused"
+      ],
+      "color_palette": [
+        "#E7F2F7",
+        "#4E8FA8",
+        "#1F2A33"
+      ],
+      "layout_hint": "vertical_poster_hero_with_copy_space",
+      "typography_hint": "bold_sans",
+      "background_style": "clean practical trustworthy focused",
+      "popularity_score": 0.607,
+      "status": "active",
+      "source": "admin_upload",
+      "license_note": "owned or licensed reference image for EasyAds service",
+      "metadata": {
+        "permanent": true,
+        "storage_provider": "r2",
+        "copyright_status": "owned_or_licensed",
+        "source_file": "3017.png",
+        "r2_object_key": "reference-templates/v1/ref_service_3017_094/source.png",
+        "catalog_version": "v1"
+      }
     }
   ]
 }
