@@ -7,6 +7,7 @@ import type {
   ImageGenerationEngineFields,
   OptionQuestion,
   PartialInferredContext,
+  ReferenceImageFields,
   ReferenceTemplateFields
 } from "@/types/marketing";
 
@@ -60,7 +61,7 @@ export type ChatBriefResponse = {
   brief: ChatBrief;
 };
 
-export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & ImageGenerationEngineFields & {
+export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & ReferenceImageFields & ImageGenerationEngineFields & {
   copyGenerationMode?: CopyGenerationMode;
   adFormat?: string;
   renderProfile?: string;
@@ -109,6 +110,13 @@ export type ReferenceTemplateSimilarResponse = {
 
 export type PhotoUploadResponse = {
   sourceImagePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+export type ReferenceImageUploadResponse = {
+  referenceImagePath: string;
   fileName: string;
   mimeType: string;
   sizeBytes: number;
@@ -389,7 +397,8 @@ export function startChatGeneration(userInput: string, options: GenerationStartO
     copyGenerationMode: options.copyGenerationMode ?? undefined,
     userCustomHeadline: options.userCustomHeadline ?? undefined,
     userCustomSubcopy: options.userCustomSubcopy ?? undefined,
-    selectedReferenceTemplateId: options.selectedReferenceTemplateId ?? undefined
+    selectedReferenceTemplateId: options.selectedReferenceTemplateId ?? undefined,
+    referenceImagePath: options.referenceImagePath ?? undefined
   });
 }
 
@@ -423,9 +432,20 @@ export async function uploadPhotoAsset(file: File): Promise<PhotoUploadResponse>
   });
 }
 
+export async function uploadReferenceAsset(file: File): Promise<ReferenceImageUploadResponse> {
+  const upload = await uploadPhotoAsset(file);
+  return {
+    referenceImagePath: upload.sourceImagePath,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+    sizeBytes: upload.sizeBytes
+  };
+}
+
 export function startPhotoGeneration(input: {
   userInput: string;
   sourceImagePath: string;
+  referenceImagePath?: string | null;
   adFormat?: string;
   renderProfile?: string;
   copyGenerationMode?: CopyGenerationMode;
@@ -441,7 +461,8 @@ export function startPhotoGeneration(input: {
     copyGenerationMode: input.copyGenerationMode ?? undefined,
     userCustomHeadline: input.userCustomHeadline ?? undefined,
     userCustomSubcopy: input.userCustomSubcopy ?? undefined,
-    selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? undefined
+    selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? undefined,
+    referenceImagePath: input.referenceImagePath ?? undefined
   });
 }
 

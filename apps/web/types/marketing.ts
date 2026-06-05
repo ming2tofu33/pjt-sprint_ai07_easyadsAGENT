@@ -84,6 +84,11 @@ export type ReferenceTemplateFields = {
   selectedReferenceTemplateTitle?: string | null;
 };
 
+export type ReferenceImageFields = {
+  referenceImagePath?: string | null;
+  referenceImageFile?: File | null;
+};
+
 export type ImageGenerationEngineFields = {
   imageGenerationEngine?: ImageGenerationEngine;
 };
@@ -104,11 +109,15 @@ export type ChatFlowState = {
   selectedCopyId: string;
   selectedChannelId: string;
   customDirection: string;
+  userCustomHeadline: string;
+  userCustomSubcopy: string;
   brief: ChatBrief | null;
   generationJob?: GenerationJob | null;
   selectedImageGenerationEngine: ImageGenerationEngine;
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
+  sourceImagePath?: string | null;
+  referenceImagePath?: string | null;
   currentQuestion: OptionQuestion | null;
   conversationMessages: ChatTranscriptMessage[];
   isLoading: boolean;
@@ -122,6 +131,10 @@ export type ChatFlowAction =
       prompt: string;
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
+      sourceImagePath?: string | null;
+      referenceImagePath?: string | null;
+      userCustomHeadline?: string | null;
+      userCustomSubcopy?: string | null;
     }
   | {
       type: "backendStartSucceeded";
@@ -134,6 +147,10 @@ export type ChatFlowAction =
       copyCandidateSource?: CopyCandidateSource;
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
+      sourceImagePath?: string | null;
+      referenceImagePath?: string | null;
+      userCustomHeadline?: string | null;
+      userCustomSubcopy?: string | null;
     }
   | {
       type: "backendQuestionReceived";
@@ -141,6 +158,8 @@ export type ChatFlowAction =
       threadId: string;
       context: PartialInferredContext;
       question: OptionQuestion;
+      sourceImagePath?: string | null;
+      referenceImagePath?: string | null;
     }
   | { type: "submitQuestionAnswer"; label: string }
   | { type: "backendRequestFailed"; message: string }
@@ -175,5 +194,6 @@ export type ChatFlowAction =
       generationJob: GenerationJob;
       question: OptionQuestion;
     }
+  | { type: "generationJobInterruptReceived"; generationJob: GenerationJob }
   | { type: "submitGenerationJobAnswer"; label: string }
   | { type: "generationJobFailed"; message: string };

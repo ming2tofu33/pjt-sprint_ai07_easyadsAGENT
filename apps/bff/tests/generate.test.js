@@ -34,7 +34,11 @@ describe("generate chat routes", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/generate/chat/start",
-      payload: { userInput: "우리 카페 딸기라떼 광고", renderProfile: "premium_api" }
+      payload: {
+        userInput: "우리 카페 딸기라떼 광고",
+        renderProfile: "premium_api",
+        referenceImagePath: "data/uploads/reference_1.png"
+      }
     });
 
     expect(response.statusCode).toBe(200);
@@ -43,7 +47,11 @@ describe("generate chat routes", () => {
       "http://orchestrator/v1/marketing/chat/start",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ userInput: "우리 카페 딸기라떼 광고", renderProfile: "premium_api" })
+        body: JSON.stringify({
+          userInput: "우리 카페 딸기라떼 광고",
+          renderProfile: "premium_api",
+          referenceImagePath: "data/uploads/reference_1.png"
+        })
       })
     );
     await app.close();
@@ -311,7 +319,13 @@ describe("generate chat routes", () => {
       payload: {
         userInput: "Supabase 연결 확인",
         runMode: "queued_only",
-        selectedReferenceTemplateId: "seed_1"
+        selectedReferenceTemplateId: "seed_1",
+        selectedCopyId: "copy_1",
+        selectedChannelId: "instagram-feed",
+        selectedTone: "깔끔한",
+        customDirection: "제품을 크게",
+        userCustomHeadline: "오늘만 반값",
+        userCustomSubcopy: "오후 5시까지"
       }
     });
     const getResponse = await app.inject({
@@ -330,7 +344,13 @@ describe("generate chat routes", () => {
         body: JSON.stringify({
           userInput: "Supabase 연결 확인",
           runMode: "queued_only",
-          selected_reference_template_id: "seed_1"
+          selected_reference_template_id: "seed_1",
+          selected_copy_id: "copy_1",
+          selected_channel_id: "instagram-feed",
+          selected_tone: "깔끔한",
+          custom_direction: "제품을 크게",
+          user_custom_headline: "오늘만 반값",
+          user_custom_subcopy: "오후 5시까지"
         })
       })
     );
@@ -776,7 +796,7 @@ describe("generate chat routes", () => {
           copy: "여름엔 수박주스",
           tone: "브랜드에 맞춘 분위기",
           channel: "인스타 피드 (1:1)",
-          imageDirection: "선택한 레퍼런스 템플릿을 반영한 여름 음료 광고",
+          imageDirection: "선택한 샘플 템플릿을 반영한 여름 음료 광고",
           finalImagePath: "data/outputs/job_reference_template/final_composite.png"
         },
         copyGenerationMode: "auto_pilot"

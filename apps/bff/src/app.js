@@ -15,6 +15,9 @@ const customCopyFieldsSchema = {
 const referenceTemplateFieldsSchema = {
   selectedReferenceTemplateId: z.string().trim().min(1).optional()
 };
+const referenceImageFieldsSchema = {
+  referenceImagePath: z.string().trim().min(1).optional()
+};
 
 const chatStartSchema = z.object({
   userInput: z.string().min(1),
@@ -22,7 +25,8 @@ const chatStartSchema = z.object({
   renderProfile: z.string().optional(),
   copyGenerationMode: z.enum(copyGenerationModes).optional(),
   ...customCopyFieldsSchema,
-  ...referenceTemplateFieldsSchema
+  ...referenceTemplateFieldsSchema,
+  ...referenceImageFieldsSchema
 }).superRefine((data, context) => {
   if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
     context.addIssue({
@@ -68,7 +72,8 @@ const photoStartSchema = z.object({
   renderProfile: z.string().optional(),
   copyGenerationMode: z.enum(copyGenerationModes).optional(),
   ...customCopyFieldsSchema,
-  ...referenceTemplateFieldsSchema
+  ...referenceTemplateFieldsSchema,
+  ...referenceImageFieldsSchema
 }).superRefine((data, context) => {
   if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
     context.addIssue({
@@ -83,7 +88,21 @@ const generationJobSchema = z.object({
   user_input: z.string().optional(),
   userInput: z.string().optional(),
   selected_reference_template_id: z.string().optional(),
-  selectedReferenceTemplateId: z.string().optional()
+  selectedReferenceTemplateId: z.string().optional(),
+  selected_copy_id: z.string().optional(),
+  selectedCopyId: z.string().optional(),
+  selected_channel_id: z.string().optional(),
+  selectedChannelId: z.string().optional(),
+  selected_tone: z.string().optional(),
+  selectedTone: z.string().optional(),
+  custom_direction: z.string().optional(),
+  customDirection: z.string().optional(),
+  user_custom_headline: z.string().optional(),
+  userCustomHeadline: z.string().optional(),
+  user_custom_subcopy: z.string().optional(),
+  userCustomSubcopy: z.string().optional(),
+  reference_image_path: z.string().optional(),
+  referenceImagePath: z.string().optional()
 }).passthrough();
 
 const generationJobAnswerSchema = z.object({
@@ -413,9 +432,25 @@ export function buildApp(options = {}) {
     }
     const body = {
       ...parsed.data,
-      selected_reference_template_id: parsed.data.selected_reference_template_id ?? parsed.data.selectedReferenceTemplateId
+      selected_reference_template_id: parsed.data.selected_reference_template_id ?? parsed.data.selectedReferenceTemplateId,
+      selected_copy_id: parsed.data.selected_copy_id ?? parsed.data.selectedCopyId,
+      selected_channel_id: parsed.data.selected_channel_id ?? parsed.data.selectedChannelId,
+      selected_tone: parsed.data.selected_tone ?? parsed.data.selectedTone,
+      custom_direction: parsed.data.custom_direction ?? parsed.data.customDirection,
+      user_custom_headline: parsed.data.user_custom_headline ?? parsed.data.userCustomHeadline,
+      user_custom_subcopy: parsed.data.user_custom_subcopy ?? parsed.data.userCustomSubcopy,
+      source_image_path: parsed.data.source_image_path ?? parsed.data.sourceImagePath,
+      reference_image_path: parsed.data.reference_image_path ?? parsed.data.referenceImagePath
     };
     delete body.selectedReferenceTemplateId;
+    delete body.selectedCopyId;
+    delete body.selectedChannelId;
+    delete body.selectedTone;
+    delete body.customDirection;
+    delete body.userCustomHeadline;
+    delete body.userCustomSubcopy;
+    delete body.sourceImagePath;
+    delete body.referenceImagePath;
 
     return proxyJson({
       fetchImpl,

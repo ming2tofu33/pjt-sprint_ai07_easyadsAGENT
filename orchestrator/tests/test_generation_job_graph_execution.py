@@ -111,6 +111,109 @@ def test_execute_generation_job_graph_receives_selected_engine(monkeypatch):
     assert received_payload["current_brief"]["requested_engine"] == "sd35_large"
 
 
+def test_execute_generation_job_graph_receives_source_image_path(monkeypatch):
+    received_payload = {}
+
+    class MockGraph:
+        def invoke(self, payload: dict, config: dict | None = None) -> dict:
+            nonlocal received_payload
+            received_payload = dict(payload)
+            state = dict(payload)
+            state["status"] = "done"
+            state["result_payload"] = {
+                "final_image_path": "/fake/photo-source.png",
+                "final_brief": {"user_input": state["user_input"]},
+            }
+            state["final_image_path"] = "/fake/photo-source.png"
+            return state
+
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+
+    request = GenerationJobCreateRequest(
+        user_input="이 사진으로 신메뉴 광고 만들어줘",
+        run_mode="graph_immediate",
+        sourceImagePath="data/uploads/photo_1.png",
+    )
+    job = create_generation_job(request)
+
+    executed = execute_generation_job_graph(job.job_id, request)
+
+    assert executed.status == "done"
+    assert received_payload["source_image_path"] == "data/uploads/photo_1.png"
+
+
+def test_execute_generation_job_graph_receives_reference_image_path(monkeypatch):
+    received_payload = {}
+
+    class MockGraph:
+        def invoke(self, payload: dict, config: dict | None = None) -> dict:
+            nonlocal received_payload
+            received_payload = dict(payload)
+            state = dict(payload)
+            state["status"] = "done"
+            state["result_payload"] = {
+                "final_image_path": "/fake/reference-style.png",
+                "final_brief": {"user_input": state["user_input"]},
+            }
+            state["final_image_path"] = "/fake/reference-style.png"
+            return state
+
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+
+    request = GenerationJobCreateRequest(
+        user_input="이 레퍼런스 분위기로 광고 만들어줘",
+        run_mode="graph_immediate",
+        referenceImagePath="data/uploads/reference_1.png",
+    )
+    job = create_generation_job(request)
+
+    executed = execute_generation_job_graph(job.job_id, request)
+
+    assert executed.status == "done"
+    assert received_payload["reference_image_path"] == "data/uploads/reference_1.png"
+
+
+def test_execute_generation_job_graph_receives_selected_ui_values(monkeypatch):
+    received_payload = {}
+
+    class MockGraph:
+        def invoke(self, payload: dict, config: dict | None = None) -> dict:
+            nonlocal received_payload
+            received_payload = dict(payload)
+            state = dict(payload)
+            state["status"] = "done"
+            state["result_payload"] = {
+                "final_image_path": "/fake/selected-ui-values.png",
+                "final_brief": {"user_input": state["user_input"]},
+            }
+            state["final_image_path"] = "/fake/selected-ui-values.png"
+            return state
+
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+
+    request = GenerationJobCreateRequest(
+        user_input="선택값으로 광고 만들어줘",
+        run_mode="graph_immediate",
+        selectedCopyId="copy_2",
+        selectedChannelId="instagram-story",
+        selectedTone="상큼한",
+        customDirection="제품을 화면 중앙에 크게",
+        userCustomHeadline="오늘만 딸기라떼 반값",
+        userCustomSubcopy="오후 2시부터 5시까지",
+    )
+    job = create_generation_job(request)
+
+    executed = execute_generation_job_graph(job.job_id, request)
+
+    assert executed.status == "done"
+    assert received_payload["selected_copy_id"] == "copy_2"
+    assert received_payload["selected_channel_id"] == "instagram-story"
+    assert received_payload["selected_tone"] == "상큼한"
+    assert received_payload["custom_direction"] == "제품을 화면 중앙에 크게"
+    assert received_payload["user_custom_headline"] == "오늘만 딸기라떼 반값"
+    assert received_payload["user_custom_subcopy"] == "오후 2시부터 5시까지"
+
+
 def test_execute_generation_job_graph_waiting_user_input(monkeypatch):
     class MockGraphWaiting:
         def invoke(self, payload: dict, config: dict | None = None) -> dict:

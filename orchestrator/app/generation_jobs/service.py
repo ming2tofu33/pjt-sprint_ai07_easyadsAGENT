@@ -234,7 +234,21 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
         
         explicit_fields = {}
         for k in request.model_fields_set:
-            if k in ["ad_format", "copy_generation_mode", "selected_reference_template_id", "brand_kit_id", "user_plan"]:
+            if k in [
+                "ad_format",
+                "copy_generation_mode",
+                "selected_reference_template_id",
+                "source_image_path",
+                "reference_image_path",
+                "selected_copy_id",
+                "selected_channel_id",
+                "selected_tone",
+                "custom_direction",
+                "user_custom_headline",
+                "user_custom_subcopy",
+                "brand_kit_id",
+                "user_plan",
+            ]:
                 explicit_fields[k] = getattr(request, k)
                 
         restored_payload = state_service.restore_thread_state(
@@ -856,7 +870,21 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
         
         explicit_fields = {}
         for k in request.model_fields_set:
-            if k in ["ad_format", "copy_generation_mode", "selected_reference_template_id", "brand_kit_id", "user_plan"]:
+            if k in [
+                "ad_format",
+                "copy_generation_mode",
+                "selected_reference_template_id",
+                "source_image_path",
+                "reference_image_path",
+                "selected_copy_id",
+                "selected_channel_id",
+                "selected_tone",
+                "custom_direction",
+                "user_custom_headline",
+                "user_custom_subcopy",
+                "brand_kit_id",
+                "user_plan",
+            ]:
                 explicit_fields[k] = getattr(request, k)
                 
         restored_payload = state_service.restore_thread_state(
