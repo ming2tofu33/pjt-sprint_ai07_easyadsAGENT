@@ -13,6 +13,8 @@ from orchestrator.app.t2i.prompts import COMMON_NEGATIVE_PROMPT
 from orchestrator.app.llm.scene_planner import build_scene_plan, build_prompt_quality_policy
 from orchestrator.app.llm.prompt_adapters import render_engine_prompt
 from orchestrator.app.llm.visual_presets import select_visual_preset
+from orchestrator.app.llm.nodes.prompt_critic import critique_prompt_draft
+from orchestrator.app.llm.prompt_rewrite_resolver import resolve_prompt_rewrite
 
 if TYPE_CHECKING:
     from orchestrator.app.graph.state import MarketingState
@@ -26,21 +28,10 @@ TEXT_NEGATIVE = (
 
 
 def image_prompt_planner_node(state: "MarketingState") -> dict[str, object]:
-    deterministic = lambda: build_deterministic_image_prompt_spec(state)
-    metadata_contract = build_image_prompt_planner_metadata(state)
-    spec_output, llm_metadata = run_structured_node(
-        state,
-        node_name="image_prompt_planner",
-        output_schema=ImagePromptSpec,
-        prompt=build_image_prompt_planner_prompt(state, metadata_contract),
-        fallback_fn=deterministic,
-        risk_level="medium",
-        confidence=0.5,
-        latency_budget="standard",
-        metadata=metadata_contract,
-    )
-    spec = enforce_image_prompt_safety(state, spec_output if isinstance(spec_output, ImagePromptSpec) else deterministic())
+    spec = build_image_prompt_spec_with_critic(state)
+    spec = enforce_image_prompt_safety(state, spec)
     image_prompt = build_legacy_image_prompt(state, spec)
+
     return {
         "image_prompt_spec": spec.model_dump(),
         "image_prompt": image_prompt.model_dump(),
@@ -55,7 +46,7 @@ def image_prompt_planner_node(state: "MarketingState") -> dict[str, object]:
     }
 
 
-def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptSpec:
+def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpec:
     context = context_to_model(state.get("context"))
     ad_format_spec = state.get("ad_format_spec") or {}
     reference_style_profile = state.get("reference_style_profile") or {}
@@ -131,7 +122,49 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
         adapter_positive_prompt = f"{adapter_positive_prompt} Additional visual/reference guidance: {extra_hints}"
 
     adapter_negative_prompt = adapter_output.negative_prompt or negative
-
+    prompt_context = build_prompt_critic_context(
+        state=state,
+        context=context,
+        ad_format_spec=ad_format_spec,
+        scene_plan=scene_plan,
+        policy=policy,
+        preset_id=preset_id,
+        selected_reference_template=selected_reference_template,
+        reference_template_selection=reference_template_selection,
+    )
+    critic_output, critic_metadata = critique_prompt_draft(
+        state,
+        prompt_draft=adapter_positive_prompt,
+        target_engine=adapter_output.engine,
+        prompt_context=prompt_context,
+    )
+    rewrite_resolution = resolve_prompt_rewrite(
+        adapter_positive_prompt,
+        critic_output,
+        prompt_context,
+        quality_policy=policy,
+    )
+    adapter_positive_prompt = rewrite_resolution.prompt
+    issue_codes = [issue.code for issue in critic_output.issues] if critic_output else []
+    prompt_critic_metadata = {
+        "enabled": bool(critic_metadata.get("enabled", True)),
+        "attempted": bool(critic_metadata.get("llm_attempted") or critic_metadata.get("attempted")),
+        "success": bool(critic_output),
+        "provider": critic_metadata.get("provider"),
+        "selected_model_class": critic_metadata.get("selected_model_class"),
+        "quality_score": critic_output.quality_score if critic_output else None,
+        "issue_codes": issue_codes,
+        "rewrite_applied": rewrite_resolution.rewrite_applied,
+        "rejected_change_codes": rewrite_resolution.rejected_change_codes,
+        "fallback_used": bool(critic_metadata.get("fallback_used") or rewrite_resolution.fallback_used),
+        "fallback_reason": critic_metadata.get("fallback_reason") or rewrite_resolution.fallback_reason,
+    }
+    adapter_output = adapter_output.model_copy(
+        update={
+            "prompt": adapter_positive_prompt,
+            "metadata": {**adapter_output.metadata, "prompt_critic": prompt_critic_metadata},
+        }
+    )
 
     spec = ImagePromptSpec(
         scene_description=scene,
@@ -168,6 +201,7 @@ def build_deterministic_image_prompt_spec(state: MarketingState) -> ImagePromptS
             "scene_plan": scene_plan.model_dump(mode="json"),
             "prompt_quality_policy": policy.model_dump(mode="json"),
             "prompt_adapter": adapter_output.model_dump(mode="json"),
+            "prompt_critic": prompt_critic_metadata,
             "business_visual_preset_id": preset_id,
             "beauty_subtype": scene_plan.business_type if scene_plan.business_type.startswith("beauty_") else None,
         },
@@ -194,6 +228,45 @@ def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> I
         metadata={"render_text_in_image": False, "tlfp_enabled": True, **v3_meta},
     )
     return image_prompt
+
+
+def build_prompt_critic_context(
+    *,
+    state: MarketingState,
+    context: MarketingContext,
+    ad_format_spec: dict[str, Any],
+    scene_plan: Any,
+    policy: Any,
+    preset_id: str,
+    selected_reference_template: dict[str, Any],
+    reference_template_selection: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "business_type": context.business_type,
+        "business_subtype": scene_plan.business_type,
+        "item_or_service": context.item_or_service,
+        "primary_subject": scene_plan.primary_subject,
+        "ad_format": ad_format_spec.get("ad_format") or scene_plan.ad_format,
+        "promotion_goal": context.promotion_goal,
+        "visual_style": selected_tone_label(state),
+        "scene_plan": {
+            "business_type": scene_plan.business_type,
+            "primary_subject": scene_plan.primary_subject,
+            "composition_archetype": scene_plan.composition_archetype,
+            "reserved_copy_area": scene_plan.reserved_copy_area,
+            "fake_text_risk_level": scene_plan.fake_text_risk_level,
+        },
+        "prompt_quality_policy": {
+            "no_text_policy": policy.no_text_policy,
+            "safe_area_policy": policy.safe_area_policy,
+            "fake_text_negative_terms_count": len(policy.fake_text_negative_terms),
+        },
+        "business_visual_preset_id": preset_id,
+        "selected_reference_template_id": selected_reference_template.get("template_id") or state.get("selected_reference_template_id"),
+        "reference_alignment": reference_template_selection.get("style_profile_hint") or None,
+        "copy_safe_area_required": True,
+        "render_text_in_image": False,
+    }
 
 
 def selected_visual_direction(state: MarketingState) -> str | None:
