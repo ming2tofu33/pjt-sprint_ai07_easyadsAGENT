@@ -52,3 +52,11 @@ def test_flux_enabled_only_by_explicit_env(monkeypatch):
     assert is_flux_local_enabled(settings) is True
     assert settings.flux_model_id == "black-forest-labs/FLUX.1-schnell"
 
+
+def test_flux_max_sequence_length_is_clamped(monkeypatch):
+    monkeypatch.setenv("EASYADS_FLUX_MAX_SEQUENCE_LENGTH", "999")
+    assert load_t2i_settings().flux_max_sequence_length == 512
+
+    monkeypatch.setenv("EASYADS_FLUX_MAX_SEQUENCE_LENGTH", "8")
+    assert load_t2i_settings().flux_max_sequence_length == 64
+
