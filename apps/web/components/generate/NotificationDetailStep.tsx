@@ -86,8 +86,12 @@ export function NotificationDetailStep({ variant }: NotificationDetailStepProps)
         <button type="button" onClick={() => router.push(isComplete ? buildDashboardHref("ads") : buildDashboardHref("chat"))}>
           {isComplete ? "내 광고 보관함 보기" : "브리프 수정하기"}
         </button>
-        <button type="button" onClick={() => router.push(isComplete ? buildDashboardHref("reference") : buildDashboardHref("ads"))}>
-          {isComplete ? "비슷한 스타일 더 보기" : "내 광고 보관함 보기"}
+        <button
+          type="button"
+          disabled={isComplete}
+          onClick={() => router.push(isComplete ? buildDashboardHref("reference") : buildDashboardHref("ads"))}
+        >
+          {isComplete ? "비슷한 스타일 더 보기 (준비 중)" : "내 광고 보관함 보기"}
         </button>
       </div>
 

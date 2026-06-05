@@ -155,7 +155,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
   if (isLoading) {
     return (
       <>
-        <StepHeader title="레퍼런스 상세" canGoBack onBack={goBack} onHome={goHome} />
+        <StepHeader title="샘플 상세" canGoBack onBack={goBack} onHome={goHome} />
         <section className={styles.emptyResultPanel} aria-label="레퍼런스 불러오는 중">
           <Search size={24} aria-hidden="true" />
           <strong>레퍼런스를 불러오는 중이에요</strong>
@@ -168,8 +168,8 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
   if (errorMessage || !creative || !template || !hasReferenceTemplateImage(template)) {
     return (
       <>
-        <StepHeader title="레퍼런스 상세" canGoBack onBack={goBack} onHome={goHome} />
-        <section className={styles.emptyResultPanel} aria-label="레퍼런스 상세 없음">
+        <StepHeader title="샘플 상세" canGoBack onBack={goBack} onHome={goHome} />
+        <section className={styles.emptyResultPanel} aria-label="샘플 상세 없음">
           <Search size={24} aria-hidden="true" />
           <strong>표시할 레퍼런스 이미지가 없어요</strong>
           <p>{errorMessage ?? "직접 넣은 이미지가 연결된 레퍼런스만 확인할 수 있어요."}</p>
@@ -215,8 +215,8 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
           <button className={styles.primaryButton} type="button" onClick={() => goTo("start")}>
             이 스타일로 내 광고 만들기
           </button>
-          <button className={styles.secondaryButton} type="button" onClick={() => goTo("similar")}>
-            비슷한 스타일 더 탐색하기
+          <button className={styles.secondaryButton} disabled type="button">
+            비슷한 스타일 더 탐색하기 (준비 중)
           </button>
         </div>
       </>
@@ -334,7 +334,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         <button aria-label="레퍼런스 목록으로" type="button" onClick={goBack}>
           <ChevronRight size={22} aria-hidden="true" />
         </button>
-        <h1>레퍼런스 상세</h1>
+        <h1>샘플 상세</h1>
         <div>
           <button aria-label="공유하기" type="button">
             <Share2 size={18} aria-hidden="true" />
@@ -387,8 +387,8 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
         <button className={styles.primaryButton} type="button" onClick={() => goTo("analysis")}>
           이 스타일로 내 광고 만들기 <Sparkles size={18} aria-hidden="true" />
         </button>
-        <button className={styles.secondaryButton} type="button" onClick={() => goTo("similar")}>
-          비슷한 스타일 더 보기
+        <button className={styles.secondaryButton} disabled type="button">
+          비슷한 스타일 더 보기 (준비 중)
         </button>
       </div>
     </>

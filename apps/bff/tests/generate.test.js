@@ -481,6 +481,30 @@ describe("generate chat routes", () => {
     await fs.rm(uploadDir, { recursive: true, force: true });
   });
 
+  it("accepts phone-sized JSON photo uploads larger than the previous body limit", async () => {
+    const uploadDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyads-upload-large-"));
+    const app = buildApp({ fetchImpl: vi.fn(), uploadDir });
+    const imageBytes = Buffer.alloc(20 * 1024 * 1024, 7);
+    const dataUrl = `data:image/png;base64,${imageBytes.toString("base64")}`;
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/photo/upload",
+      payload: {
+        filename: "large-menu.png",
+        mimeType: "image/png",
+        dataUrl
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json();
+    expect(payload.sizeBytes).toBe(imageBytes.length);
+    await expect(fs.stat(path.join(uploadDir, path.basename(payload.sourceImagePath)))).resolves.toMatchObject({ size: imageBytes.length });
+    await app.close();
+    await fs.rm(uploadDir, { recursive: true, force: true });
+  }, 20_000);
+
   it("uses the repo data/uploads directory by default", async () => {
     const app = buildApp({ fetchImpl: vi.fn() });
     const dataUrl = `data:image/png;base64,${Buffer.from("fake image bytes").toString("base64")}`;

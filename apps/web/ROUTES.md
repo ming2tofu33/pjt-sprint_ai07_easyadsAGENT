@@ -46,7 +46,7 @@
 
 | Route | Screen | Example |
 | --- | --- | --- |
-| `/reference/[creativeId]` | 레퍼런스 상세 보기 | `/reference/ref-strawberry-poster` |
+| `/reference/[creativeId]` | 샘플 상세 보기 | `/reference/ref-strawberry-poster` |
 | `/reference/[creativeId]/analysis` | AI 스타일 분석 | `/reference/ref-strawberry-poster/analysis` |
 | `/reference/[creativeId]/similar` | 유사 스타일 추천 | `/reference/ref-strawberry-poster/similar` |
 | `/reference/[creativeId]/start` | 이 스타일로 시작하기 | `/reference/ref-strawberry-poster/start` |

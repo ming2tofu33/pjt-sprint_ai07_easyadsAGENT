@@ -1,7 +1,7 @@
 "use client";
 
-import { Briefcase, CheckCircle2, ChevronLeft, Home, Search, Sparkles, User } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Bell, Briefcase, CheckCircle2, ChevronLeft, Home, Search, Sparkles, User } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import { listReferenceTemplates, type ReferenceTemplateCard } from "@/lib/api-client";
@@ -21,6 +21,7 @@ type ReferenceBrowseStepProps = {
   onOpenStudio?: () => void;
   onOpenRecentAds?: () => void;
   onOpenBrandKit?: () => void;
+  onOpenNotifications?: () => void;
   onSaveCreative?: (title: string) => void;
   onOpenCreative?: (creativeId: string) => void;
   onUseTemplate?: (template: ReferenceTemplateCard) => void;
@@ -46,6 +47,7 @@ export function ReferenceBrowseStep({
   onOpenStudio,
   onOpenRecentAds,
   onOpenBrandKit,
+  onOpenNotifications,
   onSaveCreative,
   onOpenCreative,
   onUseTemplate
@@ -58,7 +60,6 @@ export function ReferenceBrowseStep({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTags = useMemo(() => splitReferenceSearchTerms(searchTerm), [searchTerm]);
   const visibleTemplates = useMemo(
     () =>
@@ -67,11 +68,6 @@ export function ReferenceBrowseStep({
         .sort((first, second) => second.popularityScore - first.popularityScore),
     [templates]
   );
-
-  function focusSearchField() {
-    searchInputRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
-    searchInputRef.current?.focus();
-  }
 
   useEffect(() => {
     let cancelled = false;
@@ -115,9 +111,9 @@ export function ReferenceBrowseStep({
           <button aria-label="홈으로" type="button" onClick={onGoHome}>
             <ChevronLeft size={22} aria-hidden="true" />
           </button>
-          <span>REFERENCE GALLERY</span>
-          <button aria-label="레퍼런스 검색어 입력" type="button" onClick={focusSearchField}>
-            <Search size={21} aria-hidden="true" />
+          <span>SAMPLE GALLERY</span>
+          <button aria-label="알림" type="button" onClick={onOpenNotifications}>
+            <Bell size={21} aria-hidden="true" />
           </button>
         </div>
       ) : (
@@ -139,12 +135,12 @@ export function ReferenceBrowseStep({
 
       <header className={styles.referenceHeader}>
         <div>
-          <p>REFERENCE</p>
-          <h1>찰떡 레퍼런스 둘러보기</h1>
+          <p>SAMPLE</p>
+          <h1>찰떡 광고 샘플 둘러보기</h1>
         </div>
         {isStandaloneGallery ? null : (
-          <button className={styles.iconButton} aria-label="레퍼런스 검색어 입력" type="button" onClick={focusSearchField}>
-            <Search size={22} aria-hidden="true" />
+          <button className={styles.iconButton} aria-label="알림" type="button" onClick={onOpenNotifications}>
+            <Bell size={22} aria-hidden="true" />
           </button>
         )}
       </header>
@@ -152,7 +148,6 @@ export function ReferenceBrowseStep({
       <label className={styles.searchField}>
         <Search size={17} aria-hidden="true" />
         <input
-          ref={searchInputRef}
           aria-label="레퍼런스 검색어"
           placeholder="음료, 여름, 포스터처럼 검색해보세요"
           value={searchTerm}
@@ -173,16 +168,16 @@ export function ReferenceBrowseStep({
         ))}
       </div>
 
-      <p className={`${styles.browseNote} ${styles.referenceBrowseNote}`}>
-        <Sparkles size={17} aria-hidden="true" />
-        {isStandaloneGallery
-          ? "마음에 드는 레퍼런스를 고르면 다음 광고 생성 요청에 스타일 힌트로 함께 전달돼요."
-          : isGenerationComplete
-          ? "완성된 광고와 비슷한 톤의 레퍼런스를 더 둘러볼 수 있어요."
-          : "광고가 완성되면 알려드릴게요. 기다리는 동안 다른 스타일을 둘러볼 수 있어요."}
-      </p>
-
       <div className={styles.referenceContentScroll}>
+        <p className={`${styles.browseNote} ${styles.referenceBrowseNote}`}>
+          <Sparkles size={17} aria-hidden="true" />
+          {isStandaloneGallery
+            ? "마음에 드는 샘플을 고르면 광고 생성 요청에 스타일 힌트로 함께 전달돼요."
+            : isGenerationComplete
+            ? "완성된 광고와 비슷한 톤의 레퍼런스를 더 둘러볼 수 있어요."
+            : "광고가 완성되면 알려드릴게요. 기다리는 동안 다른 스타일을 둘러볼 수 있어요."}
+        </p>
+
         {isLoading ? (
           <section className={styles.skeletonGrid} aria-label="레퍼런스 목록 불러오는 중">
             {Array.from({ length: 4 }).map((_, index) => (
@@ -209,14 +204,14 @@ export function ReferenceBrowseStep({
                   creative={creative}
                   key={template.templateId}
                   showPlaceholderArt={false}
-                  openLabel={`${template.title} 스타일로 시작`}
-                  openText="이 스타일로 시작"
+                  openOnImage
+                  openLabel={`${template.title} 상세 보기`}
                   onOpen={() => {
-                    if (onUseTemplate) {
-                      onUseTemplate(template);
+                    if (onOpenCreative) {
+                      onOpenCreative(template.templateId);
                       return;
                     }
-                    onOpenCreative?.(template.templateId);
+                    onUseTemplate?.(template);
                   }}
                   onSave={() => onSaveCreative?.(template.title)}
                 />

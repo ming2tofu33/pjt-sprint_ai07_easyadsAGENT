@@ -53,6 +53,7 @@ const chatAnswerSchema = z.object({
 const supportedPhotoMimeTypes = ["image/png", "image/jpeg", "image/webp"];
 const BFF_SRC_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_UPLOAD_DIR = path.resolve(BFF_SRC_DIR, "..", "..", "..", "data", "uploads");
+export const DEFAULT_BODY_LIMIT_BYTES = 80 * 1024 * 1024;
 
 const photoUploadSchema = z.object({
   filename: z.string().min(1),
@@ -250,6 +251,11 @@ function publicUploadPath(fileName) {
   return `data/uploads/${fileName}`;
 }
 
+function resolveBodyLimitBytes(value) {
+  const limit = Number(value);
+  return Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_BODY_LIMIT_BYTES;
+}
+
 function compactObject(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== null));
 }
@@ -271,7 +277,10 @@ function toArchiveItemPayload(data) {
 }
 
 export function buildApp(options = {}) {
-  const app = Fastify({ logger: options.logger ?? false });
+  const app = Fastify({
+    logger: options.logger ?? false,
+    bodyLimit: resolveBodyLimitBytes(options.bodyLimit ?? process.env.BFF_BODY_LIMIT_BYTES)
+  });
   const orchestratorBaseUrl = options.orchestratorBaseUrl ?? process.env.ORCHESTRATOR_BASE_URL ?? "http://127.0.0.1:8000";
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const uploadDir = options.uploadDir ?? process.env.BFF_UPLOAD_DIR ?? DEFAULT_UPLOAD_DIR;

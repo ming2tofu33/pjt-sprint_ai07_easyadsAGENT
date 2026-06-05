@@ -351,6 +351,9 @@ function normalizeApiErrorMessage(message: string): string {
   if (message.includes("input image not found")) {
     return "업로드한 사진 파일을 생성 서버에서 찾지 못했어요. BFF_UPLOAD_DIR와 orchestrator 실행 위치를 확인해주세요.";
   }
+  if (message.includes("Request body is too large") || message.includes("Payload Too Large")) {
+    return "사진 용량이 너무 커요. 더 작은 사진으로 다시 시도해주세요.";
+  }
   return message;
 }
 

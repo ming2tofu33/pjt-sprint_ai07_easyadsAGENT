@@ -622,6 +622,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
+          onOpenNotifications={() => router.push(buildNotificationHref())}
           onShowProgress={() => navigateTo("studio")}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={showArchiveStoragePendingToast}
@@ -711,6 +712,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
+          onOpenNotifications={() => router.push(buildNotificationHref())}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={showArchiveStoragePendingToast}
           onUseTemplate={handleUseReferenceTemplate}
@@ -746,6 +748,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenStudio={() => navigateTo("studio")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
+          onOpenNotifications={() => router.push(buildNotificationHref())}
           onOpenCreative={(creativeId) => router.push(buildReferenceStyleHref(creativeId))}
           onSaveCreative={showArchiveStoragePendingToast}
           onUseTemplate={handleUseReferenceTemplate}
