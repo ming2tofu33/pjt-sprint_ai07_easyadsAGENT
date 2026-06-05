@@ -3,7 +3,6 @@
 import {
   ArrowRight,
   Briefcase,
-  CheckCircle2,
   Home,
   ImagePlus,
   MessageCircle,
@@ -32,6 +31,7 @@ import {
   type BrandKitInput
 } from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -225,7 +225,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
         <>
           <StepHeader title="브랜드 키트" canGoBack onBack={goBack} onHome={goHome} />
           <section className={styles.brandCompleteHero}>
-            <Store size={42} aria-hidden="true" />
+            <MascotImage role="brandSettings" decorative className={styles.brandHeroMascot} />
             <h1>브랜드 키트가 아직 저장되지 않았어요</h1>
             <p>가게 정보를 입력하고 저장하면 홈과 마이페이지에 바로 반영됩니다.</p>
           </section>
@@ -243,7 +243,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
       <>
         <StepHeader title="브랜드 키트" canGoBack onBack={goBack} onHome={goHome} />
         <section className={styles.brandCompleteHero}>
-          <CheckCircle2 size={42} aria-hidden="true" />
+          <MascotImage role="brandShield" decorative className={styles.brandHeroMascot} />
           <h1>브랜드 키트가 저장됐어요</h1>
           <p>현재는 이 브라우저 안에서만 확인되는 임시 브랜드 키트예요.</p>
         </section>
@@ -296,9 +296,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
           <h1>우리 가게 정보를 저장해두면,</h1>
           <p>지금은 샘플 입력 화면으로 먼저 흐름을 확인할 수 있어요.</p>
         </div>
-        <span aria-hidden="true">
-          <Store size={42} />
-        </span>
+        <MascotImage role="brandShield" decorative className={styles.brandStartMascot} />
       </section>
 
       <section className={styles.brandInfoCard}>
@@ -324,7 +322,7 @@ export function BrandKitFlowStep({ step }: BrandKitFlowStepProps) {
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("reference"))}>
           <Search size={18} aria-hidden="true" />
-          레퍼런스
+          찾기
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("studio"))}>
           <Sparkles size={18} aria-hidden="true" />

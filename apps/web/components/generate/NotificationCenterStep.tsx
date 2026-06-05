@@ -20,6 +20,7 @@ import { buildBrandKitHref } from "@/lib/brand-kit-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { mockNotifications, type MockNotification, type MockNotificationType } from "@/lib/mock-dashboard-data";
 import { buildNotificationHref } from "@/lib/notification-navigation";
+import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
 
 const filters = ["전체", "생성 완료", "생성 중", "실패", "브랜드"];
@@ -148,7 +149,7 @@ export function NotificationCenterStep() {
             </section>
           ) : (
             <section className={styles.emptyResultPanel} aria-label="필터 결과 없음">
-              <Bell size={24} aria-hidden="true" />
+              <MascotImage role="notificationLetter" decorative className={styles.emptyMascot} />
               <strong>조건에 맞는 알림이 없어요</strong>
               <p>다른 알림 종류를 선택해보세요.</p>
             </section>
@@ -156,7 +157,7 @@ export function NotificationCenterStep() {
         </>
       ) : (
         <section className={styles.emptyResultPanel} aria-label="실제 알림 없음">
-          <Bell size={24} aria-hidden="true" />
+          <MascotImage role="notificationBell" decorative className={styles.emptyMascot} />
           <strong>아직 연결된 실제 알림이 없어요</strong>
           <p>생성 완료, 실패, 브랜드 키트 이벤트가 연결되면 이곳에 표시됩니다.</p>
           <button className={styles.secondaryButton} type="button" onClick={() => setShowSampleNotifications(true)}>
@@ -174,7 +175,7 @@ export function NotificationCenterStep() {
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("reference"))}>
           <Search size={18} aria-hidden="true" />
-          레퍼런스
+          찾기
         </button>
         <button type="button" onClick={() => router.push(buildDashboardHref("studio"))}>
           <Sparkles size={18} aria-hidden="true" />

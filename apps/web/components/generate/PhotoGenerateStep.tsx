@@ -5,6 +5,7 @@ import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, u
 import type { CopyGenerationMode, CustomCopyFields } from "@/types/marketing";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -140,9 +141,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
           {previewUrl ? (
             <span className={styles.photoPreviewFrame} style={{ backgroundImage: `url(${previewUrl})` }} aria-hidden="true" />
           ) : (
-            <span>
-              <UploadCloud size={24} aria-hidden="true" />
-            </span>
+            <MascotImage role="uploadCloud" decorative className={styles.photoDropMascot} />
           )}
           <h2>{selectedFile ? "사진이 선택됐어요" : "광고에 쓸 사진을 올려주세요"}</h2>
           <p>

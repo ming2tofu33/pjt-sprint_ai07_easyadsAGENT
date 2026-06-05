@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { Check, Instagram, PenLine } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { channelOptions } from "@/lib/chat-flow";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -71,6 +72,7 @@ export function CopyChannelStep({
         </div>
       ) : (
         <section className={styles.emptyResultPanel} aria-label="문구 후보 없음">
+          <MascotImage role="copyEmpty" decorative className={styles.emptyMascot} />
           <strong>문구 후보가 아직 없어요</strong>
           <p>이번 응답에 문구 후보가 없어서 실제 이미지 생성을 진행하지 않습니다. 요청을 다시 보내주세요.</p>
         </section>
