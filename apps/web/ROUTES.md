@@ -19,11 +19,11 @@
 | Route | Screen | Notes |
 | --- | --- | --- |
 | `/studio` | 스튜디오 진입 | 제작 방식 선택 |
-| `/reference` | 레퍼런스 갤러리 | 스타일 기반 제작 진입 |
-| `/reference/empty` | 레퍼런스 빈 상태 | 예외 상태 UI |
+| `/reference` | 샘플 갤러리 | 스타일 기반 제작 진입 |
+| `/reference/empty` | 샘플 빈 상태 | 예외 상태 UI |
 | `/ads` | 보관함 | 저장된 광고 시안 목록 |
 | `/ads/empty` | 보관함 빈 상태 | 예외 상태 UI |
-| `/brand` | 브랜드 홈 | 브랜드 키트 진입 |
+| `/brand` | 브랜드 홈 | 브랜드 파일 진입 |
 | `/my` | 마이페이지 | 계정/사용량 진입 |
 | `/settings` | 앱 설정 | 알림/데이터/계정 설정 |
 | `/notifications` | 알림 센터 | 알림 목록 |
@@ -42,7 +42,7 @@
 
 ## Reference Style Flow
 
-동적 라우트의 mock id는 `lib/mock-dashboard-data.ts`에 정의된 레퍼런스 id를 사용합니다.
+동적 라우트의 mock id는 `lib/mock-dashboard-data.ts`에 정의된 샘플 id를 사용합니다.
 
 | Route | Screen | Example |
 | --- | --- | --- |
@@ -87,10 +87,10 @@ result-8
 
 | Route | Screen | Notes |
 | --- | --- | --- |
-| `/brand/kit` | 브랜드 키트 생성/수정 시작 | 브랜드 핵심 정보 요약 |
+| `/brand/kit` | 브랜드 파일 생성/수정 시작 | 브랜드 핵심 정보 요약 |
 | `/brand/kit/info` | 기본 정보 입력 | 업종/대상/혜택 |
 | `/brand/kit/tone` | 톤앤매너 설정 | 색감/말투/금지어 |
-| `/brand/kit/complete` | 브랜드 키트 완료 | 홈/스튜디오 복귀 |
+| `/brand/kit/complete` | 브랜드 파일 완료 | 홈/스튜디오 복귀 |
 
 ## Account And Notifications
 

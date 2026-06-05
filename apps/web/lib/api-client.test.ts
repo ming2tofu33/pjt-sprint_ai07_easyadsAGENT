@@ -236,7 +236,7 @@ describe("api-client photo generation", () => {
           copy: "여름엔 수박주스",
           tone: "브랜드에 맞춘 분위기",
           channel: "인스타 피드 (1:1)",
-          imageDirection: "선택한 레퍼런스 템플릿을 반영한 여름 음료 광고",
+          imageDirection: "선택한 샘플 템플릿을 반영한 여름 음료 광고",
           finalImagePath: "data/outputs/job_reference_template/final_composite.png"
         },
         copyGenerationMode: "auto_pilot"
@@ -279,7 +279,7 @@ describe("api-client photo generation", () => {
           {
             template_id: "temp_watermelon_juice_feed",
             title: "수박주스 블루 여름 피드",
-            description: "파란 배경과 큼직한 음료 중심의 여름 음료 레퍼런스",
+            description: "파란 배경과 큼직한 음료 중심의 여름 음료 샘플",
             category: "cafe",
             tags: ["수박", "여름"],
             business_types: ["cafe"],
@@ -395,7 +395,7 @@ describe("api-client backend contract routes", () => {
   it("fetches reference catalog endpoints through the BFF", async () => {
     const rawTemplate = {
       template_id: "template_1",
-      title: "레퍼런스 템플릿",
+      title: "샘플 템플릿",
       category: "cafe",
       tags: ["카페"],
       business_types: ["cafe"],
