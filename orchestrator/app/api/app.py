@@ -13,6 +13,7 @@ from orchestrator.app.api.routers.archive import router as archive_router
 from orchestrator.app.api.routers.brand_kits import router as brand_kits_router
 from orchestrator.app.api.routers.chat_threads import router as chat_threads_router
 from orchestrator.app.api.routers.generation_jobs import router as generation_jobs_router
+from orchestrator.app.api.routers.generation_outputs import router as generation_outputs_router
 from orchestrator.app.api.routers.references import router as references_router
 from orchestrator.app.api.schemas.common import ErrorResponse
 
@@ -50,6 +51,11 @@ def create_app() -> FastAPI:
         prefix="/api/v1",
         tags=["chat-threads"],
     )
+    app.include_router(
+        generation_outputs_router,
+        prefix="/api/v1",
+        tags=["generation-outputs"],
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -75,6 +81,13 @@ def create_app() -> FastAPI:
             error = ErrorResponse(
                 error_code="invalid_archive_request",
                 message="Invalid archive request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.startswith("/api/v1/generation-outputs"):
+            error = ErrorResponse(
+                error_code="invalid_generation_output_request",
+                message="Invalid generation output request.",
                 detail=str(exc),
             )
             return JSONResponse(status_code=400, content=error.model_dump(mode="json"))

@@ -9,14 +9,19 @@ from orchestrator.app.api.schemas.archive import (
     ArchiveItemCreateRequest,
     ArchiveListResponse,
     ArchiveMutationResponse,
+    ArchiveItemResponse,
 )
 from orchestrator.app.api.schemas.common import EmptyState, Pagination
 from orchestrator.app.archive.service import (
     ArchiveItemNotFound,
     ArchivePersistenceUnavailable,
     ArchiveWorkspaceRequired,
+    ArchiveWorkspaceForbidden,
+    ArchiveGenerationOutputNotReady,
+    ArchiveInvalidGeneratedSource,
     create_archive_item,
     delete_archive_item,
+    get_archive_item,
     list_archive_items,
 )
 
@@ -41,6 +46,15 @@ def _archive_workspace_required(error: Exception) -> None:
     )
 
 
+def _archive_workspace_forbidden(error: Exception) -> None:
+    raise_api_error(
+        status_code=403,
+        error_code="archive_workspace_forbidden",
+        message="Archive workspace access denied.",
+        detail=str(error),
+    )
+
+
 @router.post("/archive/items", response_model=ArchiveMutationResponse, status_code=status.HTTP_201_CREATED)
 def create_archive_item_route(request: ArchiveItemCreateRequest) -> ArchiveMutationResponse:
     try:
@@ -49,6 +63,22 @@ def create_archive_item_route(request: ArchiveItemCreateRequest) -> ArchiveMutat
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:
         _archive_workspace_required(exc)
+    except ArchiveWorkspaceForbidden as exc:
+        _archive_workspace_forbidden(exc)
+    except ArchiveGenerationOutputNotReady as exc:
+        raise_api_error(
+            status_code=409,
+            error_code="generation_output_not_ready",
+            message="Generation output is not ready.",
+            detail=str(exc),
+        )
+    except ArchiveInvalidGeneratedSource as exc:
+        raise_api_error(
+            status_code=400,
+            error_code="invalid_generated_source",
+            message="Invalid generated source.",
+            detail=str(exc),
+        )
     return ArchiveMutationResponse(item=item)
 
 
@@ -65,6 +95,8 @@ def list_archive_items_route(
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:
         _archive_workspace_required(exc)
+    except ArchiveWorkspaceForbidden as exc:
+        _archive_workspace_forbidden(exc)
     empty_state = None
     if not items:
         empty_state = EmptyState(
@@ -79,6 +111,25 @@ def list_archive_items_route(
     )
 
 
+@router.get("/archive/items/{archive_item_id}", response_model=ArchiveItemResponse)
+def get_archive_item_route(archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveItemResponse:
+    try:
+        return get_archive_item(archive_item_id=archive_item_id, workspace_id=workspace_id, user_id=user_id)
+    except ArchivePersistenceUnavailable as exc:
+        _archive_unavailable(exc)
+    except ArchiveWorkspaceRequired as exc:
+        _archive_workspace_required(exc)
+    except ArchiveWorkspaceForbidden as exc:
+        _archive_workspace_forbidden(exc)
+    except ArchiveItemNotFound:
+        raise_api_error(
+            status_code=404,
+            error_code="archive_item_not_found",
+            message="Archive item was not found.",
+            detail=f"archive_item_id={archive_item_id}",
+        )
+
+
 @router.delete("/archive/items/{archive_item_id}", response_model=ArchiveMutationResponse)
 def delete_archive_item_route(archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveMutationResponse:
     try:
@@ -87,6 +138,8 @@ def delete_archive_item_route(archive_item_id: str, workspace_id: str | None = N
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:
         _archive_workspace_required(exc)
+    except ArchiveWorkspaceForbidden as exc:
+        _archive_workspace_forbidden(exc)
     except ArchiveItemNotFound:
         raise_api_error(
             status_code=404,
