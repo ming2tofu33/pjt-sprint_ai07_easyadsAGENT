@@ -35,9 +35,10 @@ type ChatStartStepProps = {
   ) => void;
   onBack: () => void;
   onGoHome: () => void;
+  onHistory?: () => void;
 };
 
-export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps) {
+export function ChatStartStep({ onSubmit, onBack, onGoHome, onHistory }: ChatStartStepProps) {
   const referenceFileInputRef = useRef<HTMLInputElement | null>(null);
   const [referenceTemplateTitle] = useState(() => readGenerationRequestContext()?.selectedReferenceTemplateTitle ?? "");
   const [value, setValue] = useState(() => {
@@ -90,7 +91,7 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome }: ChatStartStepProps
 
   return (
     <>
-      <StepHeader title="대화로 찰떡 이미지 만들기" canGoBack backLabel="이전 화면" onBack={onBack} onHome={onGoHome} />
+      <StepHeader title="대화로 찰떡 이미지 만들기" canGoBack backLabel="이전 화면" onBack={onBack} onHome={onHistory ? undefined : onGoHome} onHistory={onHistory} />
       <section className={styles.hero}>
         <MascotImage role="chatWave" decorative priority className={styles.chatHeroMascot} />
         <h2 className={styles.heroTitle}>원하는 광고를 편하게 적어보세요.</h2>

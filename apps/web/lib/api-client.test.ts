@@ -466,7 +466,7 @@ describe("api-client backend contract routes", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const created = await createGenerationJob({ user_input: "Create an ad" });
+    const created = await createGenerationJob({ userInput: "Create an ad" });
     const fetched = await getGenerationJob("job_1");
 
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/generation-jobs");

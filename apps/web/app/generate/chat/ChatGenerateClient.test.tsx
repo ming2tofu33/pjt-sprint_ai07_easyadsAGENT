@@ -260,11 +260,156 @@ vi.mock("@/lib/api-client", () => ({
 	      recommendedCopyId: "copy_photo_1"
 	    };
 	  }),
-	  createGenerationJob: vi.fn(async (payload: Record<string, unknown>) => ({
+	  createGenerationJob: vi.fn(async (payload: Record<string, unknown>) => {
+    const metadata = typeof payload.metadata === "object" && payload.metadata ? (payload.metadata as Record<string, unknown>) : {};
+    const threadId = typeof payload.threadId === "string" ? payload.threadId : "thread_1";
+    const userInput = String(payload.userInput ?? "");
+    const copyGenerationMode = typeof payload.copyGenerationMode === "string" ? payload.copyGenerationMode : "suggest_candidates";
+    const context = {
+      businessType: "카페",
+      itemOrService: userInput.includes("후보 없는 광고") ? "대표 메뉴" : "딸기라떼",
+      promotionGoal: userInput.includes("광고 만들어줘") && !userInput.includes("신메뉴") ? "광고 홍보" : "신메뉴 출시"
+    };
+
+    if (metadata.source !== "web_generation_flow") {
+      const briefFor = (input: {
+        jobId: string;
+        copy: string;
+        finalImagePath: string;
+        mode: string;
+        purpose?: string;
+      }) => ({
+        success: true,
+        job: {
+          job_id: input.jobId,
+          thread_id: threadId,
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed" },
+          result_payload: {
+            context: { ...context, promotionGoal: input.purpose ?? context.promotionGoal },
+            brief: {
+              purpose: input.purpose ?? context.promotionGoal,
+              item: "딸기라떼",
+              copy: input.copy,
+              tone: "브랜드에 맞춘 분위기",
+              channel: "인스타 피드 (1:1)",
+              imageDirection: "딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+              finalImagePath: input.finalImagePath
+            },
+            copyGenerationMode: input.mode
+          },
+          metadata: {},
+          created_at: "2026-06-05T00:00:00.000Z",
+          updated_at: "2026-06-05T00:00:00.000Z"
+        }
+      });
+
+      if (copyGenerationMode === "no_copy") {
+        return briefFor({
+          jobId: "job_no_copy",
+          copy: "문구 없이 이미지로만",
+          finalImagePath: "data/outputs/job_no_copy/final_composite.png",
+          mode: "no_copy",
+          purpose: "광고 홍보"
+        });
+      }
+
+      if (copyGenerationMode === "auto_pilot") {
+        return briefFor({
+          jobId: "job_auto_pilot",
+          copy: "AI가 고른 딸기라떼 한 잔",
+          finalImagePath: "data/outputs/job_auto_pilot/final_composite.png",
+          mode: "auto_pilot"
+        });
+      }
+
+      if (copyGenerationMode === "custom_input") {
+        return briefFor({
+          jobId: "job_custom_copy",
+          copy: typeof payload.userCustomHeadline === "string" ? payload.userCustomHeadline : "직접 입력한 문구",
+          finalImagePath: "data/outputs/job_custom_copy/final_composite.png",
+          mode: "custom_input"
+        });
+      }
+
+      if (userInput.startsWith("광고 만들어줘")) {
+        return {
+          success: true,
+          job: {
+            job_id: "job_question",
+            thread_id: "thread_question",
+            status: "waiting_user_input",
+            progress: { progress_percent: 35, current_stage: "waiting_user_input" },
+            result_payload: {
+              context: {},
+              question: {
+                field: "business_type",
+                question: "어떤 업종의 광고인가요?",
+                options: [
+                  { id: 1, label: "음식점/식당", value: "restaurant" },
+                  { id: 2, label: "카페/디저트", value: "cafe" },
+                  { id: 9, label: "직접 입력", value: "custom" }
+                ]
+              },
+              missingFields: ["business_type"]
+            },
+            metadata: {},
+            created_at: "2026-06-05T00:00:00.000Z",
+            updated_at: "2026-06-05T00:00:00.000Z"
+          }
+        };
+      }
+
+      if (userInput.includes("후보 없는 광고")) {
+        return {
+          success: true,
+          job: {
+            job_id: "job_empty",
+            thread_id: "thread_empty",
+            status: "done",
+            progress: { progress_percent: 100, current_stage: "completed" },
+            result_payload: {
+              type: "copy_candidates",
+              context,
+              copyCandidates: [],
+              recommendedCopyId: null
+            },
+            metadata: {},
+            created_at: "2026-06-05T00:00:00.000Z",
+            updated_at: "2026-06-05T00:00:00.000Z"
+          }
+        };
+      }
+
+      return {
+        success: true,
+        job: {
+          job_id: "job_1",
+          thread_id: threadId,
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed" },
+          result_payload: {
+            type: "copy_candidates",
+            context,
+            copyCandidates: [
+              { id: "copy_1", headline: "봄을 닮은 한 잔, 딸기라떼 출시" },
+              { id: "copy_2", headline: "오늘만 더 달콤하게, 신메뉴 딸기라떼" }
+            ],
+            recommendedCopyId: "copy_1",
+            copyGenerationMode
+          },
+          metadata: {},
+          created_at: "2026-06-05T00:00:00.000Z",
+          updated_at: "2026-06-05T00:00:00.000Z"
+        }
+      };
+    }
+
+    return {
 	    success: true,
 	    job: {
 	      job_id: "generation_job_1",
-	      thread_id: typeof payload.threadId === "string" ? payload.threadId : "thread_1",
+	      thread_id: threadId,
 	      status: "done",
 	      progress: {
 	        progress_percent: 100,
@@ -277,20 +422,21 @@ vi.mock("@/lib/api-client", () => ({
 	        download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_1%2Ffinal_0.png",
 	        final_image_path: "data/outputs/generation_job_1/final_0.png",
 	        engine:
-	          typeof payload.metadata === "object" && payload.metadata && "requested_engine" in payload.metadata
-	            ? String((payload.metadata as Record<string, unknown>).requested_engine)
+	          "requested_engine" in metadata
+	            ? String(metadata.requested_engine)
 	            : "gpt_image_2"
 	      },
 	      metadata: {
 	        selected_engine_label:
-	          typeof payload.metadata === "object" && payload.metadata && "selected_engine_label" in payload.metadata
-	            ? (payload.metadata as Record<string, unknown>).selected_engine_label
+	          "selected_engine_label" in metadata
+	            ? metadata.selected_engine_label
 	            : "GPT-image-2"
 	      },
 	      created_at: "2026-06-05T00:00:00.000Z",
 	      updated_at: "2026-06-05T00:00:00.000Z"
 	    }
-	  })),
+    };
+	  }),
 	  getGenerationJob: vi.fn(async () => ({
 	    success: true,
 	    job: {
@@ -400,6 +546,11 @@ vi.mock("@/lib/api-client", () => ({
     items: [],
     pagination: { limit: 50, offset: 0, total: 0, hasMore: false }
   })),
+  listChatThreads: vi.fn(async () => ({
+    success: true,
+    threads: [],
+    total: 0
+  })),
   deleteArchiveItem: vi.fn(async (archiveItemId: string) => ({
     item: {
       adId: archiveItemId,
@@ -416,7 +567,8 @@ vi.mock("next/navigation", () => ({
     push: navigationMock.push,
     back: navigationMock.back,
     replace: navigationMock.replace
-  })
+  }),
+  useSearchParams: () => new URLSearchParams()
 }));
 
 async function waitForReferenceTemplatesLoaded() {
@@ -429,6 +581,49 @@ async function flushAsyncEffects() {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+type ApiClientModule = typeof import("@/lib/api-client");
+
+function mockInitialAutoPilotBrief(api: ApiClientModule) {
+  vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
+    success: true,
+    job: {
+      job_id: "job_auto_pilot",
+      thread_id: "thread_1",
+      status: "done",
+      progress: { progress_percent: 100, current_stage: "completed" },
+      result_payload: {
+        context: {
+          businessType: "카페",
+          itemOrService: "딸기라떼",
+          promotionGoal: "신메뉴 출시"
+        },
+        brief: {
+          purpose: "신메뉴 출시",
+          item: "딸기라떼",
+          copy: "AI가 고른 딸기라떼 한 잔",
+          tone: "브랜드에 맞춘 분위기",
+          channel: "인스타 피드 (1:1)",
+          imageDirection: "딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+          finalImagePath: "data/outputs/job_auto_pilot/final_composite.png"
+        },
+        copyGenerationMode: "auto_pilot"
+      },
+      metadata: {},
+      created_at: "2026-06-05T00:00:00.000Z",
+      updated_at: "2026-06-05T00:00:00.000Z"
+    }
+  });
+}
+
+function findFinalGenerationJobPayload(api: ApiClientModule) {
+  return vi.mocked(api.createGenerationJob).mock.calls.find(([payload]) => {
+    const metadata = typeof payload.metadata === "object" && payload.metadata
+      ? (payload.metadata as Record<string, unknown>)
+      : {};
+    return metadata.source === "web_generation_flow";
+  })?.[0];
 }
 
 describe("ChatGenerateClient", () => {
@@ -505,7 +700,7 @@ describe("ChatGenerateClient", () => {
         })
       )
     );
-    expect(vi.mocked(api.createGenerationJob).mock.calls[0][0].userInput).toContain("광고 브리프");
+    expect(findFinalGenerationJobPayload(api)?.userInput).toContain("광고 브리프");
     await waitFor(() => expect(screen.getByText("찰떡 광고 시안이 완성됐어요")).toBeTruthy());
     expect(screen.getByText("GPT-image-2")).toBeTruthy();
     expect(screen.getByText("실제 생성")).toBeTruthy();
@@ -519,7 +714,7 @@ describe("ChatGenerateClient", () => {
 
   it("does not show front-end inferred context while backend analysis is pending", async () => {
     const api = await import("@/lib/api-client");
-    vi.mocked(api.startChatGeneration).mockReturnValueOnce(new Promise(() => undefined));
+    vi.mocked(api.createGenerationJob).mockReturnValueOnce(new Promise(() => undefined) as never);
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
@@ -539,7 +734,7 @@ describe("ChatGenerateClient", () => {
 
   it("skips copy selection when chat generation starts in image-only mode", async () => {
     const api = await import("@/lib/api-client");
-    vi.mocked(api.startChatGeneration).mockClear();
+    vi.mocked(api.createGenerationJob).mockClear();
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
@@ -552,9 +747,11 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() =>
-      expect(api.startChatGeneration).toHaveBeenCalledWith(
-        expect.stringContaining("우리 카페 딸기라떼 이미지만 광고 만들어줘"),
-        { copyGenerationMode: "no_copy" }
+      expect(api.createGenerationJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: expect.stringContaining("우리 카페 딸기라떼 이미지만 광고 만들어줘"),
+          copyGenerationMode: "no_copy"
+        })
       )
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
@@ -564,7 +761,7 @@ describe("ChatGenerateClient", () => {
 
   it("skips copy selection when chat generation starts in auto-pilot mode", async () => {
     const api = await import("@/lib/api-client");
-    vi.mocked(api.startChatGeneration).mockClear();
+    vi.mocked(api.createGenerationJob).mockClear();
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
@@ -577,11 +774,14 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() =>
-      expect(api.startChatGeneration).toHaveBeenCalledWith(expect.stringContaining("우리 카페 딸기라떼 신메뉴 광고 만들어줘"), {
-        copyGenerationMode: "auto_pilot",
-        userCustomHeadline: undefined,
-        userCustomSubcopy: undefined
-      })
+      expect(api.createGenerationJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: expect.stringContaining("우리 카페 딸기라떼 신메뉴 광고 만들어줘"),
+          copyGenerationMode: "auto_pilot",
+          userCustomHeadline: undefined,
+          userCustomSubcopy: undefined
+        })
+      )
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("AI가 고른 딸기라떼 한 잔")).toBeTruthy();
@@ -590,7 +790,6 @@ describe("ChatGenerateClient", () => {
 
   it("creates the final generation job with the selected FLUX engine", async () => {
     const api = await import("@/lib/api-client");
-    vi.mocked(api.startChatGeneration).mockClear();
     vi.mocked(api.createGenerationJob).mockClear();
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
@@ -626,7 +825,6 @@ describe("ChatGenerateClient", () => {
   it("passes uploaded referenceImagePath to chat start and the final generation job", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.uploadReferenceAsset).mockClear();
-    vi.mocked(api.startChatGeneration).mockClear();
     vi.mocked(api.createGenerationJob).mockClear();
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
@@ -642,9 +840,9 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(api.uploadReferenceAsset).toHaveBeenCalledWith(file));
     await waitFor(() =>
-      expect(api.startChatGeneration).toHaveBeenCalledWith(
-        expect.stringContaining("이 분위기로 딸기라떼 광고 만들어줘"),
+      expect(api.createGenerationJob).toHaveBeenCalledWith(
         expect.objectContaining({
+          userInput: expect.stringContaining("이 분위기로 딸기라떼 광고 만들어줘"),
           referenceImagePath: "data/uploads/reference_1.png"
         })
       )
@@ -668,9 +866,9 @@ describe("ChatGenerateClient", () => {
 
   it("answers a pending LangGraph question during final generation", async () => {
     const api = await import("@/lib/api-client");
-    vi.mocked(api.startChatGeneration).mockClear();
     vi.mocked(api.createGenerationJob).mockClear();
     vi.mocked(api.answerGenerationJob).mockClear();
+    mockInitialAutoPilotBrief(api);
     vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
       success: true,
       job: {
@@ -754,6 +952,7 @@ describe("ChatGenerateClient", () => {
     vi.mocked(api.startChatGeneration).mockClear();
     vi.mocked(api.createGenerationJob).mockClear();
     vi.mocked(api.answerGenerationJob).mockClear();
+    mockInitialAutoPilotBrief(api);
     vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
       success: true,
       job: {
@@ -830,6 +1029,7 @@ describe("ChatGenerateClient", () => {
     vi.mocked(api.startChatGeneration).mockClear();
     vi.mocked(api.createGenerationJob).mockClear();
     vi.mocked(api.answerGenerationJob).mockClear();
+    mockInitialAutoPilotBrief(api);
     vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
       success: true,
       job: {
@@ -920,6 +1120,7 @@ describe("ChatGenerateClient", () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.startChatGeneration).mockClear();
     vi.mocked(api.createGenerationJob).mockClear();
+    mockInitialAutoPilotBrief(api);
     vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
       success: true,
       job: {
@@ -994,11 +1195,14 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() =>
-      expect(api.startChatGeneration).toHaveBeenCalledWith(expect.stringContaining("우리 카페 딸기라떼 신메뉴 광고 만들어줘"), {
-        copyGenerationMode: "custom_input",
-        userCustomHeadline: "오늘만 딸기라떼 반값",
-        userCustomSubcopy: "오후 2시부터 5시까지"
-      })
+      expect(api.createGenerationJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: expect.stringContaining("우리 카페 딸기라떼 신메뉴 광고 만들어줘"),
+          copyGenerationMode: "custom_input",
+          userCustomHeadline: "오늘만 딸기라떼 반값",
+          userCustomSubcopy: "오후 2시부터 5시까지"
+        })
+      )
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("오늘만 딸기라떼 반값")).toBeTruthy();
@@ -1133,7 +1337,7 @@ describe("ChatGenerateClient", () => {
 
   it("opens a selected reference template detail from the gallery", async () => {
     const api = await import("@/lib/api-client");
-    vi.mocked(api.startChatGeneration).mockClear();
+    vi.mocked(api.createGenerationJob).mockClear();
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
@@ -1145,7 +1349,7 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByRole("button", { name: "수박주스 블루 여름 피드 상세 보기" }));
 
     expect(navigationMock.push).toHaveBeenCalledWith("/reference/temp_watermelon_juice_feed");
-    expect(api.startChatGeneration).not.toHaveBeenCalled();
+    expect(api.createGenerationJob).not.toHaveBeenCalled();
   });
 
   it("opens the studio entry and dashboard tabs from the home dashboard", async () => {
@@ -1235,7 +1439,7 @@ describe("ChatGenerateClient", () => {
 
   it("sends saved brand kit context with chat generation requests", async () => {
     const api = await import("@/lib/api-client");
-    vi.mocked(api.startChatGeneration).mockClear();
+    vi.mocked(api.createGenerationJob).mockClear();
     window.sessionStorage.setItem(
       BRAND_KIT_STORAGE_KEY,
       JSON.stringify({
@@ -1259,10 +1463,11 @@ describe("ChatGenerateClient", () => {
     fireEvent.change(screen.getByLabelText("광고 요청 입력"), { target: { value: "광고 만들어줘" } });
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
-    await waitFor(() => expect(api.startChatGeneration).toHaveBeenCalled());
-    expect(vi.mocked(api.startChatGeneration).mock.calls[0][0]).toContain("광고 만들어줘");
-    expect(vi.mocked(api.startChatGeneration).mock.calls[0][0]).toContain("가게 이름: 연남 테스트 카페");
-    expect(vi.mocked(api.startChatGeneration).mock.calls[0][0]).toContain("브랜드 톤: 따뜻한");
+    await waitFor(() => expect(api.createGenerationJob).toHaveBeenCalled());
+    const request = vi.mocked(api.createGenerationJob).mock.calls[0][0];
+    expect(request.userInput).toContain("광고 만들어줘");
+    expect(request.userInput).toContain("가게 이름: 연남 테스트 카페");
+    expect(request.userInput).toContain("브랜드 톤: 따뜻한");
   });
 
   it("renders dashboard surfaces from route props", async () => {
@@ -1712,8 +1917,8 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByRole("button", { name: "이전 화면" }));
     expect(navigationMock.back).toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "홈으로" }));
-    expect(navigationMock.push).toHaveBeenCalledWith("/");
+    fireEvent.click(screen.getByRole("button", { name: "이전 대화" }));
+    expect(await screen.findByRole("heading", { name: "이전 대화 기록" })).toBeTruthy();
   });
 
   it("shows realistic creative labels in reference cards", async () => {

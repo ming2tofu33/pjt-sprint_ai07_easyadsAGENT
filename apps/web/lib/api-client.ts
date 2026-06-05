@@ -124,7 +124,26 @@ export type ReferenceImageUploadResponse = {
 
 export type ReferenceQueryParams = Record<string, string | number | boolean | string[] | undefined | null>;
 export type BrandKitPayload = Record<string, unknown>;
-export type GenerationJobPayload = Record<string, unknown>;
+export interface GenerationJobCreateInput {
+  userInput: string;
+  threadId?: string | null;
+  brandKitId?: string | null;
+  entryMode?: string;
+  selectedReferenceTemplateId?: string | null;
+  sourceImagePath?: string | null;
+  referenceImagePath?: string | null;
+  copyGenerationMode?: string | null;
+  selectedCopyId?: string | null;
+  selectedChannelId?: string | null;
+  selectedTone?: string | null;
+  customDirection?: string | null;
+  userCustomHeadline?: string | null;
+  userCustomSubcopy?: string | null;
+  userPlan?: string;
+  adFormat?: string | null;
+  runMode?: string;
+  metadata?: Record<string, unknown>;
+}
 
 export type GenerationJobAnswerPayload = {
   field?: string;
@@ -609,8 +628,9 @@ export function updateBrandKit(brandKitId: string, payload: BrandKitPayload): Pr
   return patchJson(`/api/brand-kits/${encodeURIComponent(brandKitId)}`, payload);
 }
 
-export function createGenerationJob(payload: GenerationJobPayload): Promise<GenerationJobResponse> {
-  return postJson<GenerationJobResponse>("/api/generation-jobs", payload);
+export async function createGenerationJob(payload: GenerationJobCreateInput): Promise<GenerationJobResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return postJson<GenerationJobResponse>("/api/generation-jobs", payload, authHeaders);
 }
 
 export function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
@@ -681,4 +701,101 @@ function mapArchiveItem(item: RawArchiveItem): ArchiveItem {
     savedAt: item.saved_at,
     metadata: item.metadata ?? {}
   };
+}
+
+// --- Chat Thread API ---
+
+export interface ChatThreadResponse {
+  thread_id: string;
+  title?: string | null;
+  status: string;
+  brand_kit_id?: string | null;
+  project_id?: string | null;
+  final_brief: Record<string, unknown>;
+  active_job_id?: string | null;
+  has_final_output: boolean;
+  last_message_at: string;
+  archived_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessageResponse {
+  message_id: string;
+  thread_id: string;
+  sequence_no: number;
+  role: "user" | "assistant" | "system";
+  content?: string | null;
+  payload: Record<string, unknown>;
+  created_by?: string | null;
+  job_id?: string | null;
+  event_type?: string | null;
+  created_at: string;
+}
+
+export interface ChatThreadListResponse {
+  success: true;
+  threads: ChatThreadResponse[];
+  total: number;
+}
+
+export interface ChatThreadGetResponse {
+  success: true;
+  thread: ChatThreadResponse;
+}
+
+export interface ChatMessageListResponse {
+  success: true;
+  messages: ChatMessageResponse[];
+  total: number;
+}
+
+export interface ChatStateSnapshotResponse {
+  snapshot_id: string;
+  thread_id: string;
+  job_id?: string | null;
+  source_message_id?: string | null;
+  parent_snapshot_id?: string | null;
+  snapshot_version: number;
+  schema_version: number;
+  snapshot_kind: string;
+  state_payload: Record<string, unknown>;
+  changed_fields: string[];
+  selected_reference_template_id?: string | null;
+  reference_template_snapshot: Record<string, unknown>;
+  brand_kit_snapshot: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ChatThreadStateGetResponse {
+  success: true;
+  snapshot: ChatStateSnapshotResponse | null;
+  meta?: Record<string, unknown>;
+}
+
+export async function listChatThreads(params: { limit?: number; offset?: number } = {}): Promise<ChatThreadListResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return getJson<ChatThreadListResponse>("/api/chat-threads", {
+    limit: params.limit,
+    offset: params.offset
+  }, authHeaders);
+}
+
+export async function getChatThread(threadId: string): Promise<ChatThreadGetResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return getJson<ChatThreadGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}`, undefined, authHeaders);
+}
+
+export async function getChatThreadMessages(threadId: string, params: { limit?: number; offset?: number } = {}): Promise<ChatMessageListResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return getJson<ChatMessageListResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/messages`, {
+    limit: params.limit,
+    offset: params.offset
+  }, authHeaders);
+}
+
+export async function getChatThreadState(threadId: string): Promise<ChatThreadStateGetResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return getJson<ChatThreadStateGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/state`, undefined, authHeaders);
 }

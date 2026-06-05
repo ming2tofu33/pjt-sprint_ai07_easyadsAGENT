@@ -87,6 +87,12 @@ const photoStartSchema = z.object({
 const generationJobSchema = z.object({
   user_input: z.string().optional(),
   userInput: z.string().optional(),
+  thread_id: z.string().trim().min(1).optional(),
+  threadId: z.string().trim().min(1).optional(),
+  user_id: z.string().optional(),
+  userId: z.string().optional(),
+  run_mode: z.string().optional(),
+  runMode: z.string().optional(),
   selected_reference_template_id: z.string().optional(),
   selectedReferenceTemplateId: z.string().optional(),
   selected_copy_id: z.string().optional(),
@@ -101,6 +107,8 @@ const generationJobSchema = z.object({
   userCustomHeadline: z.string().optional(),
   user_custom_subcopy: z.string().optional(),
   userCustomSubcopy: z.string().optional(),
+  source_image_path: z.string().optional(),
+  sourceImagePath: z.string().optional(),
   reference_image_path: z.string().optional(),
   referenceImagePath: z.string().optional()
 }).passthrough();
@@ -146,6 +154,7 @@ async function proxyJson({ fetchImpl, url, body }) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
+    error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
     throw error;
   }
   return payload;
@@ -161,6 +170,7 @@ async function proxyDeleteJson({ fetchImpl, url }) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
+    error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
     throw error;
   }
   return payload;
@@ -176,6 +186,7 @@ async function proxyGetJson({ fetchImpl, url }) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
+    error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
     throw error;
   }
   return payload;
@@ -206,11 +217,20 @@ function createHttpError(statusCode, message) {
 }
 
 function appendQueryParam(url, key, value) {
-  if (!value) {
-    return url;
+  if (!url.includes("?")) {
+    return value ? `${url}?${encodeURIComponent(key)}=${encodeURIComponent(value)}` : url;
   }
-  const separator = url.includes("?") ? "&" : "?";
-  return `${url}${separator}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+  const [base, queryStr] = url.split("?", 2);
+  const params = new URLSearchParams(queryStr);
+  if (key === "userId" || key === "user_id") {
+    params.delete("userId");
+    params.delete("user_id");
+  }
+  if (value) {
+    params.set(key, value);
+  }
+  const str = params.toString();
+  return str ? `${base}?${str}` : base;
 }
 
 function normalizeBearerHeader(value) {
@@ -353,6 +373,42 @@ export function buildApp(options = {}) {
     })
   );
 
+  app.get("/api/chat-threads", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads${queryString}`, "userId", userId)
+    });
+  });
+
+  app.get("/api/chat-threads/:threadId", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}${queryString}`, "userId", userId)
+    });
+  });
+
+  app.get("/api/chat-threads/:threadId/messages", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/messages${queryString}`, "userId", userId)
+    });
+  });
+
+  app.get("/api/chat-threads/:threadId/state", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/state${queryString}`, "userId", userId)
+    });
+  });
+
   app.post("/api/generate/chat/start", async (request, reply) => {
     const parsed = chatStartSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -430,27 +486,40 @@ export function buildApp(options = {}) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const {
+      userId: _clientUserId,
+      user_id: _clientUserIdSnake,
+      ...clientPayload
+    } = parsed.data;
+
     const body = {
-      ...parsed.data,
-      selected_reference_template_id: parsed.data.selected_reference_template_id ?? parsed.data.selectedReferenceTemplateId,
-      selected_copy_id: parsed.data.selected_copy_id ?? parsed.data.selectedCopyId,
-      selected_channel_id: parsed.data.selected_channel_id ?? parsed.data.selectedChannelId,
-      selected_tone: parsed.data.selected_tone ?? parsed.data.selectedTone,
-      custom_direction: parsed.data.custom_direction ?? parsed.data.customDirection,
-      user_custom_headline: parsed.data.user_custom_headline ?? parsed.data.userCustomHeadline,
-      user_custom_subcopy: parsed.data.user_custom_subcopy ?? parsed.data.userCustomSubcopy,
-      source_image_path: parsed.data.source_image_path ?? parsed.data.sourceImagePath,
-      reference_image_path: parsed.data.reference_image_path ?? parsed.data.referenceImagePath
+      ...clientPayload,
+      ...(userId ? { userId } : {}),
+      userInput: parsed.data.userInput ?? parsed.data.user_input,
+      threadId: parsed.data.threadId ?? parsed.data.thread_id,
+      selectedReferenceTemplateId: parsed.data.selectedReferenceTemplateId ?? parsed.data.selected_reference_template_id,
+      selectedCopyId: parsed.data.selectedCopyId ?? parsed.data.selected_copy_id,
+      selectedChannelId: parsed.data.selectedChannelId ?? parsed.data.selected_channel_id,
+      selectedTone: parsed.data.selectedTone ?? parsed.data.selected_tone,
+      customDirection: parsed.data.customDirection ?? parsed.data.custom_direction,
+      userCustomHeadline: parsed.data.userCustomHeadline ?? parsed.data.user_custom_headline,
+      userCustomSubcopy: parsed.data.userCustomSubcopy ?? parsed.data.user_custom_subcopy,
+      sourceImagePath: parsed.data.sourceImagePath ?? parsed.data.source_image_path,
+      referenceImagePath: parsed.data.referenceImagePath ?? parsed.data.reference_image_path
     };
-    delete body.selectedReferenceTemplateId;
-    delete body.selectedCopyId;
-    delete body.selectedChannelId;
-    delete body.selectedTone;
-    delete body.customDirection;
-    delete body.userCustomHeadline;
-    delete body.userCustomSubcopy;
-    delete body.sourceImagePath;
-    delete body.referenceImagePath;
+
+    delete body.user_input;
+    delete body.thread_id;
+    delete body.selected_reference_template_id;
+    delete body.selected_copy_id;
+    delete body.selected_channel_id;
+    delete body.selected_tone;
+    delete body.custom_direction;
+    delete body.user_custom_headline;
+    delete body.user_custom_subcopy;
+    delete body.source_image_path;
+    delete body.reference_image_path;
 
     return proxyJson({
       fetchImpl,
@@ -517,7 +586,7 @@ export function buildApp(options = {}) {
 
   app.setErrorHandler((error, _request, reply) => {
     reply.code(error.statusCode || 502).send({
-      error: "upstream_error",
+      error: error.errorCode ?? "upstream_error",
       message: error.message
     });
   });
