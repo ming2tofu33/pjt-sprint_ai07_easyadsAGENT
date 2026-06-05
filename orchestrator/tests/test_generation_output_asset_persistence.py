@@ -66,7 +66,7 @@ def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
             "is_final": True,
         },
     )
-    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "complete_chat_thread_generation", lambda **kwargs: {"id": "thread_uuid", **kwargs})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
 
     done = service.mark_generation_job_done(
@@ -137,7 +137,7 @@ def test_mark_done_without_final_path_still_completes_thread(monkeypatch):
     monkeypatch.setattr(service.generation_job_repo, "update_generation_job_row", lambda job_id, connection=None, **fields: row.update(fields) or row)
     monkeypatch.setattr(service.asset_repo, "create_asset", lambda **kwargs: (_ for _ in ()).throw(AssertionError("asset should not be created")))
     monkeypatch.setattr(service.generation_output_repo, "create_generation_output", lambda **kwargs: (_ for _ in ()).throw(AssertionError("output should not be created")))
-    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "complete_chat_thread_generation", lambda **kwargs: thread_updates.append(kwargs) or {"id": "thread_uuid"})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
 
     done = service.mark_generation_job_done(
@@ -152,6 +152,5 @@ def test_mark_done_without_final_path_still_completes_thread(monkeypatch):
 
     assert done.status == "done"
     assert [event["event_type"] for event in events] == ["done"]
-    assert thread_updates[0][1]["status"] == "completed"
-    assert thread_updates[0][1]["active_job_id"] is None
-    assert thread_updates[0][1]["final_output_id"] is None
+    assert thread_updates[0]["expected_active_job_id"] == "job_uuid"
+    assert thread_updates[0]["final_output_id"] is None

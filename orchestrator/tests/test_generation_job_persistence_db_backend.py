@@ -45,7 +45,7 @@ def test_postgres_create_records_queued_event_and_active_thread(monkeypatch):
 
     monkeypatch.setattr(service.workspace_repo, "ensure_demo_workspace", lambda user_id=None, connection=None: {"id": "workspace_uuid"})
     monkeypatch.setattr(service.chat_thread_repo, "create_chat_thread", lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_db"})
-    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "set_chat_thread_active_job", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
 
     def create_row(**kwargs):
@@ -124,7 +124,7 @@ def test_postgres_mark_failed_updates_row_thread_and_event(monkeypatch):
     monkeypatch.setattr(service.generation_job_repo, "get_generation_job_row", lambda job_id, connection=None: state)
     monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_failed_row", mark_failed)
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"})
-    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: thread_updates.append((args, kwargs)) or {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "fail_chat_thread_generation", lambda **kwargs: thread_updates.append(kwargs) or {"id": "thread_uuid"})
 
     failed = service.mark_generation_job_failed("job_db", {"error_code": "x", "message": "failed"})
 
@@ -132,4 +132,4 @@ def test_postgres_mark_failed_updates_row_thread_and_event(monkeypatch):
     assert failed.error.error_code == "x"
     assert events[0]["event_type"] == "failed"
     assert events[0]["payload"]["error_code"] == "x"
-    assert thread_updates[0][1]["status"] == "failed"
+    assert thread_updates[0]["expected_active_job_id"] == "job_uuid"

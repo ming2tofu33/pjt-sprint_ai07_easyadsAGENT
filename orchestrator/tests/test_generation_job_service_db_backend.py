@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import pytest
 
 from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+from orchestrator.app.chat_threads.errors import ChatThreadHasActiveJobError
 from orchestrator.app.generation_jobs import service
 
 
@@ -47,7 +48,9 @@ def fake_db_transaction():
 
 
 def _patch_noop_side_effects(monkeypatch):
-    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "set_chat_thread_active_job", lambda *args, **kwargs: {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "complete_chat_thread_generation", lambda **kwargs: {"id": "thread_uuid", **kwargs})
+    monkeypatch.setattr(service.chat_thread_repo, "fail_chat_thread_generation", lambda **kwargs: {"id": "thread_uuid", **kwargs})
     monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: {"id": "event_uuid", **kwargs})
 
 
@@ -59,6 +62,20 @@ def test_memory_backend_uses_existing_store(monkeypatch):
 
     assert job.job_id.startswith("job_")
     assert service.get_generation_job(job.job_id) == job
+
+
+def test_memory_backend_does_not_store_orphan_job_when_thread_claim_fails(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "memory")
+    monkeypatch.setattr(
+        service.chat_thread_service,
+        "set_thread_active_job",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ChatThreadHasActiveJobError()),
+    )
+
+    with pytest.raises(ChatThreadHasActiveJobError):
+        service.create_generation_job(GenerationJobCreateRequest(user_input="Create an ad", run_mode="queued_only"))
+
+    assert service._GENERATION_JOBS == {}
 
 
 def test_postgres_backend_create_uses_repository_path(monkeypatch):
@@ -82,7 +99,19 @@ def test_postgres_backend_create_uses_repository_path(monkeypatch):
 
     monkeypatch.setattr(service.generation_job_repo, "create_generation_job_row", fake_create_generation_job_row)
 
-    request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="queued_only", selected_reference_template_id="seed_1")
+    captured_thread = {}
+    monkeypatch.setattr(
+        service.chat_thread_repo,
+        "create_chat_thread",
+        lambda **kwargs: captured_thread.update(kwargs) or {"id": "thread_uuid", "public_thread_id": "thread_db"},
+    )
+
+    request = GenerationJobCreateRequest(
+        user_input="Create an ad",
+        run_mode="queued_only",
+        selected_reference_template_id="seed_1",
+        brand_kit_id="bk_public",
+    )
     job = service.create_generation_job(request)
 
     assert job.job_id.startswith("job_")
@@ -91,6 +120,9 @@ def test_postgres_backend_create_uses_repository_path(monkeypatch):
     assert job.selected_reference_template_id == "seed_1"
     assert captured["workspace_id"] == "workspace_uuid"
     assert captured["thread_id"] == "thread_uuid"
+    assert captured_thread["brand_kit_id"] is None
+    assert job.brand_kit_id == "bk_public"
+    assert job.metadata["brand_kit_id"] == "bk_public"
     assert captured["run_mode"] == "queued_only"
     assert captured["request_payload"]["user_input_preview"] == "Create an ad"
 
