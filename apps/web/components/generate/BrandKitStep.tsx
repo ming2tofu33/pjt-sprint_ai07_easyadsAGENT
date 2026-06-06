@@ -38,12 +38,12 @@ export function BrandKitStep({
   return (
     <>
       <header className={styles.brandKitHeader}>
-        <h1>추천 & 브랜드 키트</h1>
+        <h1>추천 & 브랜드 파일</h1>
       </header>
 
       <section className={styles.recommendSection}>
         <div className={styles.sectionRow}>
-          <h2>오늘의 추천 레퍼런스</h2>
+          <h2>오늘의 추천 샘플</h2>
           <button type="button" onClick={onOpenReference}>더 보기 ›</button>
         </div>
         <div className={styles.recommendGrid}>
@@ -55,7 +55,7 @@ export function BrandKitStep({
 
       <section className={styles.brandProfileCard}>
         <div className={styles.sectionRow}>
-          <h2>브랜드 키트</h2>
+          <h2>브랜드 파일</h2>
           <button type="button" onClick={onEditBrandKit}>수정하기 ›</button>
         </div>
         <div className={styles.brandIdentity}>
@@ -63,7 +63,7 @@ export function BrandKitStep({
             <Store size={28} aria-hidden="true" />
           </span>
           <div>
-            <strong>{brandKit?.businessName ?? "브랜드 키트 연결 전"}</strong>
+            <strong>{brandKit?.businessName ?? "브랜드 파일 연결 전"}</strong>
             <small>{brandKit ? "저장됨" : "등록 전"}</small>
             <p>{brandKit ? brandKitMeta(brandKit) : "가게 정보를 입력하면 여기에 표시됩니다."}</p>
           </div>
@@ -92,7 +92,7 @@ export function BrandKitStep({
 
       <p className={styles.brandKitNotice}>
         <Palette size={18} aria-hidden="true" />
-        {brandKit ? "브랜드 키트가 적용된 광고는 더 찰떡같은 결과를 보여드려요!" : "브랜드 키트를 저장하면 다음 광고 흐름에서 바로 확인할 수 있어요."}
+        {brandKit ? "브랜드 파일이 적용된 광고는 더 찰떡같은 결과를 보여드려요!" : "브랜드 파일을 저장하면 다음 광고 흐름에서 바로 확인할 수 있어요."}
       </p>
 
       <nav className={styles.bottomTabs} aria-label="하단 메뉴">

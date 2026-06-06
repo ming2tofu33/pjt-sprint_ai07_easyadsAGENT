@@ -87,13 +87,27 @@ def get_generation_job_row(job_id: str, connection: object | None = None) -> dic
         with conn.cursor() as cur:
             cur.execute(
                 """
-                -- select * from generation_jobs where public_job_id = %s
                 select gj.*, ct.public_thread_id as public_thread_id
                 from generation_jobs gj
                 left join chat_threads ct on ct.id = gj.thread_id
                 where gj.public_job_id = %s
                 """,
                 (job_id,),
+            )
+            return cur.fetchone()
+
+
+def get_generation_job_db_by_id(job_id: str, *, workspace_id: str, connection: object | None = None) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select gj.*, ct.public_thread_id as public_thread_id
+                from generation_jobs gj
+                left join chat_threads ct on ct.id = gj.thread_id
+                where gj.id = %s and gj.workspace_id = %s
+                """,
+                (job_id, workspace_id),
             )
             return cur.fetchone()
 

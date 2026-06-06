@@ -3,6 +3,7 @@
 import { Check, Clock3 } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
+import { getGenerationEngineOption } from "@/lib/generation-engine";
 import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
@@ -22,6 +23,7 @@ const statusItems = [
 
 export function GenerationInProgressStep({ state, progress, onBrowse }: GenerationInProgressStepProps) {
   const brief = buildBrief(state);
+  const engine = getGenerationEngineOption(state.selectedImageGenerationEngine);
   const safeProgress = Math.max(12, Math.min(progress, 100));
 
   return (
@@ -36,6 +38,7 @@ export function GenerationInProgressStep({ state, progress, onBrowse }: Generati
 
       <section className={styles.statusCard}>
         <h2>진행 상황</h2>
+        <p className={styles.engineStatusNote}>선택한 모델: {engine.modelName}</p>
         <div className={styles.statusList}>
           {statusItems.map((item, index) => {
             const activeIndex = safeProgress >= 100 ? 3 : safeProgress >= 68 ? 2 : safeProgress >= 36 ? 1 : 0;

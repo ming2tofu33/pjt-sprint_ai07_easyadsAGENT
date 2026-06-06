@@ -1,4 +1,27 @@
+from datetime import datetime, timezone
+
 from orchestrator.app.chat_threads import state_service
+
+
+def test_snapshot_response_accepts_database_datetime_created_at():
+    snapshot = state_service._to_response(
+        {
+            "snapshot_id": "snapshot_1",
+            "thread_id": "thread_1",
+            "snapshot_version": 1,
+            "schema_version": 1,
+            "snapshot_kind": "input",
+            "state_payload": {"user_input": "hello"},
+            "changed_fields": ["user_input"],
+            "reference_template_snapshot": {},
+            "brand_kit_snapshot": {},
+            "metadata": {},
+            "created_at": datetime(2026, 6, 6, tzinfo=timezone.utc),
+        }
+    )
+
+    assert snapshot.created_at == "2026-06-06T00:00:00+00:00"
+
 
 def test_memory_snapshot_service():
     state_service.reset_chat_state_snapshot_store_for_tests()

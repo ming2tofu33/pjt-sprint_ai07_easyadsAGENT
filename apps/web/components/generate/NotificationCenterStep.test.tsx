@@ -44,7 +44,7 @@ describe("NotificationCenterStep", () => {
     fireEvent.click(screen.getByRole("button", { name: "진행 상황 보기" }));
     expect(navigationMock.push).toHaveBeenLastCalledWith("/generate/chat/generating");
 
-    fireEvent.click(screen.getByRole("button", { name: "브랜드 키트 보기" }));
+    fireEvent.click(screen.getByRole("button", { name: "브랜드 파일 보기" }));
     expect(navigationMock.push).toHaveBeenLastCalledWith("/brand/kit/complete");
 
     fireEvent.click(screen.getByRole("button", { name: "결과 확인하기" }));

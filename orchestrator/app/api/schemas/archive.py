@@ -12,9 +12,17 @@ from orchestrator.app.api.schemas.common import ApiMeta, EmptyState, Pagination
 class ArchiveItemResponse(BaseModel):
     ad_id: str
     job_id: str | None = None
+    output_id: str | None = None
+    thread_id: str | None = None
     title: str
     thumbnail_url: str | None = None
     image_url: str | None = None
+    download_url: str | None = None
+    mime_type: str | None = None
+    width: int | None = None
+    height: int | None = None
+    storage_provider: str | None = None
+    is_final: bool | None = None
     status: Literal["generating", "saved", "favorite", "failed"] = "saved"
     ad_format: str | None = None
     platform: str | None = None

@@ -9,6 +9,7 @@ import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
 import { buildMyHref } from "@/lib/my-navigation";
 import { goBackOrPush } from "@/lib/navigation-history";
+import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
 
 const usagePeriods = [
@@ -131,7 +132,7 @@ export function UsageSummaryStep() {
           </>
         ) : (
           <section className={styles.emptyResultPanel} aria-label="생성 결과 내역 없음">
-            <Sparkles size={24} aria-hidden="true" />
+            <MascotImage role="usageWaiting" decorative className={styles.usageEmptyMascot} />
             <strong>아직 생성된 이미지 결과가 없어요</strong>
             <p>이미지를 생성하면 완성된 결과가 여기에 차곡차곡 표시돼요.</p>
           </section>

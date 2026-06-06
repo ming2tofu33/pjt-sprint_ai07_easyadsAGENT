@@ -60,6 +60,7 @@ def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
         "create_generation_output",
         lambda **kwargs: outputs.append({"id": "output_uuid", "asset_id": kwargs["asset_id"], **kwargs}) or outputs[-1],
     )
+    monkeypatch.setattr("orchestrator.app.archive.service.sync_archive_for_output", MagicMock())
     marked_final = []
 
     monkeypatch.setattr(
@@ -99,7 +100,7 @@ def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
     assert outputs[0]["is_final"] is False
     assert marked_final == ["output_uuid"]
     assert outputs[0]["variant_index"] == 0
-    assert [event["event_type"] for event in events] == ["done", "output_created"]
+    assert [event["event_type"] for event in events] == ["archive_linked", "done", "output_created"]
     assert done.result_payload["final_image_url"] is None
     assert done.result_payload["download_url"] is None
 

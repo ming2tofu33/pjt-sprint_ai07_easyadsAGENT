@@ -42,6 +42,7 @@ const KNOWN_GRAPH_NODES = new Set([
 const ALL_CAPABILITIES: UiGraphCapability[] = [
   "chat.start",
   "chat.answer-context-question",
+  "generation-job.answer-context-question",
   "copy-mode.suggest-candidates",
   "copy-selection.copy-channel-tone",
   "copy-selection.visual-direction",
@@ -52,8 +53,14 @@ const ALL_CAPABILITIES: UiGraphCapability[] = [
   "copy.custom-headline-input",
   "copy-mode.no-copy",
   "reference.template-selection",
-  "reference.image-upload",
-  "validation.reports-visible",
+  "photo.final-source-image",
+  "reference.direct-image-upload",
+  "generation.copy-candidate-selection-interrupt",
+  "generation.custom-copy-input-interrupt",
+  "generation.selected-copy-state",
+  "generation.selected-channel-state",
+  "generation.selected-tone-state",
+  "validation.feedback-visible",
 ];
 
 describe("ui graph coverage matrix", () => {
@@ -62,32 +69,50 @@ describe("ui graph coverage matrix", () => {
 
     expect(report.coveredIds).toEqual([
       "missing-context-loop",
+      "generation-job-context-loop",
       "chat-suggest-candidates",
       "photo-source-suggest-candidates",
+      "photo-final-source-image",
       "custom-visual-direction",
       "auto-pilot-copywriting",
       "custom-copy-input",
+      "generation-selected-ui-state",
+      "generation-copy-candidate-interrupt",
+      "generation-custom-copy-interrupt",
       "no-copy-image-only",
       "reference-template",
-    ]);
-    expect(report.uncoveredIds).toEqual([
       "reference-image",
       "validation-feedback",
     ]);
-    expect(report.coveredCount).toBe(8);
-    expect(report.totalCount).toBe(10);
-    expect(report.coverageRatio).toBe(0.8);
+    expect(report.uncoveredIds).toEqual([]);
+    expect(report.coveredCount).toBe(15);
+    expect(report.totalCount).toBe(15);
+    expect(report.coverageRatio).toBe(1);
   });
 
   it("shows the exact UI capabilities missing for each uncovered branch", () => {
     const report = buildUiGraphCoverageReport();
 
+    expect(findUiGraphCoverageItem(report, "generation-job-context-loop")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "auto-pilot-copywriting")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "custom-copy-input")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "no-copy-image-only")?.missingCapabilities).toEqual([]);
     expect(findUiGraphCoverageItem(report, "reference-template")?.missingCapabilities).toEqual([]);
-    expect(findUiGraphCoverageItem(report, "reference-image")?.missingCapabilities).toEqual(["reference.image-upload"]);
-    expect(findUiGraphCoverageItem(report, "validation-feedback")?.missingCapabilities).toEqual(["validation.reports-visible"]);
+    expect(findUiGraphCoverageItem(report, "photo-final-source-image")?.missingCapabilities).toEqual([]);
+    expect(findUiGraphCoverageItem(report, "generation-selected-ui-state")?.missingCapabilities).toEqual([]);
+    expect(findUiGraphCoverageItem(report, "generation-copy-candidate-interrupt")?.missingCapabilities).toEqual([]);
+    expect(findUiGraphCoverageItem(report, "generation-custom-copy-interrupt")?.missingCapabilities).toEqual([]);
+    expect(findUiGraphCoverageItem(report, "reference-image")?.missingCapabilities).toEqual([]);
+    expect(findUiGraphCoverageItem(report, "validation-feedback")?.missingCapabilities).toEqual([]);
+  });
+
+  it("keeps final graph integration v1 gaps explicit until payload and state tests prove them", () => {
+    const report = buildUiGraphCoverageReport();
+    const finalGraphGapIds = report.items
+      .filter((item) => item.phase === "final-graph-integration-v1" && !item.covered)
+      .map((item) => item.id);
+
+    expect(finalGraphGapIds).toEqual([]);
   });
 
   it("marks all matrix rows covered once the missing UI capabilities exist", () => {
@@ -105,6 +130,7 @@ describe("ui graph coverage matrix", () => {
     for (const item of UI_GRAPH_COVERAGE_MATRIX) {
       expect(item.requiredCapabilities.length, `${item.id} must declare required UI capabilities`).toBeGreaterThan(0);
       expect(item.expectedGraphNodes.length, `${item.id} must declare expected graph nodes`).toBeGreaterThan(0);
+      expect(item.phase.length, `${item.id} must declare a coverage phase`).toBeGreaterThan(0);
       for (const capability of item.requiredCapabilities) {
         expect(declaredCapabilities.has(capability), `${item.id} uses unknown capability ${capability}`).toBe(true);
       }

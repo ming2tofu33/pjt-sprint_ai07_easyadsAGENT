@@ -22,7 +22,7 @@ export function referenceTemplateToCreative(template: ReferenceTemplateCard): Mo
     savedCount: Math.round(template.popularityScore * 100),
     styleProfile: {
       colors: template.colorPalette.length > 0 ? template.colorPalette : ["#F7F4EF", "#111827", "#D1D5DB"],
-      layout: template.layoutHint ?? "선택한 레퍼런스의 구도와 정보 배치를 참고해요.",
+      layout: template.layoutHint ?? "선택한 샘플의 구도와 정보 배치를 참고해요.",
       copySpace: template.typographyHint ?? "문구가 잘 읽히는 위치와 크기를 참고해요.",
       mood: template.styleKeywords.join(", ") || categoryLabel(template.category),
       bestUse: [formatReferenceTemplateLabel(template), ...template.businessTypes].filter(Boolean).join(", ")

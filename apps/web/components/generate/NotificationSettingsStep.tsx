@@ -18,6 +18,7 @@ import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { notificationChannels, notificationSettings } from "@/lib/mock-dashboard-data";
 import { goBackOrPush } from "@/lib/navigation-history";
 import { buildNotificationHref } from "@/lib/notification-navigation";
+import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
 
 const channelIconById = {
@@ -38,7 +39,7 @@ export function NotificationSettingsStep() {
           <ArrowLeft size={20} aria-hidden="true" />
         </button>
         <h1>알림 설정</h1>
-        <span />
+        <MascotImage role="bellHelper" decorative className={styles.settingsHeaderMascot} />
       </header>
 
       <section className={styles.notificationSettingsGroup}>

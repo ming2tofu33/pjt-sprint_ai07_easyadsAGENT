@@ -6,13 +6,22 @@ from orchestrator.app.generation_jobs.service import (
     get_generation_job,
     reset_generation_job_store_for_tests,
 )
+from orchestrator.app.chat_threads.service import reset_chat_thread_store_for_tests
+from orchestrator.app.chat_threads.state_service import (
+    get_chat_state_snapshot_by_key,
+    reset_chat_state_snapshot_store_for_tests,
+)
 
 
 @pytest.fixture(autouse=True)
 def reset_store():
     reset_generation_job_store_for_tests()
+    reset_chat_thread_store_for_tests()
+    reset_chat_state_snapshot_store_for_tests()
     yield
     reset_generation_job_store_for_tests()
+    reset_chat_thread_store_for_tests()
+    reset_chat_state_snapshot_store_for_tests()
 
 
 def test_create_generation_job_defaults_and_lookup():
@@ -84,6 +93,32 @@ def test_create_generation_job_graph_immediate_degrades_metadata():
     assert job.metadata["execution_mode"] == "pending_graph_execution"
     assert job.output_path is None
     assert job.result_payload is None
+
+
+def test_graph_immediate_snapshot_preserves_selected_engine():
+    request = GenerationJobCreateRequest(
+        user_input="카페 신메뉴 광고 만들어줘",
+        run_mode="graph_immediate",
+        metadata={
+            "selected_engine": "flux_schnell",
+            "requested_engine": "flux",
+            "t2i_engine": "flux",
+        },
+    )
+
+    job = create_generation_job(request)
+    snapshot = get_chat_state_snapshot_by_key(
+        snapshot_key=f"{job.job_id}:input",
+        public_thread_id=job.thread_id,
+        workspace_id="mem_workspace",
+        user_id=job.user_id,
+    )
+
+    assert snapshot is not None
+    assert job.metadata["engine_preference"] == "flux"
+    assert job.metadata["t2i_engine"] == "flux"
+    assert snapshot.state_payload["engine"] == "flux"
+    assert snapshot.state_payload["current_brief"]["requested_engine"] == "flux"
 
 
 def test_get_missing_generation_job_returns_none_and_reset_clears_store():

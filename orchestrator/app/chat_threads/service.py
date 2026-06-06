@@ -133,6 +133,10 @@ def _msg_row_to_response(row: dict, public_thread_id: str) -> ChatMessageRespons
     """DB row → ChatMessageResponse. message_id는 msg_ prefix."""
     raw_id = str(row.get("id") or "")
     message_id = f"msg_{raw_id.replace('-', '')}" if raw_id else f"msg_{uuid4().hex}"
+
+    raw_public_job_id = row.get("public_job_id") or row.get("job_id")
+    job_id = str(raw_public_job_id) if raw_public_job_id and str(raw_public_job_id).startswith("job_") else None
+
     return ChatMessageResponse(
         message_id=message_id,
         thread_id=public_thread_id,
@@ -141,6 +145,8 @@ def _msg_row_to_response(row: dict, public_thread_id: str) -> ChatMessageRespons
         content=row.get("content"),
         payload=sanitize_chat_payload(row.get("payload") or {}),
         created_by=row.get("created_by"),
+        job_id=job_id,
+        event_type=row.get("event_type"),
         created_at=_iso(row.get("created_at")),
     )
 
@@ -471,7 +477,7 @@ def append_generation_job_chat_event_memory(
             raise ChatThreadArchivedError()
         msgs = _CHAT_MESSAGES.setdefault(thread_id, [])
         now = _now_iso()
-        
+
         # Dedupe check
         for m in reversed(msgs):
             if m.get("job_id") == job_id and m.get("event_type") == event_type:

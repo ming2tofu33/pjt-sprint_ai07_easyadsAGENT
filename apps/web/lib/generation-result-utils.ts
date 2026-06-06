@@ -1,4 +1,5 @@
 import type { GenerationJob, ResultArtifactPayload } from "./api-client";
+import { buildGeneratedAssetUrl } from "./generated-assets";
 
 const LOCAL_PATH_PREFIXES = [
   "data/outputs/",
@@ -10,6 +11,15 @@ const LOCAL_PATH_PREFIXES = [
   "/mnt/",
   "file://"
 ];
+
+export type ValidationFeedbackStatus = "pass" | "warn" | "fail";
+
+export type ValidationFeedbackItem = {
+  id: "background" | "safe_area" | "readability" | "final";
+  label: string;
+  status: ValidationFeedbackStatus;
+  message: string;
+};
 
 export function isTerminalGenerationStatus(status: string | undefined | null): boolean {
   return status === "done" || status === "failed";
@@ -23,6 +33,46 @@ export function getResultArtifactPayload(job: GenerationJob | null | undefined):
   return job?.result_payload ?? null;
 }
 
+export function buildValidationFeedbackItems(summary: Record<string, unknown> | null | undefined): ValidationFeedbackItem[] {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    return [];
+  }
+
+  const nestedItems: ValidationFeedbackItem[] = [
+    validationItem("background", "배경 확인", summary.background, {
+      pass: "이미지 배경이 광고로 쓰기 좋게 준비됐어요.",
+      warn: "배경에서 한 번 더 확인하면 좋은 부분이 있어요.",
+      fail: "배경 이미지 확인이 필요해요."
+    }),
+    validationItem("safe_area", "문구 위치 확인", summary.safe_area, {
+      pass: "문구가 들어갈 공간이 안정적이에요.",
+      warn: "문구가 들어갈 위치를 한 번 더 확인해보세요.",
+      fail: "문구 위치를 조정하는 편이 좋아요."
+    }),
+    validationItem("readability", "가독성 확인", summary.readability, {
+      pass: "문구를 읽기 쉬운 상태예요.",
+      warn: "문구가 더 잘 보이도록 조정하면 좋아요.",
+      fail: "문구 가독성 개선이 필요해요."
+    }),
+    validationItem("final", "최종 확인", summary.final, {
+      pass: "전체 결과가 사용 가능한 상태예요.",
+      warn: "사용 전 한 번 더 살펴보면 좋아요.",
+      fail: "최종 결과를 다시 조정하는 편이 좋아요."
+    })
+  ].filter((item): item is ValidationFeedbackItem => Boolean(item));
+
+  if (nestedItems.length > 0) {
+    return nestedItems;
+  }
+
+  const fallback = validationItem("final", "최종 확인", summary, {
+    pass: "전체 결과가 사용 가능한 상태예요.",
+    warn: "사용 전 한 번 더 살펴보면 좋아요.",
+    fail: "최종 결과를 다시 조정하는 편이 좋아요."
+  });
+  return fallback ? [fallback] : [];
+}
+
 export function resolveResultArtifact(job: GenerationJob | null | undefined): ResultArtifactPayload | null {
   return getResultArtifactPayload(job);
 }
@@ -33,6 +83,11 @@ export function getDisplayImageUrl(payload: ResultArtifactPayload | null | undef
     payload?.preview_image_url,
     payload?.copy_visual_preview_url,
     payload?.download_url
+  ) ?? firstGeneratedAssetUrl(
+    payload?.final_image_path,
+    payload?.download_path,
+    payload?.background_image_path,
+    payload?.copy_visual_preview_path
   );
 }
 
@@ -42,6 +97,11 @@ export function getDownloadUrl(payload: ResultArtifactPayload | null | undefined
     payload?.final_image_url,
     payload?.preview_image_url,
     payload?.copy_visual_preview_url
+  ) ?? firstGeneratedAssetUrl(
+    payload?.download_path,
+    payload?.final_image_path,
+    payload?.copy_visual_preview_path,
+    payload?.background_image_path
   );
 }
 
@@ -150,10 +210,65 @@ export async function copyGenerationResultToClipboard(job: GenerationJob): Promi
   }
 }
 
+function validationItem(
+  id: ValidationFeedbackItem["id"],
+  label: string,
+  report: unknown,
+  messages: Record<ValidationFeedbackStatus, string>
+): ValidationFeedbackItem | null {
+  if (!report || typeof report !== "object" || Array.isArray(report)) {
+    return null;
+  }
+  const status = validationStatus(report as Record<string, unknown>);
+  return {
+    id,
+    label,
+    status,
+    message: messages[status]
+  };
+}
+
+function validationStatus(report: Record<string, unknown>): ValidationFeedbackStatus {
+  if (report.status === "fail" || report.status === "failed" || report.overall_pass === false) {
+    return "fail";
+  }
+  if (
+    report.status === "warn" ||
+    hasNonEmptyArray(report.warnings) ||
+    hasNonEmptyArray(report.issues) ||
+    hasNonEmptyArray(report.bbox_issues) ||
+    hasPositiveNumber(report.failed_slot_count)
+  ) {
+    return "warn";
+  }
+  if (report.status === "pass" || report.status === "passed" || report.overall_pass === true) {
+    return "pass";
+  }
+  return "warn";
+}
+
+function hasNonEmptyArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
+function hasPositiveNumber(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 function firstPublicUrl(...values: Array<string | null | undefined>): string | null {
   for (const value of values) {
     if (value && isPublicBrowserUrl(value)) {
       return value;
+    }
+  }
+  return null;
+}
+
+function firstGeneratedAssetUrl(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const url = buildGeneratedAssetUrl(value);
+    if (url) {
+      return url;
     }
   }
   return null;

@@ -19,6 +19,13 @@ def _now_iso() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
 
+def _to_response(row: dict) -> ChatStateSnapshotResponse:
+    data = dict(row)
+    created_at = data.get("created_at")
+    if hasattr(created_at, "isoformat"):
+        data["created_at"] = created_at.isoformat()
+    return ChatStateSnapshotResponse(**data)
+
 def reset_chat_state_snapshot_store_for_tests() -> None:
     with _SNAPSHOTS_MEM_LOCK:
         _SNAPSHOTS_MEM.clear()
@@ -68,7 +75,7 @@ def save_thread_state_snapshot(
             created_by=created_by,
             connection=connection,
         )
-        return ChatStateSnapshotResponse(**row)
+        return _to_response(row)
 
     with _SNAPSHOTS_MEM_LOCK:
         thread = chat_service.get_chat_thread(public_thread_id, user_id=user_id)
@@ -83,7 +90,7 @@ def save_thread_state_snapshot(
         if snapshot_key:
             for s in snapshots:
                 if s.get("snapshot_key") == snapshot_key:
-                    return ChatStateSnapshotResponse(**s)
+                    return _to_response(s)
 
         next_version = max([s.get("snapshot_version", 0) for s in snapshots], default=0) + 1
         public_snapshot_id = f"snapshot_{uuid4().hex}"
@@ -107,7 +114,7 @@ def save_thread_state_snapshot(
             "created_at": _now_iso()
         }
         snapshots.append(snapshot)
-        return ChatStateSnapshotResponse(**snapshot)
+        return _to_response(snapshot)
 
 def get_latest_thread_state_snapshot(
     public_thread_id: str,
@@ -121,7 +128,7 @@ def get_latest_thread_state_snapshot(
             workspace_id=workspace_id,
             connection=connection,
         )
-        return ChatStateSnapshotResponse(**row) if row else None
+        return _to_response(row) if row else None
         
     with _SNAPSHOTS_MEM_LOCK:
         thread = chat_service.get_chat_thread(public_thread_id, user_id=user_id)
@@ -133,7 +140,7 @@ def get_latest_thread_state_snapshot(
         if not snapshots:
             return None
         latest = max(snapshots, key=lambda s: s["snapshot_version"])
-        return ChatStateSnapshotResponse(**latest)
+        return _to_response(latest)
 
 def get_chat_state_snapshot_by_key(
     snapshot_key: str,
@@ -149,7 +156,7 @@ def get_chat_state_snapshot_by_key(
             workspace_id=workspace_id,
             connection=connection,
         )
-        return ChatStateSnapshotResponse(**row) if row else None
+        return _to_response(row) if row else None
         
     with _SNAPSHOTS_MEM_LOCK:
         thread = chat_service.get_chat_thread(public_thread_id, user_id=user_id)
@@ -159,7 +166,7 @@ def get_chat_state_snapshot_by_key(
         store_key = f"{effective_user_id}:{public_thread_id}"
         for s in _SNAPSHOTS_MEM.get(store_key, []):
             if s.get("snapshot_key") == snapshot_key:
-                return ChatStateSnapshotResponse(**s)
+                return _to_response(s)
         return None
 
 def list_thread_state_snapshots(
@@ -183,7 +190,7 @@ def list_thread_state_snapshots(
             workspace_id=workspace_id,
             connection=connection,
         )
-        return [ChatStateSnapshotResponse(**r) for r in rows], total
+        return [_to_response(r) for r in rows], total
         
     with _SNAPSHOTS_MEM_LOCK:
         thread = chat_service.get_chat_thread(public_thread_id, user_id=user_id)
@@ -193,7 +200,7 @@ def list_thread_state_snapshots(
         store_key = f"{effective_user_id}:{public_thread_id}"
         snapshots = sorted(_SNAPSHOTS_MEM.get(store_key, []), key=lambda s: s["snapshot_version"], reverse=True)
         page = snapshots[offset: offset + limit]
-        return [ChatStateSnapshotResponse(**s) for s in page], len(snapshots)
+        return [_to_response(s) for s in page], len(snapshots)
 
 def restore_thread_state(
     latest_snapshot: ChatStateSnapshotResponse | None,

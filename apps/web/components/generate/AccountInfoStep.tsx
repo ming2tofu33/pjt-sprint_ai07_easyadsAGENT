@@ -152,7 +152,7 @@ export function AccountInfoStep() {
       <button className={styles.myLinkedBrandCard} type="button" onClick={() => router.push(buildBrandKitHref(brandKit ? "complete" : "start"))}>
         <Store size={24} aria-hidden="true" />
         <strong>
-          {brandKit?.businessName ?? "브랜드 키트 연결 전"}
+          {brandKit?.businessName ?? "브랜드 파일 연결 전"}
           <small>
             {brandKit ? `${brandKitTone(brandKit)} · 대표 상품: ${brandKitProducts(brandKit)} · ${brandKitMeta(brandKit)}` : "가게 정보를 입력하면 여기에 표시됩니다."}
           </small>
@@ -180,7 +180,7 @@ export function AccountInfoStep() {
           </button>
         )}
         <button className={styles.secondaryButton} type="button" onClick={() => router.push(buildBrandKitHref("info"))}>
-          브랜드 키트 수정
+          브랜드 파일 수정
         </button>
         {authState === "signedIn" ? (
           <button className={styles.secondaryButton} data-danger="true" disabled={isBusy} type="button" onClick={handleDeleteAccount}>

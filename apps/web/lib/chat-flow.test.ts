@@ -33,6 +33,31 @@ describe("chat flow state", () => {
     });
     expect(next.contextSource).toBe("empty");
     expect(next.copyCandidateSource).toBe("empty");
+    expect(next.selectedImageGenerationEngine).toBe("gpt_image_2");
+  });
+
+  it("keeps the selected image generation engine through backend responses", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘",
+      imageGenerationEngine: "flux_schnell"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendStartSucceeded",
+      prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {
+        businessType: "카페",
+        itemOrService: "딸기라떼",
+        promotionGoal: "신메뉴 출시"
+      },
+      copyCandidates: [{ id: "copy_backend", headline: "백엔드가 만든 딸기라떼 문구" }],
+      recommendedCopyId: "copy_backend"
+    });
+
+    expect(state.selectedImageGenerationEngine).toBe("flux_schnell");
   });
 
   it("marks copy candidates as backend-generated when the backend returns candidates", () => {
@@ -131,5 +156,44 @@ describe("chat flow state", () => {
     expect(brief.channel).toBe("인스타 피드 (1:1)");
     expect(brief.imageDirection).toBe("감성적인 분위기를 살려 딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.");
     expect(brief.imageDirection).not.toContain("크림톤 배경");
+  });
+
+  it("stores a generation job question while preserving the final step", () => {
+    const initial = createInitialChatFlowState();
+    const state = chatFlowReducer(initial, {
+      type: "generationJobQuestionReceived",
+      generationJob: {
+        job_id: "job_1",
+        status: "waiting_user_input",
+        progress: { progress_percent: 50, current_stage: "waiting_user_input" }
+      },
+      question: {
+        field: "business_type",
+        question: "어떤 업종인가요?",
+        options: [{ id: 1, label: "카페", value: "cafe" }]
+      }
+    });
+
+    expect(state.step).toBe(4);
+    expect(state.currentQuestion?.field).toBe("business_type");
+    expect(state.conversationMessages.at(-1)?.text).toBe("어떤 업종인가요?");
+    expect(state.isLoading).toBe(false);
+  });
+
+  it("marks generation job answer submission as loading", () => {
+    const initial = createInitialChatFlowState();
+    const asked = chatFlowReducer(initial, {
+      type: "generationJobQuestionReceived",
+      generationJob: { job_id: "job_1", status: "waiting_user_input" },
+      question: {
+        field: "business_type",
+        question: "어떤 업종인가요?",
+        options: [{ id: 1, label: "카페", value: "cafe" }]
+      }
+    });
+    const answered = chatFlowReducer(asked, { type: "submitGenerationJobAnswer", label: "카페" });
+
+    expect(answered.isLoading).toBe(true);
+    expect(answered.conversationMessages.at(-1)?.text).toBe("카페");
   });
 });
