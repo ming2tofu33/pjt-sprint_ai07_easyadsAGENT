@@ -71,7 +71,9 @@ def test_get_generation_job_row_selects_by_public_job_id(monkeypatch):
     row = repo.get_generation_job_row("job_db", connection=conn)
 
     sql, params = conn.cursor_obj.calls[0]
-    assert "select * from generation_jobs where public_job_id = %s" in sql
+    assert "from generation_jobs gj" in sql
+    assert "left join chat_threads ct on ct.id = gj.thread_id" in sql
+    assert "where gj.public_job_id = %s" in sql
     assert params == ("job_db",)
     assert row["public_job_id"] == "job_db"
 

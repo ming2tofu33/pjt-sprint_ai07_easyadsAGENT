@@ -1,10 +1,19 @@
 """Tests for execute_generation_job_graph and state restoration."""
 
+from contextlib import contextmanager
+
 import pytest
-from orchestrator.app.api.schemas.generation_jobs import GenerationJobAnswerRequest, GenerationJobCreateRequest
+from orchestrator.app.api.schemas.generation_jobs import (
+    GenerationJobAnswerRequest,
+    GenerationJobCreateRequest,
+    GenerationJobResponse,
+    GenerationProgress,
+)
 from orchestrator.app.generation_jobs.service import create_generation_job, reset_generation_job_store_for_tests
 from orchestrator.app.chat_threads.service import reset_chat_thread_store_for_tests
+from orchestrator.app.schemas.chat_state_snapshots import ChatStateSnapshotResponse
 from orchestrator.app.generation_jobs.execution import execute_generation_job_graph, resume_generation_job_graph
+from orchestrator.app.generation_jobs import execution
 
 @pytest.fixture(autouse=True)
 def reset_stores():
@@ -19,6 +28,79 @@ def reset_stores():
 class FakeInterrupt:
     def __init__(self, value):
         self.value = value
+
+
+@contextmanager
+def fake_db_transaction(connection=None):
+    yield object()
+
+
+def _graph_job_response(**overrides):
+    payload = {
+        "job_id": "job_graph_db",
+        "thread_id": "thread_graph_db",
+        "user_id": None,
+        "brand_kit_id": None,
+        "status": "queued",
+        "progress": GenerationProgress(progress_percent=0, current_stage="queued"),
+        "selected_reference_template_id": None,
+        "output_path": None,
+        "result_payload": {},
+        "error": None,
+        "created_at": "2026-06-06T00:00:00+00:00",
+        "updated_at": "2026-06-06T00:00:00+00:00",
+        "metadata": {},
+    }
+    payload.update(overrides)
+    return GenerationJobResponse(**payload)
+
+
+def test_execute_generation_job_graph_uses_job_workspace_for_input_snapshot(monkeypatch):
+    captured = {}
+
+    class MockGraph:
+        def invoke(self, payload: dict, config: dict | None = None) -> dict:
+            state = dict(payload)
+            state["status"] = "done"
+            state["result_payload"] = {"final_image_path": "/fake/db-workspace.png"}
+            state["final_image_path"] = "/fake/db-workspace.png"
+            return state
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr("orchestrator.app.db.session.db_transaction", fake_db_transaction)
+    monkeypatch.setattr(execution, "get_generation_job", lambda job_id: _graph_job_response(job_id=job_id))
+    monkeypatch.setattr(execution, "mark_generation_job_running", lambda *args, **kwargs: None)
+    monkeypatch.setattr(execution, "mark_generation_job_done", lambda job_id, **kwargs: _graph_job_response(job_id=job_id, status="done"))
+    monkeypatch.setattr("orchestrator.app.db.repositories.generation_jobs.get_generation_job_row", lambda *args, **kwargs: {
+        "id": "internal_job_uuid",
+        "public_job_id": "job_graph_db",
+        "workspace_id": "workspace_from_job_row",
+    })
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+
+    def get_snapshot(**kwargs):
+        captured.update(kwargs)
+        return ChatStateSnapshotResponse(
+            snapshot_id="snapshot_input",
+            thread_id="thread_graph_db",
+            job_id="job_graph_db",
+            snapshot_version=1,
+            schema_version=1,
+            snapshot_kind="input",
+            state_payload={"user_input": "카페 광고"},
+            changed_fields=["user_input"],
+            created_at="2026-06-06T00:00:00+00:00",
+        )
+
+    monkeypatch.setattr("orchestrator.app.chat_threads.state_service.get_chat_state_snapshot_by_key", get_snapshot)
+    monkeypatch.setattr("orchestrator.app.chat_threads.state_service.save_thread_state_snapshot", lambda **kwargs: None)
+
+    request = GenerationJobCreateRequest(userInput="카페 광고", runMode="graph_immediate")
+    result = execute_generation_job_graph("job_graph_db", request)
+
+    assert result.status == "done"
+    assert captured["workspace_id"] == "workspace_from_job_row"
+    assert captured["snapshot_key"] == "job_graph_db:input"
 
 
 def test_execute_generation_job_graph_state_restoration(monkeypatch):

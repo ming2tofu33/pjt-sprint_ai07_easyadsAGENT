@@ -152,7 +152,6 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
     from orchestrator.app.api.schemas.chat_threads import ChatMessageCreateRequest
     from orchestrator.app.db import settings as db_settings
     from orchestrator.app.db.session import db_transaction
-    from orchestrator.app.db.repositories.workspaces import ensure_demo_workspace
     from orchestrator.app.db.repositories.chat_messages import append_generation_job_chat_event
 
     from orchestrator.app.graph.state import create_initial_marketing_state
@@ -172,13 +171,11 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
         if db_settings.get_db_backend() == "postgres":
             from orchestrator.app.db.repositories.generation_jobs import get_generation_job_row
             with db_transaction() as conn:
-                ws = ensure_demo_workspace(job.user_id, connection=conn)
-                workspace_id = str(ws["id"])
-                
                 job_row = get_generation_job_row(job_id, connection=conn)
                 if job_row:
                     internal_job_id = str(job_row["id"])
                     public_job_id = str(job_row["public_job_id"])
+                    workspace_id = str(job_row["workspace_id"])
 
         input_snapshot = state_service.get_chat_state_snapshot_by_key(
             snapshot_key=f"{public_job_id}:input",

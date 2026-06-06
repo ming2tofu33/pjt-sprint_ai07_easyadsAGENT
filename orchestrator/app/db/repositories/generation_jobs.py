@@ -87,7 +87,6 @@ def get_generation_job_row(job_id: str, connection: object | None = None) -> dic
         with conn.cursor() as cur:
             cur.execute(
                 """
-                -- select * from generation_jobs where public_job_id = %s
                 select gj.*, ct.public_thread_id as public_thread_id
                 from generation_jobs gj
                 left join chat_threads ct on ct.id = gj.thread_id
