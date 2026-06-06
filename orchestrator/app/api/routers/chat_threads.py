@@ -156,24 +156,16 @@ def get_chat_thread_state_route(
     thread_id: str,
     user_id: str | None = Query(default=None, alias="userId"),
 ) -> ChatThreadStateGetResponse:
-    # 1. Verify thread access
-    thread = chat_service.get_chat_thread(thread_id, user_id=user_id)
-    if not thread:
+    resolved = chat_service.get_chat_thread_with_workspace(thread_id, user_id=user_id)
+    if not resolved:
         _not_found(thread_id)
-        
-    # 2. Get latest snapshot
-    if chat_service._use_postgres():
-        workspace = chat_service._get_demo_workspace(user_id)
-        snapshot = state_service.get_latest_thread_state_snapshot(
-            public_thread_id=thread_id,
-            workspace_id=str(workspace["id"]),
-        )
-    else:
-        snapshot = state_service.get_latest_thread_state_snapshot(
-            public_thread_id=thread_id,
-            workspace_id="memory_workspace", # memory implementation ignores this
-        )
-        
+
+    _thread, workspace_id = resolved
+    snapshot = state_service.get_latest_thread_state_snapshot(
+        public_thread_id=thread_id,
+        workspace_id=workspace_id,
+        user_id=user_id,
+    )
     return ChatThreadStateGetResponse(snapshot=snapshot)
 
 
