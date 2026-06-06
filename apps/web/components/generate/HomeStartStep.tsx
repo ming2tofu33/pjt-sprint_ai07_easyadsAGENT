@@ -78,12 +78,12 @@ export function HomeStartStep({
 
       <h2 className={styles.sectionTitle}>빠른 시작</h2>
       <div className={styles.quickDashboardGrid}>
-        <button aria-label="레퍼런스 보고 만들기" type="button" onClick={onOpenReference}>
+        <button aria-label="샘플 보고 만들기" type="button" onClick={onOpenReference}>
           <span data-tone="lime">
             <ImageIcon size={24} aria-hidden="true" />
           </span>
           <strong>
-            레퍼런스 보고{" "}
+            샘플 보고{" "}
             <br />
             만들기
           </strong>
@@ -118,8 +118,8 @@ export function HomeStartStep({
           <Grid3X3 size={22} aria-hidden="true" />
         </span>
         <div>
-          <strong>{brandKit ? "브랜드 키트가 연결되어 있어요" : "브랜드 키트를 연결해보세요"}</strong>
-          <small>{brandKit ? `${brandKit.businessName} · ${brandKitTone(brandKit)} · ${brandKitMeta(brandKit)}` : "가게 정보와 톤을 저장하면 광고 요청에 함께 반영돼요"}</small>
+          <strong>{brandKit ? "브랜드 파일이 연결되어 있어요" : "브랜드 파일을 연결해보세요"}</strong>
+          <small>{brandKit ? `${brandKit.businessName} · ${brandKitTone(brandKit)} · ${brandKitMeta(brandKit)}` : "가게 정보와 분위기를 저장하면 광고 제작에 반영돼요"}</small>
         </div>
         <ChevronRight size={18} aria-hidden="true" />
       </button>

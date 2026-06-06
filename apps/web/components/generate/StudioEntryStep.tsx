@@ -41,7 +41,7 @@ export function StudioEntryStep({
             <ImageIcon size={26} aria-hidden="true" />
           </span>
           <div>
-            <strong>레퍼런스 보고 만들기</strong>
+            <strong>샘플 보고 만들기</strong>
             <p>마음에 드는 광고 스타일을 골라 내 광고로 바꿔요.</p>
           </div>
           <span className={styles.optionArrow}>→</span>

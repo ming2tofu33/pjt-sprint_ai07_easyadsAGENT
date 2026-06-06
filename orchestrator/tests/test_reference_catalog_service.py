@@ -62,7 +62,7 @@ def test_permanent_references_load_from_manifest(monkeypatch, tmp_path):
         "items": [
             {
                 "template_id": "ref_test_cafe_owned_001",
-                "title": "운영 카페 레퍼런스 테스트",
+                "title": "운영 카페 샘플 테스트",
                 "category": "cafe",
                 "tags": ["음료"],
                 "business_types": ["cafe"],

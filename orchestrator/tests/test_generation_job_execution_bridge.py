@@ -73,7 +73,7 @@ def test_mock_immediate_writes_artifacts_under_job_output_dir():
     assert fetched.status == "done"
 
 
-def test_graph_immediate_degrades_without_execution():
+def test_graph_immediate_pending_metadata_without_execution():
     request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="graph_immediate")
     job = create_generation_job(request)
 
@@ -81,8 +81,8 @@ def test_graph_immediate_degrades_without_execution():
     assert job.output_path is None
     assert job.result_payload is None
     assert job.metadata["requested_run_mode"] == "graph_immediate"
-    assert job.metadata["effective_run_mode"] == "queued_only"
-    assert job.metadata["execution_mode"] == "degraded_no_graph_execution"
+    assert job.metadata["effective_run_mode"] == "graph_immediate"
+    assert job.metadata["execution_mode"] == "pending_graph_execution"
 
 
 def test_failed_job_sets_failed_stage():

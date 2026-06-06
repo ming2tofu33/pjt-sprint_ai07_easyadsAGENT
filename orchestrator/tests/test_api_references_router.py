@@ -216,7 +216,7 @@ def test_permanent_reference_assets_use_r2_public_urls(monkeypatch, tmp_path):
         "items": [
             {
                 "template_id": "ref_test_cafe_owned_001",
-                "title": "운영 레퍼런스 테스트",
+                "title": "운영 샘플 테스트",
                 "category": "cafe",
                 "tags": ["음료"],
                 "business_types": ["cafe"],
@@ -239,7 +239,7 @@ def test_permanent_reference_assets_use_r2_public_urls(monkeypatch, tmp_path):
     monkeypatch.setenv("EASYADS_PERMANENT_REFERENCE_MANIFEST", str(manifest_path))
     monkeypatch.setenv("EASYADS_R2_PUBLIC_BASE_URL", "https://assets.example.com/easyads")
 
-    response = client().get("/api/v1/references", params={"keyword": "운영 레퍼런스"})
+    response = client().get("/api/v1/references", params={"keyword": "운영 샘플"})
 
     assert response.status_code == 200
     payload = response.json()

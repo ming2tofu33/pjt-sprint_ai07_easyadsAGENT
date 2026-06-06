@@ -5,6 +5,8 @@ export type StoredBrandKit = {
   businessType: string;
   region: string;
   sns: string;
+  logoFileName: string;
+  logoDataUrl: string;
   tones: string[];
   colors: string[];
   phrases: string[];
@@ -13,7 +15,10 @@ export type StoredBrandKit = {
   updatedAt: string;
 };
 
-export type BrandKitInput = Omit<StoredBrandKit, "status" | "updatedAt">;
+export type BrandKitInput = Omit<StoredBrandKit, "status" | "updatedAt" | "logoFileName" | "logoDataUrl"> & {
+  logoFileName?: string;
+  logoDataUrl?: string;
+};
 
 export const BRAND_KIT_STORAGE_KEY = "easyads_brand_kit_v1";
 
@@ -22,6 +27,8 @@ const EMPTY_BRAND_KIT: BrandKitInput = {
   businessType: "",
   region: "",
   sns: "",
+  logoFileName: "",
+  logoDataUrl: "",
   tones: [],
   colors: [],
   phrases: [],
@@ -42,6 +49,8 @@ function normalizeBrandKit(value: Partial<StoredBrandKit> | null | undefined): S
     businessType: cleanText(value?.businessType),
     region: cleanText(value?.region),
     sns: cleanText(value?.sns),
+    logoFileName: cleanText(value?.logoFileName),
+    logoDataUrl: cleanText(value?.logoDataUrl),
     tones: cleanList(value?.tones),
     colors: cleanList(value?.colors),
     phrases: cleanList(value?.phrases),

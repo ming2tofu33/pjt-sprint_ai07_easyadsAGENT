@@ -83,12 +83,15 @@ def test_chat_start_passes_reference_template_to_graph(monkeypatch):
             "userInput": "우리 카페 수박주스 신메뉴 광고 만들어줘",
             "adFormat": "instagram_feed",
             "selectedReferenceTemplateId": "temp_watermelon_juice_feed",
+            "referenceImagePath": "data/uploads/reference_1.png",
         },
     )
 
     assert response.status_code == 200
     assert captured["state"]["entry_mode"] == "chat_start"
     assert captured["state"]["selected_reference_template_id"] == "temp_watermelon_juice_feed"
+    assert captured["state"]["reference_image_path"] == "data/uploads/reference_1.png"
+    assert captured["state"]["context"]["extra"]["reference_image_path"] == "data/uploads/reference_1.png"
     assert captured["config"]["configurable"]["thread_id"] == response.json()["threadId"]
 
 

@@ -96,7 +96,7 @@ export function MyPageStep() {
       <button className={styles.myBrandBanner} type="button" onClick={() => router.push(buildBrandKitHref(brandKit ? "complete" : "start"))}>
         <Store size={24} aria-hidden="true" />
         <strong>
-          {brandKit ? "브랜드 키트 사용 중" : "브랜드 키트 연결 전"}
+          {brandKit ? "브랜드 파일 사용 중" : "브랜드 파일 연결 전"}
           <small>{brandKit ? `${brandKit.businessName} · ${brandKitTone(brandKit)} · ${brandKitMeta(brandKit)}` : "가게 정보를 등록하면 광고 요청에 함께 반영돼요"}</small>
         </strong>
         <ChevronRight size={18} aria-hidden="true" />
@@ -133,10 +133,10 @@ export function MyPageStep() {
           </strong>
           <ChevronRight size={17} aria-hidden="true" />
         </button>
-        <button type="button" onClick={() => router.push(buildBrandKitHref("info"))}>
+        <button type="button" onClick={() => router.push(buildBrandKitHref("start"))}>
           <Palette size={18} aria-hidden="true" />
           <strong>
-            브랜드 키트 관리
+            브랜드 파일 관리
             <small>가게 정보와 브랜드 톤을 관리해요</small>
           </strong>
           <ChevronRight size={17} aria-hidden="true" />
@@ -146,7 +146,7 @@ export function MyPageStep() {
             <Shield size={18} aria-hidden="true" />
             <strong>
               운영자 모드
-              <small>레퍼런스와 운영 설정을 관리해요</small>
+              <small>샘플과 운영 설정을 관리해요</small>
             </strong>
             <ChevronRight size={17} aria-hidden="true" />
           </button>
