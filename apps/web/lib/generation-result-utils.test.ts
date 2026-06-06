@@ -143,18 +143,17 @@ describe("generation result utils", () => {
     expect(isDownloadEnabled(doneJobWithUrl)).toBe(true);
   });
 
-  it("uses generated asset proxy URLs for local artifact paths", () => {
+  it("does not expose local artifact paths as browser image URLs", () => {
     const payload = doneJobLocalPathOnly.result_payload;
-    const expectedUrl = "/api/generated-assets?path=data%2Foutputs%2Fjob_local%2Ffinal_0.png";
 
-    expect(getDisplayImageUrl(payload)).toBe(expectedUrl);
-    expect(getDownloadUrl(payload)).toBe(expectedUrl);
-    expect(resolvePreviewImageUrl(doneJobLocalPathOnly)).toBe(expectedUrl);
-    expect(resolveDownloadUrl(doneJobLocalPathOnly)).toBe(expectedUrl);
-    expect(shouldShowImagePreview(payload)).toBe(true);
-    expect(shouldEnableDownload(payload)).toBe(true);
-    expect(hasOnlyLocalArtifactPath(payload)).toBe(false);
-    expect(isDownloadEnabled(doneJobLocalPathOnly)).toBe(true);
+    expect(getDisplayImageUrl(payload)).toBeNull();
+    expect(getDownloadUrl(payload)).toBeNull();
+    expect(resolvePreviewImageUrl(doneJobLocalPathOnly)).toBeNull();
+    expect(resolveDownloadUrl(doneJobLocalPathOnly)).toBeNull();
+    expect(shouldShowImagePreview(payload)).toBe(false);
+    expect(shouldEnableDownload(payload)).toBe(false);
+    expect(hasOnlyLocalArtifactPath(payload)).toBe(true);
+    expect(isDownloadEnabled(doneJobLocalPathOnly)).toBe(false);
   });
 
   it("prefers preview and copy visual URLs before download URL for display", () => {
@@ -183,8 +182,8 @@ describe("generation result utils", () => {
 
     expect(text).toContain("Job ID: job_local");
     expect(text).toContain("Status: done");
-    expect(text).toContain("Image URL: /api/generated-assets?path=data%2Foutputs%2Fjob_local%2Ffinal_0.png");
-    expect(text).toContain("Download URL: /api/generated-assets?path=data%2Foutputs%2Fjob_local%2Ffinal_0.png");
+    expect(text).toContain("Image URL: not available yet");
+    expect(text).toContain("Download URL: not available yet");
     expect(text).not.toContain("data/outputs/job_local/final_0.png");
     expect(text).not.toContain("very long raw prompt");
     expect(text).toContain("Warnings: safe_area_complex_background");
@@ -228,8 +227,8 @@ describe("generation result utils", () => {
       message: "완성된 이미지를 확인할 수 있어요."
     });
     expect(getGenerationResultNotice(doneJobLocalPathOnly)).toEqual({
-      level: "success",
-      message: "완성된 이미지를 확인할 수 있어요."
+      level: "warning",
+      message: "이미지는 생성됐지만 보관함에서 확인할 수 있는 주소가 아직 연결되지 않았어요."
     });
     expect(getGenerationResultNotice(failedJob).level).toBe("error");
     expect(getGenerationResultNotice(runningJob)).toEqual({ level: "info", message: "이미지를 생성하고 있어요." });

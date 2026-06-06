@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
 import { buildValidationFeedbackItems } from "@/lib/generation-result-utils";
 import type { ResultArtifactPayload } from "@/lib/api-client";

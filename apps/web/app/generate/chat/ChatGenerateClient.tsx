@@ -39,6 +39,7 @@ import {
 } from "@/lib/api-client";
 import { buildAdHref } from "@/lib/ad-navigation";
 import { archiveItemToCreative } from "@/lib/archive-creative";
+import { mapChatThreadSnapshotToRestoreState } from "@/lib/chat-thread-state-mapper";
 import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 import {
   buildDashboardHref,
@@ -489,32 +490,17 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     if (threadIdParam) {
       getChatThreadState(threadIdParam).then((res) => {
-        if (res.snapshot && res.snapshot.state_payload) {
-          const payload = res.snapshot.state_payload;
-          dispatch({ type: "reset" });
-          dispatch({
-            type: "backendStartSucceeded",
-            prompt: (payload.prompt || payload.user_input || "") as string,
-            jobId: res.snapshot.job_id || "",
-            threadId: res.snapshot.thread_id,
-            context: (payload.context || {}) as InferredContext,
-            copyCandidates: (payload.copyCandidates || []) as never[],
-            recommendedCopyId: null,
-            copyCandidateSource: "empty",
-            copyGenerationMode: (payload.copyGenerationMode || "no_copy") as CopyGenerationMode
-          });
-          if (res.snapshot.snapshot_kind === "waiting_user_input") {
-             // resume polling or handle question
-          } else {
-             if (payload.brief) {
-               dispatch({ type: "backendBriefSucceeded", brief: payload.brief as ChatBrief });
-               dispatch({ type: "continueToBrief" });
-               setGenerationProgress(100);
-               setGenerationStage("brief");
-             }
-          }
-          setShowHistory(false);
+        const restoreState = mapChatThreadSnapshotToRestoreState(res.snapshot);
+        if (!restoreState) {
+          showToast("대화 기록을 불러왔지만 이어갈 정보가 비어 있어요.");
+          return;
         }
+
+        dispatch({ type: "restoreThreadSnapshot", ...restoreState });
+        setShowHistory(false);
+        setGenerationProgress(restoreState.currentQuestion ? 65 : 80);
+        setGenerationStage(restoreState.currentQuestion ? "jobQuestion" : "brief");
+        lastPrimedStageRef.current = restoreState.currentQuestion ? "generating" : "brief";
       }).catch(() => {
         showToast("대화 기록을 불러오는데 실패했습니다.");
       });
@@ -1254,9 +1240,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onRegenerate={() => {
             handleOpenFreshChat();
           }}
-          onSaveCreative={handleSaveGeneratedCreative}
-          onEditCreative={() => showToast("선택한 시안 편집 화면은 곧 연결됩니다.")}
-          onSaveSelected={() => navigateTo("ads")}
+          onOpenArchive={() => navigateTo("ads")}
         />
       ) : null}
 

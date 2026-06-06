@@ -1,3 +1,4 @@
+import React from "react";
 import clsx from "clsx";
 import Image from "next/image";
 import { mascotAssets, type MascotRole } from "@/lib/mascot-assets";

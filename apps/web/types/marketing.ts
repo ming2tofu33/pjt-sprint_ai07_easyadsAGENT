@@ -185,6 +185,27 @@ export type ChatFlowAction =
     }
   | { type: "referenceTemplateCleared" }
   | { type: "continueToBrief" }
+  | {
+      type: "restoreThreadSnapshot";
+      prompt: string;
+      jobId: string;
+      threadId: string;
+      context: InferredContext;
+      copyGenerationMode: CopyGenerationMode;
+      selectedChannelId: string;
+      selectedTone: string;
+      selectedImageGenerationEngine: ImageGenerationEngine;
+      customDirection: string;
+      userCustomHeadline: string;
+      userCustomSubcopy: string;
+      sourceImagePath: string | null;
+      referenceImagePath: string | null;
+      selectedReferenceTemplateId: string | null;
+      selectedReferenceTemplateTitle: string | null;
+      generationJob: GenerationJob;
+      currentQuestion: OptionQuestion | null;
+      conversationMessages: ChatTranscriptMessage[];
+    }
   | { type: "showResultShell" }
   | { type: "back" }
   | { type: "generationJobRequested" }

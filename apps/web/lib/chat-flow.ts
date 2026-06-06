@@ -239,6 +239,42 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         progress: { current: 4, total: 4, label: "정보 입력" },
         isLoading: false
       };
+    case "restoreThreadSnapshot":
+      return {
+        ...state,
+        step: 4,
+        progress: {
+          current: 4,
+          total: 4,
+          label: action.currentQuestion ? "추가 정보" : "정보 입력"
+        },
+        userInput: action.prompt,
+        jobId: action.jobId,
+        threadId: action.threadId,
+        inferredContext: action.context,
+        contextSource: "backend",
+        copyGenerationMode: action.copyGenerationMode,
+        selectedChannelId: action.selectedChannelId,
+        selectedTone: action.selectedTone,
+        selectedImageGenerationEngine: action.selectedImageGenerationEngine,
+        customDirection: action.customDirection,
+        userCustomHeadline: action.userCustomHeadline,
+        userCustomSubcopy: action.userCustomSubcopy,
+        sourceImagePath: action.sourceImagePath,
+        referenceImagePath: action.referenceImagePath,
+        selectedReferenceTemplateId: action.selectedReferenceTemplateId,
+        selectedReferenceTemplateTitle: action.selectedReferenceTemplateTitle,
+        generationJob: action.generationJob,
+        currentQuestion: action.currentQuestion,
+        conversationMessages:
+          action.conversationMessages.length > 0
+            ? action.conversationMessages
+            : action.prompt
+              ? [{ role: "user", text: action.prompt }]
+              : state.conversationMessages,
+        isLoading: false,
+        errorMessage: null
+      };
     case "showResultShell":
       return {
         ...state,

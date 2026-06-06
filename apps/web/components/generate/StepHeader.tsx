@@ -1,3 +1,4 @@
+import React from "react";
 import { ChevronLeft, Home, MessageCircle } from "lucide-react";
 import styles from "./generate.module.css";
 
