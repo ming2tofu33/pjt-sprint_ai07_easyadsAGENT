@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from pydantic import BaseModel
 
+from orchestrator.app.core.config import _get_env
 from orchestrator.app.llm.adapters.registry import get_llm_adapter_safe
 from orchestrator.app.llm.metadata_contracts import sanitize_metadata
 from orchestrator.app.llm.model_router import choose_model
@@ -41,7 +42,19 @@ def run_structured_node(
     )
     append_model_selection(state, selection)
 
-    if state.get("user_plan", "free") == "free":
+    # TEMPORARY (free → local Gemma for eval). Normally free returns the deterministic
+    # fallback here (decision step 1). When EASYADS_FREE_USE_LOCAL=1 AND the router picked
+    # a self-hosted provider (local Gemma via local_openai_compat), let the call through so
+    # the free tier exercises the local model. API/mock providers still fall back, so a free
+    # job can never reach a paid API. Revert: unset the env / delete this block.
+    # See fix.md #14, updates.md. SD3.5 T2I deferred (fix.md #7).
+    _is_free = state.get("user_plan", "free") == "free"
+    _free_local = (
+        _is_free
+        and _get_env("EASYADS_FREE_USE_LOCAL", "") == "1"
+        and selection.provider in {"local_openai_compat", "local_gemma", "local_qwen"}
+    )
+    if _is_free and not _free_local:
         return fallback_with_result(state, selection, fallback_fn, "free_plan_deterministic_fallback", metadata)
     if selection.selected_model_class.startswith("api_") and not settings.enable_api_call:
         return fallback_with_result(state, selection, fallback_fn, "api_call_disabled", metadata)
