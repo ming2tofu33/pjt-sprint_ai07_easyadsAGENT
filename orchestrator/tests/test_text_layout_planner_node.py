@@ -21,7 +21,7 @@ def _planned_state(ad_format="instagram_feed"):
 
 
 def test_text_layout_planner_templates_by_ad_format():
-    assert text_layout_planner_node(_planned_state("instagram_feed"))["text_layout_spec"]["template"] == "top_headline_center_product_bottom_cta"
+    assert text_layout_planner_node(_planned_state("instagram_feed"))["text_layout_spec"]["template"] == "dynamic_side_split"
     assert text_layout_planner_node(_planned_state("banner"))["text_layout_spec"]["template"] == "left_text_right_product"
     assert text_layout_planner_node(_planned_state("flyer"))["text_layout_spec"]["template"] == "multi_zone_flyer"
 
@@ -37,7 +37,10 @@ def test_text_layout_planner_bbox_ranges_and_reserved_sync():
         assert bbox["x"] + bbox["w"] <= 1
         assert bbox["y"] + bbox["h"] <= 1
     product = spec["product_zone"]
-    assert product["y"] >= 0.30
+    assert product["x"] < 0.30
+    assert product["w"] <= 0.50
+    assert spec["auto_find_empty_space"] is True
+    assert {slot["alignment"] for slot in spec["slots"]} == {"auto"}
 
 
 def test_text_layout_planner_no_text_allows_empty_slots():
