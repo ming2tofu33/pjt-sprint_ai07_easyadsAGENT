@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Path
 
 from orchestrator.app.api.schemas.assets import (
     AssetPresignRequest,
@@ -18,7 +18,9 @@ router = APIRouter(prefix="/assets", tags=["Assets"])
 
 
 from orchestrator.app.api.errors import raise_api_error
-from orchestrator.app.assets.errors import AssetServiceError, NotFoundError
+from orchestrator.app.assets.errors import AssetServiceError
+
+ASSET_ID_PATTERN = r"^asset_[0-9a-f]{32}$"
 
 def _handle_asset_error(exc: Exception):
     if isinstance(exc, AssetServiceError):
@@ -26,16 +28,19 @@ def _handle_asset_error(exc: Exception):
     raise exc
 
 @router.post("/uploads/presign", response_model=AssetPresignResponse)
-def presign_asset_upload(req: AssetPresignRequest) -> Any:
+def presign_asset_upload(
+    req: AssetPresignRequest,
+    user_id: str | None = None,
+) -> Any:
     try:
-        return service.presign_asset_upload(req)
+        return service.presign_asset_upload(req, user_id=user_id)
     except Exception as exc:
         _handle_asset_error(exc)
 
 
 @router.post("/uploads/{asset_id}/complete", response_model=AssetCompleteResponse)
 def complete_asset_upload(
-    asset_id: str,
+    asset_id: str = Path(pattern=ASSET_ID_PATTERN),
     workspace_id: str | None = None,
     user_id: str | None = None,
 ) -> Any:
@@ -52,7 +57,7 @@ def complete_asset_upload(
 
 @router.get("/{asset_id}", response_model=AssetGetResponse)
 def get_asset(
-    asset_id: str,
+    asset_id: str = Path(pattern=ASSET_ID_PATTERN),
     workspace_id: str | None = None,
     user_id: str | None = None,
 ) -> Any:

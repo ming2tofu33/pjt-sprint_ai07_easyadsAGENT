@@ -16,8 +16,10 @@ def test_create_asset_conflict(monkeypatch):
         connection=mock_conn
     )
     assert res1 is not None
-    assert "insert into assets" in mock_cursor.execute.call_args[0][0].lower()
-    assert "returning *" in mock_cursor.execute.call_args[0][0].lower()
+    sql = mock_cursor.execute.call_args[0][0].lower()
+    assert "insert into assets" in sql
+    assert "returning *" in sql
+    assert "on conflict" not in sql
 
 def test_update_asset_with_workspace(monkeypatch):
     mock_conn = MagicMock()

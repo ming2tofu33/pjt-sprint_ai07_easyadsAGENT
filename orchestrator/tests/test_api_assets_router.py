@@ -4,6 +4,8 @@ from orchestrator.app.main import app
 
 client = TestClient(app)
 
+VALID_ASSET_ID = "asset_" + "a" * 32
+
 def test_presign_asset_api(monkeypatch):
     monkeypatch.setattr("orchestrator.app.storage.settings.require_r2_ready", lambda: None)
     monkeypatch.setattr("orchestrator.app.storage.settings.get_r2_bucket", lambda: "b")
@@ -22,6 +24,7 @@ def test_presign_asset_api(monkeypatch):
 
     resp = client.post(
         "/api/v1/assets/uploads/presign",
+        params={"user_id": "user1"},
         json={
             "kind": "source",
             "filename": "test.jpg",
@@ -38,7 +41,7 @@ def test_presign_asset_api(monkeypatch):
 def test_complete_asset_api(monkeypatch):
     mock_row = {
         "id": "internal-uuid",
-        "public_asset_id": "asset_123",
+        "public_asset_id": VALID_ASSET_ID,
         "kind": "source",
         "metadata": {"upload": {"status": "pending"}},
         "bucket": "test-bucket",
@@ -64,13 +67,13 @@ def test_complete_asset_api(monkeypatch):
         
     monkeypatch.setattr("orchestrator.app.assets.service.head_object", mock_head)
     
-    resp = client.post("/api/v1/assets/uploads/asset_123/complete", params={"workspace_id": "ws1"})
+    resp = client.post(f"/api/v1/assets/uploads/{VALID_ASSET_ID}/complete", params={"workspace_id": "ws1", "user_id": "user1"})
     assert resp.status_code == 409
     assert "File not found" in resp.json()["detail"]["message"]
 
 def test_get_asset_api(monkeypatch):
     mock_row = {
-        "public_asset_id": "asset_123",
+        "public_asset_id": VALID_ASSET_ID,
         "kind": "source",
         "metadata": {"upload": {"status": "ready"}},
         "storage_provider": "r2",
@@ -86,7 +89,7 @@ def test_get_asset_api(monkeypatch):
             return mock_row
     monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", MockRepo())
     
-    resp = client.get("/api/v1/assets/asset_123", params={"workspace_id": "ws1"})
+    resp = client.get(f"/api/v1/assets/{VALID_ASSET_ID}", params={"workspace_id": "ws1", "user_id": "user1"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["asset"]["status"] == "ready"

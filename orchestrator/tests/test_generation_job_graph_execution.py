@@ -351,7 +351,7 @@ def test_graph_modal_poll_completion_runs_post_t2i_nodes(monkeypatch, tmp_path):
     assert completed.result_payload["validation_summary"]["background"]["overall_pass"] is True
 
 
-def test_execute_generation_job_graph_receives_source_image_path(monkeypatch):
+def test_execute_generation_job_graph_receives_source_asset_id(monkeypatch):
     received_payload = {}
 
     class MockGraph:
@@ -368,21 +368,29 @@ def test_execute_generation_job_graph_receives_source_image_path(monkeypatch):
             return state
 
     monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job", lambda j: type("J", (), {"job_id": j, "request_payload": {}, "status": "done", "thread_id": "t", "user_id": "u", "metadata": {}})())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_running", lambda j, **k: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_done", lambda j, **k: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.append_generation_job_user_answer_message", lambda j, **k: None)
+
+    class MockSnapshotService:
+        def get_chat_state_snapshot_by_key(self, **kwargs):
+            return type("S", (), {"state_payload": {}})()
+    monkeypatch.setattr("orchestrator.app.chat_threads.state_service", MockSnapshotService())
 
     request = GenerationJobCreateRequest(
         user_input="이 사진으로 신메뉴 광고 만들어줘",
         run_mode="graph_job",
-        sourceImagePath="data/uploads/photo_1.png",
+        source_asset_id="asset_" + "a"*32,
     )
-    job = create_generation_job(request)
 
-    executed = execute_generation_job_graph(job.job_id, request)
+    executed = execute_generation_job_graph("job_123", request)
 
     assert executed.status == "done"
-    assert received_payload["source_image_path"] == "data/uploads/photo_1.png"
+    assert received_payload["source_asset_id"] == "asset_" + "a"*32
 
 
-def test_execute_generation_job_graph_receives_reference_image_path(monkeypatch):
+def test_execute_generation_job_graph_receives_reference_asset_id(monkeypatch):
     received_payload = {}
 
     class MockGraph:
@@ -399,18 +407,26 @@ def test_execute_generation_job_graph_receives_reference_image_path(monkeypatch)
             return state
 
     monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job", lambda j: type("J", (), {"job_id": j, "request_payload": {}, "status": "done", "thread_id": "t", "user_id": "u", "metadata": {}})())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_running", lambda j, **k: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_done", lambda j, **k: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.append_generation_job_user_answer_message", lambda j, **k: None)
+
+    class MockSnapshotService:
+        def get_chat_state_snapshot_by_key(self, **kwargs):
+            return type("S", (), {"state_payload": {}})()
+    monkeypatch.setattr("orchestrator.app.chat_threads.state_service", MockSnapshotService())
 
     request = GenerationJobCreateRequest(
         user_input="이 레퍼런스 분위기로 광고 만들어줘",
         run_mode="graph_job",
-        referenceImagePath="data/uploads/reference_1.png",
+        reference_asset_id="asset_" + "b"*32,
     )
-    job = create_generation_job(request)
 
-    executed = execute_generation_job_graph(job.job_id, request)
+    executed = execute_generation_job_graph("job_123", request)
 
     assert executed.status == "done"
-    assert received_payload["reference_image_path"] == "data/uploads/reference_1.png"
+    assert received_payload["reference_asset_id"] == "asset_" + "b"*32
 
 
 def test_execute_generation_job_graph_receives_selected_ui_values(monkeypatch):

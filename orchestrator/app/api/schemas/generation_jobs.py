@@ -76,8 +76,7 @@ class GenerationJobCreateRequest(BaseModel):
         if self.selected_reference_template_id and self.reference_asset_id:
             raise ValueError("selected_reference_template_id and reference_asset_id cannot be provided together")
             
-        allow_legacy = os.environ.get("EASYADS_ALLOW_LEGACY_LOCAL_IMAGE_PATHS", "false").lower() == "true"
-        if (self.source_image_path or self.reference_image_path) and not allow_legacy:
+        if self.source_image_path or self.reference_image_path:
             raise ValueError("source_image_path and reference_image_path are not accepted by the public API")
             
         return self

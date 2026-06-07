@@ -33,8 +33,13 @@ def test_resolve_and_download_asset_success(monkeypatch):
         def get_asset_by_public_id(self, *a, **k):
             return mock_row
     monkeypatch.setattr("orchestrator.app.db.repositories.assets.get_asset_by_public_id", MockRepo().get_asset_by_public_id)
-    monkeypatch.setattr("orchestrator.app.storage.r2_service.download_file_from_r2", lambda **k: None)
-    
+    def fake_download(*args, **kwargs):
+        from pathlib import Path
+        target = kwargs.get('target_path') or kwargs.get('local_path')
+        Path(target).write_bytes(b"fake")
+        
+    monkeypatch.setattr("orchestrator.app.storage.r2_service.download_file_from_r2", fake_download)
+
     state = {
         "workspace_id": "ws1",
         "source_asset_id": "asset_123",
@@ -47,3 +52,6 @@ def test_resolve_and_download_asset_success(monkeypatch):
         image_key="source_image_path"
     )
     assert local_path is not None
+    assert "downloaded.k" in local_path or "asset_123" in local_path or local_path.endswith(".k") or local_path.endswith(".tmp") or "source_asset_id" in local_path
+    from pathlib import Path
+    assert Path(local_path).exists()
