@@ -43,6 +43,13 @@ def get_graph_actual_t2i_engine(name: GraphActualEngineName) -> BaseT2IEngine:
     """
     if modal_settings.is_modal_execution_enabled():
         return ModalGraphT2IEngine(name)
+    if name == "sd35_large" and load_t2i_settings().enable_sd35_local:
+        try:
+            from orchestrator.app.t2i.sd35_adapter import SD35LargeGraphEngine
+
+            return SD35LargeGraphEngine()
+        except ImportError:
+            pass
     return GuardedLocalGraphT2IEngine(name)
 
 
@@ -77,6 +84,14 @@ class ModalGraphT2IEngine(BaseT2IEngine):
         }
 
     def generate(self, request: T2IRequest) -> T2IResult:
+        if self.name == "sd35_large":
+            try:
+                from orchestrator.app.t2i.sd35_adapter import SD35LargeGraphEngine
+
+                return SD35LargeGraphEngine().generate(request)
+            except ImportError:
+                pass
+
         started = perf_counter()
         metadata = dict(request.metadata or {})
         job_id = str(metadata.get("job_id") or "graph-job")

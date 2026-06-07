@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, load_font as load_resolved_font, resolve_font_path
 from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, RenderResult, TextLayoutSpec, TextSlot, TextStyleSpec
@@ -43,6 +43,20 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
     rendered_count = 0
     skipped_count = 0
     with Image.open(background_path).convert("RGB") as image:
+        empty_half = find_empty_half(image)
+        
+        # 슬롯들의 평균 중심 x 좌표를 통해 텍스트 레이아웃의 방향 파악
+        avg_x = 0.5
+        if layout.slots:
+            avg_x = sum(slot.bbox.x + slot.bbox.w / 2 for slot in layout.slots) / len(layout.slots)
+            
+        layout_is_right = avg_x > 0.5
+        
+        # 텍스트가 가야할 빈 공간(empty_half)과 현재 기획된 텍스트 위치(layout_is_right)가 엇갈릴 경우
+        needs_flip = layout.auto_find_empty_space and ((layout_is_right and empty_half == "left") or (not layout_is_right and empty_half == "right"))
+        if needs_flip:
+            warnings.append(f"Auto-flipped layout horizontally to match image negative space ({empty_half})")
+
         draw = ImageDraw.Draw(image, "RGBA")
         for slot in layout.slots:
             copy_item = find_copy_item(copy_spec, slot)
@@ -50,6 +64,18 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
                 skipped_count += 1
                 warnings.append(f"slot {slot.slot_id} skipped: no matching copy item")
                 continue
+                
+            if needs_flip:
+                # 가로(x) 좌표 반전 및 좌/우 정렬 반전
+                slot.bbox.x = 1.0 - slot.bbox.x - slot.bbox.w
+                if slot.alignment == "left":
+                    slot.alignment = "right"
+                elif slot.alignment == "right":
+                    slot.alignment = "left"
+                    
+            if slot.alignment == "auto":
+                slot.alignment = "right" if slot.bbox.x > 0.5 else "left"
+                
             x, y, w, h = slot.bbox.to_pixels(image.width, image.height)
             font_size = estimate_font_size(slot, image.width, image.height)
             font, font_warning = load_font(slot, font_size)
@@ -58,7 +84,12 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
             lines = wrap_text(copy_item.text, max_chars=max(4, int(w / max(font_size * 0.55, 1))), max_lines=slot.max_lines)
             if len(lines) >= slot.max_lines and len(copy_item.text) > len(" ".join(lines)):
                 warnings.append(f"slot {slot.slot_id} clipping risk: text truncated to {slot.max_lines} lines")
-            draw_overlay(draw, slot, x, y, w, h, style)
+            
+            line_height = int(getattr(font, "size", 18) * slot.font_metric.line_height_em)
+            actual_h = line_height * len(lines)
+            actual_y = y + max(0, (h - actual_h) // 2)
+            
+            draw_overlay(draw, slot, x, actual_y, w, actual_h, style)
             draw_wrapped_text(draw, lines, slot, font, x, y, w, h)
             rendered_count += 1
         image.save(final_path)
@@ -86,6 +117,22 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         "artifact_refs": artifacts,
         "status": "overlaying_text",
     }
+
+
+def find_empty_half(image: Image.Image) -> str:
+    """
+    Returns 'left' or 'right' depending on which half of the image has lower variance/details.
+    Lower standard deviation implies more flat negative space.
+    """
+    gray = image.convert("L")
+    w, h = gray.size
+    left_half = gray.crop((0, 0, w // 2, h))
+    right_half = gray.crop((w // 2, 0, w, h))
+    
+    left_stddev = sum(ImageStat.Stat(left_half).stddev)
+    right_stddev = sum(ImageStat.Stat(right_half).stddev)
+    
+    return "left" if left_stddev < right_stddev else "right"
 
 
 def find_copy_item(copy_spec: CopySpec, slot: TextSlot) -> CopyItem | None:
@@ -120,12 +167,12 @@ def estimate_font_size(slot: TextSlot, canvas_w: int, canvas_h: int) -> int:
 
 def load_font(slot: TextSlot, size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, str | None]:
     weight = "bold" if slot.font_metric.weight >= 700 else None
-    preferred = slot.font_metric.font_path or resolve_font_path()
+    preferred = slot.font_metric.font_family
     font = load_resolved_font(
     size=size,
     weight=weight,
-    preferred=slot.font_metric.font_path,)
-    if preferred and Path(preferred).exists() and hasattr(font, "path"):
+    preferred=preferred,)
+    if preferred and font and hasattr(font, "path"):
         return font, None
     if not resolve_font_path(preferred):
         return font, f"slot {slot.slot_id} used default PIL font fallback"
