@@ -1,5 +1,5 @@
-import { ChatGenerateClient } from "@/app/generate/chat/ChatGenerateClient";
+import { ChatGeneratePage } from "@/app/generate/ChatGeneratePage";
 
 export default function ReferencePage() {
-  return <ChatGenerateClient initialSurface="reference" />;
+  return <ChatGeneratePage initialSurface="reference" />;
 }

@@ -79,10 +79,60 @@ export const mascotAssets = {
     width: 640,
     height: 631
   },
+  downloadFile: {
+    src: "/mascots/sheet4-01-download-file.png",
+    width: 631,
+    height: 640
+  },
+  archiveBox: {
+    src: "/mascots/sheet2-03-box-open.png",
+    width: 609,
+    height: 640
+  },
+  saveGift: {
+    src: "/mascots/sheet5-05-gift.png",
+    width: 640,
+    height: 631
+  },
   copyEmpty: {
     src: "/mascots/copy-empty.png",
     width: 633,
     height: 640
+  },
+  chatWave: {
+    src: "/mascots/sheet5-06-chat-wave.png",
+    width: 640,
+    height: 577
+  },
+  questionPaper: {
+    src: "/mascots/sheet3-02-question-paper.png",
+    width: 633,
+    height: 640
+  },
+  checkPaper: {
+    src: "/mascots/sheet3-03-check-paper.png",
+    width: 640,
+    height: 583
+  },
+  settingsHelper: {
+    src: "/mascots/sheet5-02-settings.png",
+    width: 640,
+    height: 629
+  },
+  bellHelper: {
+    src: "/mascots/sheet5-03-bell.png",
+    width: 640,
+    height: 554
+  },
+  usageWaiting: {
+    src: "/mascots/sheet2-02-waiting.png",
+    width: 640,
+    height: 595
+  },
+  cloudUpload: {
+    src: "/mascots/sheet5-04-cloud-upload.png",
+    width: 640,
+    height: 545
   }
 } as const;
 

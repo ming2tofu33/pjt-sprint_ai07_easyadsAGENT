@@ -315,7 +315,7 @@ export const onboardingSlides = {
 
 export const exceptionStateContent = {
   searchEmpty: {
-    surfaceTitle: "레퍼런스 검색",
+    surfaceTitle: "샘플 검색",
     title: "검색 결과가 없어요",
     description: "다른 키워드로 다시 찾아보세요. 다양한 스타일의 광고를 추천해드릴게요!",
     query: "빈티지 카페 포스터",
@@ -328,7 +328,7 @@ export const exceptionStateContent = {
     description: "첫 찰떡 광고를 만들어볼까요? 어떤 방법으로 시작할지 선택해보세요.",
     tone: "purple",
     actions: [
-      { id: "reference", label: "레퍼런스 보고 만들기", description: "마음에 드는 광고 스타일을 골라 만들어요" },
+      { id: "reference", label: "샘플 보고 만들기", description: "마음에 드는 광고 스타일을 골라 만들어요" },
       { id: "photo", label: "내 사진으로 만들기", description: "우리 가게 사진으로 광고를 만들어요" },
       { id: "chat", label: "대화로 시작하기", description: "말로 설명하면 AI가 브리프를 제안해요" }
     ]
@@ -405,10 +405,10 @@ export const mockNotifications: MockNotification[] = [
   {
     id: "notice-brand",
     type: "brand",
-    title: "브랜드 키트가 저장됐어요",
-    subtitle: "저장된 브랜드 키트 정보가 다음 광고에 적용돼요.",
+    title: "브랜드 파일이 저장됐어요",
+    subtitle: "저장된 브랜드 파일 정보가 다음 광고에 적용돼요.",
     time: "10분 전",
-    ctaLabel: "브랜드 키트 보기",
+    ctaLabel: "브랜드 파일 보기",
     target: "brand-kit"
   }
 ];
@@ -434,13 +434,13 @@ export const notificationSettings = [
   },
   {
     id: "brand-kit",
-    label: "브랜드 키트 알림",
-    description: "브랜드 키트 변경/저장 시 알려드려요.",
+    label: "브랜드 파일 알림",
+    description: "브랜드 파일 변경/저장 시 알려드려요.",
     enabled: true
   },
   {
     id: "reference",
-    label: "추천 레퍼런스 알림",
+    label: "추천 샘플 알림",
     description: "새로운 스타일을 추천해드려요.",
     enabled: false
   },

@@ -24,7 +24,7 @@ const stepOrder: OnboardingStep[] = ["intro", "modes", "brief", "start"];
 
 const modes = [
   {
-    title: "레퍼런스 보고 만들기",
+    title: "샘플 보고 만들기",
     description: "마음에 드는 광고 스타일을 고르면 AI가 내 가게 광고에 맞게 바꿔줘요.",
     icon: ImageIcon,
     tone: "lime",
@@ -189,7 +189,7 @@ export function OnboardingFlowStep() {
               </span>
               <strong>
                 바로 광고 만들기
-                <small>레퍼런스, 사진, 대화 중 원하는 방식으로 지금 바로 시작해요.</small>
+                <small>샘플, 사진, 대화 중 원하는 방식으로 지금 바로 시작해요.</small>
               </strong>
               <ArrowRight size={20} aria-hidden="true" />
             </button>
@@ -206,7 +206,7 @@ export function OnboardingFlowStep() {
                 <Store size={30} aria-hidden="true" />
               </span>
               <strong>
-                브랜드 키트 만들기
+                브랜드 파일 만들기
                 <small>가게 이름, 로고, 자주 쓰는 문구를 저장하면 다음 광고가 쉬워져요.</small>
               </strong>
               <ArrowRight size={20} aria-hidden="true" />

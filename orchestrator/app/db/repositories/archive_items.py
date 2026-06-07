@@ -5,6 +5,28 @@ from __future__ import annotations
 from orchestrator.app.db.json import jsonb_param
 from orchestrator.app.db.session import db_transaction
 
+_SELECT_ARCHIVE_WITH_OUTPUT = """
+select
+    i.*,
+    j.public_job_id as j_public_job_id,
+    o.public_output_id,
+    o.result_payload as output_result_payload,
+    o.is_final,
+    t.public_thread_id,
+    a.public_url as asset_public_url,
+    a.storage_provider,
+    a.mime_type as asset_mime_type,
+    a.width as asset_width,
+    a.height as asset_height,
+    ta.public_url as thumbnail_public_url
+from archive_items i
+left join generation_jobs j on j.id = i.job_id
+left join generation_outputs o on o.id = i.output_id
+left join chat_threads t on t.id = o.thread_id
+left join assets a on a.id = i.asset_id
+left join assets ta on ta.id = o.thumbnail_asset_id
+"""
+
 
 def create_archive_item_row(
     *,
@@ -22,17 +44,20 @@ def create_archive_item_row(
     platform: str | None = None,
     source: str = "generated",
     metadata: dict | None = None,
+    public_archive_id: str | None = None,
     connection: object | None = None,
 ) -> dict:
+    import uuid
+    actual_public_id = public_archive_id or f"archive_{uuid.uuid4().hex}"
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 insert into archive_items (
                   workspace_id, created_by, job_id, output_id, asset_id, public_job_id, title,
-                  thumbnail_url, image_url, status, ad_format, platform, source, metadata
+                  thumbnail_url, image_url, status, ad_format, platform, source, metadata, public_archive_id
                 )
-                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                 returning *
                 """,
                 (
@@ -50,6 +75,7 @@ def create_archive_item_row(
                     platform,
                     source,
                     jsonb_param(metadata or {}),
+                    actual_public_id,
                 ),
             )
             return cur.fetchone()
@@ -73,10 +99,9 @@ def list_archive_item_rows(
             params.extend([limit, offset])
             cur.execute(
                 f"""
-                select *
-                from archive_items
-                where {" and ".join(filters)}
-                order by saved_at desc
+                {_SELECT_ARCHIVE_WITH_OUTPUT}
+                where {" and ".join([f"i.{f}" for f in filters])}
+                order by i.saved_at desc
                 limit %s offset %s
                 """,
                 tuple(params),
@@ -113,7 +138,7 @@ def soft_delete_archive_item_row(
 ) -> dict | None:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
-            filters = ["id = %s", "workspace_id = %s", "deleted_at is null"]
+            filters = ["public_archive_id = %s", "workspace_id = %s", "deleted_at is null"]
             params: list[object] = [archive_item_id, workspace_id]
             if created_by:
                 filters.append("created_by = %s")
@@ -126,5 +151,88 @@ def soft_delete_archive_item_row(
                 returning *
                 """,
                 tuple(params),
+            )
+            return cur.fetchone()
+
+
+def get_archive_item_row(
+    *,
+    public_archive_id: str,
+    workspace_id: str,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                {_SELECT_ARCHIVE_WITH_OUTPUT}
+                where i.public_archive_id = %s and i.workspace_id = %s and i.deleted_at is null
+                """,
+                (public_archive_id, workspace_id),
+            )
+            return cur.fetchone()
+
+
+def upsert_generated_archive_item_row(
+    *,
+    workspace_id: str,
+    public_job_id: str,
+    created_by: str | None,
+    title: str,
+    job_id: str | None = None,
+    output_id: str | None = None,
+    asset_id: str | None = None,
+    thumbnail_url: str | None = None,
+    image_url: str | None = None,
+    status: str = "saved",
+    ad_format: str | None = None,
+    platform: str | None = None,
+    source: str = "generated",
+    metadata: dict | None = None,
+    connection: object | None = None,
+) -> dict:
+    import uuid
+    actual_public_id = f"archive_{uuid.uuid4().hex}"
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                insert into archive_items (
+                  workspace_id, created_by, job_id, output_id, asset_id, public_job_id, title,
+                  thumbnail_url, image_url, status, ad_format, platform, source, metadata, public_archive_id
+                )
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                on conflict (workspace_id, public_job_id) where public_job_id is not null and deleted_at is null
+                do update set
+                  job_id = excluded.job_id,
+                  output_id = excluded.output_id,
+                  asset_id = excluded.asset_id,
+                  title = excluded.title,
+                  thumbnail_url = excluded.thumbnail_url,
+                  image_url = excluded.image_url,
+                  status = excluded.status,
+                  ad_format = excluded.ad_format,
+                  platform = excluded.platform,
+                  metadata = excluded.metadata,
+                  updated_at = now()
+                returning *
+                """,
+                (
+                    workspace_id,
+                    created_by,
+                    job_id,
+                    output_id,
+                    asset_id,
+                    public_job_id,
+                    title,
+                    thumbnail_url,
+                    image_url,
+                    status,
+                    ad_format,
+                    platform,
+                    source,
+                    jsonb_param(metadata or {}),
+                    actual_public_id,
+                ),
             )
             return cur.fetchone()

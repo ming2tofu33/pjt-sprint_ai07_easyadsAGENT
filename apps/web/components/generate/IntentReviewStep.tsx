@@ -4,6 +4,7 @@ import { Diamond, Heart, Leaf, Smile, Sparkles, Star } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { toneOptions } from "@/lib/chat-flow";
 import { ChoiceChip } from "./ChoiceChip";
+import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -48,7 +49,10 @@ export function IntentReviewStep({ state, onSelectTone, onContinue, onBack }: In
 
       <section className={styles.contextCard} aria-label="AI가 파악한 내용">
         <div className={styles.contextReviewHeader}>
-          <h2 className={styles.contextTitle}>{state.isLoading ? "요청 분석 중" : "파악한 내용"}</h2>
+          <div className={styles.contextTitleGroup}>
+            <MascotImage role={state.isLoading ? "questionPaper" : "checkPaper"} decorative className={styles.contextTitleMascot} />
+            <h2 className={styles.contextTitle}>{state.isLoading ? "요청 분석 중" : "파악한 내용"}</h2>
+          </div>
           <span>{contextBadge}</span>
         </div>
 

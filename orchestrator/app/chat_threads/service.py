@@ -133,6 +133,10 @@ def _msg_row_to_response(row: dict, public_thread_id: str) -> ChatMessageRespons
     """DB row → ChatMessageResponse. message_id는 msg_ prefix."""
     raw_id = str(row.get("id") or "")
     message_id = f"msg_{raw_id.replace('-', '')}" if raw_id else f"msg_{uuid4().hex}"
+
+    raw_public_job_id = row.get("public_job_id") or row.get("job_id")
+    job_id = str(raw_public_job_id) if raw_public_job_id and str(raw_public_job_id).startswith("job_") else None
+
     return ChatMessageResponse(
         message_id=message_id,
         thread_id=public_thread_id,
@@ -141,6 +145,8 @@ def _msg_row_to_response(row: dict, public_thread_id: str) -> ChatMessageRespons
         content=row.get("content"),
         payload=sanitize_chat_payload(row.get("payload") or {}),
         created_by=row.get("created_by"),
+        job_id=job_id,
+        event_type=row.get("event_type"),
         created_at=_iso(row.get("created_at")),
     )
 
@@ -249,16 +255,17 @@ def clear_thread_active_job(
     public_thread_id: str,
     status: str,
     expected_public_job_id: str | None = None,
-) -> None:
+) -> bool:
     """GenerationJob service에서 호출: active_job_id clear."""
     if _use_postgres():
-        chat_thread_repo.clear_chat_thread_active_job(
+        row = chat_thread_repo.clear_chat_thread_active_job(
             public_thread_id,
             status=status,
             expected_active_job_id=expected_public_job_id,
         )
+        return row is not None
     else:
-        _clear_active_job_memory(
+        return _clear_active_job_memory(
             public_thread_id,
             status=status,
             expected_public_job_id=expected_public_job_id,
@@ -442,13 +449,57 @@ def _clear_active_job_memory(
     public_thread_id: str,
     status: str,
     expected_public_job_id: str | None = None,
-) -> None:
+) -> bool:
     with _STORE_LOCK:
         data = _CHAT_THREADS.get(public_thread_id)
         if data:
             if expected_public_job_id is not None and data.get("active_job_id") != expected_public_job_id:
-                return
+                return False
             _CHAT_THREADS[public_thread_id] = {**data, "active_job_id": None, "status": status, "updated_at": _now_iso()}
+            return True
+        return False
+
+def append_generation_job_chat_event_memory(
+    *,
+    thread_id: str,
+    job_id: str,
+    event_type: str,
+    role: str,
+    content: str | None,
+    payload: dict,
+    user_id: str | None,
+) -> ChatMessageResponse | None:
+    with _STORE_LOCK:
+        data = _CHAT_THREADS.get(thread_id)
+        if not data or not _owner_matches(data, user_id):
+            return None
+        if data.get("archived_at"):
+            raise ChatThreadArchivedError()
+        msgs = _CHAT_MESSAGES.setdefault(thread_id, [])
+        now = _now_iso()
+
+        # Dedupe check
+        for m in reversed(msgs):
+            if m.get("job_id") == job_id and m.get("event_type") == event_type:
+                return ChatMessageResponse(**m)
+
+        msg = ChatMessageResponse(
+            message_id=f"msg_{uuid4().hex}",
+            thread_id=thread_id,
+            sequence_no=(msgs[-1]["sequence_no"] + 1) if msgs else 1,
+            role=role,
+            content=content,
+            payload=_sanitize_message_payload(payload),
+            created_by=_effective_user_id(user_id),
+            job_id=job_id,
+            event_type=event_type,
+            created_at=now,
+        )
+        msgs.append(msg.model_dump(mode="json"))
+        if role == "user" and data.get("status") in {"completed", "failed"}:
+            data = {**data, "status": "draft"}
+        _CHAT_THREADS[thread_id] = {**data, "last_message_at": now, "updated_at": now}
+        return msg
 
 
 

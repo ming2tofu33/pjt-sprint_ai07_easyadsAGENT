@@ -30,6 +30,7 @@ def test_openapi_registers_generation_jobs_and_existing_routes():
     assert "/api/v1/brand-kits" in schema["paths"]
     assert "/api/v1/generation-jobs" in schema["paths"]
     assert "/api/v1/generation-jobs/{job_id}" in schema["paths"]
+    assert "/api/v1/generation-jobs/{job_id}/answer" in schema["paths"]
 
 
 def test_create_generation_job_and_get_job(client):
@@ -98,7 +99,7 @@ def test_invalid_job_reference_and_request_errors(client):
     assert invalid.json()["error_code"] == "invalid_generation_job_request"
 
 
-def test_graph_immediate_degrades_to_queued_only(client):
+def test_graph_immediate_pending_metadata(client):
     response = client.post(
         "/api/v1/generation-jobs",
         json={
@@ -111,12 +112,89 @@ def test_graph_immediate_degrades_to_queued_only(client):
     body = response.json()
     job = body["job"]
 
-    assert job["status"] == "queued"
+    assert job["status"] in ("queued", "waiting_user_input")
     assert job["output_path"] is None
     assert job["result_payload"] is None
     assert job["metadata"]["requested_run_mode"] == "graph_immediate"
-    assert job["metadata"]["effective_run_mode"] == "queued_only"
-    assert job["metadata"]["execution_mode"] == "degraded_no_graph_execution"
+    assert job["metadata"]["effective_run_mode"] == "graph_immediate"
+    assert job["metadata"]["execution_mode"] in ("pending_graph_execution", "graph_immediate")
+
+
+def test_graph_immediate_routes_to_graph_executor_with_engine_metadata(client, monkeypatch):
+    captured = {}
+
+    def fake_execute_generation_job_graph(job_id, request):
+        from orchestrator.app.generation_jobs.service import get_generation_job
+
+        captured["job_id"] = job_id
+        captured["run_mode"] = request.run_mode
+        captured["metadata"] = request.metadata
+        job = get_generation_job(job_id)
+        assert job is not None
+        return job
+
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.execute_generation_job_graph",
+        fake_execute_generation_job_graph,
+    )
+
+    response = client.post(
+        "/api/v1/generation-jobs",
+        json={
+            "user_input": "카페 신메뉴 광고 만들어줘",
+            "run_mode": "graph_immediate",
+            "metadata": {
+                "selected_engine": "flux_schnell",
+                "requested_engine": "flux",
+                "t2i_engine": "flux",
+            },
+        },
+    )
+
+    assert response.status_code == 201
+    assert captured["run_mode"] == "graph_immediate"
+    assert captured["metadata"]["selected_engine"] == "flux_schnell"
+    assert captured["metadata"]["requested_engine"] == "flux"
+    assert captured["metadata"]["t2i_engine"] == "flux"
+
+
+def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
+    captured = {}
+
+    def fake_resume_generation_job_graph(job_id, answer):
+        from orchestrator.app.generation_jobs.service import get_generation_job, update_generation_job
+
+        captured["job_id"] = job_id
+        captured["payload"] = answer.to_resume_payload(job_id=job_id, thread_id="thread_1")
+        updated = update_generation_job(
+            job_id,
+            status="done",
+            metadata={"execution_mode": "graph_execution"},
+        )
+        return updated or get_generation_job(job_id)
+
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.resume_generation_job_graph",
+        fake_resume_generation_job_graph,
+    )
+
+    create_response = client.post(
+        "/api/v1/generation-jobs",
+        json={"user_input": "광고 만들어줘", "run_mode": "queued_only"},
+    )
+    job = create_response.json()["job"]
+    from orchestrator.app.generation_jobs.service import update_generation_job
+    update_generation_job(job["job_id"], status="waiting_user_input")
+
+    answer_response = client.post(
+        f"/api/v1/generation-jobs/{job['job_id']}/answer",
+        json={"field": "business_type", "value": "cafe"},
+    )
+
+    assert answer_response.status_code == 200
+    assert captured["job_id"] == job["job_id"]
+    assert captured["payload"]["field"] == "business_type"
+    assert captured["payload"]["value"] == "cafe"
 
 
 def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):

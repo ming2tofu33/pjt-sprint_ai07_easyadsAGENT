@@ -170,7 +170,7 @@ export function RecentAdsStep({
         </>
       ) : (
         <section className={styles.emptyResultPanel} aria-label="실제 생성 광고 없음">
-          <MascotImage role="archiveEmpty" decorative className={styles.emptyMascot} />
+          <MascotImage role="archiveBox" decorative className={styles.emptyMascot} />
           <strong>{hasActiveSearch ? "검색할 실제 생성 결과가 없어요" : "아직 저장된 실제 생성 결과가 없어요"}</strong>
           <p>
             {hasActiveSearch

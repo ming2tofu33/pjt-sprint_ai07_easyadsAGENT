@@ -27,7 +27,7 @@ export function AdminHome({ userEmail, role }: AdminHomeProps) {
             </span>
             <h2>운영 작업을 시작할 준비가 됐어요.</h2>
             <p>
-              {userEmail ?? "관리자"} 계정이 {role} 권한으로 확인됐습니다. 다음 단계에서 레퍼런스 관리 도구를 이 화면에 연결할 수 있어요.
+              {userEmail ?? "관리자"} 계정이 {role} 권한으로 확인됐습니다. 다음 단계에서 샘플 관리 도구를 이 화면에 연결할 수 있어요.
             </p>
           </section>
 
@@ -37,7 +37,7 @@ export function AdminHome({ userEmail, role }: AdminHomeProps) {
                 <Images size={22} />
               </span>
               <strong>
-                레퍼런스 관리
+                샘플 관리
                 <small>이미지 목록, 메타데이터, 카테고리 태그를 관리할 예정이에요.</small>
               </strong>
             </button>

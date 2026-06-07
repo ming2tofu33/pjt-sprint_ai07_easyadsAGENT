@@ -43,6 +43,15 @@ def get_t2i_engine(name: str | None = None) -> BaseT2IEngine:
     if engine_name == "gpt_image_2":
         return GPTImage2Engine(allow_api_call=settings.allow_api_calls)
     if engine_name == "sd35_large":
+        # 게이트: 명시적으로 켰을 때만 실 SD3.5 엔진으로 연결. 플래그 OFF면 기존 NotImplemented
+        # 동작 유지 → 기본 서빙 불변. 지연 import로 mock/gpt 경로엔 diffusers/torch 안 끌어옴.
+        # SD35_ROUTER_BRIDGE.md 참고.
+        from orchestrator.app.t2i.settings import load_t2i_settings as _load_engine_settings
+
+        if _load_engine_settings().enable_sd35_local:
+            from orchestrator.app.t2i.sd35_adapter import SD35LargeGraphEngine
+
+            return SD35LargeGraphEngine()
         return NotImplementedT2IEngine("sd35_large", "not implemented yet")
     if engine_name == "flux":
         return NotImplementedT2IEngine("flux", "not implemented yet")

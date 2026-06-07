@@ -29,6 +29,7 @@ import { goBackOrPush } from "@/lib/navigation-history";
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildOnboardingHref } from "@/lib/onboarding-navigation";
 import { getCurrentAppUserProfile, signOutAppUser } from "@/lib/user-auth-client";
+import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
 
 function iconForSetting(id: string) {
@@ -74,7 +75,7 @@ export function AppSettingsStep() {
           <ArrowLeft size={20} aria-hidden="true" />
         </button>
         <h1>설정</h1>
-        <span />
+        <MascotImage role="settingsHelper" decorative className={styles.settingsHeaderMascot} />
       </header>
 
       <section className={styles.settingsListGroup}>

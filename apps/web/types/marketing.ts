@@ -1,4 +1,5 @@
 import type { GenerationJob } from "@/lib/api-client";
+import type { ImageGenerationEngine } from "@/lib/generation-engine";
 
 export type ChatFlowStep = 1 | 2 | 3 | 4;
 
@@ -83,6 +84,15 @@ export type ReferenceTemplateFields = {
   selectedReferenceTemplateTitle?: string | null;
 };
 
+export type ReferenceImageFields = {
+  referenceImagePath?: string | null;
+  referenceImageFile?: File | null;
+};
+
+export type ImageGenerationEngineFields = {
+  imageGenerationEngine?: ImageGenerationEngine;
+};
+
 export type ChatFlowState = {
   entryMode: EntryMode;
   step: ChatFlowStep;
@@ -99,10 +109,15 @@ export type ChatFlowState = {
   selectedCopyId: string;
   selectedChannelId: string;
   customDirection: string;
+  userCustomHeadline: string;
+  userCustomSubcopy: string;
   brief: ChatBrief | null;
   generationJob?: GenerationJob | null;
+  selectedImageGenerationEngine: ImageGenerationEngine;
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
+  sourceImagePath?: string | null;
+  referenceImagePath?: string | null;
   currentQuestion: OptionQuestion | null;
   conversationMessages: ChatTranscriptMessage[];
   isLoading: boolean;
@@ -111,7 +126,16 @@ export type ChatFlowState = {
 
 export type ChatFlowAction =
   | { type: "reset" }
-  | { type: "submitPrompt"; prompt: string; copyGenerationMode?: CopyGenerationMode }
+  | {
+      type: "submitPrompt";
+      prompt: string;
+      copyGenerationMode?: CopyGenerationMode;
+      imageGenerationEngine?: ImageGenerationEngine;
+      sourceImagePath?: string | null;
+      referenceImagePath?: string | null;
+      userCustomHeadline?: string | null;
+      userCustomSubcopy?: string | null;
+    }
   | {
       type: "backendStartSucceeded";
       prompt: string;
@@ -122,6 +146,11 @@ export type ChatFlowAction =
       recommendedCopyId?: string | null;
       copyCandidateSource?: CopyCandidateSource;
       copyGenerationMode?: CopyGenerationMode;
+      imageGenerationEngine?: ImageGenerationEngine;
+      sourceImagePath?: string | null;
+      referenceImagePath?: string | null;
+      userCustomHeadline?: string | null;
+      userCustomSubcopy?: string | null;
     }
   | {
       type: "backendQuestionReceived";
@@ -129,12 +158,15 @@ export type ChatFlowAction =
       threadId: string;
       context: PartialInferredContext;
       question: OptionQuestion;
+      sourceImagePath?: string | null;
+      referenceImagePath?: string | null;
     }
   | { type: "submitQuestionAnswer"; label: string }
   | { type: "backendRequestFailed"; message: string }
   | { type: "beginBriefRequest" }
   | { type: "selectTone"; tone: string }
   | { type: "setCopyGenerationMode"; copyGenerationMode: CopyGenerationMode }
+  | { type: "setImageGenerationEngine"; imageGenerationEngine: ImageGenerationEngine }
   | { type: "continueToCopy" }
   | { type: "selectCopy"; copyId: string }
   | { type: "selectChannel"; channelId: string }
@@ -157,4 +189,11 @@ export type ChatFlowAction =
   | { type: "back" }
   | { type: "generationJobRequested" }
   | { type: "generationJobUpdated"; generationJob: GenerationJob }
+  | {
+      type: "generationJobQuestionReceived";
+      generationJob: GenerationJob;
+      question: OptionQuestion;
+    }
+  | { type: "generationJobInterruptReceived"; generationJob: GenerationJob }
+  | { type: "submitGenerationJobAnswer"; label: string }
   | { type: "generationJobFailed"; message: string };

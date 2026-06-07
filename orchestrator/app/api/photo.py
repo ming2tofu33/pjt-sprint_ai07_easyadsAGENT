@@ -37,6 +37,7 @@ class PhotoStartRequest(CamelModel):
     user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
     user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
     selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
+    reference_image_path: str | None = Field(default=None, alias="referenceImagePath")
 
 
 @router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse, response_model_by_alias=True)
@@ -51,6 +52,7 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
             _clean_optional_text(request.user_custom_headline) or "",
             _clean_optional_text(request.user_custom_subcopy) or "",
             _clean_optional_text(request.selected_reference_template_id) or "",
+            _clean_optional_text(request.reference_image_path) or "",
         ]
     )
     job_id = f"photo_{abs(hash(job_seed))}"
@@ -67,11 +69,13 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
         "user_custom_headline": _clean_optional_text(request.user_custom_headline),
         "user_custom_subcopy": _clean_optional_text(request.user_custom_subcopy),
         "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
+        "reference_image_path": _clean_optional_text(request.reference_image_path),
         "context": {
             "extra": {
                 "ad_format": request.ad_format,
                 "source_image_path": request.source_image_path,
                 "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
+                "reference_image_path": _clean_optional_text(request.reference_image_path),
             }
         },
     }

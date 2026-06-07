@@ -159,7 +159,7 @@ export function NotificationCenterStep() {
         <section className={styles.emptyResultPanel} aria-label="실제 알림 없음">
           <MascotImage role="notificationBell" decorative className={styles.emptyMascot} />
           <strong>아직 연결된 실제 알림이 없어요</strong>
-          <p>생성 완료, 실패, 브랜드 키트 이벤트가 연결되면 이곳에 표시됩니다.</p>
+          <p>생성 완료, 실패, 브랜드 파일 이벤트가 연결되면 이곳에 표시됩니다.</p>
           <button className={styles.secondaryButton} type="button" onClick={() => setShowSampleNotifications(true)}>
             샘플 알림 보기
           </button>
