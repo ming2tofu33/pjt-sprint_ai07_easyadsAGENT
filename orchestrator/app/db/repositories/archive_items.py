@@ -91,16 +91,17 @@ def list_archive_item_rows(
 ) -> list[dict]:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
-            filters = ["workspace_id = %s", "deleted_at is null"]
+            filters = ["i.workspace_id = %s", "i.deleted_at is null"]
             params: list[object] = [workspace_id]
             if created_by:
-                filters.append("created_by = %s")
+                filters.append("i.created_by = %s")
                 params.append(created_by)
             params.extend([limit, offset])
+            where_clause = " and ".join(filters)
             cur.execute(
                 f"""
                 {_SELECT_ARCHIVE_WITH_OUTPUT}
-                where {" and ".join([f"i.{f}" for f in filters])}
+                where {where_clause}
                 order by i.saved_at desc
                 limit %s offset %s
                 """,
@@ -117,11 +118,12 @@ def count_archive_item_rows(*, workspace_id: str, created_by: str | None = None,
             if created_by:
                 filters.append("created_by = %s")
                 params.append(created_by)
+            where_clause = " and ".join(filters)
             cur.execute(
                 f"""
                 select count(*) as total
                 from archive_items
-                where {" and ".join(filters)}
+                where {where_clause}
                 """,
                 tuple(params),
             )
@@ -159,17 +161,20 @@ def get_archive_item_row(
     *,
     public_archive_id: str,
     workspace_id: str,
+    created_by: str | None = None,
     connection: object | None = None,
 ) -> dict | None:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                f"""
+            sql = f"""
                 {_SELECT_ARCHIVE_WITH_OUTPUT}
                 where i.public_archive_id = %s and i.workspace_id = %s and i.deleted_at is null
-                """,
-                (public_archive_id, workspace_id),
-            )
+            """
+            params: list[object] = [public_archive_id, workspace_id]
+            if created_by:
+                sql += " and i.created_by = %s"
+                params.append(created_by)
+            cur.execute(sql, tuple(params))
             return cur.fetchone()
 
 
