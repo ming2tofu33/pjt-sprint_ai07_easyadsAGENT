@@ -35,7 +35,7 @@ def template_for_ad_format(ad_format: str, copy_mode: str) -> str:
     if copy_mode == "no_copy":
         return "no_text"
     return {
-        "instagram_feed": "top_headline_center_product_bottom_cta",
+        "instagram_feed": "dynamic_side_split",
         "instagram_story": "bottom_overlay_panel",
         "flyer": "multi_zone_flyer",
         "banner": "left_text_right_product",
@@ -61,7 +61,7 @@ def build_text_layout_spec(copy_spec: CopySpec, template: str, width: int, heigh
                 bound_copy_id=f"{copy_spec.spec_id}:{role}",
                 rendered_text=item.text,
                 font_metric=font_metric,
-                alignment="center" if template != "left_text_right_product" else "left",
+                alignment="auto" if template == "dynamic_side_split" else "left" if template == "left_text_right_product" else "right" if template == "right_text_left_product" else "center",
                 anchor=anchor_for_role(role),
                 text_color=style_spec.typography.text_color_on_dark,
                 overlay_treatment=style_spec.typography.default_overlay,
@@ -70,7 +70,14 @@ def build_text_layout_spec(copy_spec: CopySpec, template: str, width: int, heigh
                 max_lines=2 if role == "headline" else 3,
             )
         )
-    return TextLayoutSpec(template=template, canvas_width=width, canvas_height=height, slots=slots, product_zone=product_zone)
+    return TextLayoutSpec(
+        template=template, 
+        canvas_width=width, 
+        canvas_height=height, 
+        slots=slots, 
+        product_zone=product_zone,
+        auto_find_empty_space=(template == "dynamic_side_split")
+    )
 
 
 def boxes_for_template(template: str) -> tuple[dict[str, NormalizedBBox], NormalizedBBox]:
@@ -82,6 +89,15 @@ def boxes_for_template(template: str) -> tuple[dict[str, NormalizedBBox], Normal
                 "cta": NormalizedBBox(x=0.06, y=0.72, w=0.32, h=0.10),
             },
             NormalizedBBox(x=0.52, y=0.10, w=0.42, h=0.80),
+        )
+    if template in ("right_text_left_product", "dynamic_side_split"):
+        return (
+            {
+                "headline": NormalizedBBox(x=0.52, y=0.12, w=0.42, h=0.20),
+                "subheadline": NormalizedBBox(x=0.54, y=0.35, w=0.40, h=0.16),
+                "cta": NormalizedBBox(x=0.62, y=0.72, w=0.32, h=0.10),
+            },
+            NormalizedBBox(x=0.06, y=0.10, w=0.42, h=0.80),
         )
     if template == "multi_zone_flyer":
         return (
