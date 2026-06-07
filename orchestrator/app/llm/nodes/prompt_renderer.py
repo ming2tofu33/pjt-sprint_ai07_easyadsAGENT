@@ -13,13 +13,32 @@ from orchestrator.app.schemas.llm_marketing import ImagePrompt
 SUPPORTED_RENDER_ENGINES = {"mock", "sd35_large", "flux", "gpt_image_2"}
 
 
+def _effective_render_engine(engine: str) -> str:
+    """렌더에 실제로 쓰일 엔진을 결정한다.
+
+    gpt_image_2(API lane)는 항상 활성. 로컬 엔진(sd35_large/flux)은 각자의 enable 플래그
+    뒤에 게이트된다 — OFF면 "mock" → 기본 서빙 동작 불변이고 운영자가 opt-in할 때만 바뀐다.
+    SD35_ROUTER_BRIDGE.md, fix.md #7 참고.
+    """
+    if engine == "gpt_image_2":
+        return "gpt_image_2"
+    if engine in {"sd35_large", "flux"}:
+        from orchestrator.app.t2i.settings import load_t2i_settings
+
+        settings = load_t2i_settings()
+        if engine == "sd35_large" and settings.enable_sd35_local:
+            return "sd35_large"
+        if engine == "flux" and settings.enable_flux_local:
+            return "flux"
+    return "mock"
+
+
 def prompt_renderer_node(state: MarketingState) -> dict[str, Any]:
     ad_format_spec = state.get("ad_format_spec") or {}
     layout_spec = state.get("layout_spec") or {}
     image_prompt_spec = state.get("image_prompt_spec")
     engine = state.get("engine") if state.get("engine") in SUPPORTED_RENDER_ENGINES else "mock"
-    # Local engines are still placeholders; only the API image lane is wired for real generation.
-    effective_engine = "gpt_image_2" if engine == "gpt_image_2" else "mock"
+    effective_engine = _effective_render_engine(engine)
     metadata = build_prompt_renderer_metadata(state, requested_engine=engine, effective_engine=effective_engine)
     if image_prompt_spec:
         output = render_prompt_spec_for_engine(

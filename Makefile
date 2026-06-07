@@ -132,7 +132,8 @@ gpu:
 
 test:
 	# 컨테이너 내부에서 전체 테스트를 실행합니다.
-	HOST_UID=$$(id -u) docker compose exec orchestrator uv run python -m pytest orchestrator/tests -q
+	# -p orchestrator.eval.dotenv_isolation: .env 격리 플러그인(eval 폴더에 둬서 develop conftest와 git pull 충돌 안 남). fix.md #15
+	HOST_UID=$$(id -u) docker compose exec orchestrator uv run python -m pytest orchestrator/tests -q -p orchestrator.eval.dotenv_isolation
 
 
 # ── 🚀 [광고 생성 파이프라인] ──────────────────────────────────────────────────
@@ -201,7 +202,8 @@ eval-sample:
 	# RENDER 기본=premium_api(실제 렌더). $0 스모크는 RENDER=fast(mock 더미 PNG).
 	# PLAN 기본=premium(실제 GPT-5.4 카피). $0+LLM미사용 스모크는 RENDER=fast PLAN=free.
 	# 사용법: make eval-sample  /  make eval-sample N=4 RENDER=fast PLAN=free  /  make eval-sample N=10 SEED=42 SCENARIO=all
-	HOST_UID=$$(id -u) docker compose exec -e EVAL_RENDER_PROFILE=$(RENDER) -e EVAL_USER_PLAN=$(PLAN) -e EVAL_SAMPLE_N=$(or $(N),10) -e EVAL_SAMPLE_SEED=$(SEED) orchestrator \
+	# 실 SD3.5 로컬 렌더: RENDER=balanced SD35=true (T5-drop+device_map, 768²로 클램프, ~23GB VRAM). expandable_segments는 단편화 완화.
+	HOST_UID=$$(id -u) docker compose exec -e EVAL_RENDER_PROFILE=$(RENDER) -e EVAL_USER_PLAN=$(PLAN) -e EVAL_SAMPLE_N=$(or $(N),10) -e EVAL_SAMPLE_SEED=$(SEED) -e EASYADS_ENABLE_SD35_LOCAL=$(or $(SD35),false) -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True orchestrator \
 	  uv run python -m orchestrator.eval.scenario $(or $(SCENARIO),all)
 
 eval-run:
