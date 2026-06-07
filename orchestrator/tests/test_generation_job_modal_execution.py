@@ -142,6 +142,36 @@ def test_modal_poll_adapter_unavailable_does_not_fail_job(monkeypatch):
     assert events[0]["payload"]["error_code"] == "modal_poll_adapter_unavailable"
 
 
+def test_graph_modal_pending_polls_through_graph_completion_path(monkeypatch):
+    captured = {}
+
+    def fake_graph_poll(job_id):
+        captured["job_id"] = job_id
+        return _job(status="done")
+
+    monkeypatch.setattr(service, "_use_postgres_backend", lambda: False)
+    monkeypatch.setattr(
+        "orchestrator.app.generation_jobs.execution.poll_and_process_graph_modal_generation_job",
+        fake_graph_poll,
+    )
+
+    job = _job(status="running").model_copy(
+        update={
+            "metadata": {
+                "requested_run_mode": "graph_job",
+                "effective_run_mode": "graph_job",
+                "graph_modal_pending": True,
+                "modal_call_id": "modal_call_graph",
+            }
+        }
+    )
+
+    result = service.maybe_poll_generation_job_from_modal(job)
+
+    assert result.status == "done"
+    assert captured["job_id"] == "job_modal"
+
+
 def test_modal_success_uses_storage_backed_result_payload_contract(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     captured = {}

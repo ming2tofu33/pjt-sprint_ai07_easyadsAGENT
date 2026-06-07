@@ -297,6 +297,7 @@ def infer_business_type(text: str) -> str | None:
     rules = [
         (("카페", "라떼", "디저트", "커피"), "cafe"),
         (("삼겹살", "고기", "한우", "식당", "레스토랑"), "restaurant"),
+        (("네일샵", "네일아트", "젤네일", "네일"), "beauty_nail"),
         (("미용실", "헤어", "염색", "펌"), "beauty_salon"),
         (("헬스", "PT", "pt", "운동", "피트니스"), "fitness"),
         (("꽃", "꽃집", "플라워"), "flower_shop"),
@@ -310,6 +311,10 @@ def infer_business_type(text: str) -> str | None:
 def infer_item_or_service(text: str) -> str | None:
     rules = [
         ("한우 선물세트", "한우 선물세트"),
+        ("네일 아트", "네일 아트"),
+        ("네일아트", "네일 아트"),
+        ("젤네일", "젤네일"),
+        ("네일", "네일 서비스"),
         ("삼겹살집", "삼겹살"),
         ("삼겹살", "삼겹살"),
         ("딸기라떼", "딸기라떼"),
@@ -327,6 +332,7 @@ def infer_item_or_service(text: str) -> str | None:
 
 def infer_promotion_goal(text: str) -> str | None:
     rules = [
+        (("시즌", "계절", "여름", "겨울", "봄", "가을", "한정"), "seasonal_limited"),
         (("할인", "%", "세일", "특가"), "discount_event"),
         (("신메뉴", "신상품", "출시", "오픈"), "new_launch"),
         (("예약", "방문", "문의"), "reservation_cta"),

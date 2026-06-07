@@ -1,5 +1,5 @@
 import type { ChatFlowState, CopyGenerationMode, InferredContext, OptionQuestion } from "@/types/marketing";
-import type { ChatStateSnapshotResponse, GenerationJob } from "./api-client";
+import type { ChatMessageResponse, ChatStateSnapshotResponse, GenerationJob } from "./api-client";
 import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "./generation-engine";
 
 export type ThreadSnapshotRestoreState = {
@@ -146,4 +146,35 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     currentQuestion,
     conversationMessages
   };
+}
+
+function messageContent(message: ChatMessageResponse): string {
+  const content = stringValue(message.content);
+  if (content === "Waiting for user input.") {
+    return "";
+  }
+  const briefMarkerIndex = content.indexOf("[광고 브리프]");
+  if (briefMarkerIndex > -1) {
+    return content.slice(0, briefMarkerIndex).trim();
+  }
+  if (content) {
+    return content;
+  }
+  const payload = asRecord(message.payload);
+  return firstString(payload.display_text, payload.displayText, payload.label, payload.text, payload.question);
+}
+
+export function mapChatMessagesToTranscript(messages: ChatMessageResponse[]): ChatFlowState["conversationMessages"] {
+  return [...messages]
+    .sort((a, b) => a.sequence_no - b.sequence_no)
+    .flatMap((message) => {
+      if (message.role !== "user" && message.role !== "assistant") {
+        return [];
+      }
+      const text = messageContent(message);
+      if (!text) {
+        return [];
+      }
+      return [{ role: message.role, text }];
+    });
 }

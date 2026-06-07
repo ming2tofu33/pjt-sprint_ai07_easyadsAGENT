@@ -1,6 +1,6 @@
 export type ImageGenerationEngine = "gpt_image_2" | "flux_schnell" | "sd35_large";
 
-export type GenerationRunMode = "graph_immediate";
+export type GenerationRunMode = "graph_job";
 export type DirectGenerationRunMode = "gpt_image_2_actual" | "flux_schnell_real" | "sd35_large_real";
 export type BackendImageEngine = "gpt_image_2" | "flux" | "sd35_large";
 
@@ -47,7 +47,7 @@ export function getGenerationEngineOption(engine: ImageGenerationEngine | null |
 }
 
 export function resolveGenerationRunMode(_engine: ImageGenerationEngine | null | undefined): GenerationRunMode {
-  return "graph_immediate";
+  return "graph_job";
 }
 
 export function resolveGenerationEnginePreference(engine: ImageGenerationEngine | null | undefined): BackendImageEngine {

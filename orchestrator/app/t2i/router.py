@@ -7,6 +7,7 @@ from typing import Any
 from orchestrator.app.core.config import get_t2i_settings
 from orchestrator.app.t2i.base import BaseT2IEngine
 from orchestrator.app.t2i.gpt_image2 import GPTImage2Engine
+from orchestrator.app.t2i.graph_engines import get_graph_actual_t2i_engine
 from orchestrator.app.t2i.mock import MockT2IEngine
 
 
@@ -43,9 +44,9 @@ def get_t2i_engine(name: str | None = None) -> BaseT2IEngine:
     if engine_name == "gpt_image_2":
         return GPTImage2Engine(allow_api_call=settings.allow_api_calls)
     if engine_name == "sd35_large":
-        return NotImplementedT2IEngine("sd35_large", "not implemented yet")
+        return get_graph_actual_t2i_engine("sd35_large")
     if engine_name == "flux":
-        return NotImplementedT2IEngine("flux", "not implemented yet")
+        return get_graph_actual_t2i_engine("flux")
     return NotImplementedT2IEngine(engine_name, "unknown engine")
 
 
@@ -62,15 +63,11 @@ def get_t2i_health() -> dict[str, dict[str, Any]]:
             "configured_model": gpt_image_2_health.get("configured_model", settings.gpt_image_model),
         },
         "sd35_large": {
-            "available": False,
-            "loaded": False,
-            "reason": "not implemented yet",
+            **get_t2i_engine("sd35_large").health(),
             "model_id": settings.sd35_model_id,
         },
         "flux": {
-            "available": False,
-            "loaded": False,
-            "reason": "not implemented yet",
+            **get_t2i_engine("flux").health(),
             "model_id": settings.flux_model_id,
         },
     }

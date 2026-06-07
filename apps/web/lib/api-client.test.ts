@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   answerGenerationJob,
+  archiveChatThread,
   createBrandKit,
   createGenerationJob,
   deleteArchiveItem,
@@ -594,5 +595,37 @@ describe("api-client backend contract routes", () => {
     expect(saved.item.savedAt).toBe("2026-06-04T00:00:00+00:00");
     expect(listed.items[0].jobId).toBe("job_1");
     expect(deleted.item.adId).toBe("archive_1");
+  });
+
+  it("archives chat threads through the BFF", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        thread: {
+          thread_id: "thread_1",
+          title: "딸기라떼 광고",
+          status: "archived",
+          final_brief: {},
+          active_job_id: null,
+          has_final_output: false,
+          last_message_at: "2026-06-07T00:00:00+00:00",
+          archived_at: "2026-06-07T00:00:00+00:00",
+          created_at: "2026-06-07T00:00:00+00:00",
+          updated_at: "2026-06-07T00:00:00+00:00"
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await archiveChatThread("thread_1");
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/chat-threads/thread_1/archive");
+    expect(fetchMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({})
+      })
+    );
+    expect(response.thread.status).toBe("archived");
   });
 });

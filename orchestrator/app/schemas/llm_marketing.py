@@ -65,6 +65,7 @@ JobStatus = Literal[
     "rendering_prompt",
     "t2i_queued",
     "t2i_running",
+    "modal_running",
     "background_validating",
     "waiting_candidate_selection",
     "overlaying_text",

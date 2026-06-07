@@ -26,7 +26,7 @@ GenerationJobStatus = Literal[
 GenerationRunMode = Literal[
     "queued_only",
     "mock_immediate",
-    "graph_immediate",
+    "graph_job",
     "gpt_image_2_actual",
     "gpt_image_2_smoke",
     "sd35_local",
@@ -90,6 +90,7 @@ class GenerationJobAnswerRequest(BaseModel):
     field: str | None = None
     value: str | None = None
     custom_text: str | None = Field(default=None, alias="customText")
+    display_text: str | None = Field(default=None, alias="displayText")
     selected_copy_id: str | None = Field(default=None, alias="selectedCopyId")
     user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
     user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
@@ -106,6 +107,8 @@ class GenerationJobAnswerRequest(BaseModel):
             resume_payload["value"] = self.value
         if self.custom_text:
             resume_payload["custom_text"] = self.custom_text
+        if self.display_text:
+            resume_payload["display_text"] = self.display_text
         if self.selected_copy_id:
             resume_payload["selected_copy_id"] = self.selected_copy_id
         if self.user_custom_headline:

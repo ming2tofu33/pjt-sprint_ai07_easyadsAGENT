@@ -41,13 +41,24 @@ describe("GenerationCompleteStep", () => {
   it("does not render a generated image for local-only artifacts", () => {
     renderStep();
 
-    expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy();
-    expect(screen.getByText("완성된 이미지는 보관함에서 확인할 수 있어요.")).toBeTruthy();
+    expect(screen.getByText("이미지 저장 연결을 확인해야 해요")).toBeTruthy();
+    expect(screen.getByText("이미지는 만들어졌지만 보관함에서 열 수 있는 주소를 아직 확인하지 못했어요.")).toBeTruthy();
     expect(screen.queryByRole("img", { name: /생성|광고|시안/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /보관함 연결 대기 중/ }).hasAttribute("disabled")).toBe(true);
   });
 
-  it("opens archive from the primary CTA", () => {
-    const { onOpenArchive } = renderStep();
+  it("opens archive from the primary CTA when a browser image URL is available", () => {
+    const { onOpenArchive } = renderStep({
+      generationJob: {
+        job_id: "job_url",
+        status: "done",
+        result_payload: {
+          final_image_url: "https://cdn.example.com/generated/job_url/final_0.png",
+          download_url: "https://cdn.example.com/generated/job_url/final_0.png",
+          final_image_path: "data/outputs/job_url/final_0.png"
+        }
+      }
+    });
 
     fireEvent.click(screen.getByRole("button", { name: /보관함에서 확인하기/ }));
 

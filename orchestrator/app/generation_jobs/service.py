@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from orchestrator.app.api.schemas.chat_threads import ChatMessageCreateRequest
 from orchestrator.app.api.schemas.generation_jobs import (
+    GenerationJobAnswerRequest,
     GenerationJobCreateRequest,
     GenerationJobResponse,
     GenerationProgress,
@@ -129,8 +130,8 @@ def _sanitize_metadata_value(value):
 def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
     if run_mode == "mock_immediate":
         return "mock_immediate", "pending_deterministic_mock"
-    if run_mode == "graph_immediate":
-        return "graph_immediate", "pending_graph_execution"
+    if run_mode == "graph_job":
+        return "graph_job", "pending_graph_execution"
     if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "gpt_image_2_actual", "pending_t2i_actual"
     if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
@@ -144,6 +145,57 @@ def create_generation_job(request: GenerationJobCreateRequest) -> GenerationJobR
     if _use_postgres_backend():
         return _create_generation_job_db(request)
     return _create_generation_job_memory(request)
+
+
+def _answer_display_text(answer: GenerationJobAnswerRequest) -> str:
+    for value in (
+        answer.display_text,
+        answer.custom_text,
+        answer.user_custom_headline,
+        answer.selected_copy_id,
+        answer.value,
+    ):
+        if value and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _answer_message_payload(answer: GenerationJobAnswerRequest) -> dict:
+    payload = answer.to_resume_payload(job_id="", thread_id="")
+    payload.pop("job_id", None)
+    payload.pop("thread_id", None)
+    return {
+        "source": "generation_job_answer",
+        "field": answer.field,
+        "value": answer.value,
+        "display_text": answer.display_text,
+        "answer": _sanitize_metadata_value(payload),
+    }
+
+
+def append_generation_job_user_answer_message(job_id: str, answer: GenerationJobAnswerRequest) -> None:
+    content = _answer_display_text(answer)
+    if not content:
+        return
+    if _use_postgres_backend():
+        _append_generation_job_user_answer_message_db(job_id, answer, content)
+        return
+
+    job = get_generation_job(job_id)
+    if not job or not job.thread_id:
+        return
+    chat_thread_service.append_chat_message(
+        job.thread_id,
+        ChatMessageCreateRequest(
+            role="user",
+            content=content,
+            payload={
+                **_answer_message_payload(answer),
+                "job_id": job_id,
+            },
+        ),
+        user_id=job.user_id,
+    )
 
 
 def _create_generation_job_memory(request: GenerationJobCreateRequest) -> GenerationJobResponse:
@@ -364,6 +416,69 @@ def mark_generation_job_running(job_id: str, stage: str = "running") -> Generati
     return update_generation_job(job_id, status="running", progress=progress, metadata=metadata)
 
 
+def mark_generation_job_modal_running(
+    job_id: str,
+    *,
+    modal_call_id: str,
+    result_state: dict | None = None,
+    metadata: dict | None = None,
+) -> GenerationJobResponse | None:
+    """Persist a graph Modal handoff without marking the job failed or done."""
+    state_metadata = (result_state or {}).get("t2i_result", {}).get("metadata", {}) if isinstance(result_state, dict) else {}
+    merged_metadata = {
+        "execution_backend": "modal",
+        "execution_mode": "graph_modal_pending",
+        "graph_modal_pending": True,
+        "modal_call_id_present": True,
+        "modal_provider": "modal",
+        "modal_status": "submitted",
+        "graph_modal_snapshot_key": f"{job_id}:graph_modal_pending",
+        "t2i_engine": state_metadata.get("requested_engine") or state_metadata.get("effective_engine") or state_metadata.get("engine"),
+        **(metadata or {}),
+    }
+    if _use_postgres_backend():
+        with db_transaction() as conn:
+            row = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+            if not row:
+                return None
+            row_metadata = _without_pending_interrupt({**(row.get("metadata") or {}), **merged_metadata})
+            row = generation_job_repo.update_generation_job_row(
+                job_id,
+                status="running",
+                current_stage="modal_running",
+                progress_percent=65,
+                modal_call_id=modal_call_id,
+                metadata=row_metadata,
+                connection=conn,
+            )
+            if not row:
+                return None
+            _record_generation_job_event_db(
+                row,
+                "modal_submitted",
+                payload={"modal_call_id_present": True, "source": "graph_t2i_generation"},
+                connection=conn,
+            )
+        return _job_response_from_db_row(row)
+
+    existing = get_generation_job(job_id)
+    if not existing:
+        return None
+    progress = existing.progress.model_copy(update={"progress_percent": 65, "current_stage": "modal_running"})
+    return update_generation_job(
+        job_id,
+        status="running",
+        progress=progress,
+        metadata=_without_pending_interrupt(
+            {
+                **(existing.metadata or {}),
+                **merged_metadata,
+                "modal_call_id": modal_call_id,
+            }
+        ),
+    )
+
+
 def mark_generation_job_done(
     job_id: str,
     result_payload: dict,
@@ -513,6 +628,8 @@ def mark_generation_job_waiting_user_input(
         **(existing.metadata or {}),
         "pending_interrupt": pending_interrupt,
         "assistant_message": assistant_message,
+        "context": sanitize_chat_payload(result_state.get("context") or {}),
+        "missing_fields": sanitize_chat_payload(result_state.get("missing_fields") or []),
     }
     updated = update_generation_job(
         job_id,
@@ -660,6 +777,39 @@ def maybe_submit_generation_job_to_modal(
 
 
 def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> GenerationJobResponse:
+    graph_modal_pending = bool((job.metadata or {}).get("graph_modal_pending"))
+    if graph_modal_pending:
+        if job.status not in {"queued", "running"}:
+            return job
+        try:
+            from orchestrator.app.generation_jobs.execution import poll_and_process_graph_modal_generation_job
+
+            polled = poll_and_process_graph_modal_generation_job(job.job_id)
+        except ModalJobPollError as exc:
+            if _use_postgres_backend():
+                job_row = generation_job_repo.get_generation_job_row(job.job_id)
+                if job_row:
+                    _record_generation_job_event_db(
+                        job_row,
+                        "graph_modal_poll_unavailable",
+                        payload={
+                            "error_code": "modal_poll_adapter_unavailable",
+                            "message": str(exc),
+                        },
+                    )
+            return job
+        except ModalExecutionError as exc:
+            return mark_generation_job_failed(
+                job.job_id,
+                {
+                    "error_code": "graph_modal_poll_failed",
+                    "message": "Graph Modal job poll failed.",
+                    "detail": str(exc),
+                },
+                metadata={"execution_backend": "modal", "execution_mode": "graph_modal_poll_failed"},
+            ) or job
+        return polled or job
+
     if not _use_postgres_backend():
         return job
     if not modal_settings.is_modal_poll_on_get_enabled():
@@ -1022,6 +1172,27 @@ def _get_generation_job_db(job_id: str) -> GenerationJobResponse | None:
     return _job_response_from_db_row(row)
 
 
+def _append_generation_job_user_answer_message_db(job_id: str, answer: GenerationJobAnswerRequest, content: str) -> None:
+    with db_transaction() as conn:
+        row = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if not row or not row.get("thread_id"):
+            return
+        chat_message_repo.append_chat_message(
+            public_thread_id=_thread_public_or_internal(row),
+            workspace_id=str(row["workspace_id"]),
+            role="user",
+            content=content,
+            payload={
+                **_answer_message_payload(answer),
+                "job_id": job_id,
+            },
+            created_by=row.get("requested_by"),
+            generation_job_id=str(row["id"]),
+            event_type="user_answer",
+            connection=conn,
+        )
+
+
 def _update_generation_job_db(job_id: str, **fields) -> GenerationJobResponse | None:
     existing = get_generation_job(job_id)
     if not existing:
@@ -1073,6 +1244,17 @@ def _mark_generation_job_done_db(
 
         merged_metadata = _without_pending_interrupt({**(existing.get("metadata") or {}), **(metadata or {})})
         final_path = _resolve_final_artifact_path(result_payload, output_path)
+        if storage_settings.is_r2_upload_required() and not final_path and not _has_browser_result_url(result_payload):
+            return _mark_generation_job_failed_from_row_db(
+                existing,
+                {
+                    "error_code": "result_artifact_url_missing",
+                    "message": "Generated image artifact is missing a browser-usable URL.",
+                    "detail": "R2 upload is required, but the generation result did not include a final artifact path or URL.",
+                },
+                metadata={**merged_metadata, "storage_warning": "result_artifact_url_missing_required"},
+                connection=conn,
+            )
         row = generation_job_repo.mark_generation_job_done_row(
             job_id,
             result_payload=result_payload,
@@ -1273,6 +1455,8 @@ def _mark_generation_job_waiting_user_input_db(
             **(existing.get("metadata") or {}),
             "pending_interrupt": pending_interrupt,
             "assistant_message": assistant_message,
+            "context": sanitize_chat_payload(result_state.get("context") or {}),
+            "missing_fields": sanitize_chat_payload(result_state.get("missing_fields") or []),
         }
 
         public_thread_id = _thread_public_or_internal(existing)
@@ -1380,6 +1564,8 @@ def _create_output_records_for_done_job_db(
                 final_path,
                 connection=connection,
             )
+            if storage_settings.is_r2_upload_required() and not _has_browser_result_url(effective_result_payload):
+                raise AssetStorageError("R2 upload completed without a browser-usable result URL.")
             _record_generation_job_event_db(
                 row,
                 "r2_upload_completed",
@@ -1593,6 +1779,19 @@ def _thread_public_or_internal(row: dict) -> str:
 
 def _should_attempt_r2_upload() -> bool:
     return storage_settings.is_r2_upload_enabled()
+
+
+def _has_browser_result_url(result_payload: dict | None) -> bool:
+    if not result_payload:
+        return False
+    for key in ("final_image_url", "download_url", "preview_image_url", "copy_visual_preview_url"):
+        value = result_payload.get(key)
+        if not value:
+            continue
+        normalized = str(value).strip().lower()
+        if normalized.startswith("http://") or normalized.startswith("https://"):
+            return True
+    return False
 
 
 def _resolve_final_artifact_path(result_payload: dict, output_path: str | None) -> str | None:

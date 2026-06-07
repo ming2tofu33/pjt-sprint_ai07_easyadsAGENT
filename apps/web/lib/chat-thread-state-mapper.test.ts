@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapChatThreadSnapshotToRestoreState } from "./chat-thread-state-mapper";
+import { mapChatMessagesToTranscript, mapChatThreadSnapshotToRestoreState } from "./chat-thread-state-mapper";
 
 describe("mapChatThreadSnapshotToRestoreState", () => {
   it("maps snake_case graph state into UI restore fields", () => {
@@ -80,6 +80,74 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     expect(restore?.conversationMessages).toEqual([
       { role: "user", text: "광고 만들어줘" },
       { role: "assistant", text: "홍보할 상품이나 서비스는 무엇인가요?" }
+    ]);
+  });
+});
+
+describe("mapChatMessagesToTranscript", () => {
+  it("maps persisted user and assistant messages into visible chat transcript", () => {
+    const transcript = mapChatMessagesToTranscript([
+      {
+        message_id: "msg_3",
+        thread_id: "thread_1",
+        sequence_no: 3,
+        role: "system",
+        content: "queued",
+        payload: {},
+        created_at: "2026-06-06T00:02:00+00:00"
+      },
+      {
+        message_id: "msg_2",
+        thread_id: "thread_1",
+        sequence_no: 2,
+        role: "assistant",
+        content: "어떤 업종인가요?",
+        payload: {},
+        created_at: "2026-06-06T00:01:00+00:00"
+      },
+      {
+        message_id: "msg_1",
+        thread_id: "thread_1",
+        sequence_no: 1,
+        role: "user",
+        content: "광고 만들어줘",
+        payload: {},
+        created_at: "2026-06-06T00:00:00+00:00"
+      },
+      {
+        message_id: "msg_waiting",
+        thread_id: "thread_1",
+        sequence_no: 5,
+        role: "assistant",
+        content: "Waiting for user input.",
+        payload: {},
+        created_at: "2026-06-06T00:04:00+00:00"
+      },
+      {
+        message_id: "msg_4",
+        thread_id: "thread_1",
+        sequence_no: 4,
+        role: "user",
+        content: null,
+        payload: { display_text: "카페" },
+        created_at: "2026-06-06T00:03:00+00:00"
+      },
+      {
+        message_id: "msg_6",
+        thread_id: "thread_1",
+        sequence_no: 6,
+        role: "user",
+        content: "네일샵 여름 이벤트 인스타 스토리 만들어줘\n[광고 브리프]\n내부 생성용 브리프\n[/광고 브리프]",
+        payload: {},
+        created_at: "2026-06-06T00:05:00+00:00"
+      }
+    ]);
+
+    expect(transcript).toEqual([
+      { role: "user", text: "광고 만들어줘" },
+      { role: "assistant", text: "어떤 업종인가요?" },
+      { role: "user", text: "카페" },
+      { role: "user", text: "네일샵 여름 이벤트 인스타 스토리 만들어줘" }
     ]);
   });
 });

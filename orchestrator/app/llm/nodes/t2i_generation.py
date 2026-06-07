@@ -33,6 +33,12 @@ def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
         output_dir=request.output_dir,
         metadata=metadata,
     )
+    modal_pending = (
+        result.metadata.get("execution_backend") == "modal"
+        and result.metadata.get("modal_call_id_present") is True
+        and not result.image_paths
+        and not result.error
+    )
     candidates = [
         GeneratedImageCandidate(
             image_id=f"{state.get('job_id')}_candidate_{index}",
@@ -61,6 +67,6 @@ def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
         "candidates": candidates,
         "artifact_refs": artifacts,
         "final_image_path": result.image_paths[0] if result.image_paths else None,
-        "status": "done" if not result.error else "failed",
+        "status": "modal_running" if modal_pending else ("done" if not result.error else "failed"),
         "error_message": result.error,
     }

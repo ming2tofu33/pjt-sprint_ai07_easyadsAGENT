@@ -23,7 +23,11 @@ def get_asset_storage_backend_raw() -> str:
     return str(_get_env("EASYADS_ASSET_STORAGE_BACKEND", "local_dev") or "local_dev").strip().lower()
 
 def is_r2_upload_enabled() -> bool:
-    return get_asset_storage_backend() == "r2" or _env_bool("EASYADS_ENABLE_R2_UPLOAD")
+    return (
+        get_asset_storage_backend() == "r2"
+        or _env_bool("EASYADS_ENABLE_R2_UPLOAD")
+        or _env_bool("EASYADS_R2_UPLOAD_REQUIRED")
+    )
 
 
 def is_r2_upload_required() -> bool:

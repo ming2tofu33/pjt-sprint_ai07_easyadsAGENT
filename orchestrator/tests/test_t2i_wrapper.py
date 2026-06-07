@@ -41,7 +41,12 @@ def test_mock_engine_generates_placeholder(tmp_path: Path):
     assert result.metadata["case"] == "unit"
 
 
-def test_t2i_health_reports_mock_and_unimplemented_engines():
+def test_t2i_health_reports_mock_and_graph_actual_engine_status(monkeypatch):
+    monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "local")
+    monkeypatch.setenv("EASYADS_ENABLE_MODAL_EXECUTION", "false")
+    monkeypatch.setenv("EASYADS_ENABLE_SD35_LOCAL", "false")
+    monkeypatch.setenv("EASYADS_ENABLE_FLUX_LOCAL", "false")
+
     health = get_t2i_health()
 
     assert health["mock"]["available"] is True
@@ -49,6 +54,14 @@ def test_t2i_health_reports_mock_and_unimplemented_engines():
     assert health["sd35_large"]["available"] is False
     assert health["flux"]["available"] is False
     assert "reason" in health["gpt_image_2"]
+
+
+def test_router_returns_graph_actual_engine_adapters(monkeypatch):
+    monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "local")
+    monkeypatch.setenv("EASYADS_ENABLE_MODAL_EXECUTION", "false")
+
+    assert get_t2i_engine("flux").name == "flux"
+    assert get_t2i_engine("sd35_large").name == "sd35_large"
 
 
 def test_router_returns_default_mock_engine(monkeypatch):

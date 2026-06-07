@@ -79,26 +79,26 @@ def test_create_generation_job_mock_immediate_pending_metadata():
     assert job.result_payload is None
 
 
-def test_create_generation_job_graph_immediate_degrades_metadata():
+def test_create_generation_job_graph_job_degrades_metadata():
     job = create_generation_job(
         GenerationJobCreateRequest(
             user_input="Create an ad",
-            run_mode="graph_immediate",
+            run_mode="graph_job",
         )
     )
 
     assert job.status == "queued"
-    assert job.metadata["requested_run_mode"] == "graph_immediate"
-    assert job.metadata["effective_run_mode"] == "graph_immediate"
+    assert job.metadata["requested_run_mode"] == "graph_job"
+    assert job.metadata["effective_run_mode"] == "graph_job"
     assert job.metadata["execution_mode"] == "pending_graph_execution"
     assert job.output_path is None
     assert job.result_payload is None
 
 
-def test_graph_immediate_snapshot_preserves_selected_engine():
+def test_graph_job_snapshot_preserves_selected_engine():
     request = GenerationJobCreateRequest(
         user_input="카페 신메뉴 광고 만들어줘",
-        run_mode="graph_immediate",
+        run_mode="graph_job",
         metadata={
             "selected_engine": "flux_schnell",
             "requested_engine": "flux",

@@ -19,6 +19,7 @@ BUSINESS_LABELS = {
     "cafe": "카페",
     "restaurant": "음식점",
     "beauty_salon": "뷰티",
+    "beauty_nail": "네일샵",
     "fitness": "피트니스",
     "flower_shop": "꽃집",
     "store": "매장",
@@ -31,6 +32,8 @@ GOAL_LABELS = {
     "review_event": "리뷰 이벤트",
     "brand_awareness": "브랜드 인지도",
     "retention": "재방문 유도",
+    "seasonal_limited": "시즌 한정 홍보",
+    "seasonal_campaign": "시즌 한정 홍보",
 }
 
 CHANNEL_LABELS = {

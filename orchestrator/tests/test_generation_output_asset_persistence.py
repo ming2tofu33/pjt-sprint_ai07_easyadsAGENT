@@ -15,6 +15,9 @@ def fake_db_transaction():
 
 def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ASSET_STORAGE_BACKEND", "local_dev")
+    monkeypatch.setenv("EASYADS_ENABLE_R2_UPLOAD", "false")
+    monkeypatch.setenv("EASYADS_R2_UPLOAD_REQUIRED", "false")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
     events = []
     assets = []

@@ -4,8 +4,8 @@ import { Diamond, Heart, Leaf, Smile, Sparkles, Star } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { toneOptions } from "@/lib/chat-flow";
 import { ChoiceChip } from "./ChoiceChip";
+import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
-import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
 const toneIconMap = {
@@ -22,9 +22,20 @@ type IntentReviewStepProps = {
   onSelectTone: (tone: string) => void;
   onContinue: () => void;
   onBack: () => void;
+  onDelete?: () => void;
 };
 
-export function IntentReviewStep({ state, onSelectTone, onContinue, onBack }: IntentReviewStepProps) {
+export function IntentReviewStep({ state, onSelectTone, onContinue, onBack, onDelete }: IntentReviewStepProps) {
+  return (
+    <ChatTimelineStep state={state} onBack={onBack} onDelete={onDelete}>
+      <IntentReviewCard state={state} onSelectTone={onSelectTone} onContinue={onContinue} />
+    </ChatTimelineStep>
+  );
+}
+
+type IntentReviewCardProps = Omit<IntentReviewStepProps, "onBack" | "onDelete">;
+
+export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentReviewCardProps) {
   const hasBackendSession = Boolean(state.jobId && state.threadId);
   const hasBackendContext =
     state.contextSource === "backend" &&
@@ -34,7 +45,7 @@ export function IntentReviewStep({ state, onSelectTone, onContinue, onBack }: In
 
   return (
     <>
-      <StepHeader title={state.isLoading ? "요청 분석 중" : "AI가 이렇게 이해했어요"} canGoBack onBack={onBack} />
+      <h2 className={styles.timelineSectionTitle}>{state.isLoading ? "요청 분석 중" : "AI가 이렇게 이해했어요"}</h2>
 
       <div className={styles.assistantBubble}>
         <span className={styles.assistantAvatar}>AI</span>

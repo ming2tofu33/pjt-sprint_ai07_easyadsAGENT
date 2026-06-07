@@ -36,6 +36,41 @@ describe("chat flow state", () => {
     expect(next.selectedImageGenerationEngine).toBe("gpt_image_2");
   });
 
+  it("appends new user prompts and can update the current turn without duplicating it", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "첫 광고 요청"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {},
+      question: {
+        field: "business_type",
+        question: "어떤 업종인가요?",
+        options: [{ id: 1, label: "카페", value: "cafe" }]
+      }
+    });
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "첫 광고 요청 + 참고 이미지",
+      referenceImagePath: "r2://references/ref.png",
+      transcriptMode: "update_current_turn"
+    });
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "두 번째 광고 요청"
+    });
+
+    expect(state.conversationMessages).toEqual([
+      { role: "user", text: "첫 광고 요청 + 참고 이미지" },
+      { role: "assistant", text: "어떤 업종인가요?" },
+      { role: "user", text: "두 번째 광고 요청" }
+    ]);
+  });
+
   it("keeps the selected image generation engine through backend responses", () => {
     let state = createInitialChatFlowState();
     state = chatFlowReducer(state, {

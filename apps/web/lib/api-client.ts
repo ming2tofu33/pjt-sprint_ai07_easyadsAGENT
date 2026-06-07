@@ -40,6 +40,7 @@ export type ChatQuestionResponse = {
   context: PartialInferredContext;
   question: OptionQuestion;
   missingFields?: string[];
+  generationJob?: GenerationJob;
 };
 
 export type ChatBriefReadyResponse = {
@@ -149,6 +150,7 @@ export type GenerationJobAnswerPayload = {
   field?: string;
   value?: string;
   customText?: string;
+  displayText?: string;
   selectedCopyId?: string;
   userCustomHeadline?: string;
   userCustomSubcopy?: string;
@@ -798,4 +800,9 @@ export async function getChatThreadMessages(threadId: string, params: { limit?: 
 export async function getChatThreadState(threadId: string): Promise<ChatThreadStateGetResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   return getJson<ChatThreadStateGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/state`, undefined, authHeaders);
+}
+
+export async function archiveChatThread(threadId: string): Promise<ChatThreadGetResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return postJson<ChatThreadGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/archive`, {}, authHeaders);
 }
