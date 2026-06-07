@@ -99,8 +99,10 @@ type ChatTurnSnapshot = {
 const CHAT_FLOW_SNAPSHOT_STORAGE_KEY = "easyads_chat_flow_snapshot_v1";
 const CHAT_TURN_SNAPSHOT_STORAGE_KEY = "easyads_chat_turn_snapshot_v1";
 const CHAT_GENERATION_FAILURE_STORAGE_KEY = "easyads_chat_generation_failure_v1";
+const CHAT_FLOW_BACK_TARGET_STORAGE_KEY = "easyads_chat_flow_back_target_v1";
 const GENERATION_JOB_POLL_INTERVAL_MS = 1800;
 const GENERATION_JOB_MAX_POLLS = 80;
+const CHAT_FLOW_BACK_TARGETS = new Set(["home", "studio", "reference", "ads", "my", "brand"]);
 
 type ChatGenerationFailureSnapshot = {
   message: string;
@@ -181,6 +183,31 @@ function clearGenerationFailureSnapshot() {
     window.sessionStorage.removeItem(CHAT_GENERATION_FAILURE_STORAGE_KEY);
   } catch {
     // Ignore storage failures; a fresh chat can still reset in memory.
+  }
+}
+
+function isChatFlowBackTarget(value: string | null | undefined): value is DashboardSurface {
+  return Boolean(value && CHAT_FLOW_BACK_TARGETS.has(value));
+}
+
+function readChatFlowBackTarget(): DashboardSurface | null {
+  try {
+    const raw = window.sessionStorage.getItem(CHAT_FLOW_BACK_TARGET_STORAGE_KEY);
+    return isChatFlowBackTarget(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeChatFlowBackTarget(surface: DashboardSurface) {
+  if (!isChatFlowBackTarget(surface)) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(CHAT_FLOW_BACK_TARGET_STORAGE_KEY, surface);
+  } catch {
+    // Browser history remains available, but the flow fallback will use studio.
   }
 }
 
@@ -491,10 +518,13 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
   const navigateTo = useCallback(
     (surface: DashboardSurface, stage?: DashboardStage) => {
+      if (surface === "chat" || surface === "photo") {
+        writeChatFlowBackTarget(appSurface);
+      }
       setOptimisticSurface(surface);
       router.push(buildDashboardHref(surface, stage));
     },
-    [router]
+    [appSurface, router]
   );
 
   const restoreBriefSnapshot = useCallback((snapshot: ChatFlowSnapshot, stage: DashboardStage) => {
@@ -1336,6 +1366,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     navigateTo("chat", "start");
   }
 
+  function handleBackToFlowEntry() {
+    navigateTo(readChatFlowBackTarget() ?? "studio");
+  }
+
   function handleRegenerateFromRecent() {
     showToast("새 요청 화면에서 비슷하게 만들 광고를 입력해주세요.");
     handleOpenFreshChat();
@@ -1466,6 +1500,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
           onOpenThread={(threadId) => {
+            writeChatFlowBackTarget("studio");
             setOptimisticSurface("chat");
             router.push(`/generate/chat?threadId=${threadId}`);
           }}
@@ -1511,7 +1546,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "photo" ? (
         <PhotoGenerateStep
-          onBack={() => router.back()}
+          onBack={handleBackToFlowEntry}
           onGoHome={() => navigateTo("home")}
           onOpenChat={handleOpenFreshChat}
           onGenerate={handleStartPhotoGeneration}
@@ -1523,6 +1558,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onBack={() => setShowHistory(false)}
           onGoHome={() => navigateTo("home")}
           onSelectThread={(threadId) => {
+            writeChatFlowBackTarget("studio");
             router.push(`/generate/chat?threadId=${threadId}`);
             setShowHistory(false);
           }}
@@ -1530,7 +1566,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       ) : appSurface === "chat" && state.step === 1 ? (
         <ChatStartStep
           onSubmit={handleSubmitPrompt}
-          onBack={() => router.back()}
+          onBack={handleBackToFlowEntry}
           onGoHome={() => navigateTo("home")}
           onHistory={() => setShowHistory(true)}
         />

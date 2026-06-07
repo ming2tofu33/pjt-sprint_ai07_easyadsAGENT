@@ -1618,6 +1618,21 @@ describe("ChatGenerateClient", () => {
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?threadId=thread_strawberry");
   });
 
+  it("returns from chat start to the studio entry instead of browser history", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="studio" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /새 작업/ }));
+    expect(screen.getByText("대화로 찰떡 이미지 만들기")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 화면" }));
+
+    expect(navigationMock.back).not.toHaveBeenCalled();
+    expect(navigationMock.push).toHaveBeenCalledWith("/studio");
+  });
+
   it("archives a studio workspace after a delete warning", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.listChatThreads).mockResolvedValueOnce({
@@ -1669,6 +1684,21 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("내 사진으로 만들기")).toBeTruthy();
     expect(screen.getByText("광고에 쓸 사진을 올려주세요")).toBeTruthy();
     expect(screen.getByRole("button", { name: "사진 선택하기" })).toBeTruthy();
+  });
+
+  it("returns from photo start to the previous app surface without browser history", async () => {
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="studio" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /내 사진으로 만들기/ }));
+    expect(screen.getByText("내 사진으로 만들기")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 화면" }));
+
+    expect(navigationMock.back).not.toHaveBeenCalled();
+    expect(navigationMock.push).toHaveBeenCalledWith("/studio");
   });
 
   it("shows a saved brand kit on the home and my page surfaces", async () => {
@@ -2255,17 +2285,21 @@ describe("ChatGenerateClient", () => {
     expect(navigationMock.push).not.toHaveBeenCalledWith("/generate/chat");
   });
 
-  it("offers previous and home escape routes from chat start", async () => {
+  it("offers history and flow-back escape routes from chat start", async () => {
     (globalThis as typeof globalThis & { React: typeof React }).React = React;
     const { ChatGenerateClient } = await import("./ChatGenerateClient");
 
     render(<ChatGenerateClient initialSurface="chat" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "이전 화면" }));
-    expect(navigationMock.back).toHaveBeenCalled();
-
     fireEvent.click(screen.getByRole("button", { name: "이전 대화" }));
     expect(await screen.findByRole("heading", { name: "이전 대화 기록" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 화면" }));
+    expect(screen.getByText("대화로 찰떡 이미지 만들기")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 화면" }));
+    expect(navigationMock.back).not.toHaveBeenCalled();
+    expect(navigationMock.push).toHaveBeenCalledWith("/studio");
   });
 
   it("shows realistic creative labels in reference cards", async () => {
