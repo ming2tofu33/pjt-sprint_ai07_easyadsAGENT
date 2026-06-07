@@ -487,6 +487,10 @@ function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerat
   };
 }
 
+function shouldPollInitialGenerationJob(job: GenerationJob): boolean {
+  return job.status !== "waiting_user_input" && !isTerminalGenerationJobStatus(job.status);
+}
+
 type PhotoGenerateInput = {
   file: File;
   prompt: string;
@@ -922,6 +926,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     const selectedReferenceTemplateId = (options.selectedReferenceTemplateId ?? readGenerationDraftReferenceTemplateId()) || undefined;
     const requestContext = readGenerationRequestContext();
     const imageGenerationEngine = options.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
+    const engineOption = getGenerationEngineOption(imageGenerationEngine);
+    const backendEngine = resolveGenerationEnginePreference(imageGenerationEngine);
     clearGenerationDraftPrompt();
     dispatch({
       type: "submitPrompt",
@@ -963,8 +969,31 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         selectedReferenceTemplateId: selectedReferenceTemplateId ?? undefined,
         referenceImagePath,
         userCustomHeadline: options.userCustomHeadline ?? undefined,
-        userCustomSubcopy: options.userCustomSubcopy ?? undefined
+        userCustomSubcopy: options.userCustomSubcopy ?? undefined,
+        metadata: {
+          source: "web_chat_intake",
+          selected_engine: imageGenerationEngine,
+          requested_engine: backendEngine,
+          t2i_engine: backendEngine,
+          selected_engine_label: engineOption.modelName,
+          selected_reference_template_id: selectedReferenceTemplateId ?? null,
+          reference_template_title: requestContext?.selectedReferenceTemplateTitle ?? null,
+          reference_image_path: referenceImagePath ?? null,
+          copy_generation_mode: options.copyGenerationMode ?? null
+        }
       });
+
+      if (shouldPollInitialGenerationJob(response.job)) {
+        dispatch({ type: "continueToBrief" });
+        dispatch({ type: "generationJobUpdated", generationJob: response.job });
+        setGenerationProgress(generationProgressFromJob(response.job));
+        setGenerationStage("generating");
+        lastPrimedStageRef.current = "generating";
+        setOptimisticSurface("chat");
+        router.replace(buildChatStageHrefForJob("generating", response.job));
+        await pollGenerationJobUntilDoneOrQuestion(response.job);
+        return;
+      }
 
       const turnResponse = generationJobToChatTurnResponse(response.job, options.copyGenerationMode);
       applyTurnResponse(
@@ -1159,7 +1188,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     for (let attempt = 0; attempt < GENERATION_JOB_MAX_POLLS && !isTerminalGenerationJobStatus(currentJob.status); attempt += 1) {
-      await delay(GENERATION_JOB_POLL_INTERVAL_MS);
+      if (attempt > 0) {
+        await delay(GENERATION_JOB_POLL_INTERVAL_MS);
+      }
       const response = await getGenerationJob(currentJob.job_id);
       currentJob = response.job;
       dispatch({ type: "generationJobUpdated", generationJob: currentJob });
