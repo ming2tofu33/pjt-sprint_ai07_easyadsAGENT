@@ -37,8 +37,8 @@ def test_sync_archive_for_job_success(monkeypatch):
     monkeypatch.setattr("orchestrator.app.archive.service.thread_repo", thread_repo_mock)
     
     output_repo_mock = MagicMock()
-    output_repo_mock.return_value = mock_outputs
-    monkeypatch.setattr("orchestrator.app.db.repositories.generation_outputs.list_generation_outputs", output_repo_mock)
+    output_repo_mock.list_generation_outputs.return_value = mock_outputs
+    monkeypatch.setattr("orchestrator.app.archive.service.output_repo", output_repo_mock)
     
     archive_repo_mock = MagicMock()
     archive_repo_mock.upsert_generated_archive_item_row.return_value = mock_archive_row

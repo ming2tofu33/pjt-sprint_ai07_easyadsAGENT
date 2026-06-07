@@ -8,10 +8,9 @@ import logging
 from orchestrator.app.api.schemas.generation_outputs import GenerationOutputResponse
 from orchestrator.app.db.repositories import generation_outputs as output_repo
 from orchestrator.app.db.repositories import chat_threads as thread_repo
-from orchestrator.app.archive.service import sync_archive_for_job
-from orchestrator.app.artifacts.service import sanitize_result_artifact_payload_for_api
+from orchestrator.app.archive.service import sync_archive_for_output
+from orchestrator.app.artifacts.service import sanitize_result_artifact_payload_for_api, browser_usable_url
 from orchestrator.app.db.session import db_transaction
-from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -32,31 +31,21 @@ def _iso(value: object | None) -> str | None:
     return str(value)
 
 
-def _browser_usable_url(value: object | None) -> str | None:
-    if not value:
-        return None
-    text = str(value).strip()
-    parsed = urlparse(text)
-    if parsed.scheme not in {"http", "https"}:
-        return None
-    if not parsed.netloc:
-        return None
-    return text
 
 def _row_to_response(row: dict) -> GenerationOutputResponse:
     if not row.get("public_output_id"):
         raise GenerationOutputPersistenceUnavailable("Generation output public ID is missing.")
 
-    image_url = _browser_usable_url(row.get("image_url"))
-    thumbnail_url = _browser_usable_url(row.get("thumbnail_url"))
+    image_url = browser_usable_url(row.get("image_url"))
+    thumbnail_url = browser_usable_url(row.get("thumbnail_url"))
 
     safe_payload = sanitize_result_artifact_payload_for_api(row.get("result_payload") or {})
     
     download_url = None
     if safe_payload.get("download_url"):
-        download_url = _browser_usable_url(safe_payload["download_url"])
+        download_url = browser_usable_url(safe_payload["download_url"])
     elif safe_payload.get("final_image_url"):
-        download_url = _browser_usable_url(safe_payload["final_image_url"])
+        download_url = browser_usable_url(safe_payload["final_image_url"])
         
     if not image_url and download_url:
         image_url = download_url
@@ -129,7 +118,6 @@ def select_final_generation_output(public_output_id: str, *, workspace_id: str) 
             raise GenerationOutputNotFound(f"Generation output {public_output_id} not found during update.")
             
         # 3. Archive 연동 갱신
-        from orchestrator.app.archive.service import sync_archive_for_output
         sync_archive_for_output(workspace_id=workspace_id, internal_output_id=str(internal_output_id), connection=conn)
         
         # 갱신된 데이터를 다시 조회 (조인이 필요하므로)

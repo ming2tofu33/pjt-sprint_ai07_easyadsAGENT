@@ -51,6 +51,7 @@ from orchestrator.app.storage import settings as storage_settings
 from orchestrator.app.storage.errors import AssetStorageError
 from orchestrator.app.storage.object_keys import build_generation_object_key
 from orchestrator.app.storage.r2_service import upload_file_to_r2
+from orchestrator.app.archive import service as archive_service
 
 _GENERATION_JOBS: dict[str, GenerationJobResponse] = {}
 _GENERATION_JOB_LOCK = RLock()
@@ -1348,10 +1349,9 @@ def _create_output_records_for_done_job_db(
         metadata={"result_payload_summary": _result_payload_summary(effective_result_payload)},
         connection=connection,
     )
-    final_output = generation_output_repo.mark_output_final(str(output["id"]), connection=connection)
+    final_output = generation_output_repo.mark_output_final(str(output["id"]), workspace_id=str(row["workspace_id"]), connection=connection)
     
-    from orchestrator.app.archive.service import sync_archive_for_output
-    sync_archive_for_output(
+    archive_service.sync_archive_for_output(
         workspace_id=str(row["workspace_id"]),
         internal_output_id=str(output["id"]),
         connection=connection,

@@ -14,7 +14,7 @@ def test_select_final_generation_output_transaction(monkeypatch):
     monkeypatch.setattr("orchestrator.app.generation_outputs.service.output_repo", repo_mock)
     
     sync_mock = MagicMock()
-    monkeypatch.setattr("orchestrator.app.archive.service.sync_archive_for_output", sync_mock)
+    monkeypatch.setattr("orchestrator.app.generation_outputs.service.sync_archive_for_output", sync_mock)
     
     db_tx_mock = MagicMock()
     db_tx_mock.return_value.__enter__.return_value = MagicMock()
