@@ -46,24 +46,6 @@ def create_asset(
                 %s, %s, %s, %s, %s,
                 %s, %s, %s::jsonb
                 )
-                on conflict (bucket, object_key)
-                do update set
-                public_asset_id = coalesce(assets.public_asset_id, excluded.public_asset_id),
-                workspace_id = excluded.workspace_id,
-                thread_id = excluded.thread_id,
-                project_id = excluded.project_id,
-                created_by = excluded.created_by,
-                kind = excluded.kind,
-                storage_provider = excluded.storage_provider,
-                mime_type = excluded.mime_type,
-                size_bytes = excluded.size_bytes,
-                width = excluded.width,
-                height = excluded.height,
-                checksum_sha256 = excluded.checksum_sha256,
-                public_url = excluded.public_url,
-                signed_url_expires_at = excluded.signed_url_expires_at,
-                metadata = excluded.metadata,
-                updated_at = now()
                 returning *
                 """,
                 (
@@ -92,18 +74,15 @@ def create_asset(
 def get_asset_by_public_id(
     public_asset_id: str,
     *,
-    workspace_id: str | None = None,
+    workspace_id: str,
     created_by: str | None = None,
     for_update: bool = False,
     connection: object | None = None,
 ) -> dict | None:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
-            query = "select * from assets where public_asset_id = %s"
-            params = [public_asset_id]
-            if workspace_id:
-                query += " and workspace_id = %s"
-                params.append(workspace_id)
+            query = "select * from assets where public_asset_id = %s and workspace_id = %s"
+            params = [public_asset_id, workspace_id]
             if created_by:
                 query += " and created_by = %s"
                 params.append(created_by)
@@ -118,6 +97,7 @@ def get_asset_by_public_id(
 def update_asset(
     asset_id: str,
     *,
+    workspace_id: str,
     mime_type: str | None = None,
     size_bytes: int | None = None,
     width: int | None = None,
@@ -156,9 +136,10 @@ def update_asset(
                 params.append(jsonb_param(metadata_merge))
                 
             params.append(asset_id)
+            params.append(workspace_id)
             
             cur.execute(
-                f"update assets set {', '.join(updates)} where id = %s returning *",
+                f"update assets set {', '.join(updates)} where id = %s and workspace_id = %s returning *",
                 tuple(params),
             )
             return cur.fetchone()

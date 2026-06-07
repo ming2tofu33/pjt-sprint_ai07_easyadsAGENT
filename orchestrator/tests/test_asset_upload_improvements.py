@@ -23,7 +23,7 @@ def test_presign_requires_workspace(monkeypatch):
     )
     # Should raise AssetWorkspaceRequired in _resolve_workspace_id
     with pytest.raises(AssetWorkspaceRequired):
-        service._resolve_workspace_id(req.workspace_id)
+        service._resolve_workspace_id(req.workspace_id, user_id=None)
 
 def test_presign_validates_mime_type(monkeypatch):
     req = AssetPresignRequest(
@@ -39,7 +39,7 @@ def test_presign_validates_mime_type(monkeypatch):
         service.presign_asset_upload(req)
 
     req.filename = "test.png"
-    with pytest.raises(UnsupportedMediaTypeError, match="Unsupported media type"):
+    with pytest.raises(UnsupportedMediaTypeError, match="File extension and MIME type do not match"):
         service.presign_asset_upload(req)
 
 def test_complete_records_failed_status(monkeypatch):
@@ -60,7 +60,7 @@ def test_complete_records_failed_status(monkeypatch):
             
     mock_repo = MockRepo()
     monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", mock_repo)
-    monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, **kw: "ws1")
+    monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, user_id: "ws1")
     monkeypatch.setattr("orchestrator.app.assets.service.db_transaction", lambda: __import__("contextlib").nullcontext())
     
     from orchestrator.app.storage.errors import R2StorageUnavailableError

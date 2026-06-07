@@ -935,6 +935,48 @@ def _use_postgres_backend() -> bool:
     return db_settings.get_db_backend() == "postgres"
 
 
+def _resolve_generation_input_asset(
+    *,
+    public_asset_id: str,
+    workspace_id: str,
+    expected_kind: str,
+    connection: object,
+) -> dict:
+    from orchestrator.app.generation_jobs.errors import (
+        GenerationJobAssetKindInvalid,
+        GenerationJobAssetNotFound,
+        GenerationJobAssetNotReady,
+    )
+    from orchestrator.app.db.repositories import assets as asset_repo
+
+    row = asset_repo.get_asset_by_public_id(
+        public_asset_id,
+        workspace_id=workspace_id,
+        connection=connection,
+    )
+    if not row:
+        raise GenerationJobAssetNotFound(
+            f"{expected_kind} asset was not found."
+        )
+
+    if row.get("kind") != expected_kind:
+        raise GenerationJobAssetKindInvalid(
+            f"Expected asset kind={expected_kind}."
+        )
+
+    upload_status = (
+        (row.get("metadata") or {})
+        .get("upload", {})
+        .get("status")
+    )
+    if upload_status != "ready":
+        raise GenerationJobAssetNotReady(
+            f"{expected_kind} asset is not ready."
+        )
+
+    return row
+
+
 def _create_generation_job_db(request: GenerationJobCreateRequest) -> GenerationJobResponse:
     now = _now_iso()
     effective_run_mode, execution_mode = _initial_run_mode_metadata(request.run_mode)

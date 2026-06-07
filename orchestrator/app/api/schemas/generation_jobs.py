@@ -76,7 +76,7 @@ class GenerationJobCreateRequest(BaseModel):
         if self.selected_reference_template_id and self.reference_asset_id:
             raise ValueError("selected_reference_template_id and reference_asset_id cannot be provided together")
             
-        allow_legacy = os.environ.get("EASYADS_ALLOW_LEGACY_LOCAL_IMAGE_PATHS", "true").lower() == "true"
+        allow_legacy = os.environ.get("EASYADS_ALLOW_LEGACY_LOCAL_IMAGE_PATHS", "false").lower() == "true"
         if (self.source_image_path or self.reference_image_path) and not allow_legacy:
             raise ValueError("source_image_path and reference_image_path are not accepted by the public API")
             
@@ -85,8 +85,11 @@ class GenerationJobCreateRequest(BaseModel):
     @field_validator("source_asset_id", "reference_asset_id")
     @classmethod
     def validate_public_asset_id(cls, value):
-        if value is not None and not value.startswith("asset_"):
-            raise ValueError("asset ID must start with 'asset_'")
+        import re
+        if value is not None:
+            ASSET_ID_PATTERN = re.compile(r"^asset_[0-9a-f]{32}$")
+            if not ASSET_ID_PATTERN.match(value):
+                raise ValueError("asset ID must match 'asset_<32-hex-chars>'")
         return value
 
     @field_validator("user_input")

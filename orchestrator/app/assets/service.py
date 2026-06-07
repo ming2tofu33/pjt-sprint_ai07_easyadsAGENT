@@ -43,18 +43,30 @@ def _iso(dt: datetime | str | None) -> str:
     return dt.isoformat()
 
 
-def _resolve_workspace_id(req_workspace_id: str | None, connection: object | None = None) -> str:
-    from orchestrator.app.db.workspace_scope import resolve_workspace_scope
+def _resolve_workspace_id(
+    workspace_id: str | None,
+    *,
+    user_id: str | None,
+) -> str:
+    from orchestrator.app.db.workspace_scope import (
+        WorkspaceScopeForbidden,
+        WorkspaceScopeRequired,
+        resolve_workspace_scope,
+    )
     from orchestrator.app.assets.errors import AssetWorkspaceRequired, AssetWorkspaceForbidden
     
-    if not req_workspace_id:
-        raise AssetWorkspaceRequired("workspace_id is required to upload assets", "asset_workspace_required")
-        
     try:
-        ws_id = resolve_workspace_scope(req_workspace_id)
-        return ws_id
-    except ValueError as e:
-        raise AssetWorkspaceForbidden("Forbidden workspace access", "asset_workspace_forbidden") from e
+        return resolve_workspace_scope(workspace_id, user_id)
+    except WorkspaceScopeRequired as exc:
+        raise AssetWorkspaceRequired(
+            "Workspace information is required.",
+            "asset_workspace_required",
+        ) from exc
+    except WorkspaceScopeForbidden as exc:
+        raise AssetWorkspaceForbidden(
+            "Workspace access denied.",
+            "asset_workspace_forbidden",
+        ) from exc
 
 
 def _row_to_response(row: dict) -> AssetResponse:
@@ -63,15 +75,22 @@ def _row_to_response(row: dict) -> AssetResponse:
     status = upload_meta.get("status") or "pending"
     
     image_url = row.get("public_url")
-    if not image_url and row.get("storage_provider") == "r2":
-        from orchestrator.app.storage.r2_service import create_r2_client
-        from orchestrator.app.storage.url_policy import resolve_asset_urls
-        urls = resolve_asset_urls(
-            client=create_r2_client(),
-            bucket=row["bucket"],
-            object_key=row["object_key"],
-        )
-        image_url = urls.get("public_url") or urls.get("final_image_url")
+    if (
+        status == "ready"
+        and not image_url
+        and row.get("storage_provider") == "r2"
+    ):
+        try:
+            from orchestrator.app.storage.r2_service import create_r2_client
+            from orchestrator.app.storage.url_policy import resolve_asset_urls
+            urls = resolve_asset_urls(
+                client=create_r2_client(),
+                bucket=row["bucket"],
+                object_key=row["object_key"],
+            )
+            image_url = urls.get("public_url") or urls.get("final_image_url")
+        except R2StorageUnavailableError:
+            image_url = None
         
     return AssetResponse(
         asset_id=str(row.get("public_asset_id")),
@@ -86,17 +105,24 @@ def _row_to_response(row: dict) -> AssetResponse:
         created_at=_iso(row.get("created_at")),
         updated_at=_iso(row.get("updated_at")),
         metadata={
-            "upload": {"status": status, "error_code": upload_meta.get("error_code")},
-            "original_filename": metadata.get("origin", {}).get("filename"),
-            "processed_width": metadata.get("preprocess", {}).get("processed_width"),
-            "processed_height": metadata.get("preprocess", {}).get("processed_height"),
+            "upload": {
+                "status": status,
+                "error_code": upload_meta.get("error_code")
+            },
+            "original_filename": upload_meta.get("original_filename"),
+            "processed_width": (metadata.get("preprocess") or {}).get("processed_width"),
+            "processed_height": (metadata.get("preprocess") or {}).get("processed_height"),
         },
     )
 
 
-def get_asset_response(public_asset_id: str, workspace_id: str | None = None) -> AssetResponse:
+def get_asset_response(
+    public_asset_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> AssetResponse:
     with db_transaction() as conn:
-        resolved_ws = _resolve_workspace_id(workspace_id, connection=conn)
+        resolved_ws = _resolve_workspace_id(workspace_id, user_id=user_id)
         row = asset_repo.get_asset_by_public_id(public_asset_id, workspace_id=resolved_ws, connection=conn)
         if not row:
             raise NotFoundError(message="Asset not found", error_code="asset_not_found")
@@ -116,16 +142,25 @@ def presign_asset_upload(req: AssetPresignRequest) -> AssetPresignResponse:
     if ext not in vision_settings.allowed_extensions:
         raise UnprocessableEntityError(f"Unsupported extension: {ext}", error_code="invalid_image_asset")
         
-    allowed_mimes = {"image/jpeg", "image/png", "image/webp"}
-    if req.mime_type not in allowed_mimes:
-        raise UnsupportedMediaTypeError(f"Unsupported media type: {req.mime_type}", error_code="unsupported_asset_media_type")
+    _ALLOWED_MIMES_BY_EXTENSION = {
+        ".jpg": {"image/jpeg"},
+        ".jpeg": {"image/jpeg"},
+        ".png": {"image/png"},
+        ".webp": {"image/webp"},
+    }
+    allowed_mimes_for_ext = _ALLOWED_MIMES_BY_EXTENSION.get(ext, set())
+    if req.mime_type not in allowed_mimes_for_ext:
+        raise UnsupportedMediaTypeError(
+            "File extension and MIME type do not match.", 
+            error_code="asset_media_type_mismatch"
+        )
         
     max_bytes = vision_settings.max_file_size_mb * 1024 * 1024
     if req.size_bytes > max_bytes:
         raise PayloadTooLargeError("File size exceeds limit", error_code="asset_too_large")
 
     with db_transaction() as conn:
-        workspace_id = _resolve_workspace_id(req.workspace_id, connection=conn)
+        workspace_id = _resolve_workspace_id(req.workspace_id, user_id=None)
         
         public_asset_id = f"asset_{uuid.uuid4().hex}"
         object_key = build_upload_object_key(workspace_id=workspace_id, public_asset_id=public_asset_id, extension=ext)
@@ -164,6 +199,9 @@ def presign_asset_upload(req: AssetPresignRequest) -> AssetPresignResponse:
                 raise UnprocessableEntityError("Thread not found", error_code="thread_not_found")
             internal_thread_id = str(thread["id"])
             
+        from orchestrator.app.db import settings as db_settings
+        resolved_user_id = db_settings.get_demo_user_id() # Should come from auth in real system
+        
         row = asset_repo.create_asset(
             workspace_id=workspace_id,
             bucket=bucket,
@@ -175,7 +213,7 @@ def presign_asset_upload(req: AssetPresignRequest) -> AssetPresignResponse:
             size_bytes=req.size_bytes,
             metadata=metadata,
             thread_id=internal_thread_id,
-            created_by="api_user",  # Fallback for now
+            created_by=resolved_user_id,
             connection=conn,
         )
 
@@ -196,10 +234,57 @@ def presign_asset_upload(req: AssetPresignRequest) -> AssetPresignResponse:
         )
 
 
-def complete_asset_upload(public_asset_id: str, workspace_id: str | None = None) -> AssetResponse:
+def _mark_asset_upload_failed(
+    *,
+    public_asset_id: str,
+    workspace_id: str,
+    error_code: str,
+) -> None:
     with db_transaction() as conn:
-        resolved_ws = _resolve_workspace_id(workspace_id, connection=conn)
-        row = asset_repo.get_asset_by_public_id(public_asset_id, workspace_id=resolved_ws, for_update=True, connection=conn)
+        row = asset_repo.get_asset_by_public_id(
+            public_asset_id,
+            workspace_id=workspace_id,
+            for_update=True,
+            connection=conn,
+        )
+        if row:
+            asset_repo.update_asset(
+                str(row["id"]),
+                workspace_id=workspace_id,
+                metadata_merge={
+                    "upload": {
+                        **((row.get("metadata") or {}).get("upload") or {}),
+                        "status": "failed",
+                        "error_code": error_code,
+                        "failed_at": _iso(datetime.now(timezone.utc)),
+                    }
+                },
+                connection=conn,
+            )
+
+def complete_asset_upload(
+    public_asset_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> AssetResponse:
+    from orchestrator.app.assets.errors import AssetServiceError
+    resolved_ws = _resolve_workspace_id(workspace_id, user_id=user_id)
+    try:
+        return _complete_asset_upload_internal(
+            public_asset_id=public_asset_id,
+            workspace_id=resolved_ws,
+        )
+    except AssetServiceError as exc:
+        _mark_asset_upload_failed(
+            public_asset_id=public_asset_id,
+            workspace_id=resolved_ws,
+            error_code=exc.error_code or "internal_error",
+        )
+        raise
+
+def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> AssetResponse:
+    with db_transaction() as conn:
+        row = asset_repo.get_asset_by_public_id(public_asset_id, workspace_id=workspace_id, for_update=True, connection=conn)
         if not row:
             raise NotFoundError(message="Asset not found", error_code="asset_not_found")
             
@@ -219,12 +304,7 @@ def complete_asset_upload(public_asset_id: str, workspace_id: str | None = None)
         try:
             head_res = head_object(client=client, bucket=bucket, object_key=object_key)
         except R2StorageUnavailableError:
-            asset_repo.update_asset(
-                str(row["id"]),
-                metadata_merge={"upload": {"status": "failed", "error_code": "file_not_found"}},
-                connection=conn
-            )
-            raise ConflictError("File not found on R2 or incomplete", error_code="asset_upload_incomplete")
+            raise ConflictError("File not found on R2 or incomplete", error_code="file_not_found")
             
         actual_size = head_res.get("ContentLength")
         actual_mime = head_res.get("ContentType")
@@ -240,50 +320,32 @@ def complete_asset_upload(public_asset_id: str, workspace_id: str | None = None)
             try:
                 download_file_from_r2(client=client, bucket=bucket, object_key=object_key, target_path=local_path)
             except R2StorageUnavailableError:
-                raise ConflictError("Failed to download object", error_code="asset_upload_incomplete")
+                raise ConflictError("Failed to download object", error_code="file_not_found")
                 
-            input_spec = ImageInputSpec(
-                image_path=str(local_path),
-                kind="generic_upload",
-                preprocess_mode="resize_only",
-                preserve_original=False,
-            )
-            
+            from PIL import Image, ImageOps
             try:
-                preprocess_res = preprocess_image(input_spec, job_id=public_asset_id)
+                with Image.open(local_path) as image:
+                    original_format = image.format
+                    original_width, original_height = image.size
+                    original_mode = image.mode
+                    detected_mime = Image.MIME.get(image.format)
             except Exception as exc:
-                asset_repo.update_asset(
-                    str(row["id"]),
-                    metadata_merge={"upload": {"status": "failed", "error_code": "invalid_image"}},
-                    connection=conn
-                )
-                raise UnprocessableEntityError("Invalid or corrupted image asset.", error_code="invalid_image_asset")
+                raise UnprocessableEntityError("Invalid or corrupted image asset.", error_code="invalid_image")
                 
-            img_meta = preprocess_res.metadata
             allowed_formats = {"JPEG", "PNG", "WEBP"}
-            if img_meta.format not in allowed_formats:
-                asset_repo.update_asset(
-                    str(row["id"]),
-                    metadata_merge={"upload": {"status": "failed", "error_code": "unsupported_format"}},
-                    connection=conn
-                )
-                raise UnprocessableEntityError(f"Unsupported image format: {img_meta.format}", error_code="invalid_image_asset")
+            if original_format not in allowed_formats:
+                raise UnprocessableEntityError(f"Unsupported image format: {original_format}", error_code="unsupported_format")
                 
-            img_meta = preprocess_res.metadata
-            safe_preprocess_summary = {
-                "status": "completed",
-                "mode": input_spec.preprocess_mode,
-                "original_width": img_meta.width,
-                "original_height": img_meta.height,
-                "processed_width": preprocess_res.width,
-                "processed_height": preprocess_res.height,
-                "exif_transposed": img_meta.exif_orientation_applied,
-            }
-            
+            expected_mime = upload_meta.get("expected_mime_type")
+            if detected_mime != expected_mime:
+                raise UnsupportedMediaTypeError("Detected format does not match expected MIME type.", error_code="asset_media_type_mismatch")
+                
+            if actual_mime and actual_mime.split(";", 1)[0] != detected_mime:
+                raise UnsupportedMediaTypeError("R2 Content-Type does not match detected format.", error_code="asset_media_type_mismatch")
+                
             from orchestrator.app.storage.file_metadata import get_file_checksum
             checksum = get_file_checksum(local_path)
             
-            # Note: Do not save local paths into the DB
             meta_update = {
                 "upload": {
                     **upload_meta,
@@ -291,22 +353,15 @@ def complete_asset_upload(public_asset_id: str, workspace_id: str | None = None)
                     "completed_at": _iso(datetime.now(timezone.utc)),
                 },
                 "image": {
-                    "format": img_meta.format,
-                    "mime_type": actual_mime or "application/octet-stream",
-                    "width": img_meta.width,
-                    "height": img_meta.height,
-                    "mode": img_meta.mode,
+                    "format": original_format,
+                    "mime_type": detected_mime or actual_mime or "application/octet-stream",
+                    "width": original_width,
+                    "height": original_height,
+                    "mode": original_mode,
                     "size_bytes": actual_size,
                     "checksum_sha256": checksum,
                 },
-                "preprocess": safe_preprocess_summary,
             }
-            # Cleanup preprocessed image output to avoid cluttering local disk
-            if preprocess_res.image_path and Path(preprocess_res.image_path).exists():
-                try:
-                    Path(preprocess_res.image_path).unlink()
-                except OSError:
-                    pass
             
             from orchestrator.app.storage.url_policy import resolve_asset_urls
             urls = resolve_asset_urls(client=client, bucket=bucket, object_key=object_key)
@@ -314,10 +369,11 @@ def complete_asset_upload(public_asset_id: str, workspace_id: str | None = None)
             
             updated_row = asset_repo.update_asset(
                 str(row["id"]),
-                mime_type=actual_mime,
+                workspace_id=workspace_id,
+                mime_type=detected_mime or actual_mime,
                 size_bytes=actual_size,
-                width=img_meta.width,
-                height=img_meta.height,
+                width=original_width,
+                height=original_height,
                 checksum_sha256=checksum,
                 public_url=public_url,
                 metadata_merge=meta_update,

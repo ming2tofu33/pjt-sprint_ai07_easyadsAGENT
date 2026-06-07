@@ -34,18 +34,34 @@ def presign_asset_upload(req: AssetPresignRequest) -> Any:
 
 
 @router.post("/uploads/{asset_id}/complete", response_model=AssetCompleteResponse)
-def complete_asset_upload(asset_id: str) -> Any:
+def complete_asset_upload(
+    asset_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> Any:
     try:
-        res = service.complete_asset_upload(public_asset_id=asset_id)
+        res = service.complete_asset_upload(
+            public_asset_id=asset_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
         return AssetCompleteResponse(asset=res)
     except Exception as exc:
         _handle_asset_error(exc)
 
 
 @router.get("/{asset_id}", response_model=AssetGetResponse)
-def get_asset(asset_id: str) -> Any:
+def get_asset(
+    asset_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> Any:
     try:
-        res = service.get_asset_response(public_asset_id=asset_id)
+        res = service.get_asset_response(
+            public_asset_id=asset_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
         return AssetGetResponse(asset=res)
     except Exception as exc:
         _handle_asset_error(exc)

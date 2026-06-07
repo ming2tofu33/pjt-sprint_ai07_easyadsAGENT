@@ -10,9 +10,6 @@ where public_asset_id is null;
 alter table assets alter column public_asset_id set not null;
 alter table assets add constraint assets_public_asset_id_key unique (public_asset_id);
 
--- Add index for fast lookup
-create index if not exists assets_public_asset_id_idx on assets(public_asset_id);
-
 -- Enforce size and status constraints
 alter table assets add constraint assets_size_bytes_check check (size_bytes is null or size_bytes > 0);
 alter table assets add constraint assets_upload_status_check check (
