@@ -18,6 +18,8 @@ def create_generation_job_row(
     current_stage: str,
     progress_percent: int,
     selected_reference_template_id: str | None,
+    input_asset_id: str | None = None,
+    reference_asset_id: str | None = None,
     output_path: str | None,
     result_payload: dict | None,
     error: dict | None,
@@ -42,12 +44,12 @@ def create_generation_job_row(
                 """
                 insert into generation_jobs (
                   public_job_id, workspace_id, thread_id, requested_by, status, current_stage,
-                  progress_percent, selected_reference_template_id, output_path, result_payload, error, metadata,
+                  progress_percent, selected_reference_template_id, input_asset_id, reference_asset_id, output_path, result_payload, error, metadata,
                   run_mode, engine, model_provider, model_name, model_version, prompt_text, prompt_hash,
                   prompt_preview, brief, brand_kit_snapshot, params, request_payload, queued_at
                 )
                 values (
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
                   %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, now()
                 )
                 returning *
@@ -61,6 +63,8 @@ def create_generation_job_row(
                     current_stage,
                     progress_percent,
                     selected_reference_template_id,
+                    input_asset_id,
+                    reference_asset_id,
                     output_path,
                     jsonb_param(result_payload or {}),
                     jsonb_param(error or {}),

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from orchestrator.app.api.schemas.common import ApiMeta, ErrorResponse
 
@@ -52,6 +52,8 @@ class GenerationJobCreateRequest(BaseModel):
     selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
     source_image_path: str | None = Field(default=None, alias="sourceImagePath")
     reference_image_path: str | None = Field(default=None, alias="referenceImagePath")
+    source_asset_id: str | None = Field(default=None, alias="sourceAssetId")
+    reference_asset_id: str | None = Field(default=None, alias="referenceAssetId")
     copy_generation_mode: str | None = Field(default=None, alias="copyGenerationMode")
     selected_copy_id: str | None = Field(default=None, alias="selectedCopyId")
     selected_channel_id: str | None = Field(default=None, alias="selectedChannelId")
@@ -63,6 +65,29 @@ class GenerationJobCreateRequest(BaseModel):
     ad_format: str | None = Field(default=None, alias="adFormat")
     run_mode: GenerationRunMode = Field(default="queued_only", alias="runMode")
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_asset_conflicts(self):
+        import os
+        if self.source_asset_id and self.source_image_path:
+            raise ValueError("source_asset_id and source_image_path cannot be provided together")
+        if self.reference_asset_id and self.reference_image_path:
+            raise ValueError("reference_asset_id and reference_image_path cannot be provided together")
+        if self.selected_reference_template_id and self.reference_asset_id:
+            raise ValueError("selected_reference_template_id and reference_asset_id cannot be provided together")
+            
+        allow_legacy = os.environ.get("EASYADS_ALLOW_LEGACY_LOCAL_IMAGE_PATHS", "true").lower() == "true"
+        if (self.source_image_path or self.reference_image_path) and not allow_legacy:
+            raise ValueError("source_image_path and reference_image_path are not accepted by the public API")
+            
+        return self
+
+    @field_validator("source_asset_id", "reference_asset_id")
+    @classmethod
+    def validate_public_asset_id(cls, value):
+        if value is not None and not value.startswith("asset_"):
+            raise ValueError("asset ID must start with 'asset_'")
+        return value
 
     @field_validator("user_input")
     @classmethod
@@ -134,6 +159,8 @@ class GenerationJobResponse(BaseModel):
     status: GenerationJobStatus
     progress: GenerationProgress
     selected_reference_template_id: str | None = None
+    source_asset_id: str | None = None
+    reference_asset_id: str | None = None
     output_path: str | None = None
     # Kept as a dict for backward-compatible API responses. The payload is
     # validated/sanitized by orchestrator.app.artifacts before response output.

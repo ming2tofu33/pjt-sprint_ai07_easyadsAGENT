@@ -347,7 +347,7 @@ def test_graph_modal_poll_completion_runs_post_t2i_nodes(monkeypatch, tmp_path):
     assert completed.status == "done"
     assert completed.metadata["execution_mode"] == "graph_modal_completed"
     assert completed.result_payload["status"] == "done"
-    assert completed.result_payload["output_path"] == str(tmp_path / "job-modal-complete" / "final_0.png")
+    assert completed.result_payload["output_path"].replace("\\", "/") == str(tmp_path / "job-modal-complete" / "final_0.png").replace("\\", "/")
     assert completed.result_payload["validation_summary"]["background"]["overall_pass"] is True
 
 

@@ -70,10 +70,17 @@ def create_generation_job_route(
 ) -> GenerationJobCreateResponse:
     if request.selected_reference_template_id and not get_reference_template(request.selected_reference_template_id):
         _reference_template_not_found(request.selected_reference_template_id)
+    from orchestrator.app.generation_jobs.errors import GenerationJobError
     try:
         job = create_generation_job(request)
     except ChatThreadServiceError as exc:
         _chat_thread_error(exc)
+    except GenerationJobError as exc:
+        raise_api_error(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            message=exc.message,
+        )
     if should_route_generation_job_to_modal(request):
         job = maybe_submit_generation_job_to_modal(job, request)
     elif request.run_mode == "mock_immediate":
