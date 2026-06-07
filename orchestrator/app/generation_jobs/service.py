@@ -202,6 +202,9 @@ def append_generation_job_user_answer_message(job_id: str, answer: GenerationJob
 def _create_generation_job_memory(request: GenerationJobCreateRequest) -> GenerationJobResponse:
     with _GENERATION_JOB_LOCK:
         now = _now_iso()
+        if request.source_asset_id or request.reference_asset_id:
+            from orchestrator.app.generation_jobs.errors import GenerationJobAssetPersistenceRequired
+            raise GenerationJobAssetPersistenceRequired("Uploaded asset inputs require postgres persistence.")
         effective_run_mode, execution_mode = _initial_run_mode_metadata(request.run_mode)
         engine_preference = _engine_preference_for_request(request)
 
@@ -238,6 +241,8 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
                 stage_order=DEFAULT_STAGE_ORDER,
             ),
             selected_reference_template_id=request.selected_reference_template_id,
+            source_asset_id=request.source_asset_id,
+            reference_asset_id=request.reference_asset_id,
             output_path=None,
             result_payload=None,
             error=None,
@@ -292,6 +297,8 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
                 "selected_reference_template_id",
                 "source_image_path",
                 "reference_image_path",
+                "source_asset_id",
+                "reference_asset_id",
                 "selected_copy_id",
                 "selected_channel_id",
                 "selected_tone",
@@ -928,6 +935,48 @@ def _use_postgres_backend() -> bool:
     return db_settings.get_db_backend() == "postgres"
 
 
+def _resolve_generation_input_asset(
+    *,
+    public_asset_id: str,
+    workspace_id: str,
+    expected_kind: str,
+    connection: object,
+) -> dict:
+    from orchestrator.app.generation_jobs.errors import (
+        GenerationJobAssetKindInvalid,
+        GenerationJobAssetNotFound,
+        GenerationJobAssetNotReady,
+    )
+    from orchestrator.app.db.repositories import assets as asset_repo
+
+    row = asset_repo.get_asset_by_public_id(
+        public_asset_id,
+        workspace_id=workspace_id,
+        connection=connection,
+    )
+    if not row:
+        raise GenerationJobAssetNotFound(
+            f"{expected_kind} asset was not found."
+        )
+
+    if row.get("kind") != expected_kind:
+        raise GenerationJobAssetKindInvalid(
+            f"Expected asset kind={expected_kind}."
+        )
+
+    upload_status = (
+        (row.get("metadata") or {})
+        .get("upload", {})
+        .get("status")
+    )
+    if upload_status != "ready":
+        raise GenerationJobAssetNotReady(
+            f"{expected_kind} asset is not ready."
+        )
+
+    return row
+
+
 def _create_generation_job_db(request: GenerationJobCreateRequest) -> GenerationJobResponse:
     now = _now_iso()
     effective_run_mode, execution_mode = _initial_run_mode_metadata(request.run_mode)
@@ -963,6 +1012,28 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
                 connection=conn,
             )
 
+        # Resolve assets
+        input_asset_uuid: str | None = None
+        reference_asset_uuid: str | None = None
+        
+        if request.source_asset_id:
+            asset_row = _resolve_generation_input_asset(
+                public_asset_id=request.source_asset_id,
+                workspace_id=str(workspace["id"]),
+                expected_kind="source",
+                connection=conn,
+            )
+            input_asset_uuid = str(asset_row["id"])
+            
+        if request.reference_asset_id:
+            asset_row = _resolve_generation_input_asset(
+                public_asset_id=request.reference_asset_id,
+                workspace_id=str(workspace["id"]),
+                expected_kind="reference",
+                connection=conn,
+            )
+            reference_asset_uuid = str(asset_row["id"])
+
         metadata = {
             "requested_run_mode": request.run_mode,
             "effective_run_mode": effective_run_mode,
@@ -974,6 +1045,8 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             "copy_generation_mode": request.copy_generation_mode,
             "user_plan": request.user_plan,
             "selected_reference_template_id": request.selected_reference_template_id,
+            "source_asset_id": request.source_asset_id,
+            "reference_asset_id": request.reference_asset_id,
             "ad_format": request.ad_format,
             "workspace_id": str(workspace["id"]),
             "public_thread_id": thread.get("public_thread_id"),
@@ -990,6 +1063,8 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             current_stage="queued",
             progress_percent=0,
             selected_reference_template_id=request.selected_reference_template_id,
+            input_asset_id=input_asset_uuid,
+            reference_asset_id=reference_asset_uuid,
             output_path=None,
             result_payload=None,
             error=None,
@@ -1032,6 +1107,8 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
                 "selected_reference_template_id",
                 "source_image_path",
                 "reference_image_path",
+                "source_asset_id",
+                "reference_asset_id",
                 "selected_copy_id",
                 "selected_channel_id",
                 "selected_tone",
@@ -1753,6 +1830,8 @@ def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
             stage_order=DEFAULT_STAGE_ORDER,
         ),
         selected_reference_template_id=row.get("selected_reference_template_id"),
+        source_asset_id=metadata.get("source_asset_id"),
+        reference_asset_id=metadata.get("reference_asset_id"),
         output_path=normalize_repo_relative_artifact_path(row.get("output_path")),
         result_payload=safe_result_payload,
         error=ErrorResponse(**error) if isinstance(error, dict) and error.get("error_code") else None,
@@ -1862,6 +1941,8 @@ def _request_payload_summary(request: GenerationJobCreateRequest) -> dict:
         "ad_format": request.ad_format,
         "copy_generation_mode": request.copy_generation_mode,
         "selected_reference_template_id": request.selected_reference_template_id,
+        "source_asset_id": request.source_asset_id,
+        "reference_asset_id": request.reference_asset_id,
         "user_plan": request.user_plan,
         "user_input_preview": _preview_user_input(request.user_input),
         "metadata": _safe_request_metadata(request.metadata),
