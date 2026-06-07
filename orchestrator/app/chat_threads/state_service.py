@@ -238,10 +238,13 @@ def get_latest_thread_state_for_user(
             from orchestrator.app.db.repositories import workspaces as workspace_repo
             from orchestrator.app.db.session import db_transaction
             with db_transaction() as conn:
-                workspace = workspace_repo.ensure_demo_workspace(
-                    user_id=user_id or db_settings.get_demo_user_id(),
-                    connection=conn
-                )
+                if user_id and user_id.strip():
+                    workspace = workspace_repo.ensure_user_workspace(user_id=user_id.strip(), connection=conn)
+                else:
+                    workspace = workspace_repo.ensure_demo_workspace(
+                        user_id=db_settings.get_demo_user_id(),
+                        connection=conn
+                    )
                 workspace_id = str(workspace["id"])
         else:
             workspace_id = "mem_workspace"

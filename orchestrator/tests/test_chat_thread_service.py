@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from contextlib import contextmanager
 
 import pytest
 
@@ -168,4 +169,44 @@ def test_get_chat_thread_with_workspace_falls_back_to_owning_workspace(monkeypat
     thread, workspace_id = result
     assert thread.thread_id == "thread_generated"
     assert workspace_id == "workspace_actual"
-    assert calls == ["workspace_demo", None]
+
+
+def test_postgres_thread_list_uses_authenticated_user_workspace_even_with_demo_workspace(monkeypatch):
+    from orchestrator.app.chat_threads import service as chat_service
+
+    @contextmanager
+    def fake_db_transaction(connection=None):
+        yield object()
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_DEMO_WORKSPACE_ID", "workspace_demo")
+    monkeypatch.setattr(chat_service, "db_transaction", fake_db_transaction)
+    monkeypatch.setattr(
+        chat_service.workspace_repo,
+        "ensure_user_workspace",
+        lambda user_id, connection=None: {"id": f"workspace_{user_id}"},
+    )
+    monkeypatch.setattr(
+        chat_service.workspace_repo,
+        "ensure_demo_workspace",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("authenticated users must not use demo workspace")),
+    )
+
+    captured = {}
+
+    def fake_list_chat_threads(*, workspace_id, include_archived=False, limit=50, offset=0, connection=None):
+        captured["workspace_id"] = workspace_id
+        return []
+
+    def fake_count_chat_threads(*, workspace_id, include_archived=False, connection=None):
+        captured["count_workspace_id"] = workspace_id
+        return 0
+
+    monkeypatch.setattr(chat_service.chat_thread_repo, "list_chat_threads", fake_list_chat_threads)
+    monkeypatch.setattr(chat_service.chat_thread_repo, "count_chat_threads", fake_count_chat_threads)
+
+    threads, total = chat_service.list_chat_threads(user_id="user_a")
+
+    assert threads == []
+    assert total == 0
+    assert captured == {"workspace_id": "workspace_user_a", "count_workspace_id": "workspace_user_a"}

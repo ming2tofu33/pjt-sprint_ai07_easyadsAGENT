@@ -51,17 +51,48 @@ def ensure_user_workspace(user_id: str, connection: object | None = None) -> dic
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select *
-                from workspaces
-                where owner_user_id = %s
-                order by created_at asc
+                select w.*
+                from workspaces w
+                left join chat_threads ct on ct.workspace_id = w.id
+                left join generation_jobs gj on gj.workspace_id = w.id
+                where w.owner_user_id = %s
+                group by w.id
+                order by
+                  (count(distinct ct.id) + count(distinct gj.id) > 0) desc,
+                  (w.metadata->>'source' = 'supabase_auth') desc,
+                  max(greatest(
+                    coalesce(ct.updated_at, ct.created_at, 'epoch'::timestamptz),
+                    coalesce(gj.updated_at, gj.created_at, 'epoch'::timestamptz)
+                  )) desc nulls last,
+                  w.created_at asc
                 limit 1
                 """,
                 (user_id,),
             )
             existing = cur.fetchone()
             if existing:
-                return existing
+                metadata = existing.get("metadata") if isinstance(existing.get("metadata"), dict) else {}
+                if metadata.get("source") == "supabase_auth":
+                    return existing
+                cur.execute(
+                    """
+                    update workspaces
+                    set name = %s,
+                        metadata = coalesce(metadata, '{}'::jsonb) || %s::jsonb,
+                        updated_at = now()
+                    where id = %s
+                    returning *
+                    """,
+                    (
+                        "User Workspace",
+                        jsonb_param({
+                            "source": "supabase_auth",
+                            "normalized_from": metadata.get("source") or "legacy_workspace",
+                        }),
+                        existing["id"],
+                    ),
+                )
+                return cur.fetchone() or existing
             cur.execute(
                 """
                 insert into workspaces (name, owner_user_id, metadata)

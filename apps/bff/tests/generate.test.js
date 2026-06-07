@@ -399,6 +399,70 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("verifies Supabase sessions before forwarding generation job user ids", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1", email: "owner@example.com" });
+      }
+      return jsonResponse(
+        {
+          success: true,
+          job: {
+            job_id: "job_1",
+            thread_id: "thread_1",
+            status: "queued",
+            progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+            metadata: { workspace_id: "workspace_1" }
+          }
+        },
+        { status: 201 }
+      );
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: {
+        userInput: "로그인 사용자 작업방 생성",
+        runMode: "queued_only",
+        userId: "spoofed_user"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://supabase.example.com/auth/v1/user",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: "anon_key",
+          authorization: "Bearer access_token_1"
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/generation-jobs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          userInput: "로그인 사용자 작업방 생성",
+          runMode: "queued_only",
+          userId: "user_uuid_1"
+        })
+      })
+    );
+    await app.close();
+  });
+
   it("proxies generation job answers to the orchestrator", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({

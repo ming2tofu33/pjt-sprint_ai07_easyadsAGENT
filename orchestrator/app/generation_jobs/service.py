@@ -936,7 +936,10 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
     request_payload = _request_payload_summary(request)
     engine_preference = _engine_preference_for_request(request)
     with db_transaction() as conn:
-        workspace = workspace_repo.ensure_demo_workspace(user_id=user_id, connection=conn)
+        if request.user_id and request.user_id.strip():
+            workspace = workspace_repo.ensure_user_workspace(user_id=request.user_id.strip(), connection=conn)
+        else:
+            workspace = workspace_repo.ensure_demo_workspace(user_id=user_id, connection=conn)
 
         # thread reuse or create
         if request.thread_id:

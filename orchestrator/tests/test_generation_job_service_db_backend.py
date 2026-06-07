@@ -143,6 +143,45 @@ def test_postgres_backend_create_uses_repository_path(monkeypatch):
     assert captured["request_payload"]["user_input_preview"] == "Create an ad"
 
 
+def test_postgres_backend_create_uses_authenticated_user_workspace(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_DEMO_WORKSPACE_ID", "workspace_demo")
+    monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
+    _patch_noop_side_effects(monkeypatch)
+    monkeypatch.setattr(
+        service.workspace_repo,
+        "ensure_user_workspace",
+        lambda user_id, connection=None: {"id": f"workspace_{user_id}"},
+    )
+    monkeypatch.setattr(
+        service.workspace_repo,
+        "ensure_demo_workspace",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("authenticated users must not use demo workspace")),
+    )
+    monkeypatch.setattr(
+        service.chat_thread_repo,
+        "create_chat_thread",
+        lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_db"},
+    )
+
+    captured = {}
+
+    def fake_create_generation_job_row(**kwargs):
+        captured.update(kwargs)
+        metadata = dict(kwargs["metadata"])
+        metadata["public_thread_id"] = "thread_db"
+        return _row(public_job_id=kwargs["public_job_id"], metadata=metadata)
+
+    monkeypatch.setattr(service.generation_job_repo, "create_generation_job_row", fake_create_generation_job_row)
+
+    job = service.create_generation_job(
+        GenerationJobCreateRequest(user_id="user_a", user_input="Create an ad", run_mode="queued_only")
+    )
+
+    assert job.user_id == "user_a"
+    assert captured["workspace_id"] == "workspace_user_a"
+
+
 def test_postgres_backend_sanitizes_nested_metadata(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
