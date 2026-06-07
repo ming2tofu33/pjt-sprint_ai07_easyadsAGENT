@@ -1,9 +1,10 @@
 "use client";
 
 import { ChevronLeft, Clock, Home, Image as ImageIcon, Lightbulb, MessageCircle, Plus, Search, Sparkles, Trash2, Upload, User } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { archiveChatThread, listChatThreads, type ChatThreadResponse } from "@/lib/api-client";
 import styles from "./generate.module.css";
+import { workspaceLoadErrorMessage } from "./workspace-errors";
 
 type StudioEntryStepProps = {
   onGoHome: () => void;
@@ -45,30 +46,41 @@ export function StudioEntryStep({
 }: StudioEntryStepProps) {
   const [threads, setThreads] = useState<ChatThreadResponse[]>([]);
   const [isLoadingThreads, setIsLoadingThreads] = useState(true);
+  const [threadLoadError, setThreadLoadError] = useState<string | null>(null);
   const [threadToDelete, setThreadToDelete] = useState<ChatThreadResponse | null>(null);
   const [deletingThreadId, setDeletingThreadId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isActive = true;
+  const loadThreads = useCallback((isActive: () => boolean = () => true) => {
+    setIsLoadingThreads(true);
+    setThreadLoadError(null);
     listChatThreads({ limit: 20 })
       .then((response) => {
-        if (!isActive) {
+        if (!isActive()) {
           return;
         }
         setThreads(response.threads);
-        setIsLoadingThreads(false);
       })
-      .catch(() => {
-        if (isActive) {
+      .catch((error) => {
+        if (isActive()) {
+          setThreads([]);
+          setThreadLoadError(workspaceLoadErrorMessage(error));
+        }
+      })
+      .finally(() => {
+        if (isActive()) {
           setIsLoadingThreads(false);
         }
       });
+  }, []);
 
+  useEffect(() => {
+    let isActive = true;
+    loadThreads(() => isActive);
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [loadThreads]);
 
   const handleConfirmDelete = async () => {
     if (!threadToDelete) {
@@ -116,6 +128,15 @@ export function StudioEntryStep({
         </div>
         {isLoadingThreads ? (
           <p className={styles.workspaceEmptyText}>작업방을 불러오는 중입니다.</p>
+        ) : threadLoadError ? (
+          <div className={styles.workspaceEmptyCard} role="alert">
+            <MessageCircle size={28} strokeWidth={1.7} aria-hidden="true" />
+            <strong>작업방을 불러오지 못했어요</strong>
+            <p>{threadLoadError}</p>
+            <button className={styles.workspaceAction} type="button" onClick={() => loadThreads()}>
+              다시 불러오기
+            </button>
+          </div>
         ) : threads.length === 0 ? (
           <div className={styles.workspaceEmptyCard}>
             <MessageCircle size={28} strokeWidth={1.7} aria-hidden="true" />

@@ -101,6 +101,18 @@ def _effective_user_id(user_id: str | None) -> str | None:
     return user_id or db_settings.get_demo_user_id()
 
 
+def _authenticated_user_id(user_id: str | None) -> str | None:
+    normalized = (user_id or "").strip()
+    return normalized or None
+
+
+def _ensure_workspace_for_user(user_id: str | None, connection: object | None = None) -> dict:
+    authenticated_user_id = _authenticated_user_id(user_id)
+    if authenticated_user_id:
+        return workspace_repo.ensure_user_workspace(user_id=authenticated_user_id, connection=connection)
+    return workspace_repo.ensure_demo_workspace(user_id=_effective_user_id(user_id), connection=connection)
+
+
 def _owner_matches(data: dict, user_id: str | None) -> bool:
     effective = _effective_user_id(user_id)
     return data.get("_owner_user_id") == effective
@@ -507,7 +519,7 @@ def append_generation_job_chat_event_memory(
 def _create_chat_thread_db(request: ChatThreadCreateRequest) -> ChatThreadResponse:
     user_id = request.user_id or db_settings.get_demo_user_id()
     with db_transaction() as conn:
-        ws = workspace_repo.ensure_demo_workspace(user_id=user_id, connection=conn)
+        ws = _ensure_workspace_for_user(request.user_id, connection=conn)
         row = chat_thread_repo.create_chat_thread(
             workspace_id=str(ws["id"]),
             created_by=user_id,
@@ -534,7 +546,7 @@ def _create_chat_thread_db(request: ChatThreadCreateRequest) -> ChatThreadRespon
 
 def _get_demo_workspace(user_id: str | None = None) -> dict:
     with db_transaction() as conn:
-        return workspace_repo.ensure_demo_workspace(user_id=_effective_user_id(user_id), connection=conn)
+        return _ensure_workspace_for_user(user_id, connection=conn)
 
 
 def _get_demo_workspace_id(user_id: str | None = None) -> str:

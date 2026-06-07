@@ -1687,6 +1687,20 @@ describe("ChatGenerateClient", () => {
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?threadId=thread_strawberry");
   });
 
+  it("shows a workspace load error instead of an empty studio state", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listChatThreads).mockRejectedValueOnce(new Error("Failed to fetch"));
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="studio" />);
+
+    await waitFor(() => expect(screen.getByText("작업방을 불러오지 못했어요")).toBeTruthy());
+    expect(screen.getByText("작업방 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.")).toBeTruthy();
+    expect(screen.queryByText("아직 이어갈 작업방이 없어요")).toBeNull();
+    expect(screen.getByRole("button", { name: "다시 불러오기" })).toBeTruthy();
+  });
+
   it("archives a studio workspace after a delete warning", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.listChatThreads).mockResolvedValueOnce({
@@ -2335,6 +2349,22 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "이전 대화" }));
     expect(await screen.findByRole("heading", { name: "이전 대화 기록" })).toBeTruthy();
+  });
+
+  it("shows a history load error instead of an empty previous chat state", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listChatThreads).mockRejectedValueOnce(new Error("Supabase auth configuration is missing"));
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "이전 대화" }));
+
+    expect(await screen.findByRole("heading", { name: "이전 대화 기록" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("이전 대화 기록을 불러오지 못했어요")).toBeTruthy());
+    expect(screen.getByText("로그인 상태를 확인하지 못했어요. 다시 로그인한 뒤 작업방을 불러와 주세요.")).toBeTruthy();
+    expect(screen.queryByText("이전 대화 기록이 없어요")).toBeNull();
   });
 
   it("shows realistic creative labels in reference cards", async () => {
