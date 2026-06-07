@@ -10,8 +10,8 @@ from orchestrator.app.schemas.text_layout import StyleProfile, TextStyleSpec, Ty
 
 TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
     "cute": TypographyRule(
-        headline_font="Pretendard-Bold",
-        body_font="Pretendard-Regular",
+        headline_font="BMJUA",
+        body_font="Pretendard",
         headline_weight=800,
         body_weight=500,
         headline_size_ratio=0.085,
@@ -27,8 +27,8 @@ TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
         plate_style="rounded_badge",
     ),
     "premium": TypographyRule(
-        headline_font="Pretendard-SemiBold",
-        body_font="Pretendard-Regular",
+        headline_font="RIDIBatang",
+        body_font="MaruBuri",
         headline_weight=600,
         body_weight=400,
         headline_size_ratio=0.060,
@@ -43,8 +43,8 @@ TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
         use_text_plate=False,
     ),
     "clean": TypographyRule(
-        headline_font="Pretendard-Bold",
-        body_font="Pretendard-Regular",
+        headline_font="NotoSansKR",
+        body_font="NotoSansKR",
         headline_weight=700,
         body_weight=400,
         headline_size_ratio=0.065,
@@ -57,8 +57,8 @@ TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
         use_text_plate=False,
     ),
     "trendy": TypographyRule(
-        headline_font="Pretendard-ExtraBold",
-        body_font="Pretendard-Medium",
+        headline_font="GmarketSans",
+        body_font="Pretendard",
         headline_weight=900,
         body_weight=500,
         headline_size_ratio=0.078,
@@ -74,8 +74,8 @@ TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
         plate_style="contrast_panel",
     ),
     "emotional": TypographyRule(
-        headline_font="Pretendard-Bold",
-        body_font="Pretendard-Regular",
+        headline_font="MaruBuri",
+        body_font="MaruBuri",
         headline_weight=700,
         body_weight=400,
         headline_size_ratio=0.070,
@@ -88,8 +88,8 @@ TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
         use_text_plate=False,
     ),
     "event": TypographyRule(
-        headline_font="Pretendard-ExtraBold",
-        body_font="Pretendard-Medium",
+        headline_font="BMDOHYEON",
+        body_font="SCDream",
         headline_weight=900,
         body_weight=600,
         headline_size_ratio=0.082,
