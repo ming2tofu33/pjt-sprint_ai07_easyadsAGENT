@@ -1,5 +1,5 @@
 # .PHONY는 파일 이름과 타겟 이름이 겹쳐서 충돌하는 것을 방지하는 방어막입니다.
-.PHONY: help up down logs shell sync lint rag-test test port gpu dev-api dev-bff dev-web ad-gen ad-answer ad-brief eval-compile eval-test eval-sample eval-run eval-query eval-nodes eval-gates eval-trend eval-cost eval-logs eval-delete eval-judge eval-pending eval-llm eval-vlm eval-human eval-human-pending eval-ensemble eval-calibrate
+.PHONY: help up down logs shell sync lint rag-test test port gpu dev-api dev-bff dev-web ad-gen ad-answer ad-brief eval-compile eval-test eval-sample eval-run eval-query eval-nodes eval-gates eval-trend eval-cost eval-logs eval-delete eval-judge eval-pending eval-llm eval-vlm eval-human eval-human-pending eval-ensemble eval-calibrate eval-notebook eval-notebook-down
 
 # JUDGE 기본값을 변수로 둠 — $(or ...)는 쉼표를 인자 구분자로 처리해 "llm,vlm"을 쪼개므로
 # 직접 쓸 수 없다. ?= 는 커맨드라인 JUDGE=... 지정 시 덮어쓰기 가능.
@@ -63,6 +63,8 @@ help:
 	@echo "  eval-logs    : job ops 로그 전체 직접 조회(노드/LLM/스키마/비용). make eval-logs JOB_ID=<id>"
 	@echo "  eval-delete  : 한 job 로그 완전 삭제(ops+eval DB+이미지). make eval-delete JOB_ID=<id>"
 	@echo "  eval-calibrate: human vs LLM 편차 분석 (보정 기준)"
+	@echo "  eval-notebook: DB 뷰어(JupyterLab+polars) 컨테이너 기동 + 접속 URL 출력. [EVAL_NOTEBOOK_PORT=8888]"
+	@echo "  eval-notebook-down: DB 뷰어 컨테이너 종료"
 
 # ── 🐳 [도커 인프라 제어] ───────────────────────────────────────────────────
 
@@ -373,3 +375,23 @@ eval-calibrate:
 	   WHERE si_h.evaluator_type='human' AND si_l.evaluator_type='llm' \
 	   GROUP BY si_h.item_id \
 	   ORDER BY ABS(AVG(si_h.score - si_l.score)) DESC"
+
+# ── 📓 [eval DB 뷰어 — JupyterLab + polars] ──────────────────────────────────
+
+eval-notebook:
+	# DB 뷰어 컨테이너(JupyterLab+polars) 빌드+기동 후 접속 URL/토큰 출력.
+	# GPU 불필요 경량 이미지(Dockerfile.eval). 읽기 전용 SELECT 뷰어지만 컨테이너 root라 쓰기도 가능.
+	# 노트북: orchestrator/eval/eval.ipynb. records는 /app/records로 마운트(호스트 /home/records).
+	# 포트 충돌 시: make eval-notebook EVAL_NOTEBOOK_PORT=18888
+	HOST_UID=$$(id -u) docker compose --profile eval up -d --build eval
+	@sleep 3
+	@echo "── JupyterLab 접속 URL(토큰 포함) ──"
+	@HOST_UID=$$(id -u) docker compose --profile eval exec eval jupyter lab list 2>/dev/null \
+	  | sed "s#http://[^:]*:8888#http://127.0.0.1:$(or $(EVAL_NOTEBOOK_PORT),8888)#" \
+	  || echo "기동 중… 잠시 후: HOST_UID=$$(id -u) docker compose --profile eval exec eval jupyter lab list"
+	@echo "→ 브라우저에서 위 URL 열고 orchestrator/eval/eval.ipynb 실행. 종료: make eval-notebook-down"
+
+eval-notebook-down:
+	# DB 뷰어 컨테이너만 종료(orchestrator 등 다른 서비스는 안 건드림).
+	HOST_UID=$$(id -u) docker compose --profile eval stop eval
+	HOST_UID=$$(id -u) docker compose --profile eval rm -f eval

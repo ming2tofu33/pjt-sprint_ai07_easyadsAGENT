@@ -63,7 +63,9 @@ class SD35LargeLocalEngine:
                 "local_path_present": bool(settings.sd35_local_path),
                 "hf_token_present": settings.hf_token_present,
                 # eval 가격산정용 GPU-시간 단위(self_hosted -> gpu_exact). fix.md #13 참고.
+                # gpu_type은 pricing.GPU_PRICES 조회 키(EVAL_GPU_PRICES_JSON={"L4":x}). 미설정이면 gpu_unpriced.
                 "gpu_seconds": round(perf_counter() - started, 3),
+                "gpu_type": _gpu_type(),
                 **request.metadata,
             },
         )
@@ -73,6 +75,21 @@ def _env_truthy(name: str) -> bool:
     import os
 
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _gpu_type() -> str | None:
+    """GPU 모델명(가격 조회 키). EASYADS_SD35_GPU_TYPE 우선, 없으면 torch가 보고하는 디바이스명(예: 'NVIDIA L4')."""
+    forced = os.getenv("EASYADS_SD35_GPU_TYPE", "").strip()
+    if forced:
+        return forced
+    try:
+        import torch  # type: ignore
+
+        if torch.cuda.is_available():
+            return torch.cuda.get_device_name(0)
+    except Exception:
+        pass
+    return None
 
 
 def _load_pipeline(model_ref: str | None):
@@ -89,13 +106,17 @@ def _load_pipeline(model_ref: str | None):
     if not model_ref:
         raise T2IEngineUnavailableError("SD3.5 model reference is missing.")
 
-    # RAM/VRAM 안전 로드. 박스: RAM ~15GB, VRAM ~22GB. SD3.5 MMDiT transformer만 fp16 ~16GB.
-    # 관측된 크래시 원인:
-    #   * 파이프라인 전체를 CPU RAM에 적재 -> 호스트 OOM(재부팅 다수);
-    #   * enable_model_cpu_offload는 GPU에 올린 16GB transformer를 다시 CPU RAM으로 끌어옴 -> 호스트 OOM.
-    # 채택 전략(아래 코드): T5-XXL(~9.5GB)을 기본 드롭 + device_map="balanced"로 가중치를 GPU에 직행
-    #   스트리밍(CPU에 16GB 적재 없음) + max_memory로 GPU 캡을 둬 활성화 여유 확보.
-    #   enable_model_cpu_offload는 절대 쓰지 않음. T5도 쓰려면 EASYADS_SD35_USE_T5=1.
+    # RAM/VRAM 안전 로드. 박스: RAM ~15GB, VRAM ~22GB. 컴포넌트 fp16 실측:
+    #   transformer 16G / CLIP-L 0.24G / CLIP-G 1.3G / T5-XXL 8.9G / VAE 0.16G.
+    # 핵심 교훈(2026-06-07):
+    #   * device_map="balanced"는 text_encoder_3=None(T5 드롭)을 무시하고 model_index 기준으로 T5(8.9G)까지
+    #     GPU에 적재 → 17.7+8.9=26.6G 목표로 로드 중 ~21.78G에서 VRAM OOM. max_memory 캡도 무시됨.
+    #   * 호스트 재부팅의 진범은 CPU RAM OOM(enable_model_cpu_offload / 풀 .to(cuda) 전 CPU 적재)이었다.
+    #     VRAM OOM(torch.OutOfMemoryError)은 그냥 raise → 박스 안전. 따라서 CPU RAM만 안 건드리면 반복 시도 안전.
+    # 채택 전략: device_map="balanced" 폐기. 16G transformer만 per-component device_map으로 GPU 직행 스트리밍
+    #   (CPU 미경유) → 그 다음 소형 encoder/VAE(~1.7G)는 일반 로드(CPU 일시 1.7G<15G 안전) 후 .to("cuda").
+    #   T5는 device_map이 없으니 text_encoder_3=None이 정상 적용돼 진짜로 빠진다 → GPU 총 ~17.7G.
+    #   enable_model_cpu_offload는 절대 금지. T5도 쓰려면 EASYADS_SD35_USE_T5=1(VRAM 26G+ 필요, 이 박스 불가).
     common: dict[str, object] = {"torch_dtype": torch.float16}
 
     token = get_hf_token()
@@ -112,23 +133,33 @@ def _load_pipeline(model_ref: str | None):
         except Exception:
             have_accelerate = False
 
+    drop_t5 = not _env_truthy("EASYADS_SD35_USE_T5")
     pipe_kwargs = dict(common)
-    if not _env_truthy("EASYADS_SD35_USE_T5"):
+    pipe_kwargs["low_cpu_mem_usage"] = True
+    if drop_t5:
         pipe_kwargs["text_encoder_3"] = None
         pipe_kwargs["tokenizer_3"] = None
 
-    if cuda and have_accelerate:  # pragma: no cover - heavy local opt-in only
-        # device_map="balanced": accelerate가 로드 중 각 가중치를 최종 device로 바로 스트리밍 →
-        # ~16GB transformer가 CPU RAM에 통째로 안 올라간다. 위에서 T5-XXL을 드롭했으므로 남은
-        # ~18GB가 23GB GPU에 전부 들어가고 CPU엔 아무것도 안 남는다. enable_model_cpu_offload나
-        # 별도 transformer 선로드는 일부러 안 함 — 그 조합이 16GB transformer를 CPU RAM으로 끌어와
-        # 15GB 호스트를 OOM-kill 했음(워치독이 못 잡는 빠른 버스트). DECISION_2026-06-05_sd35_real_render.md 참고.
-        pipe_kwargs["device_map"] = "balanced"
-        pipe_kwargs["low_cpu_mem_usage"] = True
-        # GPU 가중치 배치를 18GiB로 캡 → 768² 활성화용 ~5GB 여유(검증: 18GiB 캡이면 피크 ~22.6GB<23GB.
-        # 없으면 balanced가 ~20.6GB로 과적재돼 로드 중 OOM). 넘치면 CPU로 흘려도 호스트 치명 아님.
-        pipe_kwargs["max_memory"] = {0: "18GiB", "cpu": "12GiB"}
+    if cuda and have_accelerate and drop_t5:  # pragma: no cover - heavy local opt-in only
+        # 16G transformer를 per-component device_map={"":"cuda:0"}로 GPU에 직접 스트리밍(CPU RAM 미경유).
+        from diffusers import SD3Transformer2DModel  # type: ignore
+
+        transformer = SD3Transformer2DModel.from_pretrained(
+            model_ref,
+            subfolder="transformer",
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+            device_map={"": "cuda:0"},
+            **({"token": token} if token else {}),
+        )
+        pipe_kwargs["transformer"] = transformer
+        # 나머지 소형 컴포넌트만 from_pretrained(device_map 없음 → T5 드롭 정상 적용). CPU 일시 ~1.7G.
         _PIPELINE = StableDiffusion3Pipeline.from_pretrained(model_ref, **pipe_kwargs)
+        # 전체 pipe.to("cuda")는 device_map된 transformer 때문에 막힘 → 소형 컴포넌트만 개별 이동.
+        for _name in ("text_encoder", "text_encoder_2", "vae"):
+            _comp = getattr(_PIPELINE, _name, None)
+            if _comp is not None and hasattr(_comp, "to"):
+                _comp.to("cuda")  # 각 ≤1.3G → 총 GPU ~17.7G(transformer는 이미 cuda)
     else:
         _PIPELINE = StableDiffusion3Pipeline.from_pretrained(model_ref, **pipe_kwargs)
         if cuda:  # pragma: no cover

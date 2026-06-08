@@ -17,6 +17,7 @@ except Exception:  # pragma: no cover - older/newer langgraph without this path
 from orchestrator.app.graph.state import MarketingState, now_iso
 from orchestrator.app.schemas.llm_marketing import (
     AdFormatSpec,
+    CopyCandidateListOutput,
     CopyModeInferenceOutput,
     CopywritingOutput,
     FinalValidationReport as LLMFinalValidationReport,
@@ -76,7 +77,10 @@ NODE_OUTPUT_SCHEMAS: dict[str, list[tuple[str, type | None]]] = {
     ],
     "copy_candidate_generation": [
         ("copy_candidates", None),
-        ("copywriting_output", CopywritingOutput),
+        # 이 노드는 copywriting_output에 CopyCandidateListOutput(candidates 목록)을 쓴다.
+        # auto_pilot/copywriting 노드만 CopywritingOutput(marketing_copy)을 쓴다 — 같은 필드 다른 스키마.
+        # 과거엔 CopywritingOutput으로 검증해 marketing_copy 누락으로 4건 실패(실은 정상 출력). fix.md 참고.
+        ("copywriting_output", CopyCandidateListOutput),
     ],
     "copy_candidate_selection_interrupt": [
         ("status", None),

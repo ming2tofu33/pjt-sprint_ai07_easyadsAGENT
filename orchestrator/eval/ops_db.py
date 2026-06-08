@@ -15,7 +15,7 @@ from orchestrator.eval.pricing import (
     SELF_HOSTED_LLM_CLASSES,
     compute_cost_usd,
     self_hosted_llm_cost,
-    t2i_image_cost,
+    t2i_cost,
 )
 
 _SENSITIVE_KEYS = {"prompt", "api_key", "openai_api_key", "OPENAI_API_KEY"}
@@ -582,14 +582,15 @@ class OpsDBWriter:
 
         t2i_result = state.get("t2i_result") or {}
         t2i_engine = t2i_result.get("engine") if isinstance(t2i_result, dict) else None
-        # T2I bills per image (separate book from token-based LLM cost). Count the
-        # produced images and price them; fold an exact T2I cost into the grand total.
+        # T2I cost: API 엔진(gpt_image_2)은 이미지당 정액, 셀프호스트(sd35_large/flux)는 gpu_seconds 과금(#13).
+        # gpu_seconds/gpu_type는 t2i_result.metadata에 실림(어댑터가 전달). 정확한 cost 못 구하면 cost_estimated=1.
         n_images = len(t2i_result.get("image_paths") or []) if isinstance(t2i_result, dict) else 0
-        t2i_cost, t2i_cost_source = t2i_image_cost(t2i_engine, n_images)
-        if t2i_cost is not None:
-            sum_cost += t2i_cost
+        t2i_meta = t2i_result.get("metadata") if isinstance(t2i_result, dict) else None
+        t2i_cost_val, t2i_cost_source = t2i_cost(t2i_engine, n_images, t2i_meta)
+        if t2i_cost_val is not None:
+            sum_cost += t2i_cost_val
         elif t2i_engine and t2i_engine != "mock" and n_images > 0:
-            # real image produced but no rate available → total is incomplete.
+            # 실 이미지 생성됐으나 요율/gpu_seconds 없어 cost 미정 → 합계 불완전 표시.
             cost_estimated = 1
 
         with self._conn() as conn:
@@ -602,7 +603,7 @@ class OpsDBWriter:
                     total_tokens, total_cost_usd, cost_estimated, pricing_version, updated_at)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (job_id, total, api_nano, api_mini, api_full, api_vision,
-                 fallback, t2i_engine, n_images, t2i_cost, t2i_cost_source,
+                 fallback, t2i_engine, n_images, t2i_cost_val, t2i_cost_source,
                  worst_tier, sum_prompt, sum_completion,
                  sum_total, round(sum_cost, 8), cost_estimated, PRICING_VERSION, now_iso()),
             )
