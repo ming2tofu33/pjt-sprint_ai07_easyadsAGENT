@@ -81,14 +81,20 @@ def route_after_t2i_generation(state: MarketingState) -> str:
 def route_after_ocr_gate(state: MarketingState) -> str:
     decision = state.get("ocr_gate_decision")
     attempts = int(state.get("ocr_revision_attempts") or 0)
+    if not ocr_settings.is_ocr_gate_enabled():
+        return "continue"
+    if decision == "reject":
+        return "rejected_result"
+    if decision in {"manual_review", "unavailable"}:
+        return "manual_review_result"
     if not ocr_settings.is_revision_loop_enabled():
         return "continue"
-    if attempts >= ocr_settings.get_max_revisions():
-        return "continue"
+    if decision in {"retry_image", "retry_layout"} and attempts >= ocr_settings.get_max_revisions():
+        return "manual_review_result"
     if decision == "retry_image":
-        return "t2i_revision"
+        return "ocr_image_revision"
     if decision == "retry_layout":
-        return "text_renderer"
+        return "ocr_layout_revision"
     return "continue"
 
 

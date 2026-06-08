@@ -42,6 +42,11 @@ def result_node(state: MarketingState) -> dict[str, Any]:
         background=state.get("background_ocr_gate"),
         final=state.get("final_ocr_gate"),
     )
+    ocr_decision = ocr_gate_payload.get("decision")
+    requires_manual_review = ocr_decision in {"manual_review", "unavailable"} or (
+        ocr_decision in {"retry_image", "retry_layout"} and bool(state.get("ocr_revision_attempts"))
+    )
+    quality_rejected = ocr_decision == "reject"
     payload = ResultPayload(
         job_id=str(state.get("job_id") or ""),
         thread_id=str(state.get("thread_id") or ""),
@@ -64,10 +69,16 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             "tlfp_enabled": True,
             "error": None if output_path else upstream_error,
             "ocr_gate": ocr_gate_payload,
+            "requiresManualReview": requires_manual_review,
+            "qualityRejected": quality_rejected,
+            "qualityDecision": ocr_decision,
         },
     )
     payload_dict = payload.model_dump()
     payload_dict["ocr_gate"] = ocr_gate_payload
+    payload_dict["qualityDecision"] = ocr_decision
+    payload_dict["requiresManualReview"] = requires_manual_review
+    payload_dict["qualityRejected"] = quality_rejected
     return {
         "result_payload": payload_dict,
         "artifact_refs": artifacts,

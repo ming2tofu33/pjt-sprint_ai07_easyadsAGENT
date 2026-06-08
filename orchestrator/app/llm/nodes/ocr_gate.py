@@ -65,18 +65,111 @@ def final_ocr_gate_node(state: MarketingState) -> dict[str, Any]:
     return _state_update("final_ocr_gate", payload, state)
 
 
+def ocr_image_revision_node(state: MarketingState) -> dict[str, Any]:
+    attempts = int(state.get("ocr_revision_attempts") or 0) + 1
+    feedback = _retry_feedback(state)
+    request = dict(state.get("t2i_request") or {})
+    metadata = dict(request.get("metadata") or {})
+    metadata.update(
+        {
+            "ocr_revision_attempt": attempts,
+            "ocr_revision_action": "retry_image",
+            "ocr_retry_feedback": feedback,
+        }
+    )
+    request["metadata"] = metadata
+    request["prompt"] = _append_once(
+        request.get("prompt"),
+        "text-free advertising background, no text, letters, numbers, logo, watermark, signage, or readable symbols",
+    )
+    request["negative_prompt"] = _append_once(
+        request.get("negative_prompt"),
+        "fake text, gibberish letters, watermark, logo, signage, visible writing",
+    )
+    if request.get("seed") is not None:
+        try:
+            request["seed"] = int(request["seed"]) + attempts
+        except (TypeError, ValueError):
+            request["seed"] = None
+    return {
+        "t2i_request": request,
+        "ocr_revision_action": "retry_image",
+        "ocr_revision_attempts": attempts,
+        "ocr_gate_retry_feedback": feedback,
+    }
+
+
+def ocr_layout_revision_node(state: MarketingState) -> dict[str, Any]:
+    attempts = int(state.get("ocr_revision_attempts") or 0) + 1
+    feedback = _retry_feedback(state)
+    layout = _revise_layout_dict(state.get("text_layout_spec"))
+    style = _revise_style_dict(state.get("text_style_spec"))
+    return {
+        "text_layout_spec": layout,
+        "text_style_spec": style,
+        "ocr_revision_action": "retry_layout",
+        "ocr_revision_attempts": attempts,
+        "ocr_gate_retry_feedback": feedback,
+    }
+
+
 def _state_update(key: str, result: dict[str, Any], state: MarketingState) -> dict[str, Any]:
-    attempts = int(state.get("ocr_revision_attempts") or 0)
-    if result.get("decision") in {"retry_image", "retry_layout"}:
-        attempts += 1
     return {
         key: result,
         "ocr_gate_status": result.get("status"),
         "ocr_gate_decision": result.get("decision"),
         "ocr_gate_retry_feedback": result.get("retry_feedback") or [],
         "ocr_revision_action": result.get("revision_action"),
-        "ocr_revision_attempts": attempts,
+        "ocr_revision_attempts": int(state.get("ocr_revision_attempts") or 0),
     }
+
+
+def _retry_feedback(state: MarketingState) -> list[str]:
+    feedback = state.get("ocr_gate_retry_feedback") or []
+    if not feedback:
+        return ["OCR gate requested revision."]
+    return [str(item) for item in feedback]
+
+
+def _append_once(value: object, addition: str) -> str:
+    text = str(value or "").strip()
+    if addition in text:
+        return text
+    return f"{text}, {addition}" if text else addition
+
+
+def _revise_layout_dict(value: object) -> dict[str, Any]:
+    layout = dict(value) if isinstance(value, dict) else {}
+    layout["safe_margin_ratio"] = min(0.5, _float(layout.get("safe_margin_ratio"), 0.06) + 0.02)
+    layout["ocr_revision"] = {"action": "retry_layout", "change": "expanded_text_boxes"}
+    revised_slots = []
+    for raw_slot in layout.get("slots") or []:
+        if not isinstance(raw_slot, dict):
+            revised_slots.append(raw_slot)
+            continue
+        slot = dict(raw_slot)
+        slot["inner_padding_ratio"] = min(0.5, _float(slot.get("inner_padding_ratio"), 0.04) + 0.02)
+        slot["max_lines"] = max(_int(slot.get("max_lines"), 1) + 1, 2)
+        font_metric = dict(slot.get("font_metric") or {})
+        if font_metric.get("base_size_ratio") is not None:
+            font_metric["base_size_ratio"] = max(0.01, _float(font_metric["base_size_ratio"], 0.05) * 0.9)
+        slot["font_metric"] = font_metric
+        revised_slots.append(slot)
+    if revised_slots:
+        layout["slots"] = revised_slots
+    return layout
+
+
+def _revise_style_dict(value: object) -> dict[str, Any]:
+    style = dict(value) if isinstance(value, dict) else {}
+    typography = dict(style.get("typography") or {})
+    for key in ("headline_size_ratio", "body_size_ratio"):
+        if typography.get(key) is not None:
+            typography[key] = max(0.01, _float(typography[key], 0.05) * 0.9)
+    if typography:
+        style["typography"] = typography
+    style["ocr_revision"] = {"action": "retry_layout", "change": "reduced_font_scale"}
+    return style
 
 
 def _record_event_if_possible(state: MarketingState, result: dict[str, Any]) -> None:
@@ -185,3 +278,17 @@ def _number(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _float(value: object, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _int(value: object, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
