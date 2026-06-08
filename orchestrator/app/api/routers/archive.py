@@ -65,6 +65,13 @@ def create_archive_item_route(request: ArchiveItemCreateRequest) -> ArchiveMutat
         _archive_workspace_required(exc)
     except ArchiveWorkspaceForbidden as exc:
         _archive_workspace_forbidden(exc)
+    except ArchiveItemNotFound as exc:
+        raise_api_error(
+            status_code=404,
+            error_code="generation_job_not_found",
+            message="Generation job was not found.",
+            detail=str(exc),
+        )
     except ArchiveGenerationOutputNotReady as exc:
         raise_api_error(
             status_code=409,

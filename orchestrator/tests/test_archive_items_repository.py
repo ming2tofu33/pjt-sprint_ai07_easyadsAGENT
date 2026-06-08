@@ -105,3 +105,20 @@ def test_archive_item_queries_can_filter_by_creator(monkeypatch):
     assert params[0] == ("workspace_uuid", "user_1", 20, 0)
     assert params[1] == ("workspace_uuid", "user_1")
     assert params[2] == ("archive_uuid", "workspace_uuid", "user_1")
+
+
+def test_archive_item_get_queries_can_filter_by_creator(monkeypatch):
+    conn = FakeConnection()
+    monkeypatch.setattr(repo, "db_transaction", fake_transaction)
+
+    repo.get_archive_item_row(
+        public_archive_id="archive_1",
+        workspace_id="ws1",
+        created_by="user1",
+        connection=conn,
+    )
+
+    sql, params = conn.cursor_obj.calls[0]
+    assert "i.created_by = %s" in sql
+    assert params == ("archive_1", "ws1", "user1")
+

@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import base64
+import logging
 
 from orchestrator.app.artifacts.service import ensure_job_output_dir
 from orchestrator.app.db.repositories import generation_job_events as event_repo
 from orchestrator.app.db.repositories import generation_jobs as job_repo
-from orchestrator.app.db.repositories import usage_events as usage_repo
+from orchestrator.app.usage import service as usage_service
 from orchestrator.app.modal.client import poll_modal_t2i_result, submit_modal_t2i_job
 from orchestrator.app.modal.errors import ModalExecutionError, ModalResultError
 from orchestrator.app.modal.schemas import ModalPollResult, ModalSubmitResult, ModalT2IRequest
+
+
+logger = logging.getLogger(__name__)
 
 MODAL_ELIGIBLE_RUN_MODES = {
     "sd35_local",
@@ -145,6 +149,7 @@ def poll_and_process_modal_generation_job(*, job_id: str, client: object | None 
         return generation_job_service.get_generation_job(job_id)
     if poll_result.status in {"failed", "canceled"}:
         _record_event(job_row, "modal_failed", payload={"status": poll_result.status, "error": _safe_error(poll_result.error)})
+        _safe_record_modal_usage(job_row, poll_result)
         return generation_job_service.mark_generation_job_failed(
             job_id,
             {
@@ -155,6 +160,8 @@ def poll_and_process_modal_generation_job(*, job_id: str, client: object | None 
         )
     if poll_result.status == "succeeded":
         _record_event(job_row, "modal_succeeded", payload={"modal_call_id_present": True})
+        _safe_record_modal_usage(job_row, poll_result)
+        _safe_record_modal_t2i_usage(job_row, poll_result)
         final_path = write_modal_result_image_to_output_dir(job_id=job_id, poll_result=poll_result)
         result_payload = {
             **poll_result.result_payload,
@@ -166,7 +173,6 @@ def poll_and_process_modal_generation_job(*, job_id: str, client: object | None 
             "render_mode": "modal",
         }
         done = generation_job_service.mark_generation_job_done(job_id, result_payload=result_payload, output_path=final_path)
-        _record_usage(job_row, poll_result)
         return done
     return generation_job_service.get_generation_job(job_id)
 
@@ -201,24 +207,57 @@ def _record_event(row: dict, event_type: str, payload: dict | None = None, messa
     )
 
 
+def _safe_record_modal_usage(row: dict, poll_result: ModalPollResult):
+    try:
+        return _record_usage(row, poll_result)
+    except Exception:
+        logger.warning("Failed to record Modal runtime usage.", exc_info=True)
+        return None
+
+
+def _safe_record_modal_t2i_usage(row: dict, poll_result: ModalPollResult):
+    if poll_result.status != "succeeded":
+        return None
+    try:
+        usage = poll_result.usage or {}
+        if not row.get("workspace_id") or not row.get("id"):
+            return None
+        return usage_service.record_t2i_usage(
+            workspace_id=str(row["workspace_id"]),
+            engine=str(row.get("engine") or _engine_from_run_mode(row.get("run_mode")) or "modal"),
+            model_name=usage.get("model_name") or row.get("model_name") or row.get("engine"),
+            image_count=int(usage.get("image_count") or 1),
+            plan=(row.get("metadata") or {}).get("user_plan"),
+            created_by=row.get("requested_by"),
+            thread_id=str(row.get("thread_id")) if row.get("thread_id") else None,
+            job_id=str(row["id"]),
+            width=usage.get("width"),
+            height=usage.get("height"),
+            request_mode=row.get("run_mode"),
+            provider_request_id=poll_result.modal_call_id,
+            generation_status="succeeded",
+        )
+    except Exception:
+        logger.warning("Failed to record Modal T2I usage.", exc_info=True)
+        return None
+
+
 def _record_usage(row: dict, poll_result: ModalPollResult):
     usage = poll_result.usage or {}
     if not row.get("workspace_id") or not row.get("id"):
         return None
-    return usage_repo.record_usage_event(
+    return usage_service.record_modal_gpu_usage(
         workspace_id=str(row["workspace_id"]),
         thread_id=str(row.get("thread_id")) if row.get("thread_id") else None,
         job_id=str(row["id"]),
-        event_type="modal_gpu_seconds",
-        provider="modal",
         model_name=usage.get("model_name") or row.get("model_name"),
         plan=(row.get("metadata") or {}).get("user_plan"),
-        quantity=usage.get("gpu_seconds"),
-        unit="seconds",
-        cost_usd=usage.get("cost_usd"),
+        created_by=row.get("requested_by"),
+        runtime_seconds=usage.get("gpu_seconds"),
+        gpu_type=usage.get("gpu_type"),
+        modal_call_id=poll_result.modal_call_id,
+        completion_status=poll_result.status,
         metadata={
-            "modal_call_id_present": True,
-            "gpu_type": usage.get("gpu_type"),
             "duration_ms": usage.get("duration_ms"),
         },
     )

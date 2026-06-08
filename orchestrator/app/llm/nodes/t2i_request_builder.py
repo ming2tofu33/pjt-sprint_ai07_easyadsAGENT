@@ -13,6 +13,10 @@ from orchestrator.app.t2i.schemas import T2IRequest
 def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
     prompt_render_output = state.get("prompt_render_output") or {}
     metadata = build_t2i_request_metadata(state, prompt_render_output)
+    metadata.update({
+        "source_asset_id": state.get("source_asset_id"),
+        "reference_asset_id": state.get("reference_asset_id"),
+    })
     input_image_paths = [path for path in [state.get("source_image_path")] if path]
     job_id = str(state.get("job_id") or "unknown-job")
     request = T2IRequest(
