@@ -339,6 +339,9 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
 
         if request.selected_reference_template_id is not None:
             initial_state["selected_reference_template_id"] = request.selected_reference_template_id
+        regeneration_patch = (request.metadata or {}).get("regeneration_patch")
+        if regeneration_patch:
+            initial_state["regeneration_patch"] = regeneration_patch
 
         # Execute
         graph = get_generation_job_graph()
@@ -703,12 +706,14 @@ def _run_graph_post_t2i_nodes(state: dict) -> None:
     from orchestrator.app.graph.routers import route_by_copy_presence
     from orchestrator.app.llm.nodes.background_validation import background_validation_node
     from orchestrator.app.llm.nodes.final_validation import final_validation_node
+    from orchestrator.app.llm.nodes.ocr_gate import background_ocr_gate_node, final_ocr_gate_node
     from orchestrator.app.llm.nodes.readability_gate import readability_gate_node
     from orchestrator.app.llm.nodes.result import result_node
     from orchestrator.app.llm.nodes.safe_area_gate import safe_area_gate_node
     from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
 
     for update in (
+        background_ocr_gate_node(state),
         background_validation_node(state),
         safe_area_gate_node(state),
     ):
@@ -720,6 +725,7 @@ def _run_graph_post_t2i_nodes(state: dict) -> None:
 
     for update in (
         text_renderer_node(state),
+        final_ocr_gate_node(state),
         readability_gate_node(state),
         final_validation_node(state),
         result_node(state),

@@ -36,6 +36,10 @@ def create_generation_job_row(
     brand_kit_snapshot: dict | None = None,
     params: dict | None = None,
     request_payload: dict | None = None,
+    parent_job_id: str | None = None,
+    previous_output_id: str | None = None,
+    regeneration_depth: int = 0,
+    regeneration_idempotency_key: str | None = None,
     connection: object | None = None,
 ) -> dict:
     with db_transaction(connection) as conn:
@@ -46,11 +50,13 @@ def create_generation_job_row(
                   public_job_id, workspace_id, thread_id, requested_by, status, current_stage,
                   progress_percent, selected_reference_template_id, input_asset_id, reference_asset_id, output_path, result_payload, error, metadata,
                   run_mode, engine, model_provider, model_name, model_version, prompt_text, prompt_hash,
-                  prompt_preview, brief, brand_kit_snapshot, params, request_payload, queued_at
+                  prompt_preview, brief, brand_kit_snapshot, params, request_payload,
+                  parent_job_id, previous_output_id, regeneration_depth, regeneration_idempotency_key, queued_at
                 )
                 values (
                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, now()
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+                  %s, %s, %s, %s, now()
                 )
                 returning *
                 """,
@@ -81,7 +87,31 @@ def create_generation_job_row(
                     jsonb_param(brand_kit_snapshot or {}),
                     jsonb_param(params or {}),
                     jsonb_param(request_payload or {}),
+                    parent_job_id,
+                    previous_output_id,
+                    regeneration_depth,
+                    regeneration_idempotency_key,
                 ),
+            )
+            return cur.fetchone()
+
+
+def get_generation_job_by_regeneration_idempotency_key(
+    *,
+    workspace_id: str,
+    idempotency_key: str,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select gj.*, ct.public_thread_id as public_thread_id
+                from generation_jobs gj
+                left join chat_threads ct on ct.id = gj.thread_id
+                where gj.workspace_id = %s and gj.regeneration_idempotency_key = %s
+                """,
+                (workspace_id, idempotency_key),
             )
             return cur.fetchone()
 

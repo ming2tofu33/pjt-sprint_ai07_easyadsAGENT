@@ -33,8 +33,9 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         return {"render_result": render_result.model_dump(), "status": "failed", "error_message": "missing background image path"}
 
     copy_spec = CopySpec(**(state.get("copy_spec") or {}))
-    layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
-    style = TextStyleSpec(**(state.get("text_style_spec") or {}))
+    layout_data, style_data = _apply_regeneration_layout_patch(state.get("text_layout_spec") or {}, state.get("text_style_spec") or {}, state.get("regeneration_patch") or {})
+    layout = TextLayoutSpec(**layout_data)
+    style = TextStyleSpec(**style_data)
     output_dir = Path("data") / "outputs" / str(state.get("job_id") or "unknown-job")
     output_dir.mkdir(parents=True, exist_ok=True)
     final_path = output_dir / "final_composite.png"
@@ -117,6 +118,43 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         "artifact_refs": artifacts,
         "status": "overlaying_text",
     }
+
+
+def _apply_regeneration_layout_patch(layout_value: object, style_value: object, patch_value: object) -> tuple[dict[str, Any], dict[str, Any]]:
+    layout = dict(layout_value) if isinstance(layout_value, dict) else {}
+    style = dict(style_value) if isinstance(style_value, dict) else {}
+    patches = patch_value.get("patches") if isinstance(patch_value, dict) else {}
+    for patch in (patches or {}).values():
+        if not isinstance(patch, dict):
+            continue
+        if patch.get("target") == "layout":
+            if patch.get("safeAreaScale"):
+                layout["safe_margin_ratio"] = min(0.5, float(layout.get("safe_margin_ratio") or 0.06) * float(patch["safeAreaScale"]))
+            slots = []
+            for raw_slot in layout.get("slots") or []:
+                slot = dict(raw_slot) if isinstance(raw_slot, dict) else raw_slot
+                if isinstance(slot, dict):
+                    if patch.get("increasePadding"):
+                        slot["inner_padding_ratio"] = min(0.5, float(slot.get("inner_padding_ratio") or 0.04) + 0.02)
+                    if patch.get("reduceFontScale"):
+                        metric = dict(slot.get("font_metric") or {})
+                        if metric.get("base_size_ratio") is not None:
+                            metric["base_size_ratio"] = max(0.01, float(metric["base_size_ratio"]) * 0.9)
+                        slot["font_metric"] = metric
+                    if patch.get("rewrapText"):
+                        slot["max_lines"] = max(int(slot.get("max_lines") or 1) + 1, 2)
+                slots.append(slot)
+            if slots:
+                layout["slots"] = slots
+        if patch.get("target") == "textStyle":
+            typography = dict(style.get("typography") or {})
+            if patch.get("increaseContrast"):
+                typography["use_text_plate"] = True
+            if patch.get("enableShadowOrOverlay"):
+                typography["default_overlay"] = typography.get("default_overlay") or "drop_shadow"
+            if typography:
+                style["typography"] = typography
+    return layout, style
 
 
 def find_empty_half(image: Image.Image) -> str:

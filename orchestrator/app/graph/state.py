@@ -68,6 +68,8 @@ class MarketingState(TypedDict, total=False):
     schema_version: str
     job_id: str
     thread_id: str
+    usage_job_db_id: str | None
+    usage_thread_db_id: str | None
     workspace_id: str | None
     project_id: str | None
     user_id: str | None
@@ -145,6 +147,14 @@ class MarketingState(TypedDict, total=False):
     quality_gate_decision: str | None
     quality_gate_status: str | None
     quality_gate_retry_feedback: list[str]
+    background_ocr_gate: dict[str, Any] | None
+    final_ocr_gate: dict[str, Any] | None
+    ocr_gate_decision: str | None
+    ocr_gate_status: str | None
+    ocr_gate_retry_feedback: list[str]
+    ocr_revision_action: str | None
+    ocr_revision_attempts: int
+    regeneration_patch: dict[str, Any] | None
     candidates: list[dict[str, Any] | GeneratedImageCandidate]
     selected_candidate_id: str | None
     background_validation_report: dict[str, Any] | BackgroundValidationReport | None
@@ -297,6 +307,19 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "prompt_render_output": None,
         "t2i_request": None,
         "t2i_result": None,
+        "background_quality_gate": None,
+        "final_quality_gate": None,
+        "quality_gate_attempts": 0,
+        "quality_gate_decision": None,
+        "quality_gate_status": None,
+        "quality_gate_retry_feedback": [],
+        "background_ocr_gate": None,
+        "final_ocr_gate": None,
+        "ocr_gate_decision": None,
+        "ocr_gate_status": None,
+        "ocr_gate_retry_feedback": [],
+        "ocr_revision_action": None,
+        "ocr_revision_attempts": 0,
         "candidates": [],
         "selected_candidate_id": None,
         "background_validation_report": None,
