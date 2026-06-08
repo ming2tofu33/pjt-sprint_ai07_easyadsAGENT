@@ -145,6 +145,13 @@ class MarketingState(TypedDict, total=False):
     quality_gate_decision: str | None
     quality_gate_status: str | None
     quality_gate_retry_feedback: list[str]
+    background_ocr_gate: dict[str, Any] | None
+    final_ocr_gate: dict[str, Any] | None
+    ocr_gate_decision: str | None
+    ocr_gate_status: str | None
+    ocr_gate_retry_feedback: list[str]
+    ocr_revision_action: str | None
+    ocr_revision_attempts: int
     candidates: list[dict[str, Any] | GeneratedImageCandidate]
     selected_candidate_id: str | None
     background_validation_report: dict[str, Any] | BackgroundValidationReport | None
