@@ -25,6 +25,7 @@ MODAL_ELIGIBLE_RUN_MODES = {
     "flux_schnell_real",
     "flux",
     "flux_smoke",
+    "flux2_klein_4b",
 }
 
 
@@ -64,6 +65,10 @@ def build_modal_t2i_request_from_job(
         params.setdefault("render_mode", "sd35_large")
         params.setdefault("num_inference_steps", 8)
         params.setdefault("guidance_scale", 4.0)
+    if run_mode == "flux2_klein_4b" or engine == "flux2_klein_4b":
+        params.setdefault("render_mode", "flux2_klein_4b")
+        params.setdefault("num_inference_steps", 28)
+        params.setdefault("guidance_scale", 3.5)
     return ModalT2IRequest(
         job_id=public_job_id,
         thread_id=str(metadata.get("public_thread_id") or job_row.get("thread_id") or "") or None,
@@ -268,6 +273,8 @@ def _engine_from_run_mode(run_mode: str | None) -> str | None:
         return "sd35_large"
     if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
         return "flux"
+    if run_mode in {"flux2_klein_4b", "flux2_klein", "flux2-klein-4b", "flux_2_klein_4b"}:
+        return "flux2_klein_4b"
     return None
 
 

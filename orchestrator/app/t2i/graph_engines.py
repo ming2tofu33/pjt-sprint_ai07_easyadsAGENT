@@ -21,16 +21,18 @@ from orchestrator.app.t2i.settings import (
     load_t2i_settings,
 )
 
-GraphActualEngineName = Literal["flux", "sd35_large"]
+GraphActualEngineName = Literal["flux", "sd35_large", "flux2_klein_4b"]
 
 _RUN_MODE_BY_ENGINE: dict[GraphActualEngineName, str] = {
     "flux": "flux_schnell_real",
     "sd35_large": "sd35_large_real",
+    "flux2_klein_4b": "flux2_klein_4b",
 }
 
 _RENDER_MODE_BY_ENGINE: dict[GraphActualEngineName, str] = {
     "flux": "flux_schnell",
     "sd35_large": "sd35_large",
+    "flux2_klein_4b": "flux2_klein_4b",
 }
 
 
@@ -166,8 +168,8 @@ class GuardedLocalGraphT2IEngine(BaseT2IEngine):
 
     def health(self) -> dict[str, Any]:
         settings = load_t2i_settings()
-        enabled = settings.enable_flux_local if self.name == "flux" else settings.enable_sd35_local
-        model_id = settings.flux_model_id if self.name == "flux" else settings.sd35_model_id
+        enabled = settings.flux2_klein_backend == "local_diffusers" if self.name == "flux2_klein_4b" else (settings.enable_flux_local if self.name == "flux" else settings.enable_sd35_local)
+        model_id = settings.flux2_klein_model_id if self.name == "flux2_klein_4b" else (settings.flux_model_id if self.name == "flux" else settings.sd35_model_id)
         return {
             "available": bool(enabled),
             "loaded": False,
@@ -270,6 +272,10 @@ def _build_modal_graph_request(
         params.setdefault("render_mode", "flux_schnell")
         params.setdefault("num_inference_steps", 4)
         params.setdefault("guidance_scale", 0.0)
+    elif engine == "flux2_klein_4b":
+        params.setdefault("render_mode", "flux2_klein_4b")
+        params.setdefault("num_inference_steps", 28)
+        params.setdefault("guidance_scale", 3.5)
     else:
         params.setdefault("render_mode", "sd35_large")
         params.setdefault("num_inference_steps", 8)
@@ -287,7 +293,7 @@ def _build_modal_graph_request(
         height=request.height,
         num_images=1,
         seed=request.seed,
-        model_name=engine,
+        model_name=metadata.get("model_name") or engine,
         params=params,
         metadata={
             **metadata,

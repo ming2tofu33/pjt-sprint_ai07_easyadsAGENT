@@ -771,6 +771,15 @@ def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest,
                 },
             )
         )
+        generation_error = getattr(generation, "error", None)
+        if generation_error:
+            metadata = generation.metadata or {}
+            error_code = str(metadata.get("error_code") or "t2i_engine_unavailable")
+            if error_code == "t2i_engine_not_enabled":
+                raise T2IEngineNotEnabledError(generation_error)
+            exc = T2IEngineUnavailableError(generation_error)
+            setattr(exc, "error_code", error_code)
+            raise exc
         if not generation.image_paths:
             raise T2IEngineUnavailableError(f"{engine_name} did not return an image.")
 
