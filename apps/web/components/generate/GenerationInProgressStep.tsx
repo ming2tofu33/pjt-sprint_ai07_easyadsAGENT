@@ -3,6 +3,7 @@
 import { Check, Clock3 } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
+import { generationStageViewFromJob, generationStatusSteps } from "@/lib/generation-job-stage";
 import { getGenerationEngineOption } from "@/lib/generation-engine";
 import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
@@ -10,21 +11,13 @@ import styles from "./generate.module.css";
 
 type GenerationInProgressStepProps = {
   state: ChatFlowState;
-  progress: number;
   onBrowse: () => void;
 };
 
-const statusItems = [
-  "광고 브리프 정리 완료",
-  "이미지 생성 요청 완료",
-  "생성 결과 불러오는 중",
-  "결과 화면 준비 중"
-];
-
-export function GenerationInProgressStep({ state, progress, onBrowse }: GenerationInProgressStepProps) {
+export function GenerationInProgressStep({ state, onBrowse }: GenerationInProgressStepProps) {
   const brief = buildBrief(state);
   const engine = getGenerationEngineOption(state.selectedImageGenerationEngine);
-  const safeProgress = Math.max(12, Math.min(progress, 100));
+  const generationStage = generationStageViewFromJob(state.generationJob);
 
   return (
     <>
@@ -33,17 +26,16 @@ export function GenerationInProgressStep({ state, progress, onBrowse }: Generati
       <section className={styles.generationHero} aria-label="광고 생성 진행 상황">
         <MascotImage role="generatingWait" decorative className={styles.generationMascot} />
         <h1>생성 결과를 준비하고 있어요</h1>
-        <p>{brief.item} 광고 이미지가 준비되면 실제 결과 화면으로 이동해요.</p>
+        <p>{brief.item} 광고 이미지가 준비되면 보관함에서 확인할 수 있어요.</p>
       </section>
 
       <section className={styles.statusCard}>
         <h2>진행 상황</h2>
         <p className={styles.engineStatusNote}>선택한 모델: {engine.modelName}</p>
         <div className={styles.statusList}>
-          {statusItems.map((item, index) => {
-            const activeIndex = safeProgress >= 100 ? 3 : safeProgress >= 68 ? 2 : safeProgress >= 36 ? 1 : 0;
-            const isDone = index < activeIndex;
-            const isActive = index === activeIndex;
+          {generationStatusSteps.map((item, index) => {
+            const isDone = generationStage.isTerminal && !generationStage.isFailed ? true : index < generationStage.activeStepIndex;
+            const isActive = !generationStage.isTerminal && index === generationStage.activeStepIndex;
             return (
               <div className={styles.statusItem} data-state={isDone ? "done" : isActive ? "active" : "waiting"} key={item}>
                 <span className={styles.statusIcon}>
@@ -58,13 +50,13 @@ export function GenerationInProgressStep({ state, progress, onBrowse }: Generati
 
       <div className={styles.generationProgress}>
         <div className={styles.progressMeta}>
-          <strong>전체 진행률</strong>
-          <span>{safeProgress}%</span>
+          <strong>현재 상태</strong>
+          <span>{generationStage.label}</span>
         </div>
-        <span className={styles.progressTrack}>
-          <span className={styles.progressBar} style={{ width: `${safeProgress}%` }} />
+        <span className={`${styles.progressTrack} ${styles.indeterminateProgressTrack}`} aria-hidden="true">
+          <span className={styles.progressBar} />
         </span>
-        <p>실제 이미지가 준비되는 동안만 표시돼요.</p>
+        <p>{generationStage.detail}</p>
       </div>
 
       <section>

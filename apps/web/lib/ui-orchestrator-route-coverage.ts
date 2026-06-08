@@ -92,7 +92,7 @@ export const UI_ORCHESTRATOR_ROUTE_COVERAGE: UiOrchestratorRouteCoverageRow[] = 
   {
     id: "final-model-generation",
     label: "모델 선택 최종 이미지 생성",
-    userFlow: "GPT-image-2, FLUX.1-schnell, SD3.5 Large 중 하나를 선택해 최종 생성",
+    userFlow: "GPT-image-1, FLUX.1-schnell, SD3.5 Large 중 하나를 선택해 최종 생성",
     phase: "final-graph-integration-v1",
     uiEntryPoints: ["GenerationEngineSelector", "BriefConfirmStep", "GenerationInProgressStep", "GenerationCompleteStep"],
     apiCalls: ["POST /api/generation-jobs", "GET /api/generation-jobs/{job_id}"],

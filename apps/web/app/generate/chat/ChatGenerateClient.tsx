@@ -66,6 +66,7 @@ import {
 import {
   appendSavedBrandKitContext,
   clearGenerationDraftPrompt,
+  consumeFreshGenerationRequest,
   readGenerationDraftReferenceTemplateId,
   readGenerationRequestContext,
   saveGenerationRequestContext,
@@ -102,7 +103,11 @@ const CHAT_GENERATION_FAILURE_STORAGE_KEY = "easyads_chat_generation_failure_v1"
 const CHAT_FLOW_BACK_TARGET_STORAGE_KEY = "easyads_chat_flow_back_target_v1";
 const GENERATION_JOB_POLL_INTERVAL_MS = 1800;
 const GENERATION_JOB_MAX_POLLS = 80;
-const CHAT_FLOW_BACK_TARGETS = new Set(["home", "studio", "reference", "ads", "my", "brand"]);
+const CHAT_FLOW_BACK_TARGETS = new Set(["home", "studio", "reference", "ads", "my", "brand", "photo"]);
+
+function mergeBriefRefinement(existingDirection: string, refinement: string): string {
+  return [existingDirection.trim(), refinement.trim()].filter(Boolean).join("\n");
+}
 
 type ChatGenerationFailureSnapshot = {
   message: string;
@@ -223,20 +228,6 @@ function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function generationProgressFromJob(job: GenerationJob): number {
-  const progressValue = job.progress?.progress_percent ?? job.progress_percent;
-  if (typeof progressValue === "number" && Number.isFinite(progressValue)) {
-    return Math.max(12, Math.min(100, Math.round(progressValue)));
-  }
-  if (job.status === "done" || job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
-    return 100;
-  }
-  if (job.status === "running" || job.status === "t2i_running" || job.status === "rendering") {
-    return 68;
-  }
-  return 24;
-}
-
 function buildGenerationJobUserInput(state: ChatFlowState) {
   return state.userInput;
 }
@@ -341,6 +332,50 @@ function normalizeInferredContext(context: Record<string, unknown>): InferredCon
   };
 }
 
+function extractGenerationJobContext(payload: Record<string, unknown>, metadata: Record<string, unknown>): Record<string, unknown> {
+  const payloadContext = asRecord(payload.context);
+  const payloadInferredContext = asRecord(payload.inferred_context);
+  const metadataContext = asRecord(metadata.context);
+  const payloadBrief = asRecord(payload.current_brief ?? payload.brief ?? payload.final_brief);
+  const metadataBrief = asRecord(metadata.current_brief ?? metadata.brief ?? metadata.final_brief);
+
+  return {
+    ...metadata,
+    ...payload,
+    ...metadataBrief,
+    ...payloadBrief,
+    ...metadataContext,
+    ...payloadInferredContext,
+    ...payloadContext
+  };
+}
+
+function normalizeChatBrief(
+  brief: Record<string, unknown>,
+  context: InferredContext,
+  payload: Record<string, unknown>
+): ChatBrief {
+  const copy =
+    getPayloadString(brief, "copy", "copy_text", "headline", "user_custom_headline") ??
+    getPayloadString(payload, "copy", "copy_text", "headline", "user_custom_headline") ??
+    "";
+  const imageDirection =
+    getPayloadString(brief, "imageDirection", "image_direction", "prompt_text", "visual_direction") ??
+    getPayloadString(payload, "imageDirection", "image_direction", "prompt_text", "visual_direction") ??
+    "";
+  const finalImagePath = getPayloadString(brief, "finalImagePath", "final_image_path") ?? getPayloadString(payload, "finalImagePath", "final_image_path");
+
+  return {
+    purpose: getPayloadString(brief, "purpose", "promotion_goal") ?? context.promotionGoal,
+    item: getPayloadString(brief, "item", "item_or_service") ?? context.itemOrService,
+    copy,
+    tone: getPayloadString(brief, "tone", "brand_tone", "selected_tone") ?? "",
+    channel: getPayloadString(brief, "channel", "selected_channel_id", "requested_ad_format") ?? "",
+    imageDirection,
+    finalImagePath
+  };
+}
+
 function fallbackQuestionForMissingFields(missingFields: string[]): OptionQuestion {
   const field = missingFields[0] ?? "custom_request";
   const fallbackQuestions: Record<string, OptionQuestion> = {
@@ -410,7 +445,7 @@ function fallbackQuestionForMissingFields(missingFields: string[]): OptionQuesti
 function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerationMode?: CopyGenerationMode): ChatTurnResponse {
   const payload = asRecord(job.result_payload);
   const metadata = asRecord(job.metadata);
-  const context = asRecord(payload.context ?? payload.inferred_context ?? metadata.context);
+  const context = extractGenerationJobContext(payload, metadata);
   const threadId = job.thread_id ?? `thread_${job.job_id}`;
 
   if (job.status === "waiting_user_input") {
@@ -462,6 +497,7 @@ function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerat
     };
   }
 
+  const normalizedContext = normalizeInferredContext(context);
   const copyCandidates = getPayloadArray(payload, "copyCandidates", "copy_candidates");
   if (copyCandidates.length > 0 || payload.type === "copy_candidates") {
     return {
@@ -469,20 +505,22 @@ function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerat
       jobId: job.job_id,
       threadId,
       status: job.status,
-      context: normalizeInferredContext(context),
+      context: normalizedContext,
       copyCandidates: copyCandidates as never[],
       recommendedCopyId: getPayloadString(payload, "recommendedCopyId", "recommended_copy_id"),
       copyGenerationMode: fallbackCopyGenerationMode
     };
   }
 
+  const brief = asRecord(payload.brief ?? payload.final_brief ?? payload.current_brief ?? metadata.brief ?? metadata.final_brief ?? metadata.current_brief);
+
   return {
     type: "brief_ready",
     jobId: job.job_id,
     threadId,
     status: job.status,
-    context: context as InferredContext,
-    brief: asRecord(payload.brief ?? payload.final_brief) as ChatBrief,
+    context: normalizedContext,
+    brief: normalizeChatBrief(brief, normalizedContext, payload),
     copyGenerationMode: fallbackCopyGenerationMode ?? "no_copy"
   };
 }
@@ -491,17 +529,37 @@ function shouldPollInitialGenerationJob(job: GenerationJob): boolean {
   return job.status !== "waiting_user_input" && !isTerminalGenerationJobStatus(job.status);
 }
 
+function mergeContextFromTurnResponse(
+  baseContext: InferredContext,
+  response: ChatTurnResponse
+): InferredContext {
+  return {
+    businessType: response.context.businessType || baseContext.businessType,
+    itemOrService: response.context.itemOrService || baseContext.itemOrService,
+    promotionGoal: response.context.promotionGoal || baseContext.promotionGoal
+  };
+}
+
 type PhotoGenerateInput = {
   file: File;
   prompt: string;
 } & GenerationStartOptions;
+
+type InitialChatIntakeContext = {
+  prompt: string;
+  copyGenerationMode?: CopyGenerationMode;
+  imageGenerationEngine: ImageGenerationEngine;
+  sourceImagePath?: string | null;
+  referenceImagePath?: string | null;
+  userCustomHeadline?: string | null;
+  userCustomSubcopy?: string | null;
+};
 
 export function ChatGenerateClient({ initialSurface = "home", initialStage = "start" }: ChatGenerateClientProps) {
   const router = useRouter();
   const [state, dispatch] = useReducer(chatFlowReducer, undefined, createInitialChatFlowState);
   const [optimisticSurface, setOptimisticSurface] = useState<DashboardSurface | null>(null);
   const [generationStage, setGenerationStage] = useState<GenerationStage>("brief");
-  const [generationProgress, setGenerationProgress] = useState(0);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [generatedCreatives, setGeneratedCreatives] = useState<MockCreative[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -554,7 +612,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     dispatch({ type: "setCustomDirection", value: snapshot.customDirection });
     dispatch({ type: "backendBriefSucceeded", brief: snapshot.brief });
     dispatch({ type: "continueToBrief" });
-    setGenerationProgress(stage === "generating" ? 68 : stage === "start" ? 0 : 100);
     setGenerationStage(
       stage === "generating" ? "generating" : stage === "similar" ? "similarBrowsing" : stage === "start" ? "brief" : "complete"
     );
@@ -616,7 +673,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       writeChatFlowSnapshot(snapshot);
       clearChatTurnSnapshot();
       setGeneratedCreatives(response.brief.finalImagePath ? addGeneratedCreativeSnapshot(snapshot) : readGeneratedCreatives());
-      setGenerationProgress(100);
       setGenerationStage("brief");
       lastPrimedStageRef.current = "start";
     },
@@ -747,9 +803,11 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           }
 
           if (restoreState) {
+            const turnResponse = generationJobToChatTurnResponse(job, restoreState.copyGenerationMode);
             dispatch({
               type: "restoreThreadSnapshot",
               ...restoreState,
+              context: mergeContextFromTurnResponse(restoreState.context, turnResponse),
               generationJob: job,
               conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
             });
@@ -760,7 +818,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
           clearGenerationFailureSnapshot();
           setShowHistory(false);
-          setGenerationProgress(generationProgressFromJob(job));
 
           if (job.status === "waiting_user_input" && restoreState?.currentQuestion) {
             setGenerationStage("jobQuestion");
@@ -785,13 +842,11 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           const failure = readGenerationFailureSnapshot();
           if (failure) {
             dispatch({ type: "showGenerationFailure", ...failure });
-            setGenerationProgress(100);
             setGenerationStage("complete");
             lastPrimedStageRef.current = "complete";
             return;
           }
           dispatch({ type: "showGenerationFailure", message: "생성 요청 상태를 불러오지 못했어요. 잠시 후 다시 시도해주세요." });
-          setGenerationProgress(100);
           setGenerationStage("complete");
           lastPrimedStageRef.current = "complete";
         });
@@ -824,7 +879,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
         });
         setShowHistory(false);
-        setGenerationProgress(restoreState.currentQuestion ? 65 : 80);
         setGenerationStage(restoreState.currentQuestion ? "jobQuestion" : "brief");
         lastPrimedStageRef.current = restoreState.currentQuestion ? "generating" : "brief";
       }).catch(() => {
@@ -834,6 +888,16 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     if (initialStage === "start") {
+      if (consumeFreshGenerationRequest()) {
+        clearChatFlowSnapshot();
+        clearChatTurnSnapshot();
+        clearGenerationFailureSnapshot();
+        dispatch({ type: "reset" });
+        setGenerationStage("brief");
+        lastPrimedStageRef.current = "start";
+        return;
+      }
+
       const snapshot = readChatFlowSnapshot();
       if (snapshot) {
         clearChatTurnSnapshot();
@@ -863,7 +927,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           pendingTurn.userCustomHeadline ?? null,
           pendingTurn.userCustomSubcopy ?? null
         );
-        setGenerationProgress(0);
         setGenerationStage("brief");
         lastPrimedStageRef.current = "start";
         return;
@@ -875,7 +938,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       clearChatFlowSnapshot();
       clearChatTurnSnapshot();
       dispatch({ type: "reset" });
-      setGenerationProgress(0);
       setGenerationStage("brief");
       lastPrimedStageRef.current = "start";
       return;
@@ -894,7 +956,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     const failure = readGenerationFailureSnapshot();
     if (failure) {
       dispatch({ type: "showGenerationFailure", ...failure });
-      setGenerationProgress(100);
       setGenerationStage("complete");
       lastPrimedStageRef.current = initialStage;
       return;
@@ -902,22 +963,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     dispatch({ type: "reset" });
     dispatch({ type: "showResultShell" });
-    setGenerationProgress(0);
     setGenerationStage("complete");
     lastPrimedStageRef.current = initialStage;
   }, [appSurface, applyTurnResponse, initialStage, jobIdParam, restoreBriefSnapshot, threadIdParam]);
-
-  useEffect(() => {
-    if (generationStage !== "browsing") {
-      return undefined;
-    }
-
-    const timer = window.setInterval(() => {
-      setGenerationProgress((current) => Math.min(current + 3, 92));
-    }, 650);
-
-    return () => window.clearInterval(timer);
-  }, [generationStage]);
 
   async function handleSubmitPrompt(prompt: string, options: GenerationStartOptions = {}) {
     clearChatFlowSnapshot();
@@ -986,12 +1034,19 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       if (shouldPollInitialGenerationJob(response.job)) {
         dispatch({ type: "continueToBrief" });
         dispatch({ type: "generationJobUpdated", generationJob: response.job });
-        setGenerationProgress(generationProgressFromJob(response.job));
         setGenerationStage("generating");
         lastPrimedStageRef.current = "generating";
         setOptimisticSurface("chat");
         router.replace(buildChatStageHrefForJob("generating", response.job));
-        await pollGenerationJobUntilDoneOrQuestion(response.job);
+        await pollGenerationJobUntilDoneOrQuestion(response.job, {
+          prompt,
+          copyGenerationMode: options.copyGenerationMode,
+          imageGenerationEngine,
+          sourceImagePath: null,
+          referenceImagePath: referenceImagePath ?? null,
+          userCustomHeadline: options.userCustomHeadline ?? null,
+          userCustomSubcopy: options.userCustomSubcopy ?? null
+        });
         return;
       }
 
@@ -1076,7 +1131,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
     clearGenerationFailureSnapshot();
-    setGenerationProgress(0);
     setGenerationStage("brief");
 
     try {
@@ -1107,6 +1161,29 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
   }
 
+  function buildChatFlowSnapshot(brief: ChatBrief, customDirection = state.customDirection): ChatFlowSnapshot {
+    return {
+      prompt: state.userInput,
+      jobId: state.jobId,
+      threadId: state.threadId,
+      context: state.inferredContext,
+      copyCandidates: state.copyCandidates,
+      copyCandidateSource: state.copyCandidateSource,
+      selectedCopyId: state.selectedCopyId,
+      selectedChannelId: state.selectedChannelId,
+      selectedTone: state.selectedTone,
+      customDirection,
+      userCustomHeadline: state.userCustomHeadline,
+      userCustomSubcopy: state.userCustomSubcopy,
+      brief,
+      selectedReferenceTemplateId: state.selectedReferenceTemplateId,
+      selectedReferenceTemplateTitle: state.selectedReferenceTemplateTitle,
+      imageGenerationEngine: state.selectedImageGenerationEngine,
+      sourceImagePath: state.sourceImagePath ?? null,
+      referenceImagePath: state.referenceImagePath ?? null
+    };
+  }
+
   async function handleContinueToBrief() {
     if (!state.jobId || !state.threadId) {
       dispatch({
@@ -1126,26 +1203,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         selectedTone: state.selectedTone,
         customDirection: state.customDirection
       });
-      const snapshot = {
-        prompt: state.userInput,
-        jobId: state.jobId,
-        threadId: state.threadId,
-        context: state.inferredContext,
-        copyCandidates: state.copyCandidates,
-        copyCandidateSource: state.copyCandidateSource,
-        selectedCopyId: state.selectedCopyId,
-        selectedChannelId: state.selectedChannelId,
-        selectedTone: state.selectedTone,
-        customDirection: state.customDirection,
-        userCustomHeadline: state.userCustomHeadline,
-        userCustomSubcopy: state.userCustomSubcopy,
-        brief: response.brief,
-        selectedReferenceTemplateId: state.selectedReferenceTemplateId,
-        selectedReferenceTemplateTitle: state.selectedReferenceTemplateTitle,
-        imageGenerationEngine: state.selectedImageGenerationEngine,
-        sourceImagePath: state.sourceImagePath ?? null,
-        referenceImagePath: state.referenceImagePath ?? null
-      };
+      const snapshot = buildChatFlowSnapshot(response.brief);
       writeChatFlowSnapshot(snapshot);
       clearChatTurnSnapshot();
       setGeneratedCreatives(response.brief.finalImagePath ? addGeneratedCreativeSnapshot(snapshot) : readGeneratedCreatives());
@@ -1159,18 +1217,85 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
   }
 
-  function stopForGenerationJobInterrupt(job: GenerationJob): boolean {
+  async function handleRefineBrief(message: string) {
+    const refinement = message.trim();
+    if (!refinement) {
+      return;
+    }
+    if (!state.jobId || !state.threadId) {
+      dispatch({
+        type: "backendRequestFailed",
+        message: "브리프를 다시 정리할 연결 정보가 없어요. 첫 요청을 다시 보내주세요."
+      });
+      return;
+    }
+
+    const nextCustomDirection = mergeBriefRefinement(state.customDirection, refinement);
+    dispatch({ type: "submitBriefRefinement", message: refinement, customDirection: nextCustomDirection });
+
+    try {
+      const response = await createChatBrief({
+        jobId: state.jobId,
+        threadId: state.threadId,
+        selectedCopyId: state.selectedCopyId,
+        selectedChannelId: state.selectedChannelId,
+        selectedTone: state.selectedTone,
+        customDirection: nextCustomDirection
+      });
+      const snapshot = buildChatFlowSnapshot(response.brief, nextCustomDirection);
+      writeChatFlowSnapshot(snapshot);
+      clearChatTurnSnapshot();
+      setGeneratedCreatives(response.brief.finalImagePath ? addGeneratedCreativeSnapshot(snapshot) : readGeneratedCreatives());
+      dispatch({ type: "briefRefinementSucceeded", brief: response.brief });
+      dispatch({ type: "continueToBrief" });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "추가 요청을 브리프에 반영하지 못했어요. 잠시 뒤 다시 시도해주세요.";
+      dispatch({
+        type: "backendRequestFailed",
+        message
+      });
+      throw new Error(message);
+    }
+  }
+
+  function stopForGenerationJobInterrupt(job: GenerationJob, initialChatIntake?: InitialChatIntakeContext): boolean {
     const interrupt = getPendingGenerationJobParsedInterrupt(job);
     if (!interrupt) {
       return false;
     }
 
+    if (initialChatIntake && interrupt.type === "copy_candidate_selection") {
+      const turnResponse = generationJobToChatTurnResponse(job, initialChatIntake.copyGenerationMode);
+      applyTurnResponse(
+        initialChatIntake.prompt,
+        turnResponse,
+        initialChatIntake.imageGenerationEngine,
+        initialChatIntake.sourceImagePath ?? null,
+        initialChatIntake.referenceImagePath ?? null,
+        initialChatIntake.userCustomHeadline ?? null,
+        initialChatIntake.userCustomSubcopy ?? null
+      );
+      setGenerationStage("brief");
+      lastPrimedStageRef.current = "start";
+      setOptimisticSurface("chat");
+      router.replace(buildChatStageHrefWithJob("start", { threadId: job.thread_id }));
+      return true;
+    }
+
     if (interrupt.type === "option_question") {
-      dispatch({ type: "generationJobQuestionReceived", generationJob: job, question: interrupt.optionQuestion });
+      const turnResponse = generationJobToChatTurnResponse(job, initialChatIntake?.copyGenerationMode ?? state.copyGenerationMode);
+      const context = isQuestionResponse(turnResponse) ? turnResponse.context : {};
+      dispatch({
+        type: "generationJobQuestionReceived",
+        generationJob: job,
+        question: interrupt.optionQuestion,
+        context,
+        sourceImagePath: initialChatIntake?.sourceImagePath ?? null,
+        referenceImagePath: initialChatIntake?.referenceImagePath ?? null
+      });
     } else {
       dispatch({ type: "generationJobInterruptReceived", generationJob: job });
     }
-    setGenerationProgress(generationProgressFromJob(job));
     setGenerationStage("jobQuestion");
     lastPrimedStageRef.current = "generating";
     setOptimisticSurface("chat");
@@ -1178,12 +1303,11 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     return true;
   }
 
-  async function pollGenerationJobUntilDoneOrQuestion(initialJob: GenerationJob): Promise<GenerationJob> {
+  async function pollGenerationJobUntilDoneOrQuestion(initialJob: GenerationJob, initialChatIntake?: InitialChatIntakeContext): Promise<GenerationJob> {
     let currentJob = initialJob;
     dispatch({ type: "generationJobUpdated", generationJob: currentJob });
-    setGenerationProgress(generationProgressFromJob(currentJob));
 
-    if (stopForGenerationJobInterrupt(currentJob)) {
+    if (stopForGenerationJobInterrupt(currentJob, initialChatIntake)) {
       return currentJob;
     }
 
@@ -1194,9 +1318,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const response = await getGenerationJob(currentJob.job_id);
       currentJob = response.job;
       dispatch({ type: "generationJobUpdated", generationJob: currentJob });
-      setGenerationProgress(generationProgressFromJob(currentJob));
 
-      if (stopForGenerationJobInterrupt(currentJob)) {
+      if (stopForGenerationJobInterrupt(currentJob, initialChatIntake)) {
         return currentJob;
       }
     }
@@ -1205,7 +1328,24 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       throw new Error("추가 질문 정보를 받지 못했어요. 잠시 후 다시 시도해주세요.");
     }
 
-    setGenerationProgress(generationProgressFromJob(currentJob));
+    if (initialChatIntake && currentJob.status !== "failed" && currentJob.status !== "cancelled") {
+      const turnResponse = generationJobToChatTurnResponse(currentJob, initialChatIntake.copyGenerationMode);
+      applyTurnResponse(
+        initialChatIntake.prompt,
+        turnResponse,
+        initialChatIntake.imageGenerationEngine,
+        initialChatIntake.sourceImagePath ?? null,
+        initialChatIntake.referenceImagePath ?? null,
+        initialChatIntake.userCustomHeadline ?? null,
+        initialChatIntake.userCustomSubcopy ?? null
+      );
+      setGenerationStage("brief");
+      lastPrimedStageRef.current = "start";
+      setOptimisticSurface("chat");
+      router.replace(buildChatStageHrefWithJob("start", { threadId: currentJob.thread_id }));
+      return currentJob;
+    }
+
     setGenerationStage("complete");
     lastPrimedStageRef.current = "complete";
     clearGenerationFailureSnapshot();
@@ -1223,7 +1363,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     dispatch({ type: "submitGenerationJobAnswer", label: input.label });
     setGenerationStage("generating");
-    setGenerationProgress((current) => Math.max(current, 52));
 
     try {
       const answerPayload = {
@@ -1251,7 +1390,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     dispatch({ type: "submitGenerationJobAnswer", label: input.label });
     setGenerationStage("generating");
-    setGenerationProgress((current) => Math.max(current, 52));
 
     try {
       const response = await answerGenerationJob(jobId, { selectedCopyId: input.selectedCopyId, displayText: input.label });
@@ -1277,7 +1415,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     dispatch({ type: "submitGenerationJobAnswer", label: input.label });
     setGenerationStage("generating");
-    setGenerationProgress((current) => Math.max(current, 52));
 
     try {
       const response = await answerGenerationJob(jobId, {
@@ -1299,6 +1436,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     const engine = state.selectedImageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
     const engineOption = getGenerationEngineOption(engine);
     const backendEngine = resolveGenerationEnginePreference(engine);
+    const selectedCopy = state.copyCandidates.find((copy) => copy.id === state.selectedCopyId) ?? null;
+    const selectedCopySubcopy = [selectedCopy?.subcopy, selectedCopy?.cta].filter(Boolean).join(" · ");
+    const selectedBriefCopy = state.brief?.copy.trim() || "";
+    const fallbackSelectedHeadline = selectedCopy?.headline || selectedBriefCopy;
+    const shouldLockSelectedCopy = state.copyGenerationMode === "suggest_candidates" && Boolean(fallbackSelectedHeadline);
+    const finalCopyGenerationMode = shouldLockSelectedCopy ? "custom_input" : state.copyGenerationMode;
+    const finalUserCustomHeadline = state.userCustomHeadline || (shouldLockSelectedCopy ? fallbackSelectedHeadline : undefined);
+    const finalUserCustomSubcopy = state.userCustomSubcopy || (shouldLockSelectedCopy && selectedCopySubcopy ? selectedCopySubcopy : undefined);
     const selectedReferenceTemplateId = state.selectedReferenceTemplateId || readGenerationDraftReferenceTemplateId() || undefined;
     const sourceImagePath = state.sourceImagePath || undefined;
     const referenceImagePath = state.referenceImagePath || undefined;
@@ -1306,7 +1451,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     clearGenerationFailureSnapshot();
     dispatch({ type: "generationJobRequested" });
-    setGenerationProgress(18);
     setGenerationStage("generating");
     lastPrimedStageRef.current = "generating";
     navigateTo("chat", "generating");
@@ -1316,7 +1460,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         userInput: requestUserInput,
         threadId: toGenerationJobThreadId(state.threadId),
         entryMode: state.entryMode,
-        copyGenerationMode: state.copyGenerationMode,
+        copyGenerationMode: finalCopyGenerationMode,
         adFormat: state.selectedChannelId,
         runMode: resolveGenerationRunMode(engine),
         selectedReferenceTemplateId,
@@ -1326,8 +1470,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         selectedChannelId: state.selectedChannelId,
         selectedTone: state.selectedTone || undefined,
         customDirection: state.customDirection,
-        userCustomHeadline: state.userCustomHeadline || undefined,
-        userCustomSubcopy: state.userCustomSubcopy || undefined,
+        userCustomHeadline: finalUserCustomHeadline || undefined,
+        userCustomSubcopy: finalUserCustomSubcopy || undefined,
         metadata: {
           source: "web_generation_flow",
           source_image_path: sourceImagePath ?? null,
@@ -1339,6 +1483,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           selected_copy_id: state.selectedCopyId || null,
           selected_channel_id: state.selectedChannelId,
           selected_tone: state.selectedTone || null,
+          copy_generation_mode: finalCopyGenerationMode,
+          original_copy_generation_mode: state.copyGenerationMode,
+          user_custom_headline: finalUserCustomHeadline || null,
+          user_custom_subcopy: finalUserCustomSubcopy || null,
           reference_template_title: state.selectedReferenceTemplateTitle || null,
           final_brief: buildGenerationJobBriefMetadata(state)
         }
@@ -1362,7 +1510,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         userInput: state.userInput,
         imageGenerationEngine: engine
       });
-      setGenerationProgress(100);
       setGenerationStage("complete");
       lastPrimedStageRef.current = "complete";
       navigateTo("chat", "complete");
@@ -1375,7 +1522,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     clearGenerationFailureSnapshot();
     clearGenerationDraftPrompt();
     dispatch({ type: "reset" });
-    setGenerationProgress(0);
     setGenerationStage("brief");
     navigateTo("chat", "start");
   }
@@ -1385,7 +1531,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     clearChatTurnSnapshot();
     clearGenerationFailureSnapshot();
     dispatch({ type: "reset" });
-    setGenerationProgress(0);
     setGenerationStage("brief");
     clearGenerationDraftPrompt();
     saveGenerationRequestContext({
@@ -1431,7 +1576,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       clearChatTurnSnapshot();
       clearGenerationDraftPrompt();
       dispatch({ type: "reset" });
-      setGenerationProgress(0);
       setGenerationStage("brief");
       setShowHistory(false);
       setCurrentThreadDeleteOpen(false);
@@ -1541,7 +1685,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       {appSurface === "reference" ? (
         <ReferenceBrowseStep
           state={state}
-          progress={generationProgress}
           isStandaloneGallery
           onGoHome={() => navigateTo("home")}
           onOpenReference={() => navigateTo("reference")}
@@ -1639,6 +1782,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           state={state}
           onBack={handleBackFromBrief}
           onGenerate={handleOpenGeneratedResult}
+          onRefineBrief={handleRefineBrief}
           onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
         />
       ) : null}
@@ -1671,7 +1815,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       {appSurface === "chat" && state.step === 4 && generationStage === "generating" ? (
         <GenerationInProgressStep
           state={state}
-          progress={generationProgress}
           onBrowse={() => setGenerationStage("browsing")}
         />
       ) : null}
@@ -1679,7 +1822,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       {appSurface === "chat" && state.step === 4 && generationStage === "browsing" ? (
         <ReferenceBrowseStep
           state={state}
-          progress={generationProgress}
           onShowProgress={() => setGenerationStage("generating")}
           onGoHome={() => navigateTo("home")}
           onOpenReference={() => navigateTo("reference")}
@@ -1713,7 +1855,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       {appSurface === "chat" && state.step === 4 && generationStage === "similarBrowsing" ? (
         <ReferenceBrowseStep
           state={state}
-          progress={100}
           isGenerationComplete
           onShowProgress={() => setGenerationStage("complete")}
           onGoHome={() => navigateTo("home")}

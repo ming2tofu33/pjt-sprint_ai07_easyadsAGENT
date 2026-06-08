@@ -51,10 +51,30 @@ function copyMode(value: unknown): CopyGenerationMode {
 
 function imageEngine(value: unknown): ImageGenerationEngine {
   const engine = stringValue(value);
-  if (engine === "gpt_image_2" || engine === "flux_schnell" || engine === "sd35_large") {
+  if (engine === "gpt_image_1" || engine === "gpt_image_2" || engine === "flux_schnell" || engine === "sd35_large") {
     return engine;
   }
   return DEFAULT_IMAGE_GENERATION_ENGINE;
+}
+
+const contextDisplayLabels: Record<string, string> = {
+  beauty_nail: "네일샵",
+  beauty_salon: "뷰티/미용실",
+  cafe: "카페",
+  restaurant: "음식점/식당",
+  store: "일반 매장/소매",
+  seasonal_limited: "시즌 한정 홍보",
+  discount_event: "할인 이벤트",
+  new_launch: "신메뉴/신상품 출시",
+  reservation_cta: "예약/방문 유도",
+  brand_awareness: "브랜드 인지도",
+  review_event: "리뷰 이벤트",
+  retention: "재방문 유도"
+};
+
+function contextValue(...values: unknown[]): string {
+  const value = firstString(...values);
+  return contextDisplayLabels[value] ?? value;
 }
 
 function optionQuestionFrom(value: unknown): OptionQuestion | null {
@@ -92,6 +112,8 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
 
   const payload = asRecord(snapshot.state_payload);
   const metadata = asRecord(snapshot.metadata);
+  const payloadContext = asRecord(payload.context);
+  const metadataContext = asRecord(metadata.context);
   const currentBrief = asRecord(payload.current_brief);
   const prompt = firstString(payload.user_input, payload.prompt, metadata.user_input_preview);
   const threadId = firstString(snapshot.thread_id, payload.thread_id);
@@ -103,9 +125,36 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
   const currentQuestion = extractQuestion(payload, metadata);
   const status = snapshot.snapshot_kind === "waiting_user_input" || currentQuestion ? "waiting_user_input" : "queued";
   const context = {
-    businessType: firstString(payload.business_type, payload.businessType, currentBrief.business_type, currentBrief.businessType),
-    itemOrService: firstString(payload.item_or_service, payload.itemOrService, currentBrief.item_or_service, currentBrief.itemOrService),
-    promotionGoal: firstString(payload.promotion_goal, payload.promotionGoal, currentBrief.promotion_goal, currentBrief.promotionGoal)
+    businessType: contextValue(
+      payloadContext.business_type,
+      payloadContext.businessType,
+      metadataContext.business_type,
+      metadataContext.businessType,
+      payload.business_type,
+      payload.businessType,
+      currentBrief.business_type,
+      currentBrief.businessType
+    ),
+    itemOrService: contextValue(
+      payloadContext.item_or_service,
+      payloadContext.itemOrService,
+      metadataContext.item_or_service,
+      metadataContext.itemOrService,
+      payload.item_or_service,
+      payload.itemOrService,
+      currentBrief.item_or_service,
+      currentBrief.itemOrService
+    ),
+    promotionGoal: contextValue(
+      payloadContext.promotion_goal,
+      payloadContext.promotionGoal,
+      metadataContext.promotion_goal,
+      metadataContext.promotionGoal,
+      payload.promotion_goal,
+      payload.promotionGoal,
+      currentBrief.promotion_goal,
+      currentBrief.promotionGoal
+    )
   };
 
   const conversationMessages: ChatFlowState["conversationMessages"] = [];

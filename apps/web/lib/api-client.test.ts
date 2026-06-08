@@ -507,6 +507,37 @@ describe("api-client backend contract routes", () => {
     expect(response.job.status).toBe("done");
   });
 
+  it("forwards Supabase authorization when answering generation job questions", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "waiting_user_input",
+          progress: { progress_percent: 50, current_stage: "waiting_user_input" },
+          metadata: {}
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await answerGenerationJob("job_1", {
+      field: "item_or_service",
+      value: "햄버거 대표 메뉴"
+    });
+
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
+  });
+
   it("calls archive endpoints through the BFF and maps response fields", async () => {
     vi.doMock("./supabase/browser", () => ({
       createSupabaseBrowserClient: () => ({

@@ -12,6 +12,7 @@ type GenerationEngineSelectorProps = {
 };
 
 const icons = {
+  gpt_image_1: Sparkles,
   gpt_image_2: Sparkles,
   flux_schnell: Zap,
   sd35_large: Cpu

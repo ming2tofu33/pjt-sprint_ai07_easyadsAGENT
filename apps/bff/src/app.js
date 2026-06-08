@@ -550,11 +550,20 @@ export function buildApp(options = {}) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const {
+      userId: _clientUserId,
+      user_id: _clientUserIdSnake,
+      ...clientPayload
+    } = parsed.data;
 
     return proxyJson({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}/answer`,
-      body: parsed.data
+      body: {
+        ...clientPayload,
+        ...(userId ? { userId } : {})
+      }
     });
   });
 
