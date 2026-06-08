@@ -88,11 +88,22 @@ def write_json_artifact(path: Path, data: dict[str, Any]) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+from urllib.parse import urlparse
+
 def is_public_url(value: str | None) -> bool:
     if not value:
         return False
-    normalized = value.strip().lower()
-    return normalized.startswith("http://") or normalized.startswith("https://")
+    text = str(value).strip()
+    parsed = urlparse(text)
+    return parsed.scheme.lower() in {"http", "https"} and bool(parsed.netloc)
+
+
+def browser_usable_url(value: object | None) -> str | None:
+    """http/https URL만 반환, 그 외(로컬 경로 포함)는 None. 중복 구현 방지 공통 helper."""
+    if not value:
+        return None
+    text = str(value).strip()
+    return text if is_public_url(text) else None
 
 
 def is_local_absolute_path(value: str | None) -> bool:

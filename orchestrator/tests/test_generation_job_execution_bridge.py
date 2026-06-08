@@ -73,15 +73,15 @@ def test_mock_immediate_writes_artifacts_under_job_output_dir():
     assert fetched.status == "done"
 
 
-def test_graph_immediate_pending_metadata_without_execution():
-    request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="graph_immediate")
+def test_graph_job_pending_metadata_without_execution():
+    request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="graph_job")
     job = create_generation_job(request)
 
     assert job.status == "queued"
     assert job.output_path is None
     assert job.result_payload is None
-    assert job.metadata["requested_run_mode"] == "graph_immediate"
-    assert job.metadata["effective_run_mode"] == "graph_immediate"
+    assert job.metadata["requested_run_mode"] == "graph_job"
+    assert job.metadata["effective_run_mode"] == "graph_job"
     assert job.metadata["execution_mode"] == "pending_graph_execution"
 
 

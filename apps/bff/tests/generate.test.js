@@ -202,6 +202,43 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("archives chat threads through the orchestrator", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        success: true,
+        thread: {
+          thread_id: "thread_1",
+          title: "딸기라떼 광고",
+          status: "archived",
+          final_brief: {},
+          active_job_id: null,
+          has_final_output: false,
+          last_message_at: "2026-06-07T00:00:00+00:00",
+          archived_at: "2026-06-07T00:00:00+00:00",
+          created_at: "2026-06-07T00:00:00+00:00",
+          updated_at: "2026-06-07T00:00:00+00:00"
+        }
+      })
+    );
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/chat-threads/thread_1/archive"
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().thread.status).toBe("archived");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/chat-threads/thread_1/archive",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({})
+      })
+    );
+    await app.close();
+  });
+
   it("verifies Supabase sessions before forwarding archive user ids", async () => {
     const fetchImpl = vi.fn(async (url, init) => {
       if (String(url).includes("/auth/v1/user")) {

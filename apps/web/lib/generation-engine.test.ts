@@ -10,9 +10,9 @@ import {
 
 describe("generation engine helpers", () => {
   it("uses the LangGraph run mode for final UI generation", () => {
-    expect(resolveGenerationRunMode("gpt_image_2")).toBe("graph_immediate");
-    expect(resolveGenerationRunMode("flux_schnell")).toBe("graph_immediate");
-    expect(resolveGenerationRunMode("sd35_large")).toBe("graph_immediate");
+    expect(resolveGenerationRunMode("gpt_image_2")).toBe("graph_job");
+    expect(resolveGenerationRunMode("flux_schnell")).toBe("graph_job");
+    expect(resolveGenerationRunMode("sd35_large")).toBe("graph_job");
   });
 
   it("maps UI engine choices to backend graph engine preferences", () => {
@@ -30,7 +30,7 @@ describe("generation engine helpers", () => {
   it("falls back to GPT-image-2 when no engine is selected", () => {
     expect(DEFAULT_IMAGE_GENERATION_ENGINE).toBe("gpt_image_2");
     expect(getGenerationEngineOption(null).id).toBe("gpt_image_2");
-    expect(resolveGenerationRunMode(undefined)).toBe("graph_immediate");
+    expect(resolveGenerationRunMode(undefined)).toBe("graph_job");
     expect(resolveGenerationEnginePreference(undefined)).toBe("gpt_image_2");
   });
 

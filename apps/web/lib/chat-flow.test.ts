@@ -36,6 +36,41 @@ describe("chat flow state", () => {
     expect(next.selectedImageGenerationEngine).toBe("gpt_image_2");
   });
 
+  it("appends new user prompts and can update the current turn without duplicating it", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "첫 광고 요청"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {},
+      question: {
+        field: "business_type",
+        question: "어떤 업종인가요?",
+        options: [{ id: 1, label: "카페", value: "cafe" }]
+      }
+    });
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "첫 광고 요청 + 참고 이미지",
+      referenceImagePath: "r2://references/ref.png",
+      transcriptMode: "update_current_turn"
+    });
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "두 번째 광고 요청"
+    });
+
+    expect(state.conversationMessages).toEqual([
+      { role: "user", text: "첫 광고 요청 + 참고 이미지" },
+      { role: "assistant", text: "어떤 업종인가요?" },
+      { role: "user", text: "두 번째 광고 요청" }
+    ]);
+  });
+
   it("keeps the selected image generation engine through backend responses", () => {
     let state = createInitialChatFlowState();
     state = chatFlowReducer(state, {
@@ -195,5 +230,53 @@ describe("chat flow state", () => {
 
     expect(answered.isLoading).toBe(true);
     expect(answered.conversationMessages.at(-1)?.text).toBe("카페");
+  });
+
+  it("restores a persisted thread snapshot without losing user context", () => {
+    const state = chatFlowReducer(createInitialChatFlowState(), {
+      type: "restoreThreadSnapshot",
+      prompt: "오늘 저녁 카페 딸기라떼 할인 광고",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {
+        businessType: "카페",
+        itemOrService: "딸기라떼",
+        promotionGoal: "할인 이벤트"
+      },
+      copyGenerationMode: "custom_input",
+      selectedChannelId: "instagram-feed",
+      selectedTone: "상큼한",
+      selectedImageGenerationEngine: "gpt_image_2",
+      customDirection: "딸기라떼가 크게 보이게",
+      userCustomHeadline: "오늘만 딸기라떼 반값",
+      userCustomSubcopy: "오후 2시부터 5시까지",
+      sourceImagePath: null,
+      referenceImagePath: null,
+      selectedReferenceTemplateId: null,
+      selectedReferenceTemplateTitle: null,
+      generationJob: {
+        job_id: "job_1",
+        thread_id: "thread_1",
+        status: "waiting_user_input"
+      },
+      currentQuestion: {
+        field: "item_or_service",
+        question: "홍보할 상품이나 서비스는 무엇인가요?",
+        options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+      },
+      conversationMessages: [
+        { role: "user", text: "오늘 저녁 카페 딸기라떼 할인 광고" },
+        { role: "assistant", text: "홍보할 상품이나 서비스는 무엇인가요?" }
+      ]
+    });
+
+    expect(state.step).toBe(4);
+    expect(state.jobId).toBe("job_1");
+    expect(state.threadId).toBe("thread_1");
+    expect(state.userInput).toBe("오늘 저녁 카페 딸기라떼 할인 광고");
+    expect(state.inferredContext.itemOrService).toBe("딸기라떼");
+    expect(state.copyGenerationMode).toBe("custom_input");
+    expect(state.currentQuestion?.field).toBe("item_or_service");
+    expect(state.conversationMessages.at(0)?.text).toBe("오늘 저녁 카페 딸기라떼 할인 광고");
   });
 });

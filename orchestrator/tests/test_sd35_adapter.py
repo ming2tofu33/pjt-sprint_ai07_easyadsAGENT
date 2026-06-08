@@ -5,7 +5,8 @@ from __future__ import annotations
 import orchestrator.app.t2i.engines.sd35_large as sd35_engine_mod
 import orchestrator.app.t2i.sd35_adapter as adapter_mod
 from orchestrator.app.t2i.engines.base import T2IGenerationOutput
-from orchestrator.app.t2i.router import NotImplementedT2IEngine, get_t2i_engine
+from orchestrator.app.t2i.graph_engines import GuardedLocalGraphT2IEngine
+from orchestrator.app.t2i.router import get_t2i_engine
 from orchestrator.app.t2i.sd35_adapter import SD35LargeGraphEngine
 from orchestrator.app.t2i.schemas import T2IRequest, T2IResult
 
@@ -69,10 +70,11 @@ def test_adapter_flags_missing_image(monkeypatch):
     assert out.error == "sd35_no_image"
 
 
-def test_router_returns_notimplemented_when_disabled(monkeypatch):
+def test_router_returns_graph_compatible_engine_when_disabled(monkeypatch):
     monkeypatch.setenv("EASYADS_ENABLE_SD35_LOCAL", "false")
     engine = get_t2i_engine("sd35_large")
-    assert isinstance(engine, NotImplementedT2IEngine)
+    assert isinstance(engine, GuardedLocalGraphT2IEngine)
+    assert engine.health()["available"] is False
 
 
 def test_router_returns_adapter_when_enabled(monkeypatch):

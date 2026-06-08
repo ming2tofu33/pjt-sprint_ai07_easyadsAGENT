@@ -547,6 +547,26 @@ def _get_chat_thread_db(thread_id: str, user_id: str | None = None) -> ChatThrea
     return _thread_row_to_response(row) if row else None
 
 
+def get_chat_thread_with_workspace(
+    thread_id: str,
+    user_id: str | None = None,
+) -> tuple[ChatThreadResponse, str] | None:
+    if not _use_postgres():
+        thread = get_chat_thread(thread_id, user_id=user_id)
+        return (thread, "memory_workspace") if thread else None
+
+    workspace_id = _get_demo_workspace_id(user_id)
+    row = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
+
+    if not row and user_id is None:
+        row = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=None)
+
+    if not row:
+        return None
+
+    return _thread_row_to_response(row), str(row["workspace_id"])
+
+
 def _list_chat_threads_db(user_id: str | None = None, include_archived: bool = False, limit: int = 50, offset: int = 0) -> tuple[list[ChatThreadResponse], int]:
     workspace_id = _get_demo_workspace_id(user_id)
     rows = chat_thread_repo.list_chat_threads(

@@ -128,3 +128,44 @@ def test_chat_thread_backend_files_do_not_have_duplicate_function_definitions():
                     duplicates.add(node.name)
                 seen[node.name] = node.lineno
         assert duplicates == set(), f"{path} has duplicate defs: {sorted(duplicates)}"
+
+
+def test_get_chat_thread_with_workspace_falls_back_to_owning_workspace(monkeypatch):
+    from orchestrator.app.chat_threads import service as chat_service
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(chat_service, "_get_demo_workspace_id", lambda user_id=None: "workspace_demo")
+
+    calls = []
+
+    def fake_get_chat_thread_by_public_id(public_thread_id, workspace_id=None, connection=None, for_update=False):
+        calls.append(workspace_id)
+        if workspace_id == "workspace_demo":
+            return None
+        return {
+            "id": "internal_thread_uuid",
+            "public_thread_id": public_thread_id,
+            "workspace_id": "workspace_actual",
+            "title": "카페 신메뉴 광고",
+            "status": "generating",
+            "brand_kit_id": None,
+            "project_id": None,
+            "final_brief": {},
+            "active_job_id": None,
+            "active_public_job_id": None,
+            "final_output_id": None,
+            "last_message_at": "2026-06-06T00:00:00+00:00",
+            "archived_at": None,
+            "created_at": "2026-06-06T00:00:00+00:00",
+            "updated_at": "2026-06-06T00:00:00+00:00",
+        }
+
+    monkeypatch.setattr(chat_service.chat_thread_repo, "get_chat_thread_by_public_id", fake_get_chat_thread_by_public_id)
+
+    result = chat_service.get_chat_thread_with_workspace("thread_generated")
+
+    assert result is not None
+    thread, workspace_id = result
+    assert thread.thread_id == "thread_generated"
+    assert workspace_id == "workspace_actual"
+    assert calls == ["workspace_demo", None]

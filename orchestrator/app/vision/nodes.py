@@ -21,8 +21,60 @@ def generic_image_preprocess_node(state: MarketingState) -> dict[str, Any]:
     return _run_preprocess_node(state, image_key="source_image_path", kind="generic_upload")
 
 
+def _resolve_asset_to_local_file(state: MarketingState, asset_key: str, image_key: str) -> str | None:
+    asset_id = state.get(asset_key)
+    if not asset_id:
+        return state.get(image_key)
+    
+    from orchestrator.app.db.repositories.assets import get_asset_by_public_id
+    from orchestrator.app.storage.r2_service import download_file_from_r2
+    from orchestrator.app.artifacts.service import ensure_job_output_dir
+    import os
+    
+    workspace_id = state.get("workspace_id")
+    if not workspace_id:
+        raise ValueError("workspace_id is required for asset resolution")
+        
+    asset = get_asset_by_public_id(asset_id, workspace_id=workspace_id)
+    if not asset:
+        raise ValueError(f"Asset not found: {asset_id}")
+        
+    expected_kind = "source" if asset_key == "source_asset_id" else "reference"
+    if asset.get("kind") != expected_kind:
+        raise ValueError(f"Invalid asset kind: expected {expected_kind}")
+        
+    upload_status = (asset.get("metadata") or {}).get("upload", {}).get("status")
+    if upload_status != "ready":
+        raise ValueError("Asset is not ready")
+    
+    object_key = asset.get("object_key")
+    bucket = asset.get("bucket")
+    
+    if not object_key or not bucket or asset.get("storage_provider") != "r2":
+        raise ValueError("Asset is not valid for download")
+    
+    job_id = state.get("job_id") or "vision_job"
+    output_dir = ensure_job_output_dir(job_id)
+    ext = os.path.splitext(object_key)[1] or ".png"
+    local_path = output_dir / f"{asset_key}{ext}"
+    
+    if not local_path.exists():
+        download_file_from_r2(object_key=object_key, local_path=str(local_path), bucket=bucket)
+        
+    return str(local_path)
+
+
 def _run_preprocess_node(state: MarketingState, image_key: str, kind: ImageInputKind) -> dict[str, Any]:
-    image_path = state.get(image_key)
+    asset_key = "source_asset_id" if image_key == "source_image_path" else "reference_asset_id"
+    try:
+        image_path = _resolve_asset_to_local_file(state, asset_key, image_key)
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "error_message": f"asset_resolution_failed: {exc}",
+            "updated_at": now_iso(),
+        }
+
     if not image_path:
         return {
             "status": "preprocessing_image",

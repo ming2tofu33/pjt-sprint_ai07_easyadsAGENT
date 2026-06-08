@@ -13,9 +13,10 @@ type ChatContextQuestionStepProps = {
   state: ChatFlowState;
   onAnswer: (input: { value: string; label: string; customText?: string }) => void;
   onBack: () => void;
+  onDelete?: () => void;
 };
 
-export function ChatContextQuestionStep({ state, onAnswer, onBack }: ChatContextQuestionStepProps) {
+export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: ChatContextQuestionStepProps) {
   const [customText, setCustomText] = useState("");
   const question = state.currentQuestion;
   if (!question) {
@@ -44,11 +45,11 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack }: ChatContext
     onAnswer({ value: option.value, label: option.label });
   }
 
-  const hasCustomOption = question.options.some((option) => option.value === "custom");
+  const hasCustomOption = question.options.length === 0 || question.options.some((option) => option.value === "custom");
 
   return (
     <>
-      <StepHeader title="AI가 필요한 정보를 물어볼게요" canGoBack onBack={onBack} />
+      <StepHeader title="AI가 필요한 정보를 물어볼게요" canGoBack onBack={onBack} onDelete={onDelete} />
 
       <section className={styles.chatTranscript} aria-label="대화 내용">
         {state.conversationMessages.map((message, index) =>

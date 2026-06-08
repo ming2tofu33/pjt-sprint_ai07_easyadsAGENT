@@ -65,6 +65,7 @@ JobStatus = Literal[
     "rendering_prompt",
     "t2i_queued",
     "t2i_running",
+    "modal_running",
     "background_validating",
     "waiting_candidate_selection",
     "overlaying_text",
@@ -189,8 +190,10 @@ class InitialMarketingRequest(BaseModel):
     user_input: str = Field(..., min_length=1)
     prompt_json: dict[str, Any] | None = None
     context: MarketingContext | None = None
-    image_input: ImageInput | None = None
-    reference_input: ReferenceInput | None = None
+    image_input: Any | None = None
+    reference_input: Any | None = None
+    source_asset_id: str | None = None
+    reference_asset_id: str | None = None
     source_image_path: str | None = None
     reference_image_path: str | None = None
     vision_preprocess_mode: str | None = None
@@ -198,6 +201,7 @@ class InitialMarketingRequest(BaseModel):
     render_profile: RenderProfile = "balanced"
     requested_ad_format: str | None = None
     requested_platform: str | None = None
+    workspace_id: str | None = None
     project_id: str | None = None
     user_id: str | None = None
     organization_id: str | None = None

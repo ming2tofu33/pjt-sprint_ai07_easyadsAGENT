@@ -12,6 +12,7 @@ from orchestrator.app.db.repositories import workspaces as workspace_repo
 from orchestrator.app.db.repositories import generation_jobs as job_repo
 from orchestrator.app.db.repositories import generation_outputs as output_repo
 from orchestrator.app.db.repositories import chat_threads as thread_repo
+from orchestrator.app.artifacts.service import sanitize_result_artifact_payload_for_api, browser_usable_url
 
 
 class ArchivePersistenceUnavailable(RuntimeError):
@@ -71,35 +72,19 @@ def _iso(value: object | None) -> str | None:
 
 
 def archive_item_from_row(row: dict) -> ArchiveItemResponse:
-    from orchestrator.app.artifacts.service import sanitize_result_artifact_payload_for_api
-    from urllib.parse import urlparse
-    
-    def _browser_usable_url(value: object | None) -> str | None:
-        if not value:
-            return None
-        text = str(value).strip()
-        parsed = urlparse(text)
-        if parsed.scheme not in {"http", "https"}:
-            return None
-        if not parsed.netloc:
-            return None
-        return text
-        
     public_archive_id = row.get("public_archive_id")
     if not public_archive_id:
         raise ArchivePersistenceUnavailable("Archive public ID is missing.")
 
-    # Base URL parsing
-    thumbnail_url = _browser_usable_url(row.get("thumbnail_public_url") or row.get("thumbnail_url"))
-    image_url = _browser_usable_url(row.get("asset_public_url") or row.get("image_url"))
+    thumbnail_url = browser_usable_url(row.get("thumbnail_public_url") or row.get("thumbnail_url"))
+    image_url = browser_usable_url(row.get("asset_public_url") or row.get("image_url"))
     
-    # Safe payload parsing for download url
     safe_payload = sanitize_result_artifact_payload_for_api(row.get("output_result_payload") or {})
     download_url = None
     if safe_payload.get("download_url"):
-        download_url = _browser_usable_url(safe_payload["download_url"])
+        download_url = browser_usable_url(safe_payload["download_url"])
     elif safe_payload.get("final_image_url"):
-        download_url = _browser_usable_url(safe_payload["final_image_url"])
+        download_url = browser_usable_url(safe_payload["final_image_url"])
         
     if not image_url and download_url:
         image_url = download_url
@@ -139,8 +124,8 @@ def create_archive_item(request: ArchiveItemCreateRequest) -> ArchiveItemRespons
             
         job = job_repo.get_generation_job_db(public_job_id=request.public_job_id, workspace_id=workspace_id)
         if not job:
-            raise ArchiveGenerationOutputNotReady("Job not found")
-        # sync_archive_for_job will handle extraction
+            raise ArchiveItemNotFound("Job not found")
+        # sync_archive_for_job이 output/asset을 DB에서 직접 조회 (client URL 무시)
         return sync_archive_for_job(workspace_id=workspace_id, internal_job_id=str(job["id"]))
 
     row = archive_item_repo.create_archive_item_row(
@@ -170,8 +155,6 @@ def list_archive_items(*, workspace_id: str | None = None, user_id: str | None =
         offset=offset,
     )
     total = archive_item_repo.count_archive_item_rows(workspace_id=resolved_workspace_id, created_by=resolved_user_id)
-    # We may need to get details if we want full joins for list, but for now we map direct rows
-    # The list repo does not join assets by default. We will return minimal items.
     return [archive_item_from_row(r) for r in rows], total
 
 
@@ -180,7 +163,11 @@ def get_archive_item(*, archive_item_id: str, workspace_id: str | None = None, u
     resolved_user_id = _resolve_user_id(user_id)
     resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
     
-    row = archive_item_repo.get_archive_item_row(public_archive_id=archive_item_id, workspace_id=resolved_workspace_id)
+    row = archive_item_repo.get_archive_item_row(
+        public_archive_id=archive_item_id,
+        workspace_id=resolved_workspace_id,
+        created_by=resolved_user_id,
+    )
     if not row:
         raise ArchiveItemNotFound("Archive item not found.")
     return archive_item_from_row(row)
@@ -213,7 +200,6 @@ def sync_archive_for_job(workspace_id: str, internal_job_id: str, connection: ob
     thread = thread_repo.get_chat_thread(thread_id=str(thread_id), connection=connection) if thread_id else None
     
     # 3. Find Final Output for Thread
-    from orchestrator.app.db.repositories import generation_outputs as output_repo
     outputs = output_repo.list_generation_outputs(workspace_id=workspace_id, public_job_id=public_job_id, is_final=True, connection=connection)
     if not outputs:
         raise ArchiveGenerationOutputNotReady("Final generation output is not ready.")
@@ -270,7 +256,6 @@ def sync_archive_for_job(workspace_id: str, internal_job_id: str, connection: ob
     return archive_item_from_row(archive_item_repo.get_archive_item_row(public_archive_id=row["public_archive_id"], workspace_id=workspace_id, connection=connection))
 
 def sync_archive_for_output(workspace_id: str, internal_output_id: str, connection: object | None = None) -> ArchiveItemResponse:
-    from orchestrator.app.db.repositories import generation_outputs as output_repo
     output = output_repo.get_generation_output_by_id(output_id=internal_output_id, workspace_id=workspace_id, connection=connection)
     if not output:
         raise ArchiveGenerationOutputNotReady("Generation output not found.")

@@ -103,7 +103,7 @@ export const UI_ORCHESTRATOR_ROUTE_COVERAGE: UiOrchestratorRouteCoverageRow[] = 
     graphNodesReached: FINAL_GENERATION_GRAPH_CHAIN,
     graphNodesBypassed: [],
     testEvidence: ["apps/web/app/generate/chat/ChatGenerateClient.test.tsx", "orchestrator/tests/test_generation_job_graph_execution.py"],
-    notes: "현재 UI의 모델 선택은 graph_immediate generation job으로 전달되며, 선택 엔진은 graph state의 engine preference로 t2i_generation 노드까지 전달된다."
+    notes: "현재 UI의 모델 선택은 graph_job generation job으로 전달되며, 선택 엔진은 graph state의 engine preference로 t2i_generation 노드까지 전달된다."
   },
   {
     id: "reference-template-selection",

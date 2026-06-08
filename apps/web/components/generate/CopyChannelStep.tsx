@@ -4,8 +4,8 @@ import clsx from "clsx";
 import { Check, Instagram, PenLine } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { channelOptions } from "@/lib/chat-flow";
+import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
-import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
 type CopyChannelStepProps = {
@@ -15,6 +15,7 @@ type CopyChannelStepProps = {
   onCustomDirection: (value: string) => void;
   onContinue: () => void;
   onBack: () => void;
+  onDelete?: () => void;
 };
 
 export function CopyChannelStep({
@@ -23,15 +24,38 @@ export function CopyChannelStep({
   onSelectChannel,
   onCustomDirection,
   onContinue,
-  onBack
+  onBack,
+  onDelete
 }: CopyChannelStepProps) {
+  return (
+    <ChatTimelineStep state={state} onBack={onBack} onDelete={onDelete}>
+      <CopyChannelCard
+        state={state}
+        onSelectCopy={onSelectCopy}
+        onSelectChannel={onSelectChannel}
+        onCustomDirection={onCustomDirection}
+        onContinue={onContinue}
+      />
+    </ChatTimelineStep>
+  );
+}
+
+type CopyChannelCardProps = Omit<CopyChannelStepProps, "onBack" | "onDelete">;
+
+export function CopyChannelCard({
+  state,
+  onSelectCopy,
+  onSelectChannel,
+  onCustomDirection,
+  onContinue
+}: CopyChannelCardProps) {
   const hasBackendSession = Boolean(state.jobId && state.threadId);
   const hasBackendCopyCandidates = state.copyCandidateSource === "backend" && state.copyCandidates.length > 0;
   const cannotContinue = state.isLoading || !hasBackendSession || !hasBackendCopyCandidates;
 
   return (
     <>
-      <StepHeader title="문구와 채널을 골라주세요" canGoBack onBack={onBack} />
+      <h2 className={styles.timelineSectionTitle}>문구와 채널을 골라주세요</h2>
 
       <div className={styles.assistantBubble}>
         <span className={styles.assistantAvatar}>AI</span>

@@ -75,6 +75,26 @@ export function createInitialChatFlowState(): ChatFlowState {
   };
 }
 
+function applyUserPromptToTranscript(
+  messages: ChatFlowState["conversationMessages"],
+  prompt: string,
+  mode: "append" | "update_current_turn" = "append"
+): ChatFlowState["conversationMessages"] {
+  if (mode === "update_current_turn") {
+    let lastUserIndex = -1;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "user") {
+        lastUserIndex = index;
+        break;
+      }
+    }
+    if (lastUserIndex >= 0) {
+      return messages.map((message, index) => (index === lastUserIndex ? { ...message, text: prompt } : message));
+    }
+  }
+  return [...messages, { role: "user", text: prompt }];
+}
+
 export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): ChatFlowState {
   switch (action.type) {
     case "reset":
@@ -97,7 +117,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
           promotionGoal: ""
         },
         contextSource: "empty",
-        conversationMessages: [{ role: "user", text: action.prompt }],
+        conversationMessages: applyUserPromptToTranscript(state.conversationMessages, action.prompt, action.transcriptMode),
         isLoading: true,
         errorMessage: null
       };
@@ -108,6 +128,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         progress: { current: 1, total: 4, label: "정보 입력" },
         jobId: action.jobId,
         threadId: action.threadId,
+        generationJob: action.generationJob ?? state.generationJob,
         sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
         referenceImagePath: action.referenceImagePath ?? state.referenceImagePath ?? null,
         inferredContext: {
@@ -239,6 +260,42 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         progress: { current: 4, total: 4, label: "정보 입력" },
         isLoading: false
       };
+    case "restoreThreadSnapshot":
+      return {
+        ...state,
+        step: 4,
+        progress: {
+          current: 4,
+          total: 4,
+          label: action.currentQuestion ? "추가 정보" : "정보 입력"
+        },
+        userInput: action.prompt,
+        jobId: action.jobId,
+        threadId: action.threadId,
+        inferredContext: action.context,
+        contextSource: "backend",
+        copyGenerationMode: action.copyGenerationMode,
+        selectedChannelId: action.selectedChannelId,
+        selectedTone: action.selectedTone,
+        selectedImageGenerationEngine: action.selectedImageGenerationEngine,
+        customDirection: action.customDirection,
+        userCustomHeadline: action.userCustomHeadline,
+        userCustomSubcopy: action.userCustomSubcopy,
+        sourceImagePath: action.sourceImagePath,
+        referenceImagePath: action.referenceImagePath,
+        selectedReferenceTemplateId: action.selectedReferenceTemplateId,
+        selectedReferenceTemplateTitle: action.selectedReferenceTemplateTitle,
+        generationJob: action.generationJob,
+        currentQuestion: action.currentQuestion,
+        conversationMessages:
+          action.conversationMessages.length > 0
+            ? action.conversationMessages
+            : action.prompt
+              ? [{ role: "user", text: action.prompt }]
+              : state.conversationMessages,
+        isLoading: false,
+        errorMessage: null
+      };
     case "showResultShell":
       return {
         ...state,
@@ -247,6 +304,19 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         isLoading: false,
         currentQuestion: null,
         errorMessage: null
+      };
+    case "showGenerationFailure":
+      return {
+        ...state,
+        step: 4,
+        progress: { current: 4, total: 4, label: "생성 실패" },
+        threadId: action.threadId ?? state.threadId,
+        userInput: action.userInput ?? state.userInput,
+        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
+        generationJob: null,
+        isLoading: false,
+        currentQuestion: null,
+        errorMessage: action.message
       };
     case "back":
       return {
@@ -265,6 +335,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
     case "generationJobUpdated":
       return {
         ...state,
+        jobId: action.generationJob.job_id ?? state.jobId,
+        threadId: action.generationJob.thread_id ?? state.threadId,
         generationJob: action.generationJob,
         currentQuestion: action.generationJob.status === "waiting_user_input" ? state.currentQuestion : null,
         isLoading: false,

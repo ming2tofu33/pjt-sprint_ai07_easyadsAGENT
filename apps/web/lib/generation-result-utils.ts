@@ -1,5 +1,4 @@
 import type { GenerationJob, ResultArtifactPayload } from "./api-client";
-import { buildGeneratedAssetUrl } from "./generated-assets";
 
 const LOCAL_PATH_PREFIXES = [
   "data/outputs/",
@@ -83,11 +82,6 @@ export function getDisplayImageUrl(payload: ResultArtifactPayload | null | undef
     payload?.preview_image_url,
     payload?.copy_visual_preview_url,
     payload?.download_url
-  ) ?? firstGeneratedAssetUrl(
-    payload?.final_image_path,
-    payload?.download_path,
-    payload?.background_image_path,
-    payload?.copy_visual_preview_path
   );
 }
 
@@ -97,11 +91,6 @@ export function getDownloadUrl(payload: ResultArtifactPayload | null | undefined
     payload?.final_image_url,
     payload?.preview_image_url,
     payload?.copy_visual_preview_url
-  ) ?? firstGeneratedAssetUrl(
-    payload?.download_path,
-    payload?.final_image_path,
-    payload?.copy_visual_preview_path,
-    payload?.background_image_path
   );
 }
 
@@ -190,7 +179,7 @@ export function getGenerationResultNotice(job: GenerationJob | null | undefined)
       return { level: "success", message: "완성된 이미지를 확인할 수 있어요." };
     }
     if (hasOnlyLocalArtifactPath(payload)) {
-      return { level: "warning", message: "이미지는 생성됐지만 아직 화면에서 바로 열 수 없어요." };
+      return { level: "warning", message: "이미지는 생성됐지만 보관함에서 확인할 수 있는 주소가 아직 연결되지 않았어요." };
     }
     return { level: "warning", message: "생성은 끝났지만 표시할 이미지 정보를 찾지 못했어요." };
   }
@@ -259,16 +248,6 @@ function firstPublicUrl(...values: Array<string | null | undefined>): string | n
   for (const value of values) {
     if (value && isPublicBrowserUrl(value)) {
       return value;
-    }
-  }
-  return null;
-}
-
-function firstGeneratedAssetUrl(...values: Array<string | null | undefined>): string | null {
-  for (const value of values) {
-    const url = buildGeneratedAssetUrl(value);
-    if (url) {
-      return url;
     }
   }
   return null;

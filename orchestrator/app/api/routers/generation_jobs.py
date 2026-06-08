@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, BackgroundTasks, status
 
 from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.api.schemas.generation_jobs import (
@@ -20,6 +20,7 @@ from orchestrator.app.generation_jobs.execution import (
 from orchestrator.app.generation_jobs.service import (
     create_generation_job,
     get_generation_job,
+    mark_generation_job_running,
     maybe_poll_generation_job_from_modal,
     maybe_submit_generation_job_to_modal,
     should_route_generation_job_to_modal,
@@ -63,19 +64,29 @@ def _chat_thread_error(exc: ChatThreadServiceError) -> None:
 
 
 @router.post("/generation-jobs", response_model=GenerationJobCreateResponse, status_code=status.HTTP_201_CREATED)
-def create_generation_job_route(request: GenerationJobCreateRequest) -> GenerationJobCreateResponse:
+def create_generation_job_route(
+    request: GenerationJobCreateRequest,
+    background_tasks: BackgroundTasks,
+) -> GenerationJobCreateResponse:
     if request.selected_reference_template_id and not get_reference_template(request.selected_reference_template_id):
         _reference_template_not_found(request.selected_reference_template_id)
+    from orchestrator.app.generation_jobs.errors import GenerationJobError
     try:
         job = create_generation_job(request)
     except ChatThreadServiceError as exc:
         _chat_thread_error(exc)
+    except GenerationJobError as exc:
+        raise_api_error(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            message=exc.message,
+        )
     if should_route_generation_job_to_modal(request):
         job = maybe_submit_generation_job_to_modal(job, request)
     elif request.run_mode == "mock_immediate":
         job = execute_generation_job_immediate(job.job_id, request)
-    elif request.run_mode == "graph_immediate":
-        job = execute_generation_job_graph(job.job_id, request)
+    elif request.run_mode == "graph_job":
+        background_tasks.add_task(execute_generation_job_graph, job.job_id, request)
     elif request.run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_2")
     elif request.run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
@@ -95,12 +106,31 @@ def get_generation_job_route(job_id: str) -> GenerationJobGetResponse:
 
 
 @router.post("/generation-jobs/{job_id}/answer", response_model=GenerationJobGetResponse)
-def answer_generation_job_route(job_id: str, request: GenerationJobAnswerRequest) -> GenerationJobGetResponse:
+def answer_generation_job_route(
+    job_id: str,
+    request: GenerationJobAnswerRequest,
+    background_tasks: BackgroundTasks,
+) -> GenerationJobGetResponse:
     job = get_generation_job(job_id)
     if not job:
         _generation_job_not_found(job_id)
+    if job.status != "waiting_user_input":
+        raise_api_error(
+            status_code=409,
+            error_code="generation_job_resume_failed",
+            message="Generation job could not be resumed.",
+            detail="generation job is not waiting for user input",
+        )
+    if not job.thread_id:
+        raise_api_error(
+            status_code=409,
+            error_code="generation_job_resume_failed",
+            message="Generation job could not be resumed.",
+            detail="generation job has no thread_id",
+        )
     try:
-        resumed = resume_generation_job_graph(job_id, request)
+        running = mark_generation_job_running(job_id, stage="planning")
+        background_tasks.add_task(resume_generation_job_graph, job_id, request, allow_running=True)
     except ValueError as exc:
         raise_api_error(
             status_code=409,
@@ -108,4 +138,4 @@ def answer_generation_job_route(job_id: str, request: GenerationJobAnswerRequest
             message="Generation job could not be resumed.",
             detail=str(exc),
         )
-    return GenerationJobGetResponse(job=resumed)
+    return GenerationJobGetResponse(job=running or job)

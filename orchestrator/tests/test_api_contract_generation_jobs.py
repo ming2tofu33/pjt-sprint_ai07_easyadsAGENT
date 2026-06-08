@@ -49,12 +49,14 @@ def test_generation_job_answer_request_supports_camel_case_custom_text():
             "field": "item_or_service",
             "value": "custom",
             "customText": "딸기라떼",
+            "displayText": "딸기라떼",
         }
     )
 
     payload = request.to_resume_payload(job_id="job_1", thread_id="thread_1")
 
     assert payload["custom_text"] == "딸기라떼"
+    assert payload["display_text"] == "딸기라떼"
 
 
 def test_generation_progress_percent_validation():

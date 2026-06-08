@@ -98,13 +98,20 @@ def test_invalid_job_reference_and_request_errors(client):
     assert invalid.status_code == 400
     assert invalid.json()["error_code"] == "invalid_generation_job_request"
 
+    legacy_run_mode = client.post(
+        "/api/v1/generation-jobs",
+        json={"user_input": "Create an ad", "run_mode": "graph_immediate"},
+    )
+    assert legacy_run_mode.status_code == 400
+    assert legacy_run_mode.json()["error_code"] == "invalid_generation_job_request"
 
-def test_graph_immediate_pending_metadata(client):
+
+def test_graph_job_pending_metadata(client):
     response = client.post(
         "/api/v1/generation-jobs",
         json={
             "user_input": "카페 신메뉴 광고 만들어줘",
-            "run_mode": "graph_immediate",
+            "run_mode": "graph_job",
         },
     )
 
@@ -115,12 +122,12 @@ def test_graph_immediate_pending_metadata(client):
     assert job["status"] in ("queued", "waiting_user_input")
     assert job["output_path"] is None
     assert job["result_payload"] is None
-    assert job["metadata"]["requested_run_mode"] == "graph_immediate"
-    assert job["metadata"]["effective_run_mode"] == "graph_immediate"
-    assert job["metadata"]["execution_mode"] in ("pending_graph_execution", "graph_immediate")
+    assert job["metadata"]["requested_run_mode"] == "graph_job"
+    assert job["metadata"]["effective_run_mode"] == "graph_job"
+    assert job["metadata"]["execution_mode"] in ("pending_graph_execution", "graph_job")
 
 
-def test_graph_immediate_routes_to_graph_executor_with_engine_metadata(client, monkeypatch):
+def test_graph_job_routes_to_graph_executor_with_engine_metadata(client, monkeypatch):
     captured = {}
 
     def fake_execute_generation_job_graph(job_id, request):
@@ -142,7 +149,7 @@ def test_graph_immediate_routes_to_graph_executor_with_engine_metadata(client, m
         "/api/v1/generation-jobs",
         json={
             "user_input": "카페 신메뉴 광고 만들어줘",
-            "run_mode": "graph_immediate",
+            "run_mode": "graph_job",
             "metadata": {
                 "selected_engine": "flux_schnell",
                 "requested_engine": "flux",
@@ -152,7 +159,7 @@ def test_graph_immediate_routes_to_graph_executor_with_engine_metadata(client, m
     )
 
     assert response.status_code == 201
-    assert captured["run_mode"] == "graph_immediate"
+    assert captured["run_mode"] == "graph_job"
     assert captured["metadata"]["selected_engine"] == "flux_schnell"
     assert captured["metadata"]["requested_engine"] == "flux"
     assert captured["metadata"]["t2i_engine"] == "flux"
@@ -161,10 +168,11 @@ def test_graph_immediate_routes_to_graph_executor_with_engine_metadata(client, m
 def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
     captured = {}
 
-    def fake_resume_generation_job_graph(job_id, answer):
+    def fake_resume_generation_job_graph(job_id, answer, *, allow_running=False):
         from orchestrator.app.generation_jobs.service import get_generation_job, update_generation_job
 
         captured["job_id"] = job_id
+        captured["allow_running"] = allow_running
         captured["payload"] = answer.to_resume_payload(job_id=job_id, thread_id="thread_1")
         updated = update_generation_job(
             job_id,
@@ -192,16 +200,18 @@ def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
     )
 
     assert answer_response.status_code == 200
+    assert answer_response.json()["job"]["status"] == "running"
     assert captured["job_id"] == job["job_id"]
+    assert captured["allow_running"] is True
     assert captured["payload"]["field"] == "business_type"
     assert captured["payload"]["value"] == "cafe"
 
 
 def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
-    monkeypatch.delenv("EASYADS_ENABLE_EXTERNAL_T2I", raising=False)
-    monkeypatch.delenv("EASYADS_ENABLE_GPT_IMAGE_2", raising=False)
-    monkeypatch.delenv("EASYADS_ENABLE_SD35_LOCAL", raising=False)
-    monkeypatch.delenv("EASYADS_ENABLE_FLUX_LOCAL", raising=False)
+    monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "false")
+    monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "false")
+    monkeypatch.setenv("EASYADS_ENABLE_SD35_LOCAL", "false")
+    monkeypatch.setenv("EASYADS_ENABLE_FLUX_LOCAL", "false")
 
     gpt = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "gpt_image_2_smoke"})
     sd35 = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "sd35_local_smoke"})
@@ -274,10 +284,10 @@ def test_generation_job_chat_thread_errors_are_mapped(client, monkeypatch, exc, 
 
 
 def test_generation_job_actual_payload_preserves_quality_batch_metadata(client, monkeypatch):
-    monkeypatch.delenv("EASYADS_ENABLE_EXTERNAL_T2I", raising=False)
-    monkeypatch.delenv("EASYADS_ENABLE_GPT_IMAGE_2", raising=False)
-    monkeypatch.delenv("EASYADS_QUALITY_BATCH_CONFIRM", raising=False)
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "false")
+    monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "false")
+    monkeypatch.setenv("EASYADS_QUALITY_BATCH_CONFIRM", "false")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
 
     response = client.post(
         "/api/v1/generation-jobs",

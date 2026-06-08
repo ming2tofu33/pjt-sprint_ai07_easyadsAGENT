@@ -1,4 +1,5 @@
-import { ChevronLeft, Home, MessageCircle } from "lucide-react";
+import React from "react";
+import { ChevronLeft, Home, MessageCircle, Trash2 } from "lucide-react";
 import styles from "./generate.module.css";
 
 type StepHeaderProps = {
@@ -8,9 +9,10 @@ type StepHeaderProps = {
   backLabel?: string;
   onHome?: () => void;
   onHistory?: () => void;
+  onDelete?: () => void;
 };
 
-export function StepHeader({ title, canGoBack = false, onBack, backLabel = "이전 단계", onHome, onHistory }: StepHeaderProps) {
+export function StepHeader({ title, canGoBack = false, onBack, backLabel = "이전 단계", onHome, onHistory, onDelete }: StepHeaderProps) {
   return (
     <header className={styles.topNav}>
       {canGoBack ? (
@@ -28,6 +30,10 @@ export function StepHeader({ title, canGoBack = false, onBack, backLabel = "이�
       ) : onHistory ? (
         <button className={styles.iconButton} type="button" aria-label="이전 대화" onClick={onHistory}>
           <MessageCircle size={20} strokeWidth={2.4} aria-hidden="true" />
+        </button>
+      ) : onDelete ? (
+        <button className={styles.iconButton} type="button" aria-label="작업방 삭제" onClick={onDelete}>
+          <Trash2 size={19} strokeWidth={2.25} aria-hidden="true" />
         </button>
       ) : (
         <span />

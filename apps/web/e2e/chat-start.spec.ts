@@ -89,9 +89,9 @@ test("chat start flow reaches final brief on mobile", async ({ page }) => {
   await page.getByRole("button", { name: "브리프 확인하기" }).click();
 
   await expect(page.getByText("AI가 브리프를 정리했어요")).toBeVisible();
-  await expect(page.getByRole("button", { name: /생성 결과 확인하기|결과 상태 확인하기/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /이 내용으로 이미지 생성|이 내용으로 이미지 생성/ })).toBeVisible();
 
-  await page.getByRole("button", { name: /생성 결과 확인하기|결과 상태 확인하기/ }).click();
+  await page.getByRole("button", { name: /이 내용으로 이미지 생성|이 내용으로 이미지 생성/ }).click();
   await expect(page).toHaveURL(/\/generate\/chat\/complete$/);
   await expect(page.getByRole("heading", { name: "찰떡 광고 시안이 완성됐어요" })).toBeVisible();
 });
@@ -421,7 +421,7 @@ test("photo upload flow reaches brief and generation", async ({ page }) => {
   await expect(page.getByText("AI가 브리프를 정리했어요")).toBeVisible();
   await expect(page.getByText("대화로 찰떡 이미지 만들기")).not.toBeVisible();
 
-  await page.getByRole("button", { name: /결과 상태 확인하기/ }).click();
+  await page.getByRole("button", { name: /이 내용으로 이미지 생성/ }).click();
   await expect(page).toHaveURL(/\/generate\/chat\/complete$/);
   await expect(page.getByText("이미지 생성이 완료되지 않았어요")).toBeVisible();
   await expect(page.getByText("실제 이미지 파일을 받지 못했어요")).toBeVisible();

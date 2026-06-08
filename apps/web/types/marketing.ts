@@ -135,6 +135,7 @@ export type ChatFlowAction =
       referenceImagePath?: string | null;
       userCustomHeadline?: string | null;
       userCustomSubcopy?: string | null;
+      transcriptMode?: "append" | "update_current_turn";
     }
   | {
       type: "backendStartSucceeded";
@@ -158,6 +159,7 @@ export type ChatFlowAction =
       threadId: string;
       context: PartialInferredContext;
       question: OptionQuestion;
+      generationJob?: GenerationJob;
       sourceImagePath?: string | null;
       referenceImagePath?: string | null;
     }
@@ -185,7 +187,35 @@ export type ChatFlowAction =
     }
   | { type: "referenceTemplateCleared" }
   | { type: "continueToBrief" }
+  | {
+      type: "restoreThreadSnapshot";
+      prompt: string;
+      jobId: string;
+      threadId: string;
+      context: InferredContext;
+      copyGenerationMode: CopyGenerationMode;
+      selectedChannelId: string;
+      selectedTone: string;
+      selectedImageGenerationEngine: ImageGenerationEngine;
+      customDirection: string;
+      userCustomHeadline: string;
+      userCustomSubcopy: string;
+      sourceImagePath: string | null;
+      referenceImagePath: string | null;
+      selectedReferenceTemplateId: string | null;
+      selectedReferenceTemplateTitle: string | null;
+      generationJob: GenerationJob;
+      currentQuestion: OptionQuestion | null;
+      conversationMessages: ChatTranscriptMessage[];
+    }
   | { type: "showResultShell" }
+  | {
+      type: "showGenerationFailure";
+      message: string;
+      threadId?: string | null;
+      userInput?: string | null;
+      imageGenerationEngine?: ImageGenerationEngine | null;
+    }
   | { type: "back" }
   | { type: "generationJobRequested" }
   | { type: "generationJobUpdated"; generationJob: GenerationJob }

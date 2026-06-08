@@ -1,4 +1,4 @@
-﻿"""MarketingState helpers for the LLM/LangGraph intake graph."""
+"""MarketingState helpers for the LLM/LangGraph intake graph."""
 
 from __future__ import annotations
 
@@ -68,6 +68,7 @@ class MarketingState(TypedDict, total=False):
     schema_version: str
     job_id: str
     thread_id: str
+    workspace_id: str | None
     project_id: str | None
     user_id: str | None
     organization_id: str | None
@@ -91,6 +92,8 @@ class MarketingState(TypedDict, total=False):
     user_selection: dict[str, Any] | UserSelectionRequest | None
     image_input: dict[str, Any] | ImageInput | None
     reference_input: dict[str, Any] | ReferenceInput | None
+    source_asset_id: str | None
+    reference_asset_id: str | None
     source_image_path: str | None
     reference_image_path: str | None
     vision_preprocess_mode: str | None
@@ -204,6 +207,8 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "copy_generation_mode": request.copy_generation_mode,
         "user_custom_headline": request.user_custom_headline,
         "user_custom_subcopy": request.user_custom_subcopy,
+        "source_asset_id": request.source_asset_id if hasattr(request, "source_asset_id") else None,
+        "reference_asset_id": request.reference_asset_id if hasattr(request, "reference_asset_id") else None,
         "source_image_path": request.source_image_path,
         "reference_image_path": request.reference_image_path,
         "selected_reference_template_id": request.selected_reference_template_id,
@@ -214,6 +219,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "schema_version": SCHEMA_VERSION,
         "job_id": job_id,
         "thread_id": thread_id,
+        "workspace_id": getattr(request, "workspace_id", None),
         "project_id": request.project_id,
         "user_id": request.user_id,
         "organization_id": request.organization_id,
@@ -238,6 +244,8 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "user_selection": None,
         "image_input": model_to_dict(request.image_input),
         "reference_input": model_to_dict(request.reference_input),
+        "source_asset_id": request.source_asset_id if hasattr(request, "source_asset_id") else None,
+        "reference_asset_id": request.reference_asset_id if hasattr(request, "reference_asset_id") else None,
         "source_image_path": request.source_image_path,
         "reference_image_path": request.reference_image_path,
         "vision_preprocess_mode": request.vision_preprocess_mode,

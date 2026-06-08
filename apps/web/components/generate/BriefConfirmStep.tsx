@@ -4,31 +4,37 @@ import { Gift, Heart, Megaphone, Package, Sparkles, Star } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import { BriefRow } from "./BriefRow";
+import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
-import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
 type BriefConfirmStepProps = {
   state: ChatFlowState;
   onBack: () => void;
   onGenerate: () => void;
+  onDelete?: () => void;
 };
 
-export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStepProps) {
+export function BriefConfirmStep({ state, onBack, onGenerate, onDelete }: BriefConfirmStepProps) {
+  return (
+    <ChatTimelineStep state={state} onBack={onBack} onDelete={onDelete}>
+      <BriefConfirmCard state={state} onGenerate={onGenerate} />
+    </ChatTimelineStep>
+  );
+}
+
+type BriefConfirmCardProps = Omit<BriefConfirmStepProps, "onBack" | "onDelete">;
+
+export function BriefConfirmCard({ state, onGenerate }: BriefConfirmCardProps) {
   const brief = buildBrief(state);
-  const hasGeneratedImage = Boolean(brief.finalImagePath);
 
   return (
     <>
-      <StepHeader title="AI가 브리프를 정리했어요" canGoBack onBack={onBack} />
+      <h2 className={styles.timelineSectionTitle}>AI가 브리프를 정리했어요</h2>
 
       <div className={styles.assistantBubble}>
         <span className={styles.assistantAvatar}>AI</span>
-        <p className={styles.bubble}>
-          {hasGeneratedImage
-            ? "실제 광고 이미지 생성이 완료됐어요. 이제 결과 화면에서 확인할 수 있어요."
-            : "브리프는 정리됐지만 아직 표시할 실제 이미지를 받지 못했어요. 결과 화면에서 상태를 확인할 수 있어요."}
-        </p>
+        <p className={styles.bubble}>아래 내용으로 이해했어요. 맞다면 이 브리프로 이미지를 생성할게요.</p>
       </div>
 
       <section className={styles.briefCard} aria-label="광고 브리프 요약">
@@ -48,9 +54,7 @@ export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStep
       </section>
 
       <div className={styles.stepFooter}>
-        <p className={styles.completeNote}>
-          {hasGeneratedImage ? "생성된 이미지를 결과 화면에서 바로 확인해보세요." : "임의 카드로 대체하지 않고 실제 이미지가 준비된 경우에만 결과를 표시합니다."}
-        </p>
+        <p className={styles.completeNote}>내용이 다르면 이전 단계로 돌아가 수정한 뒤 생성해주세요.</p>
 
         <div className={`${styles.progressWrap} ${styles.finalProgress}`}>
           <span>
@@ -62,7 +66,7 @@ export function BriefConfirmStep({ state, onBack, onGenerate }: BriefConfirmStep
         </div>
 
         <button className={styles.primaryButton} type="button" onClick={onGenerate}>
-          {hasGeneratedImage ? "생성 결과 확인하기" : "결과 상태 확인하기"} <Sparkles size={18} aria-hidden="true" />
+          이 내용으로 이미지 생성 <Sparkles size={18} aria-hidden="true" />
         </button>
       </div>
     </>

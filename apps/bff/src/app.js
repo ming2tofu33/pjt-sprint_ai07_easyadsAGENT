@@ -409,6 +409,16 @@ export function buildApp(options = {}) {
     });
   });
 
+  app.post("/api/chat-threads/:threadId/archive", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/archive${queryString}`, "userId", userId),
+      body: {}
+    });
+  });
+
   app.post("/api/generate/chat/start", async (request, reply) => {
     const parsed = chatStartSchema.safeParse(request.body);
     if (!parsed.success) {

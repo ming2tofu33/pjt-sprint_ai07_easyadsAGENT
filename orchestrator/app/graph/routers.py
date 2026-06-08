@@ -70,4 +70,11 @@ def route_by_copy_presence(state: MarketingState) -> str:
     return "text_renderer"
 
 
+def route_after_t2i_generation(state: MarketingState) -> str:
+    status = state.get("status")
+    if status in {"modal_running", "failed"}:
+        return END
+    return "background_validation"
+
+
 route_after_validator = route_after_validator_for_intake

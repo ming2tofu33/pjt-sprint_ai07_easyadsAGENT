@@ -22,13 +22,15 @@ import { StudioEntryStep } from "@/components/generate/StudioEntryStep";
 import {
   answerGenerationJob,
   answerChatQuestion,
+  archiveChatThread,
   createChatBrief,
   createGenerationJob,
   deleteArchiveItem,
+  getChatThreadMessages,
+  getChatThreadState,
   getGenerationJob,
   listArchiveItems,
   saveArchiveItem,
-  getChatThreadState,
   startPhotoGeneration,
   uploadPhotoAsset,
   uploadReferenceAsset,
@@ -39,7 +41,8 @@ import {
 } from "@/lib/api-client";
 import { buildAdHref } from "@/lib/ad-navigation";
 import { archiveItemToCreative } from "@/lib/archive-creative";
-import { chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
+import { mapChatMessagesToTranscript, mapChatThreadSnapshotToRestoreState } from "@/lib/chat-thread-state-mapper";
+import { buildBrief, chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 import {
   buildDashboardHref,
   type DashboardStage,
@@ -71,7 +74,8 @@ import {
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildReferenceStyleHref } from "@/lib/reference-navigation";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
-import type { ChatBrief, ChatFlowState, CopyGenerationMode, InferredContext, PartialInferredContext } from "@/types/marketing";
+import type { ChatBrief, ChatFlowState, CopyGenerationMode, InferredContext, OptionQuestion, PartialInferredContext } from "@/types/marketing";
+import styles from "@/components/generate/generate.module.css";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing" | "jobQuestion";
 
@@ -94,8 +98,16 @@ type ChatTurnSnapshot = {
 
 const CHAT_FLOW_SNAPSHOT_STORAGE_KEY = "easyads_chat_flow_snapshot_v1";
 const CHAT_TURN_SNAPSHOT_STORAGE_KEY = "easyads_chat_turn_snapshot_v1";
+const CHAT_GENERATION_FAILURE_STORAGE_KEY = "easyads_chat_generation_failure_v1";
 const GENERATION_JOB_POLL_INTERVAL_MS = 1800;
 const GENERATION_JOB_MAX_POLLS = 80;
+
+type ChatGenerationFailureSnapshot = {
+  message: string;
+  threadId?: string | null;
+  userInput?: string | null;
+  imageGenerationEngine?: ImageGenerationEngine | null;
+};
 
 function readChatFlowSnapshot(): ChatFlowSnapshot | null {
   try {
@@ -147,6 +159,31 @@ function clearChatTurnSnapshot() {
   }
 }
 
+function readGenerationFailureSnapshot(): ChatGenerationFailureSnapshot | null {
+  try {
+    const raw = window.sessionStorage.getItem(CHAT_GENERATION_FAILURE_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as ChatGenerationFailureSnapshot) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeGenerationFailureSnapshot(snapshot: ChatGenerationFailureSnapshot) {
+  try {
+    window.sessionStorage.setItem(CHAT_GENERATION_FAILURE_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // The current component state still carries the error when storage is unavailable.
+  }
+}
+
+function clearGenerationFailureSnapshot() {
+  try {
+    window.sessionStorage.removeItem(CHAT_GENERATION_FAILURE_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures; a fresh chat can still reset in memory.
+  }
+}
+
 function isQuestionResponse(response: ChatTurnResponse): response is Extract<ChatTurnResponse, { type: "option_question" }> {
   return response.type === "option_question";
 }
@@ -174,28 +211,45 @@ function generationProgressFromJob(job: GenerationJob): number {
 }
 
 function buildGenerationJobUserInput(state: ChatFlowState) {
-  const brief = state.brief;
-  if (!brief) {
-    return state.userInput;
-  }
+  return state.userInput;
+}
 
-  return [
-    state.userInput,
-    "",
-    "[광고 브리프]",
-    `광고 목적: ${brief.purpose}`,
-    `상품/서비스: ${brief.item}`,
-    `선택 문구: ${brief.copy}`,
-    `분위기: ${brief.tone}`,
-    `사용 채널: ${brief.channel}`,
-    `추천 이미지 방향: ${brief.imageDirection}`,
-    "[/광고 브리프]"
-  ].filter((line) => line !== null && line !== undefined).join("\n");
+function buildGenerationJobBriefMetadata(state: ChatFlowState) {
+  const brief = buildBrief(state);
+  return {
+    purpose: brief.purpose,
+    item: brief.item,
+    copy: brief.copy,
+    tone: brief.tone,
+    channel: brief.channel,
+    image_direction: brief.imageDirection
+  };
 }
 
 function toGenerationJobThreadId(threadId: string | null | undefined): string | undefined {
   const normalized = threadId?.trim();
   return normalized?.startsWith("thread_") ? normalized : undefined;
+}
+
+function buildChatStageHrefWithJob(stage: DashboardStage, params: { jobId?: string | null; threadId?: string | null } = {}) {
+  const baseHref = buildDashboardHref("chat", stage);
+  const query = new URLSearchParams();
+  if (params.jobId) {
+    query.set("jobId", params.jobId);
+  }
+  const threadId = toGenerationJobThreadId(params.threadId);
+  if (threadId) {
+    query.set("threadId", threadId);
+  }
+  const queryString = query.toString();
+  return queryString ? `${baseHref}?${queryString}` : baseHref;
+}
+
+function buildChatStageHrefForJob(stage: DashboardStage, job: GenerationJob) {
+  return buildChatStageHrefWithJob(stage, {
+    jobId: job.job_id,
+    threadId: job.thread_id
+  });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -222,27 +276,162 @@ function getPayloadString(payload: Record<string, unknown>, ...keys: string[]): 
   return null;
 }
 
+const contextDisplayLabels: Record<string, string> = {
+  beauty_nail: "네일샵",
+  beauty_salon: "뷰티/미용실",
+  cafe: "카페",
+  restaurant: "음식점/식당",
+  store: "일반 매장/소매",
+  seasonal_limited: "시즌 한정 홍보",
+  discount_event: "할인 이벤트",
+  new_launch: "신메뉴/신상품 출시",
+  reservation_cta: "예약/방문 유도",
+  brand_awareness: "브랜드 인지도",
+  review_event: "리뷰 이벤트",
+  retention: "재방문 유도"
+};
+
+function displayContextValue(value: string | null | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return contextDisplayLabels[value] ?? value;
+}
+
+function normalizePartialContext(context: Record<string, unknown>): PartialInferredContext {
+  return {
+    businessType: displayContextValue(getPayloadString(context, "businessType", "business_type")),
+    itemOrService: displayContextValue(getPayloadString(context, "itemOrService", "item_or_service")),
+    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal"))
+  };
+}
+
+function normalizeInferredContext(context: Record<string, unknown>): InferredContext {
+  return {
+    businessType: displayContextValue(getPayloadString(context, "businessType", "business_type")) ?? "",
+    itemOrService: displayContextValue(getPayloadString(context, "itemOrService", "item_or_service")) ?? "",
+    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal")) ?? ""
+  };
+}
+
+function fallbackQuestionForMissingFields(missingFields: string[]): OptionQuestion {
+  const field = missingFields[0] ?? "custom_request";
+  const fallbackQuestions: Record<string, OptionQuestion> = {
+    business_type: {
+      field: "business_type",
+      question: "어떤 업종의 광고인가요?",
+      options: [
+        { id: 1, label: "음식점/식당", value: "restaurant" },
+        { id: 2, label: "카페/디저트", value: "cafe" },
+        { id: 3, label: "뷰티/미용실", value: "beauty_salon" },
+        { id: 4, label: "직접 입력", value: "custom" }
+      ]
+    },
+    item_or_service: {
+      field: "item_or_service",
+      question: "홍보할 상품이나 서비스는 무엇인가요?",
+      options: [
+        { id: 1, label: "대표 메뉴", value: "signature_item" },
+        { id: 2, label: "신상품", value: "new_item" },
+        { id: 3, label: "예약 서비스", value: "reservation_service" },
+        { id: 4, label: "직접 입력", value: "custom" }
+      ]
+    },
+    promotion_goal: {
+      field: "promotion_goal",
+      question: "어떤 목적의 광고를 만들까요?",
+      options: [
+        { id: 1, label: "신메뉴/신상품 출시", value: "new_launch" },
+        { id: 2, label: "시즌 한정 홍보", value: "seasonal_limited" },
+        { id: 3, label: "할인 이벤트", value: "discount_event" },
+        { id: 4, label: "예약/방문 유도", value: "reservation_cta" },
+        { id: 5, label: "직접 입력", value: "custom" }
+      ]
+    },
+    ad_format: {
+      field: "ad_format",
+      question: "어디에 사용할 광고인가요?",
+      options: [
+        { id: 1, label: "인스타그램 피드 1:1", value: "instagram_feed" },
+        { id: 2, label: "인스타그램 스토리 9:16", value: "instagram_story" },
+        { id: 3, label: "포스터 4:5", value: "poster" },
+        { id: 4, label: "전단지 A4", value: "flyer" }
+      ]
+    },
+    copy_generation_mode: {
+      field: "copy_generation_mode",
+      question: "광고에 들어갈 홍보 문구는 어떻게 준비할까요?",
+      options: [
+        { id: 1, label: "AI에게 문구 추천 받기", value: "suggest_candidates" },
+        { id: 2, label: "AI가 한 문구로 자동 완성", value: "auto_pilot" },
+        { id: 3, label: "이미지만 생성", value: "no_copy" },
+        { id: 4, label: "직접 문구 입력", value: "custom_input" }
+      ]
+    },
+    custom_request: {
+      field: "custom_request",
+      question: "추가로 반영할 요청이 있나요?",
+      options: [
+        { id: 1, label: "있음", value: "include_custom_request" },
+        { id: 2, label: "없음", value: "none" }
+      ]
+    }
+  };
+  return fallbackQuestions[field] ?? fallbackQuestions.custom_request;
+}
+
 function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerationMode?: CopyGenerationMode): ChatTurnResponse {
   const payload = asRecord(job.result_payload);
-  const context = asRecord(payload.context ?? payload.inferred_context);
+  const metadata = asRecord(job.metadata);
+  const context = asRecord(payload.context ?? payload.inferred_context ?? metadata.context);
   const threadId = job.thread_id ?? `thread_${job.job_id}`;
 
   if (job.status === "waiting_user_input") {
-    const pendingInterrupt = asRecord(asRecord(job.metadata).pending_interrupt);
+    const interrupt = getPendingGenerationJobParsedInterrupt(job);
+    if (interrupt?.type === "copy_candidate_selection") {
+      return {
+        type: "copy_candidates",
+        jobId: job.job_id,
+        threadId,
+        status: job.status,
+        context: normalizeInferredContext(context),
+        copyCandidates: interrupt.candidates as never[],
+        recommendedCopyId: interrupt.recommendedCandidateId ?? null,
+        copyGenerationMode: fallbackCopyGenerationMode ?? "suggest_candidates"
+      };
+    }
+    if (interrupt?.type === "option_question") {
+      return {
+        type: "option_question",
+        jobId: job.job_id,
+        threadId,
+        status: "waiting",
+        context: normalizePartialContext(context),
+        question: interrupt.optionQuestion as never,
+        missingFields: getPayloadArray<string>(metadata, "missingFields", "missing_fields"),
+        generationJob: job
+      };
+    }
+    const pendingInterrupt = asRecord(metadata.pending_interrupt);
+    const missingFields =
+      getPayloadArray<string>(payload, "missingFields", "missing_fields").length > 0
+        ? getPayloadArray<string>(payload, "missingFields", "missing_fields")
+        : getPayloadArray<string>(metadata, "missingFields", "missing_fields");
     const question =
       payload.question ??
       payload.option_question ??
       pendingInterrupt.option_question ??
-      { field: "unknown", question: "추가 정보가 필요합니다.", options: [] };
+      fallbackQuestionForMissingFields(missingFields);
 
     return {
       type: "option_question",
       jobId: job.job_id,
       threadId,
       status: "waiting",
-      context: context as PartialInferredContext,
+      context: normalizePartialContext(context),
       question: question as never,
-      missingFields: getPayloadArray<string>(payload, "missingFields", "missing_fields")
+      missingFields,
+      generationJob: job
     };
   }
 
@@ -253,7 +442,7 @@ function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerat
       jobId: job.job_id,
       threadId,
       status: job.status,
-      context: context as InferredContext,
+      context: normalizeInferredContext(context),
       copyCandidates: copyCandidates as never[],
       recommendedCopyId: getPayloadString(payload, "recommendedCopyId", "recommended_copy_id"),
       copyGenerationMode: fallbackCopyGenerationMode
@@ -271,6 +460,10 @@ function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerat
   };
 }
 
+function shouldPollInitialGenerationJob(job: GenerationJob): boolean {
+  return job.status !== "waiting_user_input" && !isTerminalGenerationJobStatus(job.status);
+}
+
 type PhotoGenerateInput = {
   file: File;
   prompt: string;
@@ -285,9 +478,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [generatedCreatives, setGeneratedCreatives] = useState<MockCreative[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [isCurrentThreadDeleteOpen, setCurrentThreadDeleteOpen] = useState(false);
+  const [isDeletingCurrentThread, setDeletingCurrentThread] = useState(false);
+  const [currentThreadDeleteError, setCurrentThreadDeleteError] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const jobIdParam = searchParams?.get("jobId");
   const threadIdParam = searchParams?.get("threadId");
   const lastPrimedStageRef = useRef<DashboardStage | null>(null);
+  const activeThreadRef = useRef({ threadId: "", conversationMessageCount: 0 });
   const appSurface = optimisticSurface ?? initialSurface;
   const currentGenerationJobInterrupt = getPendingGenerationJobParsedInterrupt(state.generationJob);
 
@@ -411,6 +609,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         threadId: response.threadId,
         context: response.context,
         question: response.question,
+        generationJob: response.generationJob,
         sourceImagePath: sourceImagePath ?? null,
         referenceImagePath: referenceImagePath ?? null
       });
@@ -450,6 +649,13 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }, [initialSurface]);
 
   useEffect(() => {
+    activeThreadRef.current = {
+      threadId: state.threadId,
+      conversationMessageCount: state.conversationMessages.length
+    };
+  }, [state.conversationMessages.length, state.threadId]);
+
+  useEffect(() => {
     if (appSurface !== "ads") {
       return;
     }
@@ -487,34 +693,110 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
-    if (threadIdParam) {
-      getChatThreadState(threadIdParam).then((res) => {
-        if (res.snapshot && res.snapshot.state_payload) {
-          const payload = res.snapshot.state_payload;
-          dispatch({ type: "reset" });
-          dispatch({
-            type: "backendStartSucceeded",
-            prompt: (payload.prompt || payload.user_input || "") as string,
-            jobId: res.snapshot.job_id || "",
-            threadId: res.snapshot.thread_id,
-            context: (payload.context || {}) as InferredContext,
-            copyCandidates: (payload.copyCandidates || []) as never[],
-            recommendedCopyId: null,
-            copyCandidateSource: "empty",
-            copyGenerationMode: (payload.copyGenerationMode || "no_copy") as CopyGenerationMode
-          });
-          if (res.snapshot.snapshot_kind === "waiting_user_input") {
-             // resume polling or handle question
-          } else {
-             if (payload.brief) {
-               dispatch({ type: "backendBriefSucceeded", brief: payload.brief as ChatBrief });
-               dispatch({ type: "continueToBrief" });
-               setGenerationProgress(100);
-               setGenerationStage("brief");
-             }
+    if (jobIdParam && initialStage !== "start") {
+      let isActive = true;
+      Promise.resolve()
+        .then(async () => {
+          const jobResponse = await getGenerationJob(jobIdParam);
+          const job = jobResponse.job;
+          const routeThreadId = toGenerationJobThreadId(job.thread_id || threadIdParam);
+          let restoreState = null;
+          let transcript: ChatFlowState["conversationMessages"] = [];
+
+          if (routeThreadId) {
+            const [stateResponse, messagesResponse] = await Promise.all([
+              getChatThreadState(routeThreadId).catch(() => ({ success: true as const, snapshot: null })),
+              getChatThreadMessages(routeThreadId, { limit: 120 }).catch(() => ({ success: true as const, messages: [], total: 0 }))
+            ]);
+            restoreState = mapChatThreadSnapshotToRestoreState(stateResponse.snapshot);
+            transcript = mapChatMessagesToTranscript(messagesResponse.messages);
           }
+
+          if (!isActive) {
+            return;
+          }
+
+          if (restoreState) {
+            dispatch({
+              type: "restoreThreadSnapshot",
+              ...restoreState,
+              generationJob: job,
+              conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
+            });
+          } else {
+            dispatch({ type: "showResultShell" });
+            dispatch({ type: "generationJobUpdated", generationJob: job });
+          }
+
+          clearGenerationFailureSnapshot();
           setShowHistory(false);
+          setGenerationProgress(generationProgressFromJob(job));
+
+          if (job.status === "waiting_user_input" && restoreState?.currentQuestion) {
+            setGenerationStage("jobQuestion");
+            lastPrimedStageRef.current = "generating";
+            return;
+          }
+
+          if (isTerminalGenerationJobStatus(job.status)) {
+            setGenerationStage("complete");
+            lastPrimedStageRef.current = "complete";
+            return;
+          }
+
+          setGenerationStage("generating");
+          lastPrimedStageRef.current = "generating";
+          void pollGenerationJobUntilDoneOrQuestion(job);
+        })
+        .catch(() => {
+          if (!isActive) {
+            return;
+          }
+          const failure = readGenerationFailureSnapshot();
+          if (failure) {
+            dispatch({ type: "showGenerationFailure", ...failure });
+            setGenerationProgress(100);
+            setGenerationStage("complete");
+            lastPrimedStageRef.current = "complete";
+            return;
+          }
+          dispatch({ type: "showGenerationFailure", message: "생성 요청 상태를 불러오지 못했어요. 잠시 후 다시 시도해주세요." });
+          setGenerationProgress(100);
+          setGenerationStage("complete");
+          lastPrimedStageRef.current = "complete";
+        });
+
+      return () => {
+        isActive = false;
+      };
+    }
+
+    if (threadIdParam) {
+      const activeThread = activeThreadRef.current;
+      if (threadIdParam === activeThread.threadId && activeThread.conversationMessageCount > 0) {
+        return;
+      }
+
+      Promise.all([
+        getChatThreadState(threadIdParam),
+        getChatThreadMessages(threadIdParam, { limit: 120 }).catch(() => ({ success: true as const, messages: [], total: 0 }))
+      ]).then(([stateResponse, messagesResponse]) => {
+        const restoreState = mapChatThreadSnapshotToRestoreState(stateResponse.snapshot);
+        if (!restoreState) {
+          showToast("대화 기록을 불러왔지만 이어갈 정보가 비어 있어요.");
+          return;
         }
+
+        const transcript = mapChatMessagesToTranscript(messagesResponse.messages);
+        dispatch({
+          type: "restoreThreadSnapshot",
+          ...restoreState,
+          conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
+        });
+        setShowHistory(false);
+        setGenerationProgress(restoreState.currentQuestion ? 65 : 80);
+        setGenerationStage(restoreState.currentQuestion ? "jobQuestion" : "brief");
+        lastPrimedStageRef.current = restoreState.currentQuestion ? "generating" : "brief";
       }).catch(() => {
         showToast("대화 기록을 불러오는데 실패했습니다.");
       });
@@ -579,12 +861,21 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
+    const failure = readGenerationFailureSnapshot();
+    if (failure) {
+      dispatch({ type: "showGenerationFailure", ...failure });
+      setGenerationProgress(100);
+      setGenerationStage("complete");
+      lastPrimedStageRef.current = initialStage;
+      return;
+    }
+
     dispatch({ type: "reset" });
     dispatch({ type: "showResultShell" });
     setGenerationProgress(0);
     setGenerationStage("complete");
     lastPrimedStageRef.current = initialStage;
-  }, [appSurface, applyTurnResponse, initialStage, restoreBriefSnapshot, threadIdParam]);
+  }, [appSurface, applyTurnResponse, initialStage, jobIdParam, restoreBriefSnapshot, threadIdParam]);
 
   useEffect(() => {
     if (generationStage !== "browsing") {
@@ -601,9 +892,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   async function handleSubmitPrompt(prompt: string, options: GenerationStartOptions = {}) {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
+    clearGenerationFailureSnapshot();
     const selectedReferenceTemplateId = (options.selectedReferenceTemplateId ?? readGenerationDraftReferenceTemplateId()) || undefined;
     const requestContext = readGenerationRequestContext();
     const imageGenerationEngine = options.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
+    const engineOption = getGenerationEngineOption(imageGenerationEngine);
+    const backendEngine = resolveGenerationEnginePreference(imageGenerationEngine);
     clearGenerationDraftPrompt();
     dispatch({
       type: "submitPrompt",
@@ -631,20 +925,45 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           imageGenerationEngine,
           referenceImagePath,
           userCustomHeadline: options.userCustomHeadline ?? null,
-          userCustomSubcopy: options.userCustomSubcopy ?? null
+          userCustomSubcopy: options.userCustomSubcopy ?? null,
+          transcriptMode: "update_current_turn"
         });
       }
+      const activeThreadId = toGenerationJobThreadId(threadIdParam || state.threadId);
       const response = await createGenerationJob({
         userInput: appendSavedBrandKitContext(prompt),
-        threadId: threadIdParam || undefined,
+        threadId: activeThreadId,
         adFormat: options.adFormat ?? "instagram_feed",
-        runMode: "graph_immediate",
+        runMode: "graph_job",
         copyGenerationMode: options.copyGenerationMode ?? undefined,
         selectedReferenceTemplateId: selectedReferenceTemplateId ?? undefined,
         referenceImagePath,
         userCustomHeadline: options.userCustomHeadline ?? undefined,
-        userCustomSubcopy: options.userCustomSubcopy ?? undefined
+        userCustomSubcopy: options.userCustomSubcopy ?? undefined,
+        metadata: {
+          source: "web_chat_intake",
+          selected_engine: imageGenerationEngine,
+          requested_engine: backendEngine,
+          t2i_engine: backendEngine,
+          selected_engine_label: engineOption.modelName,
+          selected_reference_template_id: selectedReferenceTemplateId ?? null,
+          reference_template_title: requestContext?.selectedReferenceTemplateTitle ?? null,
+          reference_image_path: referenceImagePath ?? null,
+          copy_generation_mode: options.copyGenerationMode ?? null
+        }
       });
+
+      if (shouldPollInitialGenerationJob(response.job)) {
+        dispatch({ type: "continueToBrief" });
+        dispatch({ type: "generationJobUpdated", generationJob: response.job });
+        setGenerationProgress(generationProgressFromJob(response.job));
+        setGenerationStage("generating");
+        lastPrimedStageRef.current = "generating";
+        setOptimisticSurface("chat");
+        router.replace(buildChatStageHrefForJob("generating", response.job));
+        await pollGenerationJobUntilDoneOrQuestion(response.job);
+        return;
+      }
 
       const turnResponse = generationJobToChatTurnResponse(response.job, options.copyGenerationMode);
       applyTurnResponse(
@@ -678,6 +997,27 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     dispatch({ type: "submitQuestionAnswer", label: input.label });
     try {
+      if (state.generationJob?.status === "waiting_user_input") {
+        const answerPayload = {
+          field: state.currentQuestion.field,
+          value: input.value,
+          ...(input.customText ? { customText: input.customText } : {}),
+          displayText: input.label
+        };
+        const response = await answerGenerationJob(state.jobId, answerPayload);
+        const turnResponse = generationJobToChatTurnResponse(response.job, state.copyGenerationMode);
+        applyTurnResponse(
+          state.userInput,
+          turnResponse,
+          state.selectedImageGenerationEngine,
+          state.sourceImagePath ?? null,
+          state.referenceImagePath ?? null,
+          state.userCustomHeadline,
+          state.userCustomSubcopy
+        );
+        return;
+      }
+
       const response = await answerChatQuestion({
         jobId: state.jobId,
         threadId: state.threadId,
@@ -705,6 +1045,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   async function handleStartPhotoGeneration(input: PhotoGenerateInput) {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
+    clearGenerationFailureSnapshot();
     setGenerationProgress(0);
     setGenerationStage("brief");
 
@@ -802,7 +1143,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     setGenerationProgress(generationProgressFromJob(job));
     setGenerationStage("jobQuestion");
     lastPrimedStageRef.current = "generating";
-    navigateTo("chat", "generating");
+    setOptimisticSurface("chat");
+    router.push(buildChatStageHrefForJob("generating", job));
     return true;
   }
 
@@ -816,7 +1158,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     for (let attempt = 0; attempt < GENERATION_JOB_MAX_POLLS && !isTerminalGenerationJobStatus(currentJob.status); attempt += 1) {
-      await delay(GENERATION_JOB_POLL_INTERVAL_MS);
+      if (attempt > 0) {
+        await delay(GENERATION_JOB_POLL_INTERVAL_MS);
+      }
       const response = await getGenerationJob(currentJob.job_id);
       currentJob = response.job;
       dispatch({ type: "generationJobUpdated", generationJob: currentJob });
@@ -834,7 +1178,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     setGenerationProgress(generationProgressFromJob(currentJob));
     setGenerationStage("complete");
     lastPrimedStageRef.current = "complete";
-    navigateTo("chat", "complete");
+    clearGenerationFailureSnapshot();
+    setOptimisticSurface("chat");
+    router.push(buildChatStageHrefForJob("complete", currentJob));
     return currentJob;
   }
 
@@ -853,6 +1199,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const answerPayload = {
         field: question.field,
         value: input.value,
+        displayText: input.label,
         ...(input.customText ? { customText: input.customText } : {})
       };
       const response = await answerGenerationJob(jobId, answerPayload);
@@ -877,7 +1224,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     setGenerationProgress((current) => Math.max(current, 52));
 
     try {
-      const response = await answerGenerationJob(jobId, { selectedCopyId: input.selectedCopyId });
+      const response = await answerGenerationJob(jobId, { selectedCopyId: input.selectedCopyId, displayText: input.label });
       await pollGenerationJobUntilDoneOrQuestion(response.job);
     } catch (error) {
       dispatch({
@@ -904,6 +1251,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     try {
       const response = await answerGenerationJob(jobId, {
+        displayText: input.label,
         userCustomHeadline: input.userCustomHeadline,
         ...(input.userCustomSubcopy ? { userCustomSubcopy: input.userCustomSubcopy } : {})
       });
@@ -926,6 +1274,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     const referenceImagePath = state.referenceImagePath || undefined;
     const requestUserInput = appendSavedBrandKitContext(buildGenerationJobUserInput(state));
 
+    clearGenerationFailureSnapshot();
     dispatch({ type: "generationJobRequested" });
     setGenerationProgress(18);
     setGenerationStage("generating");
@@ -960,15 +1309,28 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           selected_copy_id: state.selectedCopyId || null,
           selected_channel_id: state.selectedChannelId,
           selected_tone: state.selectedTone || null,
-          reference_template_title: state.selectedReferenceTemplateTitle || null
+          reference_template_title: state.selectedReferenceTemplateTitle || null,
+          final_brief: buildGenerationJobBriefMetadata(state)
         }
       });
 
+      setOptimisticSurface("chat");
+      router.replace(buildChatStageHrefForJob("generating", created.job));
       await pollGenerationJobUntilDoneOrQuestion(created.job);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "이미지 생성 요청에 실패했습니다. 잠시 후 다시 시도해주세요.";
+      writeGenerationFailureSnapshot({
+        message,
+        threadId: state.threadId,
+        userInput: state.userInput,
+        imageGenerationEngine: engine
+      });
       dispatch({
-        type: "generationJobFailed",
-        message: error instanceof Error ? error.message : "이미지 생성 요청에 실패했습니다. 잠시 후 다시 시도해주세요."
+        type: "showGenerationFailure",
+        message,
+        threadId: state.threadId,
+        userInput: state.userInput,
+        imageGenerationEngine: engine
       });
       setGenerationProgress(100);
       setGenerationStage("complete");
@@ -980,6 +1342,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   function handleOpenFreshChat() {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
+    clearGenerationFailureSnapshot();
     clearGenerationDraftPrompt();
     dispatch({ type: "reset" });
     setGenerationProgress(0);
@@ -990,6 +1353,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   function handleUseReferenceTemplate(template: ReferenceTemplateCard) {
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
+    clearGenerationFailureSnapshot();
     dispatch({ type: "reset" });
     setGenerationProgress(0);
     setGenerationStage("brief");
@@ -1006,6 +1370,44 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   function handleRegenerateFromRecent() {
     showToast("새 요청 화면에서 비슷하게 만들 광고를 입력해주세요.");
     handleOpenFreshChat();
+  }
+
+  function handleRequestCurrentThreadDelete() {
+    const threadId = toGenerationJobThreadId(state.threadId || threadIdParam);
+    if (!threadId) {
+      showToast("아직 삭제할 작업방이 없어요.");
+      return;
+    }
+    setCurrentThreadDeleteError(null);
+    setCurrentThreadDeleteOpen(true);
+  }
+
+  async function handleConfirmCurrentThreadDelete() {
+    const threadId = toGenerationJobThreadId(state.threadId || threadIdParam);
+    if (!threadId) {
+      setCurrentThreadDeleteOpen(false);
+      return;
+    }
+
+    setDeletingCurrentThread(true);
+    setCurrentThreadDeleteError(null);
+    try {
+      await archiveChatThread(threadId);
+      clearChatFlowSnapshot();
+      clearChatTurnSnapshot();
+      clearGenerationDraftPrompt();
+      dispatch({ type: "reset" });
+      setGenerationProgress(0);
+      setGenerationStage("brief");
+      setShowHistory(false);
+      setCurrentThreadDeleteOpen(false);
+      showToast("작업방을 삭제했어요.");
+      navigateTo("studio");
+    } catch {
+      setCurrentThreadDeleteError("작업방을 삭제하지 못했어요. 생성 중인 작업이라면 완료된 뒤 다시 시도해주세요.");
+    } finally {
+      setDeletingCurrentThread(false);
+    }
   }
 
   async function handleDeleteGeneratedAd(creativeId: string, title: string) {
@@ -1094,6 +1496,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenReference={() => navigateTo("reference")}
           onOpenRecentAds={() => navigateTo("ads")}
           onOpenBrandKit={() => navigateTo("my")}
+          onOpenThread={(threadId) => {
+            setOptimisticSurface("chat");
+            router.push(`/generate/chat?threadId=${threadId}`);
+          }}
         />
       ) : null}
 
@@ -1148,7 +1554,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onBack={() => setShowHistory(false)}
           onGoHome={() => navigateTo("home")}
           onSelectThread={(threadId) => {
-            router.push(`?threadId=${threadId}`);
+            router.push(`/generate/chat?threadId=${threadId}`);
             setShowHistory(false);
           }}
         />
@@ -1166,6 +1572,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           state={state}
           onBack={() => dispatch({ type: "back" })}
           onAnswer={handleAnswerQuestion}
+          onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
         />
       ) : null}
 
@@ -1175,6 +1582,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onBack={() => dispatch({ type: "back" })}
           onSelectTone={(tone) => dispatch({ type: "selectTone", tone })}
           onContinue={() => dispatch({ type: "continueToCopy" })}
+          onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
         />
       ) : null}
 
@@ -1186,11 +1594,17 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onSelectChannel={(channelId) => dispatch({ type: "selectChannel", channelId })}
           onCustomDirection={(value) => dispatch({ type: "setCustomDirection", value })}
           onContinue={handleContinueToBrief}
+          onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
         />
       ) : null}
 
       {appSurface === "chat" && state.step === 4 && generationStage === "brief" ? (
-        <BriefConfirmStep state={state} onBack={handleBackFromBrief} onGenerate={handleOpenGeneratedResult} />
+        <BriefConfirmStep
+          state={state}
+          onBack={handleBackFromBrief}
+          onGenerate={handleOpenGeneratedResult}
+          onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
+        />
       ) : null}
 
       {appSurface === "chat" && state.step === 4 && generationStage === "jobQuestion" && state.currentQuestion ? (
@@ -1198,6 +1612,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           state={state}
           onBack={() => setGenerationStage("brief")}
           onAnswer={handleAnswerGenerationJobQuestion}
+          onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
         />
       ) : null}
 
@@ -1254,9 +1669,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onRegenerate={() => {
             handleOpenFreshChat();
           }}
-          onSaveCreative={handleSaveGeneratedCreative}
-          onEditCreative={() => showToast("선택한 시안 편집 화면은 곧 연결됩니다.")}
-          onSaveSelected={() => navigateTo("ads")}
+          onOpenArchive={() => navigateTo("ads")}
+          onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
         />
       ) : null}
 
@@ -1276,6 +1690,38 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onSaveCreative={showArchiveStoragePendingToast}
           onUseTemplate={handleUseReferenceTemplate}
         />
+      ) : null}
+
+      {isCurrentThreadDeleteOpen ? (
+        <div
+          className={styles.workspaceDeleteDialogBackdrop}
+          role="presentation"
+          onClick={() => isDeletingCurrentThread ? undefined : setCurrentThreadDeleteOpen(false)}
+        >
+          <section
+            aria-labelledby="current-thread-delete-title"
+            aria-modal="true"
+            className={styles.workspaceDeleteDialog}
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div>
+              <span className={styles.workspaceDeleteIcon} aria-hidden="true">!</span>
+              <h2 id="current-thread-delete-title">이 작업방을 삭제할까요?</h2>
+              <p>대화와 진행 상태가 최근 작업방에서 사라져요. 완성된 이미지는 보관함에 남아요.</p>
+            </div>
+            <strong>{state.userInput || "현재 작업방"}</strong>
+            {currentThreadDeleteError ? <p className={styles.workspaceDeleteError}>{currentThreadDeleteError}</p> : null}
+            <div className={styles.workspaceDeleteDialogActions}>
+              <button disabled={isDeletingCurrentThread} type="button" onClick={() => setCurrentThreadDeleteOpen(false)}>
+                취소
+              </button>
+              <button data-danger="true" disabled={isDeletingCurrentThread} type="button" onClick={handleConfirmCurrentThreadDelete}>
+                {isDeletingCurrentThread ? "삭제 중" : "삭제"}
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
       <DashboardToast message={toastMessage} />
     </MobileShell>

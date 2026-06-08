@@ -188,7 +188,7 @@ Response schema: `GenerationJobCreateResponse`.
 Run mode policy:
 - `queued_only`: create a queued job only.
 - `mock_immediate`: run deterministic mock execution, write local mock artifacts, and return a completed job.
-- `graph_immediate`: currently degrades to `queued_only`; no graph execution happens.
+- `graph_job`: create a queued graph generation job and schedule graph execution after the create response; clients should poll `GET /generation-jobs/{job_id}`.
 - `gpt_image_2_actual` / `gpt_image_2_smoke`: request the guarded GPT-image-2 lane.
 - `sd35_local` / `sd35_local_smoke`: request the guarded SD3.5 local lane.
 - `flux_local` / `flux_local_smoke`: request the guarded FLUX local lane.

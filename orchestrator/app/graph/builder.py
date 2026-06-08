@@ -15,6 +15,7 @@ from orchestrator.app.graph.routers import (
     route_after_input_reference_template,
     route_after_product_preprocess,
     route_after_reference_template_resolve,
+    route_after_t2i_generation,
     route_after_tone_binding,
     route_after_validator_for_intake,
     route_after_validator_for_marketing,
@@ -146,7 +147,11 @@ def build_marketing_graph(checkpointer=None):
     graph.add_edge("image_prompt_planner", "prompt_renderer")
     graph.add_edge("prompt_renderer", "t2i_request_builder")
     graph.add_edge("t2i_request_builder", "t2i_generation")
-    graph.add_edge("t2i_generation", "background_validation")
+    graph.add_conditional_edges(
+        "t2i_generation",
+        route_after_t2i_generation,
+        {"background_validation": "background_validation", END: END},
+    )
     graph.add_edge("background_validation", "safe_area_gate")
     graph.add_conditional_edges("safe_area_gate", route_by_copy_presence, {"result": "result", "text_renderer": "text_renderer"})
     graph.add_edge("text_renderer", "readability_gate")

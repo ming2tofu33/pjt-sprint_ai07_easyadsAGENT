@@ -1035,6 +1035,33 @@
   gap: 10px;
 }
 
+.chatTimelineTranscript {
+  margin-bottom: 16px;
+}
+
+.chatTimelineCards {
+  display: grid;
+  gap: 14px;
+}
+
+.timelineSectionTitle {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 16px;
+  line-height: 1.28;
+  font-weight: 950;
+}
+
+.chatTimelineCards .contextCard,
+.chatTimelineCards .briefCard,
+.chatTimelineCards .emptyResultPanel {
+  margin-top: 0;
+}
+
+.chatTimelineCards .stepFooter {
+  margin-top: 4px;
+}
+
 .chatTranscript .assistantBubble {
   margin-top: 0;
 }
@@ -2045,6 +2072,317 @@
 
 .archiveActionMenu .archiveDangerAction {
   color: #bd3d35;
+}
+
+.workspaceHero {
+  margin-top: 12px;
+  border: 1px solid #d9ee82;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #f3ffd4, #fbffe9);
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workspaceHero span {
+  display: block;
+  color: #6f8e1f;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.workspaceHero h2 {
+  margin: 5px 0 0;
+  color: var(--color-text-primary);
+  font-size: 19px;
+  line-height: 1.25;
+  font-weight: 950;
+}
+
+.workspaceHero p {
+  margin: 7px 0 0;
+  color: #536232;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 780;
+}
+
+.workspaceHero button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-action-primary);
+  color: var(--color-action-primary-text);
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.workspaceSection {
+  margin-top: 18px;
+}
+
+.workspaceSectionHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workspaceSectionHeader h2 {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.workspaceSectionHeader small {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.workspaceList {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.workspaceCard {
+  width: 100%;
+  min-height: 86px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 14px;
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.workspaceOpenButton {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+}
+
+.workspaceThumb {
+  width: 58px;
+  height: 58px;
+  border-radius: 13px;
+  background: #f1eaff;
+  color: var(--color-brand-purple-strong);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workspaceThumb[data-status="completed"] {
+  background: #e7fbef;
+  color: #237a4f;
+}
+
+.workspaceThumb[data-status="failed"] {
+  background: #ffe8e3;
+  color: #b94d43;
+}
+
+.workspaceCard strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 950;
+}
+
+.workspaceCard p {
+  margin: 5px 0 0;
+  color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 780;
+}
+
+.workspaceCard small {
+  margin-top: 6px;
+  color: #716b62;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 820;
+}
+
+.workspaceActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workspaceAction {
+  border-radius: 999px;
+  border: 1px solid var(--color-border-soft);
+  background: #fff;
+  color: var(--color-text-primary);
+  padding: 7px 9px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.workspaceDeleteButton {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #efd6d0;
+  border-radius: 999px;
+  background: #fff8f6;
+  color: #b94d43;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workspaceDeleteButton[data-busy="true"] {
+  opacity: 0.55;
+}
+
+.workspaceDeleteDialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(30 25 18 / 28%);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 18px;
+}
+
+.workspaceDeleteDialog {
+  width: min(100%, 348px);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 20px;
+  background: var(--color-bg-card);
+  box-shadow: 0 20px 50px rgb(0 0 0 / 18%);
+  padding: 18px;
+  display: grid;
+  gap: 13px;
+}
+
+.workspaceDeleteDialog h2 {
+  margin: 10px 0 0;
+  color: var(--color-text-primary);
+  font-size: 17px;
+  line-height: 1.3;
+  font-weight: 950;
+}
+
+.workspaceDeleteDialog p {
+  margin: 7px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 800;
+}
+
+.workspaceDeleteDialog > strong {
+  border-radius: 12px;
+  background: #fff7ee;
+  color: var(--color-text-primary);
+  padding: 11px 12px;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 950;
+}
+
+.workspaceDeleteIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  background: #fff0ec;
+  color: #b94d43;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.workspaceDeleteError {
+  border-radius: 12px;
+  border: 1px solid #f3c7be;
+  background: #fff6f4;
+  color: #a54138 !important;
+  padding: 10px 11px;
+}
+
+.workspaceDeleteDialogActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.workspaceDeleteDialogActions button {
+  min-height: 44px;
+  border-radius: 13px;
+  border: 1px solid var(--color-border-soft);
+  background: #fff;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.workspaceDeleteDialogActions button[data-danger="true"] {
+  border-color: #111;
+  background: #111;
+  color: #fff;
+}
+
+.workspaceDeleteDialogActions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.workspaceEmptyCard,
+.workspaceEmptyText {
+  margin-top: 10px;
+  border: 1px dashed #d8cfc1;
+  border-radius: 14px;
+  background: #fffdf8;
+  color: var(--color-muted);
+  padding: 18px 14px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 800;
+}
+
+.workspaceEmptyCard {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.workspaceEmptyCard strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.workspaceEmptyCard p {
+  margin: 0;
 }
 
 .studioIntro {
