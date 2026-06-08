@@ -55,6 +55,7 @@ class T2ISettings:
     gpt_image_model: str
     sd35_model_id: str
     flux_model_id: str
+    flux2_klein_model_id: str
 
     @classmethod
     def from_env(cls) -> "T2ISettings":
@@ -71,6 +72,7 @@ class T2ISettings:
             gpt_image_model=_get_env("T2I_GPT_IMAGE_MODEL", "gpt-image-1"),
             sd35_model_id=_get_env("T2I_SD35_MODEL_ID", "stabilityai/stable-diffusion-3.5-large"),
             flux_model_id=_get_env("T2I_FLUX_MODEL_ID", "black-forest-labs/FLUX.1-schnell"),
+            flux2_klein_model_id=_get_env("EASYADS_T2I_FLUX2_KLEIN_MODEL_ID", "black-forest-labs/FLUX.2-klein-4B"),
         )
 
 

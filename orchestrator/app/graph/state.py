@@ -139,6 +139,12 @@ class MarketingState(TypedDict, total=False):
     prompt_render_output: dict[str, Any] | PromptRenderOutput | None
     t2i_request: dict[str, Any] | T2IRequest | None
     t2i_result: dict[str, Any] | T2IResult | None
+    background_quality_gate: dict[str, Any] | None
+    final_quality_gate: dict[str, Any] | None
+    quality_gate_attempts: int
+    quality_gate_decision: str | None
+    quality_gate_status: str | None
+    quality_gate_retry_feedback: list[str]
     candidates: list[dict[str, Any] | GeneratedImageCandidate]
     selected_candidate_id: str | None
     background_validation_report: dict[str, Any] | BackgroundValidationReport | None

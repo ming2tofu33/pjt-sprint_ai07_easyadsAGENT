@@ -476,6 +476,8 @@ def _provider_for_engine(engine: str) -> str:
         return "openai"
     if engine in {"sd35_large", "flux"}:
         return "local"
+    if engine == "flux2_klein_4b":
+        return "local_diffusers"
     return engine
 
 

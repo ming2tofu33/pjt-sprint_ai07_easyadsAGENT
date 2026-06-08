@@ -733,9 +733,11 @@ def _normalize_graph_t2i_engine(value: object) -> str:
         return "sd35_large"
     if normalized in {"flux", "flux_schnell", "flux_1_schnell"}:
         return "flux"
+    if normalized in {"flux2_klein", "flux2_klein_4b", "flux_2_klein_4b"}:
+        return "flux2_klein_4b"
     if normalized in {"gpt_image_2", "gpt_image2"}:
         return "gpt_image_2"
-    return "flux"
+    raise ValueError(f"Unsupported graph T2I engine: {value}")
 
 
 def _safe_modal_error(error: dict | None) -> dict:
@@ -771,6 +773,15 @@ def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest,
                 },
             )
         )
+        generation_error = getattr(generation, "error", None)
+        if generation_error:
+            metadata = generation.metadata or {}
+            error_code = str(metadata.get("error_code") or "t2i_engine_unavailable")
+            if error_code == "t2i_engine_not_enabled":
+                raise T2IEngineNotEnabledError(generation_error)
+            exc = T2IEngineUnavailableError(generation_error)
+            setattr(exc, "error_code", error_code)
+            raise exc
         if not generation.image_paths:
             raise T2IEngineUnavailableError(f"{engine_name} did not return an image.")
 
