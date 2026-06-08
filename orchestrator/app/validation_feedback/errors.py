@@ -25,6 +25,12 @@ class InvalidRegenerationAction(ValidationFeedbackError):
     message = "Regeneration action is not allowed for this output."
 
 
+class InvalidRegenerationScope(ValidationFeedbackError):
+    status_code = 400
+    error_code = "invalid_regeneration_scope"
+    message = "Regeneration scope does not match the server-derived scope."
+
+
 class RegenerationNotRecommended(ValidationFeedbackError):
     status_code = 409
     error_code = "regeneration_not_recommended"
@@ -36,3 +42,20 @@ class RegenerationDepthExceeded(ValidationFeedbackError):
     error_code = "regeneration_depth_exceeded"
     message = "Maximum regeneration depth was reached."
 
+
+class RegenerationIdempotencyConflict(ValidationFeedbackError):
+    status_code = 409
+    error_code = "regeneration_lineage_conflict"
+    message = "Regeneration idempotency key conflicts with a different request."
+
+
+class RegenerationLineageConflict(ValidationFeedbackError):
+    status_code = 409
+    error_code = "regeneration_lineage_conflict"
+    message = "Regeneration lineage is invalid."
+
+
+class OutputNotReady(ValidationFeedbackError):
+    status_code = 409
+    error_code = "output_not_ready"
+    message = "Generation output is not ready for regeneration."

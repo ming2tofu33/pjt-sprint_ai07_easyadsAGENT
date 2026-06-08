@@ -18,6 +18,7 @@ ACTION_BY_FAILURE = {
     ValidationFailureType.COPY_CONTRAST: SuggestedAction(code=SuggestedActionCode.ADJUST_COPY_CONTRAST, scope="layout", priority=70, reason="Copy contrast needs adjustment."),
     ValidationFailureType.BUSINESS_FIT: SuggestedAction(code=SuggestedActionCode.IMPROVE_BUSINESS_FIT, scope="image", priority=60, reason="Visual business fit should be improved."),
     ValidationFailureType.VISUAL_CLUTTER: SuggestedAction(code=SuggestedActionCode.REDUCE_VISUAL_CLUTTER, scope="image", priority=55, reason="Background should be simplified."),
+    ValidationFailureType.COMMERCIAL_VIABILITY: SuggestedAction(code=SuggestedActionCode.IMPROVE_BUSINESS_FIT, scope="image", priority=60, reason="Commercial viability should be improved."),
     ValidationFailureType.PROVIDER_UNAVAILABLE: SuggestedAction(code=SuggestedActionCode.MANUAL_REVIEW, scope="manual", priority=30, reason="Validation provider was unavailable."),
     ValidationFailureType.MANUAL_REVIEW_REQUIRED: SuggestedAction(code=SuggestedActionCode.MANUAL_REVIEW, scope="manual", priority=30, reason="Manual review is required."),
 }

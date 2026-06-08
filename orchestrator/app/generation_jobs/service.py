@@ -1734,6 +1734,7 @@ def _create_output_records_for_done_job_db(
         is_final=False,
         result_payload=effective_result_payload,
         metadata={"result_payload_summary": _result_payload_summary(effective_result_payload)},
+        previous_output_id=str(row["previous_output_id"]) if row.get("previous_output_id") else None,
         connection=connection,
     )
     final_output = generation_output_repo.mark_output_final(str(output["id"]), workspace_id=str(row["workspace_id"]), connection=connection)

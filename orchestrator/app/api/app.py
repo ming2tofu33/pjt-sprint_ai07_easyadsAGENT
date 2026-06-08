@@ -102,6 +102,20 @@ def create_app() -> FastAPI:
                 detail=str(exc),
             )
             return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.endswith("/regenerate"):
+            error = ErrorResponse(
+                error_code="invalid_regeneration_request",
+                message="Invalid regeneration request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.endswith("/validation"):
+            error = ErrorResponse(
+                error_code="invalid_validation_feedback_request",
+                message="Invalid validation feedback request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
         if request.url.path.startswith("/api/v1/generation-outputs"):
             error = ErrorResponse(
                 error_code="invalid_generation_output_request",

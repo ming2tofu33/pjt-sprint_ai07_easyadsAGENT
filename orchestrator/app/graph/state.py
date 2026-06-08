@@ -154,6 +154,7 @@ class MarketingState(TypedDict, total=False):
     ocr_gate_retry_feedback: list[str]
     ocr_revision_action: str | None
     ocr_revision_attempts: int
+    regeneration_patch: dict[str, Any] | None
     candidates: list[dict[str, Any] | GeneratedImageCandidate]
     selected_candidate_id: str | None
     background_validation_report: dict[str, Any] | BackgroundValidationReport | None
