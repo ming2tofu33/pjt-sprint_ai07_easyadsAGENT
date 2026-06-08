@@ -92,13 +92,14 @@ def _record_t2i_usage(state: MarketingState, result) -> None:
             image_count=len(result.image_paths),
             plan=str(state.get("user_plan") or "free"),
             created_by=state.get("user_id"),
-            thread_id=state.get("thread_id"),
-            job_id=state.get("job_id"),
+            thread_id=state.get("usage_thread_db_id"),
+            job_id=state.get("usage_job_db_id"),
             width=result.width,
             height=result.height,
             quality=(result.metadata or {}).get("quality"),
             request_mode=(result.metadata or {}).get("requested_run_mode") or (result.metadata or {}).get("execution_mode"),
             provider_request_id=(result.metadata or {}).get("provider_request_id"),
+            attempt_index=(result.metadata or {}).get("generation_attempt"),
             generation_status="succeeded",
         )
     except Exception:

@@ -34,6 +34,10 @@ def load_usage_quota_config() -> dict[str, dict[str, int | str | None]]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def get_usage_quota_enforcement_enabled() -> bool:
+    return str(_get_env("EASYADS_ENFORCE_USAGE_QUOTAS", "false") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def evaluate_plan_quota(
     *,
     plan: str | None,
@@ -50,19 +54,20 @@ def evaluate_plan_quota(
         used = totals.get(metric) or 0
         limit = limits.get(metric)
         if limit is None:
-            results.append(_quota_row(metric, used, None))
+            results.append(_quota_row(metric, used, None, configured=False))
             continue
         try:
             numeric_limit = Decimal(str(limit))
         except Exception:
-            results.append(_quota_row(metric, used, None))
+            results.append(_quota_row(metric, used, None, configured=False))
             continue
-        results.append(_quota_row(metric, used, numeric_limit))
+        results.append(_quota_row(metric, used, numeric_limit, configured=True))
     return results
 
 
-def _quota_row(metric: str, used: Any, limit: Decimal | None) -> dict[str, Any]:
+def _quota_row(metric: str, used: Any, limit: Decimal | None, *, configured: bool) -> dict[str, Any]:
     used_decimal = Decimal(str(used or 0))
+    enforcement_enabled = get_usage_quota_enforcement_enabled()
     if limit is None:
         return {
             "metric": metric,
@@ -70,6 +75,7 @@ def _quota_row(metric: str, used: Any, limit: Decimal | None) -> dict[str, Any]:
             "used": _decimal_json(used_decimal),
             "remaining": None,
             "exceeded": False,
+            "configured": configured,
             "enforced": False,
         }
     remaining = limit - used_decimal
@@ -81,7 +87,8 @@ def _quota_row(metric: str, used: Any, limit: Decimal | None) -> dict[str, Any]:
         "used": _decimal_json(used_decimal),
         "remaining": _decimal_json(remaining),
         "exceeded": used_decimal > limit,
-        "enforced": True,
+        "configured": configured,
+        "enforced": enforcement_enabled,
     }
 
 

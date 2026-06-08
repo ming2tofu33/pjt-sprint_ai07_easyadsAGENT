@@ -16,3 +16,7 @@ def test_usage_tracking_migration_adds_idempotency_and_indexes():
     assert "usage_events_job_created_idx" in sql
     assert "usage_events_quantity_nonnegative_chk" in sql
     assert "usage_events_cost_nonnegative_chk" in sql
+    assert "alter column quantity set not null" in sql
+    assert "usage_events_event_type_chk" in sql
+    assert "usage_events_unit_chk" in sql
+    assert "usage_events_plan_chk" in sql

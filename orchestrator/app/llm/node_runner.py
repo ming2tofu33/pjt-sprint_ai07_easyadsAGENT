@@ -157,6 +157,7 @@ def record_llm_usage_from_result(state: dict[str, Any], result: Any) -> None:
     if not workspace_id:
         return
     token_usage = getattr(result, "token_usage", None) or {}
+    call_index = len(state.get("llm_call_results") or [])
     try:
         usage_service.record_llm_usage(
             workspace_id=str(workspace_id),
@@ -168,11 +169,12 @@ def record_llm_usage_from_result(state: dict[str, Any], result: Any) -> None:
             total_tokens=token_usage.get("total_tokens"),
             cached_input_tokens=token_usage.get("cached_tokens") or token_usage.get("cached_input_tokens"),
             created_by=state.get("user_id"),
-            thread_id=state.get("thread_id"),
-            job_id=state.get("job_id"),
+            thread_id=state.get("usage_thread_db_id"),
+            job_id=state.get("usage_job_db_id"),
             task_name=getattr(selection, "node_name", None),
             node_name=getattr(selection, "node_name", None),
             provider_request_id=(getattr(result, "metadata", None) or {}).get("provider_request_id"),
+            call_index=call_index,
             request_status="succeeded" if getattr(result, "success", False) else "failed",
         )
     except Exception:

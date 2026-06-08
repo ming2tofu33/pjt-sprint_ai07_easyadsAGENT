@@ -188,11 +188,11 @@ def aggregate_usage_summary(
             ):
                 cur.execute(
                     f"""
-                    select {column} as key, coalesce(sum(quantity), 0) as quantity, coalesce(sum(cost_usd), 0) as estimated_cost_usd
+                    select {column} as key, unit, coalesce(sum(quantity), 0) as quantity, coalesce(sum(cost_usd), 0) as estimated_cost_usd
                     from usage_events
                     {where}
-                    group by {column}
-                    order by {column}
+                    group by {column}, unit
+                    order by {column}, unit
                     """,
                     tuple(params),
                 )

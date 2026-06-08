@@ -3,35 +3,22 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
-from decimal import Decimal
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.repositories import usage_events as usage_repo
 from orchestrator.app.llm.plan_policy import normalize_user_plan
-from orchestrator.app.usage.errors import InvalidUsageRange, InvalidUsageScope
+from orchestrator.app.usage.errors import InvalidUsagePlan, InvalidUsageRange, InvalidUsageScope
 from orchestrator.app.usage.pricing import calculate_llm_cost, calculate_modal_cost, calculate_t2i_cost, decimal_or_none
 from orchestrator.app.usage.quota_policy import current_utc_month_window, evaluate_plan_quota
-from orchestrator.app.usage.types import USAGE_EVENT_TYPES, USAGE_UNITS
+from orchestrator.app.usage.types import USAGE_EVENT_TYPES, USAGE_PLANS, USAGE_UNITS
 
 
 _MEMORY_USAGE_EVENTS: list[dict[str, Any]] = []
-_BLOCKED_METADATA_KEYS = {
-    "api_key",
-    "authorization",
-    "bucket",
-    "chain_of_thought",
-    "object_key",
-    "presigned_url",
-    "prompt",
-    "raw_prompt",
-    "raw_response",
-    "r2_secret",
-    "secret",
-    "service_role_key",
-    "token",
-}
+_BLOCKED_METADATA_KEYS = {"bucket", "chain_of_thought", "object_key", "presigned_url", "prompt", "raw_prompt", "raw_response"}
+_SENSITIVE_METADATA_FRAGMENTS = {"api_key", "access_key", "access_token", "refresh_token", "secret", "password", "authorization", "credential"}
 
 
 def reset_usage_store_for_tests() -> None:
@@ -60,7 +47,9 @@ def record_usage_event(
     if unit not in USAGE_UNITS:
         raise ValueError(f"Unsupported usage unit: {unit}")
     safe_metadata = sanitize_usage_metadata(metadata)
-    normalized_plan = normalize_user_plan(plan)
+    normalized_plan = normalize_usage_event_plan(plan)
+    normalized_quantity = _positive_decimal(quantity, field_name="quantity", default=Decimal("1"))
+    normalized_cost = _positive_decimal(cost_usd, field_name="cost_usd", default=None)
     if db_settings.get_db_backend() == "postgres":
         return usage_repo.record_usage_event_once(
             workspace_id=workspace_id,
@@ -71,9 +60,9 @@ def record_usage_event(
             provider=provider,
             model_name=model_name,
             plan=normalized_plan,
-            quantity=quantity,
+            quantity=normalized_quantity,
             unit=unit,
-            cost_usd=cost_usd,
+            cost_usd=normalized_cost,
             idempotency_key=idempotency_key,
             metadata=safe_metadata,
             connection=connection,
@@ -87,9 +76,9 @@ def record_usage_event(
         provider=provider,
         model_name=model_name,
         plan=normalized_plan,
-        quantity=quantity,
+        quantity=normalized_quantity,
         unit=unit,
-        cost_usd=cost_usd,
+        cost_usd=normalized_cost,
         idempotency_key=idempotency_key,
         metadata=safe_metadata,
     )
@@ -111,6 +100,7 @@ def record_llm_usage(
     task_name: str | None = None,
     node_name: str | None = None,
     provider_request_id: str | None = None,
+    call_index: int | None = None,
     request_status: str = "succeeded",
     parse_status: str | None = None,
 ) -> dict | None:
@@ -144,7 +134,7 @@ def record_llm_usage(
         model_name=model_name,
         plan=plan,
         cost_usd=cost,
-        idempotency_key=_idempotency_key("llm", provider, provider_request_id or job_id, node_name),
+        idempotency_key=_usage_call_idempotency_key("llm", provider_request_id, job_id, node_name, call_index),
         metadata=metadata,
     )
 
@@ -164,6 +154,7 @@ def record_t2i_usage(
     quality: str | None = None,
     request_mode: str | None = None,
     provider_request_id: str | None = None,
+    attempt_index: int | None = None,
     generation_status: str = "succeeded",
 ) -> dict | None:
     if engine in {"mock", "dry_run"} or image_count <= 0:
@@ -181,7 +172,7 @@ def record_t2i_usage(
         model_name=model_name or engine,
         plan=plan,
         cost_usd=cost,
-        idempotency_key=_idempotency_key("t2i", job_id, engine, provider_request_id or str(image_count)),
+        idempotency_key=_usage_call_idempotency_key("t2i", provider_request_id, job_id, engine, attempt_index),
         metadata={
             **cost_metadata,
             "engine": engine,
@@ -255,6 +246,8 @@ def get_usage_summary(
     scope: str = "workspace",
     created_by: str | None = None,
     plan: str | None = None,
+    quota_plan: str | None = None,
+    event_plan_filter: str | None = None,
     start_at: datetime | None = None,
     end_at: datetime | None = None,
 ) -> dict:
@@ -262,17 +255,20 @@ def get_usage_summary(
         raise InvalidUsageScope("Usage scope must be workspace or user.")
     if scope == "user" and not created_by:
         raise InvalidUsageScope("User scope requires a resolved user.")
-    if start_at is None or end_at is None:
+    if (start_at is None) != (end_at is None):
+        raise InvalidUsageRange("startAt and endAt must be provided together.")
+    if start_at is None and end_at is None:
         start_at, end_at = current_utc_month_window()
     _validate_range(start_at, end_at)
-    normalized_plan = normalize_user_plan(plan)
+    normalized_quota_plan = normalize_usage_quota_plan(quota_plan if quota_plan is not None else plan)
+    normalized_event_plan_filter = normalize_usage_event_plan(event_plan_filter)
     if db_settings.get_db_backend() == "postgres":
         totals = usage_repo.aggregate_usage_summary(
             workspace_id=workspace_id,
             created_by=created_by if scope == "user" else None,
             start_at=start_at,
             end_at=end_at,
-            plan=normalized_plan if plan else None,
+            plan=normalized_event_plan_filter,
         )
     else:
         totals = _aggregate_memory_usage(
@@ -280,19 +276,19 @@ def get_usage_summary(
             created_by=created_by if scope == "user" else None,
             start_at=start_at,
             end_at=end_at,
-            plan=normalized_plan if plan else None,
+            plan=normalized_event_plan_filter,
         )
     normalized_totals = normalize_summary_totals(totals)
     return {
         "scope": scope,
-        "plan": normalized_plan,
+        "plan": normalized_quota_plan,
         "window": {
             "startAt": _iso_z(start_at),
             "endAt": _iso_z(end_at),
             "timezone": "UTC",
         },
         "totals": normalized_totals,
-        "quota": evaluate_plan_quota(plan=normalized_plan, totals=normalized_totals),
+        "quota": evaluate_plan_quota(plan=normalized_quota_plan, totals=normalized_totals),
         "byEventType": _normalize_breakdown(totals.get("by_event_type") or []),
         "byProvider": _normalize_breakdown(totals.get("by_provider") or []),
         "byModel": _normalize_breakdown(totals.get("by_model") or []),
@@ -326,6 +322,7 @@ def _normalize_breakdown(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         normalized.append(
             {
                 "key": row.get("key"),
+                "unit": row.get("unit"),
                 "quantity": str(quantity),
                 "estimatedCostUsd": f"{cost:.8f}",
             }
@@ -338,7 +335,7 @@ def sanitize_usage_metadata(value: Any) -> Any:
         output = {}
         for key, item in value.items():
             normalized = str(key).lower()
-            if normalized in _BLOCKED_METADATA_KEYS or "key" in normalized and "pricing" not in normalized:
+            if normalized in _BLOCKED_METADATA_KEYS or any(fragment in normalized for fragment in _SENSITIVE_METADATA_FRAGMENTS):
                 continue
             output[str(key)] = sanitize_usage_metadata(item)
         return output
@@ -425,7 +422,8 @@ def _group_memory(rows: list[dict], key: str) -> list[dict]:
     grouped: dict[Any, dict[str, Any]] = {}
     for row in rows:
         value = row.get(key)
-        bucket = grouped.setdefault(value, {"key": value, "quantity": Decimal("0"), "estimated_cost_usd": Decimal("0")})
+        group_key = (value, row.get("unit"))
+        bucket = grouped.setdefault(group_key, {"key": value, "unit": row.get("unit"), "quantity": Decimal("0"), "estimated_cost_usd": Decimal("0")})
         bucket["quantity"] += Decimal(str(row.get("quantity") or 0))
         if row.get("cost_usd") is not None:
             bucket["estimated_cost_usd"] += Decimal(str(row.get("cost_usd")))
@@ -435,8 +433,36 @@ def _group_memory(rows: list[dict], key: str) -> list[dict]:
 def _validate_range(start_at: datetime, end_at: datetime) -> None:
     if start_at >= end_at:
         raise InvalidUsageRange("startAt must be before endAt.")
-    if (end_at - start_at).days > 366:
+    if end_at - start_at > timedelta(days=366):
         raise InvalidUsageRange("Usage range cannot exceed 366 days.")
+
+
+def normalize_usage_event_plan(plan: str | None) -> str | None:
+    if plan is None or plan == "":
+        return None
+    if plan in USAGE_PLANS:
+        return plan
+    raise InvalidUsagePlan("Invalid usage plan.")
+
+
+def normalize_usage_quota_plan(plan: str | None) -> str:
+    if plan is None or plan == "":
+        return normalize_user_plan(None)
+    if plan in USAGE_PLANS:
+        return str(plan)
+    raise InvalidUsagePlan("Invalid usage plan.")
+
+
+def _positive_decimal(value: Any, *, field_name: str, default: Decimal | None) -> Decimal | None:
+    if value is None or value == "":
+        return default
+    try:
+        normalized = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"{field_name} must be numeric.") from exc
+    if normalized < 0:
+        raise ValueError(f"{field_name} must be non-negative.")
+    return normalized
 
 
 def _token_total(input_tokens: int | None, output_tokens: int | None) -> int | None:
@@ -459,6 +485,14 @@ def _idempotency_key(*parts: Any) -> str | None:
         return None
     digest = hashlib.sha256(":".join(clean).encode("utf-8")).hexdigest()[:32]
     return f"usage:{digest}"
+
+
+def _usage_call_idempotency_key(prefix: str, provider_request_id: str | None, *fallback_parts: Any) -> str | None:
+    if provider_request_id:
+        return _idempotency_key(prefix, "provider_request", provider_request_id)
+    if any(part is None for part in fallback_parts):
+        return None
+    return _idempotency_key(prefix, *fallback_parts)
 
 
 def _storage_added_key(value: Any) -> str | None:

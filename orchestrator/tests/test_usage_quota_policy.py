@@ -26,6 +26,18 @@ def test_quota_reports_exceeded_limit():
     )
 
     t2i = next(row for row in rows if row["metric"] == "t2iImages")
-    assert t2i["enforced"] is True
+    assert t2i["configured"] is True
+    assert t2i["enforced"] is False
     assert t2i["exceeded"] is True
     assert t2i["remaining"] == 0
+
+
+def test_quota_is_not_marked_enforced_when_guard_is_disabled(monkeypatch):
+    monkeypatch.setenv("EASYADS_ENFORCE_USAGE_QUOTAS", "false")
+
+    rows = evaluate_plan_quota(plan="free", totals={"llmCalls": 9}, quota_config={"free": {"llmCalls": 1}})
+
+    llm_calls = next(row for row in rows if row["metric"] == "llmCalls")
+    assert llm_calls["configured"] is True
+    assert llm_calls["exceeded"] is True
+    assert llm_calls["enforced"] is False

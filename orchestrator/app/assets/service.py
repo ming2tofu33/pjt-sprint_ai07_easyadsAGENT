@@ -526,8 +526,8 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str, use
                 
             if not updated_row:
                 raise ConflictError("Asset state changed during upload completion.", error_code="asset_completion_conflict")
-            _record_r2_upload_usage_for_asset(updated_row, actual_size, checksum, connection=conn)
-            return updated_row
+        _record_r2_upload_usage_for_asset(updated_row, actual_size, checksum, connection=None)
+        return updated_row
 
 
 def _record_r2_upload_usage_for_asset(

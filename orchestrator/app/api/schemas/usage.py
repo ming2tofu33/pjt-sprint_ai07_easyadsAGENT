@@ -36,11 +36,13 @@ class UsageQuotaItem(BaseModel):
     used: int | str
     remaining: int | str | None
     exceeded: bool
+    configured: bool = False
     enforced: bool
 
 
 class UsageBreakdownItem(BaseModel):
     key: str | None = None
+    unit: str | None = None
     quantity: int | str
     estimated_cost_usd: int | str = Field(alias="estimatedCostUsd")
 

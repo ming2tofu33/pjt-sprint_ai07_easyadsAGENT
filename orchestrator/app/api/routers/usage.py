@@ -11,7 +11,6 @@ from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.api.schemas.usage import UsageSummaryResponse
 from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.workspace_scope import WorkspaceScopeForbidden, WorkspaceScopeRequired, resolve_workspace_scope
-from orchestrator.app.llm.plan_policy import normalize_user_plan
 from orchestrator.app.usage.errors import UsageError
 from orchestrator.app.usage.service import get_usage_summary
 
@@ -36,7 +35,8 @@ def usage_summary(
             workspace_id=workspace,
             scope=scope,
             created_by=resolved_user if scope == "user" else None,
-            plan=normalize_user_plan(plan),
+            quota_plan=plan,
+            event_plan_filter=None,
             start_at=_parse_optional_datetime(startAt),
             end_at=_parse_optional_datetime(endAt),
         )

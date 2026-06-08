@@ -107,4 +107,5 @@ def test_aggregate_usage_summary_returns_breakdowns():
 
     assert totals["estimated_net_storage_bytes"] == 2
     assert totals["by_event_type"][0]["key"] == "llm_call"
+    assert "group by event_type, unit" in conn.cursor_obj.executed[1][0]
     assert len(conn.cursor_obj.executed) == 5

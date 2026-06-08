@@ -22,6 +22,8 @@ def test_llm_usage_recorded_from_success_result(monkeypatch):
         "workspace_id": "ws1",
         "thread_id": "thread1",
         "job_id": "job1",
+        "usage_thread_db_id": "thread_uuid",
+        "usage_job_db_id": "job_uuid",
         "user_id": "user1",
         "user_plan": "premium",
     }
@@ -35,6 +37,34 @@ def test_llm_usage_recorded_from_success_result(monkeypatch):
     assert calls[0]["input_tokens"] == 11
     assert calls[0]["output_tokens"] == 7
     assert calls[0]["provider_request_id"] == "req_123"
+    assert calls[0]["thread_id"] == "thread_uuid"
+    assert calls[0]["job_id"] == "job_uuid"
+
+
+def test_llm_usage_uses_internal_job_and_thread_uuid(monkeypatch):
+    calls = []
+    selection = SimpleNamespace(provider="openai", model_name="gpt", selected_model_class="api", node_name="copywriter")
+    result = SimpleNamespace(success=True, token_usage={"input_tokens": 1, "output_tokens": 1}, model_selection=selection, metadata={})
+    state = {"workspace_id": "ws1", "thread_id": "thread_public", "job_id": "job_public", "usage_thread_db_id": "thread_uuid", "usage_job_db_id": "job_uuid"}
+    monkeypatch.setattr(node_runner.usage_service, "record_llm_usage", lambda **kwargs: calls.append(kwargs))
+
+    node_runner.record_llm_usage_from_result(state, result)
+
+    assert calls[0]["thread_id"] == "thread_uuid"
+    assert calls[0]["job_id"] == "job_uuid"
+    assert calls[0]["call_index"] == 0
+
+
+def test_same_node_multiple_paid_calls_are_not_deduplicated(monkeypatch):
+    calls = []
+    selection = SimpleNamespace(provider="openai", model_name="gpt", selected_model_class="api", node_name="copywriter")
+    result = SimpleNamespace(success=True, token_usage={"input_tokens": 1, "output_tokens": 1}, model_selection=selection, metadata={})
+    state = {"workspace_id": "ws1", "usage_thread_db_id": "thread_uuid", "usage_job_db_id": "job_uuid", "llm_call_results": [{}]}
+    monkeypatch.setattr(node_runner.usage_service, "record_llm_usage", lambda **kwargs: calls.append(kwargs))
+
+    node_runner.record_llm_usage_from_result(state, result)
+
+    assert calls[0]["call_index"] == 1
 
 
 def test_llm_usage_skips_mock_provider(monkeypatch):

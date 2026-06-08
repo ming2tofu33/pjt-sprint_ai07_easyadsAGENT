@@ -59,3 +59,17 @@ def test_asset_upload_complete_records_r2_usage(monkeypatch):
     assert calls[0]["idempotency_key"] == "r2_upload:asset_public:checksum"
     assert "bucket" not in calls[0]["metadata"]
     assert "object_key" not in calls[0]["metadata"]
+
+
+def test_r2_usage_failure_does_not_rollback_asset_ready(monkeypatch):
+    row = {"id": "asset_uuid", "workspace_id": "ws_uuid", "kind": "source", "storage_provider": "r2"}
+    monkeypatch.setattr(asset_service.usage_service, "record_r2_upload_usage", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    asset_service._record_r2_upload_usage_for_asset(row, 512, "checksum", connection=None)
+
+
+def test_r2_usage_failure_does_not_rollback_generation_output(monkeypatch):
+    payload = {"workspace_id": "ws_uuid", "quantity": 512, "provider": "cloudflare_r2"}
+    monkeypatch.setattr(generation_service.usage_service, "record_r2_upload_usage", lambda **kwargs: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    generation_service._safe_record_r2_usage(payload)
