@@ -53,6 +53,8 @@ class T2ISettings:
     output_dir: Path
     enable_api_cost_guard: bool
     gpt_image_model: str
+    gpt_image_1_model: str
+    gpt_image_2_model: str
     sd35_model_id: str
     flux_model_id: str
     flux2_klein_model_id: str
@@ -70,6 +72,8 @@ class T2ISettings:
             output_dir=output_dir,
             enable_api_cost_guard=_get_bool("T2I_ENABLE_API_COST_GUARD", True),
             gpt_image_model=_get_env("T2I_GPT_IMAGE_MODEL", "gpt-image-1"),
+            gpt_image_1_model=_get_env("EASYADS_GPT_IMAGE_1_MODEL", "gpt-image-1"),
+            gpt_image_2_model=_get_env("EASYADS_GPT_IMAGE_2_MODEL", "gpt-image-2"),
             sd35_model_id=_get_env("T2I_SD35_MODEL_ID", "stabilityai/stable-diffusion-3.5-large"),
             flux_model_id=_get_env("T2I_FLUX_MODEL_ID", "black-forest-labs/FLUX.1-schnell"),
             flux2_klein_model_id=_get_env("EASYADS_T2I_FLUX2_KLEIN_MODEL_ID", "black-forest-labs/FLUX.2-klein-4B"),

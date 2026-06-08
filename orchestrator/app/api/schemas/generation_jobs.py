@@ -28,6 +28,8 @@ GenerationRunMode = Literal[
     "queued_only",
     "mock_immediate",
     "graph_job",
+    "gpt_image_1_actual",
+    "gpt_image_1_smoke",
     "gpt_image_2_actual",
     "gpt_image_2_smoke",
     "sd35_local",

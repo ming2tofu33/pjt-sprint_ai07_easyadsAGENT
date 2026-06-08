@@ -119,6 +119,14 @@ def test_flux_prompt_adapter(sample_scene_plan, sample_policy):
 
 
 def test_render_engine_prompt_routing(sample_scene_plan, sample_policy):
+    out_gpt_1 = render_engine_prompt(
+        "gpt_image_1",
+        sample_scene_plan,
+        sample_policy,
+        preset_id="cafe_dessert_soft_premium",
+    )
+    assert out_gpt_1.engine == "gpt_image_1"
+
     out_gpt = render_engine_prompt(
         "gpt_image_2",
         sample_scene_plan,
@@ -153,7 +161,7 @@ def test_render_engine_prompt_routing(sample_scene_plan, sample_policy):
         sample_policy,
         preset_id="cafe_dessert_soft_premium",
     )
-    assert out_fallback.engine == "gpt_image_2"
+    assert out_fallback.engine == "gpt_image_1"
     assert out_fallback.metadata.get("preset_id") == "cafe_dessert_soft_premium"
     assert len(out_fallback.warnings) > 0
-    assert "Fallback to gpt_image_2" in out_fallback.warnings[0] or "unknown_engine" in out_fallback.warnings[0]
+    assert "gpt_image_1" in out_fallback.warnings[0] or "unknown_engine" in out_fallback.warnings[0]

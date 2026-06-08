@@ -96,6 +96,8 @@ def _dispatch_regeneration_job(background_tasks: BackgroundTasks, dispatch: dict
         background_tasks.add_task(execute_generation_job_immediate, job_id, request)
     elif run_mode == "graph_job":
         background_tasks.add_task(execute_generation_job_graph, job_id, request)
+    elif run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke"}:
+        background_tasks.add_task(execute_generation_job_t2i, job_id, request, "gpt_image_1")
     elif run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         background_tasks.add_task(execute_generation_job_t2i, job_id, request, "gpt_image_2")
     elif run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:

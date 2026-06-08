@@ -10,12 +10,14 @@ def test_restore_persistent_state_filters_allowlist():
         "business_type": "done",
         "brand_kit_id": "bk_1",
         "ad_format": "story",
+        "copy_candidates": [{"id": "copy_1", "headline": "예약 문의하기"}],
         "some_random_key": "filtered"
     }
     restored = restore_persistent_state(payload)
     assert restored["business_type"] == "done"
     assert restored["brand_kit_id"] == "bk_1"
     assert restored["ad_format"] == "story"
+    assert restored["copy_candidates"] == [{"id": "copy_1", "headline": "예약 문의하기"}]
     assert "user_input" in restored  # user_input IS persistent!
     assert "some_random_key" not in restored
 

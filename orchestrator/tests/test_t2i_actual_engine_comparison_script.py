@@ -69,10 +69,10 @@ def test_free_plan_resolves_only_sd35_large_and_flux(tmp_path):
     assert report["resolved_engines"] == ["sd35_large", "flux"]
 
 
-def test_economic_plan_allows_gpt_image_2(tmp_path):
+def test_economic_plan_allows_gpt_image_1(tmp_path):
     report = runner.run_comparison(
         plan="economic",
-        requested_engines=["gpt_image_2"],
+        requested_engines=["gpt_image_1"],
         case_ids=["cafe_dessert_001"],
         max_cases=1,
         dry_run=True,
@@ -83,7 +83,7 @@ def test_economic_plan_allows_gpt_image_2(tmp_path):
         output_json=tmp_path / "report.json",
     )
 
-    assert report["resolved_engines"] == ["gpt_image_2"]
+    assert report["resolved_engines"] == ["gpt_image_1"]
 
 
 def test_premium_include_comparison_resolves_all_engines(tmp_path):
@@ -100,7 +100,7 @@ def test_premium_include_comparison_resolves_all_engines(tmp_path):
         output_json=tmp_path / "report.json",
     )
 
-    assert report["resolved_engines"] == ["gpt_image_2", "sd35_large", "flux"]
+    assert report["resolved_engines"] == ["gpt_image_1", "gpt_image_2", "sd35_large", "flux"]
 
 
 def test_report_redacts_secret_env_values(monkeypatch, tmp_path):
