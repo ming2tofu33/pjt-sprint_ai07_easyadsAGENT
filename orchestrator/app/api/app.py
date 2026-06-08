@@ -17,6 +17,7 @@ from orchestrator.app.api.routers.generation_outputs import router as generation
 from orchestrator.app.api.routers.references import router as references_router
 from orchestrator.app.api.routers.assets import router as assets_router
 from orchestrator.app.api.routers.usage import router as usage_router
+from orchestrator.app.api.routers.validation_feedback import router as validation_feedback_router
 from orchestrator.app.api.schemas.common import ErrorResponse
 
 
@@ -64,6 +65,11 @@ def create_app() -> FastAPI:
         tags=["generation-outputs"],
     )
     app.include_router(
+        validation_feedback_router,
+        prefix="/api/v1",
+        tags=["validation-feedback"],
+    )
+    app.include_router(
         usage_router,
         prefix="/api/v1",
         tags=["usage"],
@@ -93,6 +99,20 @@ def create_app() -> FastAPI:
             error = ErrorResponse(
                 error_code="invalid_archive_request",
                 message="Invalid archive request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.endswith("/regenerate"):
+            error = ErrorResponse(
+                error_code="invalid_regeneration_request",
+                message="Invalid regeneration request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.endswith("/validation"):
+            error = ErrorResponse(
+                error_code="invalid_validation_feedback_request",
+                message="Invalid validation feedback request.",
                 detail=str(exc),
             )
             return JSONResponse(status_code=400, content=error.model_dump(mode="json"))

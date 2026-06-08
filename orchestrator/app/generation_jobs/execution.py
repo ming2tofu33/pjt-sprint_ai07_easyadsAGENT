@@ -339,6 +339,9 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
 
         if request.selected_reference_template_id is not None:
             initial_state["selected_reference_template_id"] = request.selected_reference_template_id
+        regeneration_patch = (request.metadata or {}).get("regeneration_patch")
+        if regeneration_patch:
+            initial_state["regeneration_patch"] = regeneration_patch
 
         # Execute
         graph = get_generation_job_graph()
