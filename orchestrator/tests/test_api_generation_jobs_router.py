@@ -1,7 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
 from orchestrator.app.api.app import create_app
+from orchestrator.app.api.schemas.generation_jobs import GenerationJobResponse, GenerationProgress
 from orchestrator.app.chat_threads.errors import (
     ChatThreadArchivedError,
     ChatThreadHasActiveJobError,
@@ -58,6 +61,45 @@ def test_create_generation_job_and_get_job(client):
     fetched = client.get(f"/api/v1/generation-jobs/{job['job_id']}")
     assert fetched.status_code == 200
     assert fetched.json()["job"]["job_id"] == job["job_id"]
+
+
+def test_get_generation_job_marks_stale_running_planning_job_failed(client, monkeypatch):
+    stale_job = GenerationJobResponse(
+        job_id="job_stale_1",
+        thread_id="thread_stale_1",
+        user_id="user_1",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        created_at=(datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat(),
+        updated_at=(datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat(),
+        metadata={"execution_mode": "graph_execution"},
+    )
+    failed_job = stale_job.model_copy(
+        update={
+            "status": "failed",
+            "progress": GenerationProgress(progress_percent=50, current_stage="failed", stage_order=[]),
+            "metadata": {"execution_mode": "stale_running_recovered"},
+        }
+    )
+    calls = []
+
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job", lambda job_id: stale_job)
+
+    def fake_maybe_mark_stale_generation_job_failed(job):
+        calls.append(job.job_id)
+        return failed_job
+
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.maybe_mark_stale_generation_job_failed",
+        fake_maybe_mark_stale_generation_job_failed,
+    )
+
+    response = client.get("/api/v1/generation-jobs/job_stale_1")
+
+    assert response.status_code == 200
+    assert response.json()["job"]["status"] == "failed"
+    assert response.json()["job"]["progress"]["current_stage"] == "failed"
+    assert calls == ["job_stale_1"]
 
 
 def test_create_generation_job_mock_immediate_completes(client):
@@ -209,11 +251,12 @@ def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
 
 def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
     monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "false")
+    monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_1", "false")
     monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "false")
     monkeypatch.setenv("EASYADS_ENABLE_SD35_LOCAL", "false")
     monkeypatch.setenv("EASYADS_ENABLE_FLUX_LOCAL", "false")
 
-    gpt = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "gpt_image_2_smoke"})
+    gpt = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "gpt_image_1_smoke"})
     sd35 = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "sd35_local_smoke"})
     flux = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "flux_local_smoke"})
 

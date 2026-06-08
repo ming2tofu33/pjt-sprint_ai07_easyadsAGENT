@@ -135,6 +135,7 @@ def build_marketing_graph(checkpointer=None):
         route_after_tone_binding,
         {
             "copy_candidate_generation": "copy_candidate_generation",
+            "state_update_selected_copy": "state_update_selected_copy",
             "auto_pilot_copywriting": "auto_pilot_copywriting",
             "custom_copy_input": "custom_copy_input",
             "no_copy_bypass": "no_copy_bypass",

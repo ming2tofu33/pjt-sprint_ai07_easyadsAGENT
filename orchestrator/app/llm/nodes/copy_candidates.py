@@ -402,7 +402,12 @@ def copy_candidate_selection_interrupt_node(state: MarketingState) -> dict[str, 
 
 
 def state_update_selected_copy_node(state: MarketingState) -> dict[str, Any]:
-    selection = state.get("copy_selection") or {}
+    selection = dict(state.get("copy_selection") or {})
+    selection.setdefault("selected_copy_id", state.get("selected_copy_id"))
+    selection.setdefault("selected_channel_id", state.get("selected_channel_id"))
+    selection.setdefault("selected_ad_format", state.get("selected_ad_format"))
+    selection.setdefault("selected_tone", state.get("selected_tone"))
+    selection.setdefault("custom_direction", state.get("custom_direction"))
     selected_id = selection.get("selected_copy_id") or "copy_1"
     candidates = list(state.get("copy_candidates", []))
     candidate = next((item for item in candidates if item.get("id") == selected_id), None)

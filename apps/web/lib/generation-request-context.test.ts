@@ -3,10 +3,13 @@ import { saveBrandKit } from "./brand-kit-storage";
 import {
   GENERATION_DRAFT_PROMPT_STORAGE_KEY,
   GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY,
+  GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY,
   appendSavedBrandKitContext,
   buildBrandKitGenerationContext,
   clearGenerationDraftPrompt,
   clearGenerationRequestContext,
+  consumeFreshGenerationRequest,
+  markFreshGenerationRequest,
   readGenerationRequestContext,
   readGenerationDraftPrompt,
   readGenerationDraftReferenceTemplateId,
@@ -81,8 +84,28 @@ describe("generation-request-context", () => {
     });
     expect(readGenerationDraftPrompt()).toBe("수박주스 블루 여름 피드 스타일로 광고를 만들고 싶어요.");
     expect(readGenerationDraftReferenceTemplateId()).toBe("temp_watermelon_juice_feed");
+    expect(window.sessionStorage.getItem(GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY)).toBe("1");
+    expect(consumeFreshGenerationRequest()).toBe(true);
+    expect(consumeFreshGenerationRequest()).toBe(false);
 
     clearGenerationRequestContext();
     expect(readGenerationRequestContext()).toBeNull();
+  });
+
+  it("tracks one-time fresh chat requests", () => {
+    markFreshGenerationRequest();
+
+    expect(window.sessionStorage.getItem(GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY)).toBe("1");
+    expect(consumeFreshGenerationRequest()).toBe(true);
+    expect(window.sessionStorage.getItem(GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY)).toBeNull();
+    expect(consumeFreshGenerationRequest()).toBe(false);
+  });
+
+  it("clears pending fresh chat requests with draft context", () => {
+    markFreshGenerationRequest();
+
+    clearGenerationDraftPrompt();
+
+    expect(window.sessionStorage.getItem(GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY)).toBeNull();
   });
 });

@@ -51,6 +51,8 @@ def route_after_validator_for_marketing(state: MarketingState) -> str:
 def route_after_tone_binding(state: MarketingState) -> str:
     mode = state.get("copy_generation_mode")
     if mode == "suggest_candidates":
+        if state.get("selected_copy_id") and state.get("copy_candidates"):
+            return "state_update_selected_copy"
         return "copy_candidate_generation"
     if mode == "custom_input":
         return "custom_copy_input"

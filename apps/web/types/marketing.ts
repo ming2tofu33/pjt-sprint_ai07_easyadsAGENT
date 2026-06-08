@@ -173,7 +173,9 @@ export type ChatFlowAction =
   | { type: "selectCopy"; copyId: string }
   | { type: "selectChannel"; channelId: string }
   | { type: "setCustomDirection"; value: string }
+  | { type: "submitBriefRefinement"; message: string; customDirection: string }
   | { type: "backendBriefSucceeded"; brief: ChatBrief }
+  | { type: "briefRefinementSucceeded"; brief: ChatBrief }
   | {
       type: "requestContextLoaded";
       selectedReferenceTemplateId?: string | null;
@@ -223,6 +225,9 @@ export type ChatFlowAction =
       type: "generationJobQuestionReceived";
       generationJob: GenerationJob;
       question: OptionQuestion;
+      context?: PartialInferredContext;
+      sourceImagePath?: string | null;
+      referenceImagePath?: string | null;
     }
   | { type: "generationJobInterruptReceived"; generationJob: GenerationJob }
   | { type: "submitGenerationJobAnswer"; label: string }

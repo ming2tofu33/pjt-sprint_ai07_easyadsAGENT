@@ -1,6 +1,9 @@
 from langgraph.types import Command
 
 from orchestrator.app.graph.builder import build_marketing_graph
+from orchestrator.app.graph.state import create_initial_marketing_state
+from orchestrator.app.llm.nodes.copy_candidates import copy_candidate_generation_node
+from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest, MarketingContext
 
 
 def _request(mode: str, job_id: str):
@@ -50,6 +53,39 @@ def test_suggest_candidates_interrupt_then_resume_to_mock():
 
     result = graph.invoke(Command(resume={"selected_copy_id": "copy_2"}), config=config)
 
+    assert result["status"] == "done"
+    assert result["selected_copy_id"] == "copy_2"
+    assert result["copy_spec"]["items"][0]["text"] == "회식은 역시 삼겹살"
+    assert result["t2i_result"]["engine"] == "mock"
+
+
+def test_suggest_candidates_with_persisted_selection_skips_interrupt_to_mock():
+    state = create_initial_marketing_state(
+        InitialMarketingRequest(
+            user_input="ready",
+            job_id="copy-mode-suggest-selected",
+            thread_id="copy-mode-suggest-selected",
+            copy_generation_mode="suggest_candidates",
+            context=MarketingContext(
+                business_type="restaurant",
+                item_or_service="삼겹살",
+                promotion_goal="reservation_cta",
+                extra={"ad_format": "instagram_feed"},
+            ),
+        )
+    )
+    state.update(copy_candidate_generation_node(state))
+    state["selected_copy_id"] = "copy_2"
+    state["selected_channel_id"] = "instagram-feed"
+    state["selected_tone"] = "깔끔한"
+    state["custom_direction"] = "문구 여백을 넉넉하게"
+
+    result = build_marketing_graph().invoke(
+        state,
+        config={"configurable": {"thread_id": "copy-mode-suggest-selected"}},
+    )
+
+    assert "__interrupt__" not in result
     assert result["status"] == "done"
     assert result["selected_copy_id"] == "copy_2"
     assert result["copy_spec"]["items"][0]["text"] == "회식은 역시 삼겹살"

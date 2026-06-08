@@ -21,7 +21,7 @@ GenerationRoute = Literal[
     "typography_only",
 ]
 
-GenerationEngine = Literal["mock", "sd35_large", "flux", "gpt_image_2"]
+GenerationEngine = Literal["mock", "sd35_large", "flux", "gpt_image_1", "gpt_image_2"]
 
 RenderProfile = Literal["fast", "balanced", "premium_local", "premium_api", "benchmark"]
 

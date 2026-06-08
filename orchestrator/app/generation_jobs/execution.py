@@ -33,6 +33,7 @@ from orchestrator.app.t2i.execution import TEXT_FREE_NEGATIVE_PROMPT, build_gene
 from orchestrator.app.t2i.settings import T2IEngineNotEnabledError, T2IEngineUnavailableError
 
 _EFFECTIVE_RUN_MODE_BY_ENGINE = {
+    "gpt_image_1": "gpt_image_1_actual",
     "gpt_image_2": "gpt_image_2_actual",
     "sd35_large": "sd35_local",
     "flux": "flux_local",
@@ -455,71 +456,83 @@ def resume_generation_job_graph(
     if not job.thread_id:
         raise ValueError("generation job has no thread_id")
 
-    running = mark_generation_job_running(job_id, stage="planning")
-    job = running or job
+    try:
+        running = mark_generation_job_running(job_id, stage="planning")
+        job = running or job
 
-    resume_payload = answer.to_resume_payload(job_id=job_id, thread_id=job.thread_id)
-    append_generation_job_user_answer_message(job_id, answer)
-    graph = get_generation_job_graph()
-    result_state = graph.invoke(
-        Command(resume=resume_payload),
-        config={"configurable": {"thread_id": job.thread_id}},
-    )
-    changed_fields = calculate_changed_fields(None, result_state)
-
-    if "__interrupt__" in result_state:
-        assistant_message = _assistant_message_from_interrupt(result_state, "추가 정보가 필요해요.")
-        updated = mark_generation_job_waiting_user_input(
-            job_id=job_id,
-            result_state=result_state,
-            changed_fields=changed_fields,
-            assistant_message=assistant_message,
+        resume_payload = answer.to_resume_payload(job_id=job_id, thread_id=job.thread_id)
+        append_generation_job_user_answer_message(job_id, answer)
+        graph = get_generation_job_graph()
+        result_state = graph.invoke(
+            Command(resume=resume_payload),
+            config={"configurable": {"thread_id": job.thread_id}},
         )
-        return updated or job
+        changed_fields = calculate_changed_fields(None, result_state)
 
-    if result_state.get("status") == "modal_running":
-        context = _resolve_graph_job_context(job_id, job)
-        return _mark_graph_modal_pending(
-            job_id=job_id,
-            job=job,
-            result_state=result_state,
-            changed_fields=changed_fields,
-            request_run_mode="graph_job",
-            workspace_id=str(context["workspace_id"]),
-            public_job_id=str(context["public_job_id"]),
-            internal_job_id=str(context["internal_job_id"]),
-            parent_snapshot_id=context.get("parent_snapshot_id"),
-        )
+        if "__interrupt__" in result_state:
+            assistant_message = _assistant_message_from_interrupt(result_state, "추가 정보가 필요해요.")
+            updated = mark_generation_job_waiting_user_input(
+                job_id=job_id,
+                result_state=result_state,
+                changed_fields=changed_fields,
+                assistant_message=assistant_message,
+            )
+            return updated or job
 
-    if result_state.get("status") == "done":
-        done = mark_generation_job_done(
-            job_id,
-            result_payload=result_state.get("result_payload") or {},
-            output_path=result_state.get("final_image_path"),
-            metadata={
-                "requested_run_mode": "graph_job",
-                "effective_run_mode": "graph_job",
-                "execution_mode": "graph_execution",
-                "final_brief": result_state.get("current_brief"),
-            },
-        )
-        return done or job
+        if result_state.get("status") == "modal_running":
+            context = _resolve_graph_job_context(job_id, job)
+            return _mark_graph_modal_pending(
+                job_id=job_id,
+                job=job,
+                result_state=result_state,
+                changed_fields=changed_fields,
+                request_run_mode="graph_job",
+                workspace_id=str(context["workspace_id"]),
+                public_job_id=str(context["public_job_id"]),
+                internal_job_id=str(context["internal_job_id"]),
+                parent_snapshot_id=context.get("parent_snapshot_id"),
+            )
 
-    if result_state.get("status") == "failed":
-        error_info = result_state.get("error_info") or {}
+        if result_state.get("status") == "done":
+            done = mark_generation_job_done(
+                job_id,
+                result_payload=result_state.get("result_payload") or {},
+                output_path=result_state.get("final_image_path"),
+                metadata={
+                    "requested_run_mode": "graph_job",
+                    "effective_run_mode": "graph_job",
+                    "execution_mode": "graph_execution",
+                    "final_brief": result_state.get("current_brief"),
+                },
+            )
+            return done or job
+
+        if result_state.get("status") == "failed":
+            error_info = result_state.get("error_info") or {}
+            failed = mark_generation_job_failed(
+                job_id,
+                {
+                    "error_code": error_info.get("error_code") or "generation_job_execution_failed",
+                    "error_type": error_info.get("error_type"),
+                    "message": error_info.get("message") or "Graph execution failed",
+                    "detail": result_state.get("error_message"),
+                },
+                metadata={"execution_mode": "graph_execution_failed"},
+            )
+            return failed or job
+
+        raise ValueError(f"Unexpected graph result status: {result_state.get('status')}")
+    except Exception as exc:
         failed = mark_generation_job_failed(
             job_id,
             {
-                "error_code": error_info.get("error_code") or "generation_job_execution_failed",
-                "error_type": error_info.get("error_type"),
-                "message": error_info.get("message") or "Graph execution failed",
-                "detail": result_state.get("error_message"),
+                "error_code": "generation_job_execution_failed",
+                "message": "Generation job graph resume failed.",
+                "detail": str(exc),
             },
-            metadata={"execution_mode": "graph_execution_failed"},
+            metadata={"execution_mode": "graph_resume_failed"},
         )
         return failed or job
-
-    raise ValueError(f"Unexpected graph result status: {result_state.get('status')}")
 
 
 def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobResponse | None:
@@ -741,6 +754,8 @@ def _normalize_graph_t2i_engine(value: object) -> str:
         return "flux"
     if normalized in {"flux2_klein", "flux2_klein_4b", "flux_2_klein_4b"}:
         return "flux2_klein_4b"
+    if normalized in {"gpt_image_1", "gpt_image1"}:
+        return "gpt_image_1"
     if normalized in {"gpt_image_2", "gpt_image2"}:
         return "gpt_image_2"
     raise ValueError(f"Unsupported graph T2I engine: {value}")

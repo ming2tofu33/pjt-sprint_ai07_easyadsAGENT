@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import { listReferenceTemplates, type ReferenceTemplateCard } from "@/lib/api-client";
+import { generationStageViewFromJob } from "@/lib/generation-job-stage";
 import { hasReferenceTemplateImage, referenceTemplateToCreative } from "@/lib/reference-template-creative";
 import { AdCreativeCard } from "./AdCreativeCard";
 import { MascotImage } from "./MascotImage";
@@ -12,7 +13,6 @@ import styles from "./generate.module.css";
 
 type ReferenceBrowseStepProps = {
   state: ChatFlowState;
-  progress: number;
   onShowProgress: () => void;
   isGenerationComplete?: boolean;
   isStandaloneGallery?: boolean;
@@ -38,7 +38,6 @@ const categories = [
 
 export function ReferenceBrowseStep({
   state,
-  progress,
   onShowProgress,
   isGenerationComplete = false,
   isStandaloneGallery = false,
@@ -53,7 +52,7 @@ export function ReferenceBrowseStep({
   onUseTemplate
 }: ReferenceBrowseStepProps) {
   const brief = buildBrief(state);
-  const safeProgress = isGenerationComplete ? 100 : Math.max(12, Math.min(progress, 99));
+  const generationStage = generationStageViewFromJob(state.generationJob);
   const [templates, setTemplates] = useState<ReferenceTemplateCard[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
@@ -124,9 +123,9 @@ export function ReferenceBrowseStep({
             <span className={styles.spinnerDot} />
           )}
           <strong>
-            {isGenerationComplete ? `${brief.item} 광고 생성 완료` : `${brief.item} 광고 생성 중 · ${safeProgress}%`}
+            {isGenerationComplete ? `${brief.item} 광고 생성 완료` : `${brief.item} 광고 생성 중`}
           </strong>
-          <span>{isGenerationComplete ? "비슷한 스타일을 둘러보세요" : `약 ${Math.max(5, Math.ceil((100 - safeProgress) / 4))}초 남음`}</span>
+          <span>{isGenerationComplete ? "비슷한 스타일을 둘러보세요" : generationStage.label}</span>
           <button type="button" onClick={onShowProgress}>
             {isGenerationComplete ? "결과로 돌아가기" : "진행 상황 보기"}
           </button>

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import openai
 
-from orchestrator.app.t2i.gpt_image2 import GPTImage2Engine, _resolve_model, _resolve_size
+from orchestrator.app.t2i.gpt_image2 import GPTImage1Engine, GPTImage2Engine, _resolve_model, _resolve_size
 from orchestrator.app.t2i.schemas import T2IRequest
 
 
@@ -56,7 +56,7 @@ def test_gpt_image2_generate_blocks_api_call_by_default(monkeypatch, tmp_path):
 
 def test_gpt_image2_uses_edit_when_input_image_is_present(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used")
-    monkeypatch.setenv("T2I_GPT_IMAGE_MODEL", "gpt-image-1")
+    monkeypatch.setenv("EASYADS_GPT_IMAGE_2_MODEL", "gpt-image-2")
     source = tmp_path / "source.png"
     source.write_bytes(b"fake image")
     called = {}
@@ -89,7 +89,7 @@ def test_gpt_image2_uses_edit_when_input_image_is_present(monkeypatch, tmp_path)
     result = engine.generate(request)
 
     assert called["operation"] == "edit"
-    assert called["kwargs"]["model"] == "gpt-image-1"
+    assert called["kwargs"]["model"] == "gpt-image-2"
     assert called["kwargs"]["input_fidelity"] == "high"
     assert "response_format" not in called["kwargs"]
     assert called["kwargs"]["image"][0].name == str(source)
@@ -97,6 +97,35 @@ def test_gpt_image2_uses_edit_when_input_image_is_present(monkeypatch, tmp_path)
     assert result.image_paths == [str(tmp_path / "out" / "gpt_image_2_0.png")]
     assert result.metadata["api_operation"] == "edit"
     assert result.metadata["input_image_paths"] == [str(source)]
+
+
+def test_gpt_image1_uses_gpt_image_1_model(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key-not-used")
+    called = {}
+
+    class FakeImages:
+        def generate(self, **kwargs):
+            called["kwargs"] = kwargs
+            return SimpleNamespace(data=[SimpleNamespace(b64_json=base64.b64encode(b"fake output").decode("ascii"))])
+
+    class FakeOpenAI:
+        def __init__(self, api_key):
+            self.images = FakeImages()
+
+    monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
+    engine = GPTImage1Engine(allow_api_call=True)
+    request = T2IRequest(
+        prompt="Create a clean cafe advertising background",
+        output_dir=str(tmp_path / "out"),
+        metadata={"job_id": "gpt-image-1-test"},
+    )
+
+    result = engine.generate(request)
+
+    assert called["kwargs"]["model"] == "gpt-image-1"
+    assert result.engine == "gpt_image_1"
+    assert result.error is None
+    assert result.image_paths == [str(tmp_path / "out" / "gpt_image_1_0.png")]
 
 
 def test_gpt_image2_resolves_supported_image_api_values():

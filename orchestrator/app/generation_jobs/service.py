@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import RLock
 from uuid import UUID
@@ -61,6 +61,8 @@ logger = logging.getLogger(__name__)
 
 _GENERATION_JOBS: dict[str, GenerationJobResponse] = {}
 _GENERATION_JOB_LOCK = RLock()
+STALE_RUNNING_STAGE_NAMES = {"planning", "running"}
+DEFAULT_STALE_RUNNING_AFTER_SECONDS = 15 * 60
 _BLOCKED_METADATA_KEYS = {
     "api_key",
     "openai_api_key",
@@ -138,6 +140,8 @@ def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
         return "mock_immediate", "pending_deterministic_mock"
     if run_mode == "graph_job":
         return "graph_job", "pending_graph_execution"
+    if run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke"}:
+        return "gpt_image_1_actual", "pending_t2i_actual"
     if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "gpt_image_2_actual", "pending_t2i_actual"
     if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
@@ -622,6 +626,51 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
 
     return updated
 
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def maybe_mark_stale_generation_job_failed(
+    job: GenerationJobResponse,
+    *,
+    now: datetime | None = None,
+    stale_after_seconds: int = DEFAULT_STALE_RUNNING_AFTER_SECONDS,
+) -> GenerationJobResponse:
+    if job.status != "running":
+        return job
+    if job.progress.current_stage not in STALE_RUNNING_STAGE_NAMES:
+        return job
+    updated_at = _parse_iso_datetime(job.updated_at)
+    if not updated_at:
+        return job
+    current_time = now or datetime.now(timezone.utc)
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
+    if current_time - updated_at < timedelta(seconds=stale_after_seconds):
+        return job
+
+    failed = mark_generation_job_failed(
+        job.job_id,
+        {
+            "error_code": "generation_job_stale_running",
+            "message": "Generation job stopped while preparing the request.",
+            "detail": "The job stayed in running/planning longer than the allowed stale threshold.",
+        },
+        metadata={
+            **(job.metadata or {}),
+            "execution_mode": "stale_running_recovered",
+            "stale_running_stage": job.progress.current_stage,
+        },
+    )
+    return failed or job
+
+
 def mark_generation_job_waiting_user_input(
     job_id: str,
     result_state: dict,
@@ -864,6 +913,9 @@ def _normalize_engine_preference(value: object) -> str | None:
         return None
     normalized = str(value).strip().lower().replace("-", "_")
     aliases = {
+        "gpt_image_1": "gpt_image_1",
+        "gpt_image1": "gpt_image_1",
+        "gptimage1": "gpt_image_1",
         "gpt_image_2": "gpt_image_2",
         "gpt_image2": "gpt_image_2",
         "gptimage2": "gpt_image_2",
@@ -878,6 +930,8 @@ def _normalize_engine_preference(value: object) -> str | None:
 
 
 def _engine_preference(run_mode: str) -> str | None:
+    if run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke"}:
+        return "gpt_image_1"
     if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "gpt_image_2"
     if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
@@ -910,7 +964,7 @@ def _apply_generation_engine_to_state(restored_payload: dict, request: Generatio
 def _model_provider_for_run_mode(run_mode: str) -> str | None:
     if run_mode in {"mock_immediate"}:
         return "mock"
-    if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
+    if run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke", "gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "openai"
     if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real", "flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
         return "local"

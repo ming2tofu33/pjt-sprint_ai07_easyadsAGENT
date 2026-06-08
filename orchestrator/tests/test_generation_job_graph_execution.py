@@ -644,3 +644,55 @@ def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
         "어떤 업종인가요?",
         "카페",
     ]
+
+
+def test_resume_generation_job_graph_marks_failed_when_graph_raises(monkeypatch):
+    calls = []
+    expected_job_id = None
+    expected_thread_id = None
+
+    class MockSharedGraph:
+        def invoke(self, payload, config: dict | None = None) -> dict:
+            nonlocal expected_job_id, expected_thread_id
+            calls.append(payload)
+            if len(calls) == 1:
+                state = dict(payload)
+                expected_job_id = state["job_id"]
+                expected_thread_id = state["thread_id"]
+                state["__interrupt__"] = [
+                    FakeInterrupt(
+                        {
+                            "type": "option_question",
+                            "job_id": state["job_id"],
+                            "thread_id": state["thread_id"],
+                            "option_question": {
+                                "field": "item_or_service",
+                                "question": "홍보할 상품이나 서비스는 무엇인가요?",
+                                "options": [{"id": 1, "label": "대표 메뉴", "value": "대표 메뉴"}],
+                            },
+                        }
+                    )
+                ]
+                state["status"] = "waiting_user_input"
+                state["messages"] = [{"role": "assistant", "content": "홍보할 상품이나 서비스는 무엇인가요?"}]
+                return state
+
+            raise RuntimeError("resume graph crashed while planning image generation")
+
+    shared_graph = MockSharedGraph()
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: shared_graph)
+
+    request = GenerationJobCreateRequest(user_input="햄버거집 광고 만들어줘", run_mode="graph_job")
+    job = create_generation_job(request)
+    waiting = execute_generation_job_graph(job.job_id, request)
+    assert waiting.status == "waiting_user_input"
+
+    answer = GenerationJobAnswerRequest(field="item_or_service", value="햄버거 대표 메뉴", display_text="햄버거 대표 메뉴")
+    resumed = resume_generation_job_graph(waiting.job_id, answer)
+
+    assert resumed.status == "failed"
+    assert resumed.progress.current_stage == "failed"
+    assert resumed.error is not None
+    assert resumed.error.error_code == "generation_job_execution_failed"
+    assert resumed.metadata["execution_mode"] == "graph_resume_failed"
+    assert "resume graph crashed" in resumed.error.detail

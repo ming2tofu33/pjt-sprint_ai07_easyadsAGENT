@@ -30,11 +30,13 @@ from orchestrator.app.t2i.settings import load_t2i_settings  # noqa: E402
 
 BATCH_ID = "t2i_actual_engine_comparison_v1"
 ENGINE_RUN_MODES = {
+    "gpt_image_1": "gpt_image_1_actual",
     "gpt_image_2": "gpt_image_2_actual",
     "sd35_large": "sd35_local",
     "flux": "flux_local",
 }
 SMOKE_RUN_MODES = {
+    "gpt_image_1": "gpt_image_1_smoke",
     "gpt_image_2": "gpt_image_2_smoke",
     "sd35_large": "sd35_local_smoke",
     "flux": "flux_local_smoke",

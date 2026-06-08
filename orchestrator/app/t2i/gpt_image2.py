@@ -1,4 +1,4 @@
-﻿"""GPT-image-2 T2I engine wrapper with cost-safe default behavior."""
+﻿"""OpenAI GPT-image T2I engine wrappers with cost-safe default behavior."""
 
 from __future__ import annotations
 
@@ -13,10 +13,11 @@ from orchestrator.app.t2i.base import BaseT2IEngine
 from orchestrator.app.t2i.schemas import T2IRequest, T2IResult
 
 
-class GPTImage2Engine(BaseT2IEngine):
+class GPTImageEngine(BaseT2IEngine):
     """OpenAI image API wrapper that only calls the API when explicitly allowed."""
 
-    name = "gpt_image_2"
+    name = "gpt_image_1"
+    model_settings_field = "gpt_image_1_model"
 
     def __init__(self, allow_api_call: bool = False) -> None:
         self.allow_api_call = allow_api_call
@@ -34,7 +35,7 @@ class GPTImage2Engine(BaseT2IEngine):
     def health(self) -> dict[str, Any]:
         settings = get_t2i_settings()
         sdk_available = _is_openai_sdk_available()
-        model = _resolve_model(settings.gpt_image_model)
+        model = _resolve_model(str(getattr(settings, self.model_settings_field)))
         if not settings.openai_api_key:
             return {"available": False, "loaded": self.is_loaded(), "reason": "OPENAI_API_KEY missing", "sdk_available": sdk_available}
         if not sdk_available:
@@ -67,7 +68,7 @@ class GPTImage2Engine(BaseT2IEngine):
             output_dir.mkdir(parents=True, exist_ok=True)
             client = OpenAI(api_key=settings.openai_api_key)
             size = _resolve_size(request.width, request.height)
-            model = _resolve_model(settings.gpt_image_model)
+            model = _resolve_model(str(getattr(settings, self.model_settings_field)))
             input_image_paths = [str(path) for path in request.input_image_paths if str(path).strip()]
             if input_image_paths:
                 missing_paths = [path for path in input_image_paths if not Path(path).exists()]
@@ -94,7 +95,7 @@ class GPTImage2Engine(BaseT2IEngine):
                     n=request.num_images,
                 )
                 api_operation = "generate"
-            image_paths = _save_openai_images(response, output_dir)
+            image_paths = _save_openai_images(response, output_dir, self.name)
             width, height = _size_to_dimensions(size, request.width, request.height)
             return T2IResult(
                 engine=self.name,
@@ -108,7 +109,7 @@ class GPTImage2Engine(BaseT2IEngine):
                 metadata={
                     **request.metadata,
                     "model": model,
-                    "configured_model": settings.gpt_image_model,
+                    "configured_model": str(getattr(settings, self.model_settings_field)),
                     "requested_size": f"{request.width}x{request.height}",
                     "api_size": size,
                     "api_call": True,
@@ -134,6 +135,16 @@ class GPTImage2Engine(BaseT2IEngine):
             metadata={**request.metadata, "api_call": False},
             error=error,
         )
+
+
+class GPTImage1Engine(GPTImageEngine):
+    name = "gpt_image_1"
+    model_settings_field = "gpt_image_1_model"
+
+
+class GPTImage2Engine(GPTImageEngine):
+    name = "gpt_image_2"
+    model_settings_field = "gpt_image_2_model"
 
 
 def _is_openai_sdk_available() -> bool:
@@ -174,10 +185,10 @@ def _size_to_dimensions(size: str, fallback_width: int, fallback_height: int) ->
         return fallback_width, fallback_height
 
 
-def _save_openai_images(response: Any, output_dir: Path) -> list[str]:
+def _save_openai_images(response: Any, output_dir: Path, engine_name: str = "gpt_image_1") -> list[str]:
     image_paths: list[str] = []
     for index, item in enumerate(getattr(response, "data", []) or []):
-        path = output_dir / f"gpt_image_2_{index}.png"
+        path = output_dir / f"{engine_name}_{index}.png"
         b64_json = getattr(item, "b64_json", None)
         if b64_json:
             path.write_bytes(base64.b64decode(b64_json))

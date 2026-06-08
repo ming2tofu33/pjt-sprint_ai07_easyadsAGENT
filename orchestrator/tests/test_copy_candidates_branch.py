@@ -79,6 +79,24 @@ def test_selected_copy_updates_marketing_copy_and_copy_spec():
     assert state["copy_spec"]["items"][0]["role"] == "headline"
 
 
+def test_selected_copy_node_uses_persisted_state_selection_without_resume_payload():
+    state = _state()
+    state.update(copy_candidate_generation_node(state))
+    state["selected_copy_id"] = "copy_2"
+    state["selected_channel_id"] = "instagram-story"
+    state["selected_tone"] = "깔끔한"
+    state["custom_direction"] = "상품을 더 크게 보여줘"
+
+    update = state_update_selected_copy_node(state)
+
+    assert update["selected_copy_id"] == "copy_2"
+    assert update["selected_channel_id"] == "instagram-story"
+    assert update["selected_ad_format"] == "instagram_story"
+    assert update["selected_tone"] == "깔끔한"
+    assert update["custom_direction"] == "상품을 더 크게 보여줘"
+    assert update["marketing_copy"]["headline"] == "회식은 역시 삼겹살"
+
+
 def test_selected_copy_persists_frontend_choices_in_graph_state():
     state = _state()
     state.update(copy_candidate_generation_node(state))

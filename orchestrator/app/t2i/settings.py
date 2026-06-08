@@ -15,6 +15,7 @@ class T2IEngineUnavailableError(RuntimeError):
 
 class T2ISettings(BaseModel):
     enable_external_t2i: bool = False
+    enable_gpt_image_1: bool = False
     enable_gpt_image_2: bool = False
     enable_sd35_local: bool = False
     enable_flux_local: bool = False
@@ -40,22 +41,27 @@ class T2ISettings(BaseModel):
     max_images_per_job: int = Field(default=1, ge=1, le=4)
     default_width: int = 1024
     default_height: int = 1024
-    gpt_image_model: str = "gpt-image-2"
+    gpt_image_model: str = "gpt-image-1"
+    gpt_image_1_model: str = "gpt-image-1"
+    gpt_image_2_model: str = "gpt-image-2"
 
 def load_t2i_settings() -> T2ISettings:
+    legacy_gpt_image_model = (
+        _get_env("EASYADS_GPT_IMAGE_MODEL", "")
+        or _get_env("T2I_GPT_IMAGE_MODEL", "")
+    )
     return T2ISettings(
         enable_external_t2i=_env_bool("EASYADS_ENABLE_EXTERNAL_T2I"),
+        enable_gpt_image_1=_env_bool("EASYADS_ENABLE_GPT_IMAGE_1", default=_env_bool("EASYADS_ENABLE_GPT_IMAGE_2")),
         enable_gpt_image_2=_env_bool("EASYADS_ENABLE_GPT_IMAGE_2"),
         enable_sd35_local=_env_bool("EASYADS_ENABLE_SD35_LOCAL"),
         enable_flux_local=_env_bool("EASYADS_ENABLE_FLUX_LOCAL"),
         enable_flux2_klein_local=_env_bool("EASYADS_ENABLE_FLUX2_KLEIN_LOCAL"),
         openai_api_key_present=bool(get_openai_api_key()),
         hf_token_present=bool(get_hf_token()),
-        gpt_image_model=(
-            _get_env("EASYADS_GPT_IMAGE_MODEL", "")
-            or _get_env("T2I_GPT_IMAGE_MODEL", "")
-            or "gpt-image-2"
-        ),
+        gpt_image_model=legacy_gpt_image_model or "gpt-image-1",
+        gpt_image_1_model=(_get_env("EASYADS_GPT_IMAGE_1_MODEL", "") or "gpt-image-1"),
+        gpt_image_2_model=(_get_env("EASYADS_GPT_IMAGE_2_MODEL", "") or "gpt-image-2"),
         sd35_model_id=(
             _get_env("EASYADS_SD35_MODEL_ID", "")
             or _get_env("T2I_SD35_MODEL_ID", "")
@@ -84,6 +90,10 @@ def load_t2i_settings() -> T2ISettings:
     )
 
 
+def is_gpt_image_1_enabled(settings: T2ISettings) -> bool:
+    return settings.enable_external_t2i and settings.enable_gpt_image_1 and settings.openai_api_key_present
+
+
 def is_gpt_image_2_enabled(settings: T2ISettings) -> bool:
     return settings.enable_external_t2i and settings.enable_gpt_image_2 and settings.openai_api_key_present
 
@@ -110,6 +120,8 @@ def is_flux2_klein_enabled(settings: T2ISettings) -> bool:
 
 
 def require_t2i_enabled(engine: str, settings: T2ISettings) -> None:
+    if engine == "gpt_image_1" and not is_gpt_image_1_enabled(settings):
+        raise T2IEngineNotEnabledError("GPT-image-1 generation is disabled.")
     if engine == "gpt_image_2" and not is_gpt_image_2_enabled(settings):
         raise T2IEngineNotEnabledError("GPT-image-2 generation is disabled.")
     if engine == "sd35_large" and not is_sd35_local_enabled(settings):
@@ -149,4 +161,3 @@ def get_openai_api_key() -> str:
 
 def get_hf_token() -> str:
     return _get_env("HF_TOKEN", "") or _get_env("HUGGINGFACE_TOKEN", "")
-

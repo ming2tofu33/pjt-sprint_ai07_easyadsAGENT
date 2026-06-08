@@ -472,7 +472,7 @@ def _token_total(input_tokens: int | None, output_tokens: int | None) -> int | N
 
 
 def _provider_for_engine(engine: str) -> str:
-    if engine == "gpt_image_2":
+    if engine in {"gpt_image_1", "gpt_image_2"}:
         return "openai"
     if engine in {"sd35_large", "flux"}:
         return "local"

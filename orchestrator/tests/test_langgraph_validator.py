@@ -19,6 +19,19 @@ def test_validator_infers_samgyeopsal_instagram_context():
     assert "promotion_goal" in state["missing_fields"]
 
 
+def test_validator_infers_raw_meat_sale_feed_context():
+    state = _validated_state("고기집 원육 세일 피드 스타일로 고기99 음식점 광고를 만들어줘")
+
+    assert state["context"]["business_type"] == "restaurant"
+    assert state["context"]["item_or_service"] == "원육"
+    assert state["context"]["promotion_goal"] == "discount_event"
+    assert state["context"]["extra"]["ad_format"] == "instagram_feed"
+    assert "business_type" not in state["missing_fields"]
+    assert "item_or_service" not in state["missing_fields"]
+    assert "promotion_goal" not in state["missing_fields"]
+    assert "ad_format" not in state["missing_fields"]
+
+
 def test_validator_infers_nail_summer_story_context():
     state = _validated_state("네일샵 여름 이벤트 인스타 스토리 만들어줘")
 
