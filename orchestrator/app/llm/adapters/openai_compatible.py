@@ -63,7 +63,7 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             if self.base_url:
                 client_kwargs["base_url"] = self.base_url
             client = OpenAI(**client_kwargs)
-            raw_text = self._create_structured_response_text(client, model_name, prompt)
+            raw_text = self._create_structured_response_text(client, model_name, prompt, schema)
             parsed = json.loads(raw_text) if raw_text else {}
             output = self._validate_schema(schema, parsed)
             return self._success(model_selection, output, raw_text, started, metadata, model_name)
@@ -142,20 +142,43 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
         response = client.responses.create(model=model_name, input=prompt)
         return getattr(response, "output_text", None) or ""
 
-    def _create_structured_response_text(self, client: Any, model_name: str, prompt: str) -> str:
+    def _create_structured_response_text(self, client: Any, model_name: str, prompt: str, schema: Any = None) -> str:
+        # Prefer json_schema (constrained decoding) over json_object: local servers (Ollama)
+        # enforce the schema so output validates; falls back to json_object when no schema.
+        # OpenAI-compat servers that reject json_schema raise → invoke_structured except → node fallback.
+        chat_format = self._json_response_format(schema)
         if self.api_style == "chat_completions":
             response = client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
+                response_format=chat_format,
             )
             return self._chat_completion_text(response)
+        # responses API: format goes under text.format with the same shape sans the wrapping key
+        text_format = chat_format if chat_format.get("type") == "json_object" else {
+            "type": "json_schema",
+            "name": chat_format["json_schema"]["name"],
+            "schema": chat_format["json_schema"]["schema"],
+        }
         response = client.responses.create(
             model=model_name,
             input=prompt,
-            text={"format": {"type": "json_object"}},
+            text={"format": text_format},
         )
         return getattr(response, "output_text", None) or ""
+
+    @staticmethod
+    def _json_response_format(schema: Any) -> dict[str, Any]:
+        json_schema = None
+        if schema is not None and hasattr(schema, "model_json_schema"):
+            try:
+                json_schema = schema.model_json_schema()
+            except Exception:
+                json_schema = None
+        if not json_schema:
+            return {"type": "json_object"}
+        name = getattr(schema, "__name__", "structured_output")
+        return {"type": "json_schema", "json_schema": {"name": name, "schema": json_schema}}
 
     def _chat_completion_text(self, response: Any) -> str:
         try:

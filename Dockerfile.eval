@@ -1,0 +1,28 @@
+# eval 전용 경량 이미지 — DB 뷰어(JupyterLab) + judge 쓰기용.
+# orchestrator(CUDA+uv) 이미지와 분리한 이유:
+#   * 뷰어는 GPU 불필요 → 무거운 CUDA 베이스 안 씀(빌드 빠름, prod 이미지 안 부풀림).
+#   * polars/jupyter 같은 분석 의존성을 서빙 이미지에 섞지 않음.
+# 컨테이너는 root로 동작 → /home/records(root:root 소유, WAL) 읽기+쓰기 모두 가능.
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    TZ=Asia/Seoul
+
+WORKDIR /app
+
+# polars: pandas 대체(빠름, Rust). DataFrame from rows에 pyarrow 불필요.
+# jupyterlab: 노트북 뷰어.
+RUN pip install --no-cache-dir polars jupyterlab
+
+EXPOSE 8888
+
+# 토큰 인증 유지(공유 서버 → 비인증 노출 금지). JUPYTER_TOKEN env로 고정 가능,
+# 미지정 시 jupyter가 랜덤 토큰 생성 → `make eval-notebook` 이 로그에서 URL/토큰 출력.
+# allow-root: 컨테이너가 root이므로 필요. ip=0.0.0.0: 호스트 포트포워딩 위해.
+CMD ["jupyter", "lab", \
+     "--ServerApp.ip=0.0.0.0", \
+     "--ServerApp.port=8888", \
+     "--ServerApp.allow_root=True", \
+     "--ServerApp.root_dir=/app", \
+     "--no-browser"]
