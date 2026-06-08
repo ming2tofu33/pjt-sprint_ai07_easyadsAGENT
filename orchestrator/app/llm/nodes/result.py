@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.ocr_gate.persistence import build_ocr_gate_payload
 from orchestrator.app.schemas.text_layout import ResultPayload
 
 
@@ -37,6 +38,10 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             }
         )
 
+    ocr_gate_payload = build_ocr_gate_payload(
+        background=state.get("background_ocr_gate"),
+        final=state.get("final_ocr_gate"),
+    )
     payload = ResultPayload(
         job_id=str(state.get("job_id") or ""),
         thread_id=str(state.get("thread_id") or ""),
@@ -58,10 +63,13 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             "render_text_in_image": False,
             "tlfp_enabled": True,
             "error": None if output_path else upstream_error,
+            "ocr_gate": ocr_gate_payload,
         },
     )
+    payload_dict = payload.model_dump()
+    payload_dict["ocr_gate"] = ocr_gate_payload
     return {
-        "result_payload": payload.model_dump(),
+        "result_payload": payload_dict,
         "artifact_refs": artifacts,
         "status": status,
         "error_message": None if output_path else upstream_error,

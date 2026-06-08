@@ -1,5 +1,5 @@
 from orchestrator.app.ocr_gate.adapters.stub import FakeOCRAdapter, StubOCRAdapter
-from orchestrator.app.ocr_gate.schemas import OCRSpan, OCRValidationRequest
+from orchestrator.app.ocr_gate.schemas import NormalizedBox, OCRSpan, OCRValidationRequest
 from orchestrator.app.ocr_gate.service import run_ocr_gate
 from orchestrator.app.ocr_gate.text_normalization import normalize_ocr_text
 
@@ -34,3 +34,18 @@ def test_stub_unavailable_manual_review():
     assert result.status == "unavailable"
     assert result.decision == "manual_review"
 
+
+def test_background_allows_known_brand_text():
+    result = run_ocr_gate(
+        request=OCRValidationRequest(stage="background", image_path="x.png", allow_brand_text=["EasyAds"]),
+        adapter=FakeOCRAdapter([_span("EasyAds")]),
+    )
+
+    assert result.decision == "pass"
+
+
+def test_tiny_ocr_area_is_filtered():
+    tiny = OCRSpan(text="SALE", normalized_text="sale", confidence=0.99, box=NormalizedBox(x1=1, y1=1, x2=2, y2=2))
+    result = run_ocr_gate(request=OCRValidationRequest(stage="background", image_path="x.png"), adapter=FakeOCRAdapter([tiny]))
+
+    assert result.decision == "pass"

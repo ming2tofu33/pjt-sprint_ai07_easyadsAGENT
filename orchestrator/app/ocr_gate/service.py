@@ -45,7 +45,7 @@ def evaluate_ocr_result(*, request: OCRValidationRequest, extraction: OCRExtract
             latency_ms=latency_ms,
             retry_feedback=["OCR adapter unavailable."],
         )
-    spans = [span for span in extraction.spans if span.confidence >= settings.get_min_span_confidence()]
+    spans = [span for span in extraction.spans if _is_usable_span(span)]
     watermark_spans = [span for span in spans if _is_watermark(span)]
     if request.stage == "background":
         return _evaluate_background(request=request, provider=extraction.provider, spans=spans, watermark_spans=watermark_spans, latency_ms=latency_ms)
@@ -68,16 +68,18 @@ def _evaluate_background(*, request: OCRValidationRequest, provider: str, spans:
             retry_feedback=["Background contains watermark/logo-like text."],
             latency_ms=latency_ms,
         )
-    if spans:
+    allowed = {normalize_ocr_text(text) for text in request.allow_brand_text}
+    unexpected_spans = [span for span in spans if normalize_ocr_text(span.text) not in allowed]
+    if unexpected_spans:
         return OCRValidationResult(
             stage="background",
             provider=provider,
             status="fail",
             decision="retry_image",
             detected_spans=spans,
-            unexpected_text=spans,
+            unexpected_text=unexpected_spans,
             fake_text=True,
-            confidence=max(span.confidence for span in spans),
+            confidence=max(span.confidence for span in unexpected_spans),
             revision_action="retry_image",
             retry_feedback=["Background contains unexpected readable text."],
             latency_ms=latency_ms,
@@ -86,14 +88,29 @@ def _evaluate_background(*, request: OCRValidationRequest, provider: str, spans:
 
 
 def _evaluate_final(*, request: OCRValidationRequest, provider: str, spans: list[OCRSpan], watermark_spans: list[OCRSpan], latency_ms: int | None) -> OCRValidationResult:
-    matches = [_match_expected(expected, spans) for expected in request.expected_text]
+    if request.expected_copy_required and not request.expected_text:
+        return OCRValidationResult(
+            stage="final_ad",
+            provider=provider,
+            status="manual_review",
+            decision="manual_review",
+            detected_spans=spans,
+            revision_action="manual_review",
+            retry_feedback=["Expected copy was required but no expected text was provided."],
+            latency_ms=latency_ms,
+        )
+    matches = _match_expected_texts(request.expected_text, spans)
     matched_spans = {id(match.matched_span) for match in matches if match.matched_span}
     allowed = {normalize_ocr_text(text) for text in [*request.expected_text, *request.allow_brand_text]}
+    expected_norms = [normalize_ocr_text(text) for text in request.expected_text]
     unexpected = [
         span for span in spans
-        if id(span) not in matched_spans and normalize_ocr_text(span.text) not in allowed
+        if id(span) not in matched_spans
+        and normalize_ocr_text(span.text) not in allowed
+        and not any(normalize_ocr_text(span.text) and normalize_ocr_text(span.text) in expected for expected in expected_norms)
     ]
     missing_or_bad = [match for match in matches if match.status != "matched"]
+    readability_score = _readability_score(matches)
     if watermark_spans:
         return OCRValidationResult(
             stage="final_ad",
@@ -109,20 +126,6 @@ def _evaluate_final(*, request: OCRValidationRequest, provider: str, spans: list
             retry_feedback=["Final ad contains watermark/logo-like text."],
             latency_ms=latency_ms,
         )
-    if missing_or_bad:
-        return OCRValidationResult(
-            stage="final_ad",
-            provider=provider,
-            status="fail",
-            decision="retry_layout",
-            detected_spans=spans,
-            expected_matches=matches,
-            unexpected_text=unexpected,
-            confidence=max([span.confidence for span in spans] or [0]),
-            revision_action="retry_layout",
-            retry_feedback=["Expected copy is missing or malformed."],
-            latency_ms=latency_ms,
-        )
     if unexpected:
         return OCRValidationResult(
             stage="final_ad",
@@ -132,22 +135,54 @@ def _evaluate_final(*, request: OCRValidationRequest, provider: str, spans: list
             detected_spans=spans,
             expected_matches=matches,
             unexpected_text=unexpected,
+            readability_score=readability_score,
             confidence=max(span.confidence for span in unexpected),
             revision_action="retry_image",
             retry_feedback=["Final ad contains unexpected extra text."],
             latency_ms=latency_ms,
         )
-    return OCRValidationResult(stage="final_ad", provider=provider, status="pass", decision="pass", detected_spans=spans, expected_matches=matches, confidence=1, latency_ms=latency_ms)
+    if missing_or_bad:
+        return OCRValidationResult(
+            stage="final_ad",
+            provider=provider,
+            status="fail",
+            decision="retry_layout",
+            detected_spans=spans,
+            expected_matches=matches,
+            unexpected_text=unexpected,
+            readability_score=readability_score,
+            confidence=max([span.confidence for span in spans] or [0]),
+            revision_action="retry_layout",
+            retry_feedback=["Expected copy is missing or malformed."],
+            latency_ms=latency_ms,
+        )
+    return OCRValidationResult(stage="final_ad", provider=provider, status="pass", decision="pass", detected_spans=spans, expected_matches=matches, readability_score=readability_score, confidence=1, latency_ms=latency_ms)
+
+
+def _match_expected_texts(expected_texts: list[str], spans: list[OCRSpan]) -> list[OCRTextMatch]:
+    ordered_spans = sorted(spans, key=lambda span: ((span.box.y1 if span.box else 0), (span.box.x1 if span.box else 0)))
+    used: set[int] = set()
+    matches = []
+    for expected in expected_texts:
+        match = _match_expected(expected, [span for index, span in enumerate(ordered_spans) if index not in used])
+        if match.matched_span is not None:
+            for index, span in enumerate(ordered_spans):
+                if span is match.matched_span:
+                    used.add(index)
+                    break
+        matches.append(match)
+    return matches
 
 
 def _match_expected(expected: str, spans: list[OCRSpan]) -> OCRTextMatch:
     best_span = None
     best_score = 0.0
-    for span in spans:
-        score = text_similarity(expected, span.text)
+    candidates = _span_candidates(spans)
+    for candidate_text, candidate_span in candidates:
+        score = text_similarity(expected, candidate_text)
         if score > best_score:
             best_score = score
-            best_span = span
+            best_span = candidate_span
     if best_score >= settings.get_expected_text_match_threshold():
         status = "matched"
     elif best_score >= settings.get_malformed_text_threshold():
@@ -158,11 +193,22 @@ def _match_expected(expected: str, spans: list[OCRSpan]) -> OCRTextMatch:
     return OCRTextMatch(expected=expected, matched_span=best_span, similarity=best_score, status=status)
 
 
+def _span_candidates(spans: list[OCRSpan]) -> list[tuple[str, OCRSpan]]:
+    candidates = [(span.text, span) for span in spans]
+    ordered = sorted(spans, key=lambda span: ((span.box.y1 if span.box else 0), (span.box.x1 if span.box else 0)))
+    for start in range(len(ordered)):
+        text = ""
+        for end in range(start, min(len(ordered), start + 4)):
+            text = f"{text} {ordered[end].text}".strip()
+            candidates.append((text, ordered[start]))
+    return candidates
+
+
 def _build_adapter() -> OCRAdapter:
     if not settings.is_ocr_gate_enabled():
         return StubOCRAdapter()
     provider = settings.get_ocr_provider()
-    if provider == "local_http_ocr" and settings.is_ocr_actual_enabled():
+    if provider == "local_http_ocr":
         return LocalHTTPOCRAdapter()
     return StubOCRAdapter()
 
@@ -170,6 +216,27 @@ def _build_adapter() -> OCRAdapter:
 def _is_watermark(span: OCRSpan) -> bool:
     normalized = normalize_ocr_text(span.text)
     return any(term and term in normalized for term in settings.get_watermark_terms())
+
+
+def _is_usable_span(span: OCRSpan) -> bool:
+    if span.confidence < settings.get_min_span_confidence():
+        return False
+    if span.box is not None:
+        area_ratio = ((span.box.x2 - span.box.x1) * (span.box.y2 - span.box.y1)) / 1_000_000
+        if area_ratio < settings.get_min_text_area_ratio():
+            return False
+    return bool(normalize_ocr_text(span.text))
+
+
+def _readability_score(matches: list[OCRTextMatch]) -> float | None:
+    if not matches:
+        return None
+    matched = [match for match in matches if match.status == "matched" and match.matched_span]
+    if not matched:
+        return 0.0
+    coverage = len(matched) / len(matches)
+    avg_confidence = sum(match.matched_span.confidence for match in matched if match.matched_span) / len(matched)
+    return round(coverage * avg_confidence, 4)
 
 
 def _record_usage_if_billable(extraction: OCRExtractionResult, request: OCRValidationRequest, *, workspace_id: str | None, created_by: str | None, job_id: str | None, thread_id: str | None) -> None:

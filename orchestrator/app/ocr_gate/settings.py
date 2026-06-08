@@ -55,15 +55,19 @@ def get_ocr_timeout_seconds() -> int:
 
 
 def get_expected_text_match_threshold() -> float:
-    return env_float("EASYADS_OCR_EXPECTED_TEXT_MATCH_THRESHOLD", 0.72)
+    return _clamp(env_float("EASYADS_OCR_EXPECTED_TEXT_MATCH_THRESHOLD", 0.72), 0.0, 1.0)
 
 
 def get_malformed_text_threshold() -> float:
-    return env_float("EASYADS_OCR_MALFORMED_TEXT_THRESHOLD", 0.45)
+    return _clamp(env_float("EASYADS_OCR_MALFORMED_TEXT_THRESHOLD", 0.45), 0.0, get_expected_text_match_threshold())
 
 
 def get_min_span_confidence() -> float:
-    return env_float("EASYADS_OCR_MIN_SPAN_CONFIDENCE", 0.35)
+    return _clamp(env_float("EASYADS_OCR_MIN_SPAN_CONFIDENCE", 0.35), 0.0, 1.0)
+
+
+def get_min_text_area_ratio() -> float:
+    return _clamp(env_float("EASYADS_OCR_MIN_TEXT_AREA_RATIO", 0.001), 0.0, 1.0)
 
 
 def get_image_max_bytes() -> int:
@@ -75,3 +79,8 @@ def get_watermark_terms() -> set[str]:
     terms = raw.split(",") if raw else ["watermark", "logo", "sample", "shutterstock", "adobe", "getty", "stock", "preview", "dreamstime", "alamy", "123rf", "canva"]
     return {term.strip().lower() for term in terms if term.strip()}
 
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    if value != value:
+        return minimum
+    return max(minimum, min(value, maximum))

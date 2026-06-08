@@ -40,6 +40,7 @@ class OCRValidationRequest(BaseModel):
     stage: Literal["background", "final_ad"]
     image_path: str
     expected_text: list[str] = Field(default_factory=list)
+    expected_copy_required: bool = False
     business_type: str | None = None
     reserved_text_areas: list[NormalizedBox] = Field(default_factory=list)
     allow_brand_text: list[str] = Field(default_factory=list)
@@ -68,4 +69,3 @@ class OCRValidationResult(BaseModel):
     retry_feedback: list[str] = Field(default_factory=list)
     revision_action: Literal["none", "retry_image", "retry_layout", "manual_review", "reject"] = "none"
     latency_ms: int | None = None
-

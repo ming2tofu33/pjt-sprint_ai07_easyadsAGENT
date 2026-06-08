@@ -33,17 +33,24 @@ def main(argv: list[str] | None = None) -> int:
         image_path=final_path.as_posix(),
         expected_text=["여름 시즌 아이스라떼", "지금 주문하기"],
     )
-    actual = {"executed": False, "reason": "disabled"}
+    actual = {"requested": bool(args.actual), "executed": False, "reason": "disabled", "providerStatus": None, "backgroundDecision": None, "finalDecision": None}
     if args.actual:
         if os.getenv("EASYADS_OCR_ACTUAL") != "1":
-            actual = {"executed": False, "reason": "EASYADS_OCR_ACTUAL not enabled"}
+            actual = {"requested": True, "executed": False, "reason": "EASYADS_OCR_ACTUAL not enabled", "providerStatus": "blocked", "backgroundDecision": None, "finalDecision": None}
             background = run_ocr_gate(request=background_request, adapter=_background_fake_adapter())
             final_ad = run_ocr_gate(request=final_request, adapter=_final_fake_adapter())
         else:
             adapter = LocalHTTPOCRAdapter()
-            actual = {"executed": True, "reason": None}
             background = run_ocr_gate(request=background_request, adapter=adapter)
             final_ad = run_ocr_gate(request=final_request, adapter=adapter)
+            actual = {
+                "requested": True,
+                "executed": True,
+                "reason": None,
+                "providerStatus": background.status if background.status == final_ad.status else "mixed",
+                "backgroundDecision": background.decision,
+                "finalDecision": final_ad.decision,
+            }
     else:
         background = run_ocr_gate(request=background_request, adapter=_background_fake_adapter())
         final_ad = run_ocr_gate(request=final_request, adapter=_final_fake_adapter())

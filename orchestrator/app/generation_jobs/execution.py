@@ -703,12 +703,14 @@ def _run_graph_post_t2i_nodes(state: dict) -> None:
     from orchestrator.app.graph.routers import route_by_copy_presence
     from orchestrator.app.llm.nodes.background_validation import background_validation_node
     from orchestrator.app.llm.nodes.final_validation import final_validation_node
+    from orchestrator.app.llm.nodes.ocr_gate import background_ocr_gate_node, final_ocr_gate_node
     from orchestrator.app.llm.nodes.readability_gate import readability_gate_node
     from orchestrator.app.llm.nodes.result import result_node
     from orchestrator.app.llm.nodes.safe_area_gate import safe_area_gate_node
     from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
 
     for update in (
+        background_ocr_gate_node(state),
         background_validation_node(state),
         safe_area_gate_node(state),
     ):
@@ -720,6 +722,7 @@ def _run_graph_post_t2i_nodes(state: dict) -> None:
 
     for update in (
         text_renderer_node(state),
+        final_ocr_gate_node(state),
         readability_gate_node(state),
         final_validation_node(state),
         result_node(state),
