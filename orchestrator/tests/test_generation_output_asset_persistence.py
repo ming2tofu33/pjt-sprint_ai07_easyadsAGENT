@@ -69,7 +69,7 @@ def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
     monkeypatch.setattr(
         service.generation_output_repo,
         "mark_output_final",
-        lambda output_id, connection=None: marked_final.append(output_id) or {
+        lambda output_id, *args, **kwargs: marked_final.append(output_id) or {
             "id": output_id,
             "asset_id": "asset_uuid",
             "is_final": True,

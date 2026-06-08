@@ -32,3 +32,22 @@ def build_generation_object_key(*, workspace_id: str, thread_id: str, job_id: st
             safe_object_key_part(Path(filename).name),
         ]
     )
+
+
+def build_upload_object_key(*, workspace_id: str, public_asset_id: str, extension: str) -> str:
+    # ensure extension starts with a dot
+    ext = extension.strip().lower()
+    if not ext.startswith("."):
+        ext = f".{ext}"
+    if ext == ".jpeg":
+        ext = ".jpg"
+    
+    return "/".join(
+        [
+            "workspaces",
+            safe_object_key_part(workspace_id),
+            "uploads",
+            safe_object_key_part(public_asset_id),
+            f"original{ext}",
+        ]
+    )

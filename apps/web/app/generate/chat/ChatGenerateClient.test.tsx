@@ -860,6 +860,75 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByRole("button", { name: "분석 중..." }).hasAttribute("disabled")).toBe(true);
   });
 
+  it("polls queued initial graph jobs instead of rendering an empty brief", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.createGenerationJob).mockClear();
+    vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_initial_pending",
+        thread_id: "thread_initial_pending",
+        status: "queued",
+        progress: { progress_percent: 8, current_stage: "queued" },
+        result_payload: null,
+        metadata: { selected_engine_label: "FLUX.1-schnell" },
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    vi.mocked(api.getGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_initial_pending",
+        thread_id: "thread_initial_pending",
+        status: "done",
+        progress: { progress_percent: 100, current_stage: "completed" },
+        result_payload: {
+          schema_version: "result_artifact_v1",
+          job_id: "job_initial_pending",
+          preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_initial_pending%2Ffinal_0.png",
+          download_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_initial_pending%2Ffinal_0.png",
+          final_image_path: "data/outputs/job_initial_pending/final_0.png",
+          engine: "flux"
+        },
+        metadata: { selected_engine_label: "FLUX.1-schnell" },
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.click(screen.getByText("FLUX.1-schnell"));
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "네일샵 여름 이벤트 인스타 스토리 만들어줘" }
+    });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() =>
+      expect(api.createGenerationJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: expect.stringContaining("네일샵 여름 이벤트 인스타 스토리 만들어줘"),
+          runMode: "graph_job",
+          metadata: expect.objectContaining({
+            source: "web_chat_intake",
+            selected_engine: "flux_schnell",
+            requested_engine: "flux",
+            t2i_engine: "flux",
+            selected_engine_label: "FLUX.1-schnell"
+          })
+        })
+      )
+    );
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_pending"));
+    await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
+    expect(screen.getByText("FLUX.1-schnell")).toBeTruthy();
+    expect(screen.queryByText("AI가 브리프를 정리했어요")).toBeNull();
+    expect(screen.queryByText("광고 브리프 요약")).toBeNull();
+  });
+
   it("routes initial copy-candidate interrupts into copy selection instead of an empty question screen", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.createGenerationJob).mockResolvedValueOnce({

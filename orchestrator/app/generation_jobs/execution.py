@@ -314,6 +314,11 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
                 entry_mode=request.entry_mode,
                 copy_generation_mode=request.copy_generation_mode,
                 user_plan=request.user_plan,
+                source_asset_id=request.source_asset_id,
+                reference_asset_id=request.reference_asset_id,
+                source_image_path=request.source_image_path,
+                reference_image_path=request.reference_image_path,
+                selected_reference_template_id=request.selected_reference_template_id,
             )
         )
         initial_state.update(restore_persistent_state(input_snapshot.state_payload))
@@ -322,6 +327,18 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
         initial_state["job_id"] = public_job_id
         initial_state["thread_id"] = job.thread_id
         initial_state["user_input"] = request.user_input
+        initial_state["workspace_id"] = workspace_id
+        
+        if request.source_asset_id is not None:
+            initial_state["source_asset_id"] = request.source_asset_id
+            initial_state["source_image_path"] = None
+
+        if request.reference_asset_id is not None:
+            initial_state["reference_asset_id"] = request.reference_asset_id
+            initial_state["reference_image_path"] = None
+
+        if request.selected_reference_template_id is not None:
+            initial_state["selected_reference_template_id"] = request.selected_reference_template_id
 
         # Execute
         graph = get_generation_job_graph()
