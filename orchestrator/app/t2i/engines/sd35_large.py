@@ -53,6 +53,11 @@ class SD35LargeLocalEngine:
 
         model_source = "local_path" if settings.sd35_local_path else "model_id"
 
+        # free+balanced 공존 모드: 렌더 후 파이프라인 해제 → 다음 job의 Gemma가 GPU에 들어갈 자리 확보.
+        if _env_truthy("EASYADS_SD35_RELEASE_AFTER_RENDER"):
+            del result, pipe
+            _release_pipeline()
+
         return T2IGenerationOutput(
             engine=self.engine_name,
             image_paths=image_paths,
@@ -77,6 +82,49 @@ def _env_truthy(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _evict_local_llm() -> None:
+    """free+balanced 공존: SD3.5 로드 전에 호스트 Ollama의 로컬 LLM(Gemma)을 VRAM에서 내린다.
+    23GB L4에서 SD3.5(~22GB)와 로컬 LLM(q8 ~11GB)은 공존 불가 → 렌더 직전 축출. best-effort.
+    EASYADS_LOCAL_LLM_BASE_URL 미설정(서빙/비-로컬)이면 no-op. fix.md #19/#20."""
+    base = os.getenv("EASYADS_LOCAL_LLM_BASE_URL", "").strip()
+    model = os.getenv("EASYADS_LOCAL_LLM_MODEL", "").strip()
+    if not base or not model:
+        return
+    try:
+        import json as _json
+        import urllib.request as _u
+
+        host = base.rstrip("/")
+        if host.endswith("/v1"):
+            host = host[:-3]
+        # Ollama 네이티브 unload: keep_alive=0(+빈 prompt)이면 모델을 VRAM에서 내림.
+        req = _u.Request(
+            host + "/api/generate",
+            data=_json.dumps({"model": model, "keep_alive": 0}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        _u.urlopen(req, timeout=30).read()
+    except Exception:
+        pass
+
+
+def _release_pipeline() -> None:
+    """렌더 후 SD3.5 파이프라인을 VRAM에서 해제(다음 job의 로컬 Gemma가 GPU에 들어갈 자리 확보).
+    EASYADS_SD35_RELEASE_AFTER_RENDER=1일 때만(=free+balanced 공존 모드). premium+balanced는 캐시 유지(속도)."""
+    global _PIPELINE
+    _PIPELINE = None
+    try:
+        import gc
+
+        import torch  # type: ignore
+
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:
+        pass
+
+
 def _gpu_type() -> str | None:
     """GPU 모델명(가격 조회 키). EASYADS_SD35_GPU_TYPE 우선, 없으면 torch가 보고하는 디바이스명(예: 'NVIDIA L4')."""
     forced = os.getenv("EASYADS_SD35_GPU_TYPE", "").strip()
@@ -96,6 +144,9 @@ def _load_pipeline(model_ref: str | None):
     global _PIPELINE
     if _PIPELINE is not None:
         return _PIPELINE
+
+    # 로드 직전 로컬 LLM(Gemma) 축출 → SD3.5가 GPU 전체를 쓸 수 있게(공존 OOM 방지).
+    _evict_local_llm()
 
     try:
         import torch  # type: ignore

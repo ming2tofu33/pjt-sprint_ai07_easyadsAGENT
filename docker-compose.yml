@@ -2,8 +2,10 @@ services:
   orchestrator:
     build:
       context: .
-      dockerfile: Dockerfile
-    
+      # 기본 Dockerfile(경량). SD3.5 로컬 렌더 지속하려면 ORCH_DOCKERFILE=Dockerfile.gpu
+      # (torch/diffusers 베이크 → 재생성 후에도 balanced 동작). make orchestrator-gpu 참고.
+      dockerfile: ${ORCH_DOCKERFILE:-Dockerfile}
+
     # [포트 자동화] 랜덤 두 자리를 외부 포트로 지정
     ports:
       - "1${HOST_UID}:8000"
@@ -17,8 +19,12 @@ services:
     
     env_file:
       - .env
+    # 호스트에서 도는 Ollama(로컬 Gemma, free 플랜)에 컨테이너가 접속하도록 게이트웨이 매핑.
+    # EASYADS_LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1 와 함께 사용.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
-    
+
     # [GPU 통로 개척] 서버 본체의 NVIDIA L4 GPU를 컨테이너 상자 내부로 통과시키는 명세
     deploy:
       resources:

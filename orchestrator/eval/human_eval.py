@@ -22,7 +22,9 @@ from orchestrator.eval.config import OPS_DB_PATH, EVAL_DB_PATH
 from orchestrator.eval.eval_db import EvalDBWriter
 
 # Ordered item list for the CLI walk-through
-# Image items (IV-8, IV-9) require viewing the final ad image shown in the context section above
+# Image items require viewing the image paths shown in the context section above:
+#   III-6/IV-8/IV-9 = 최종 광고(PIL 합성) | IV-6/IV-7 = 배경(T2I 텍스트-프리)
+# III-6/IV-6/IV-7 was VLM-only → human anchor added for calibration (eval-calibrate). fix.md #21
 _ITEMS: list[tuple[str, str]] = [
     ("II-1",  "컨텍스트 이해 정확도: 추출된 업종/상품/타겟/목표가 올바른가?"),
     ("II-2",  "누락 필드 탐지: 실제로 없는 정보만 missing으로 분류했는가?"),
@@ -30,9 +32,12 @@ _ITEMS: list[tuple[str, str]] = [
     ("III-3", "카피 어조 적합성: 요청 어조와 타겟에 맞는 어조인가?"),
     ("III-4", "CTA 명확성: 행동 유도 문구가 구체적이고 명확한가?"),
     ("III-5", "브랜드 톤 일관성: 브랜드 정체성과 카피가 일치하는가?"),
+    ("III-6", "[최종 광고 이미지 확인] 시각 브랜드 톤 일치: 최종 이미지의 색감/무드/스타일이 브랜드 톤과 맞는가? (VLM 보정용 human anchor)"),
     ("IV-3",  "레이아웃 슬롯 수 적합성: 광고 포맷에 맞는 텍스트 슬롯 수인가?"),
     ("IV-4",  "타이포 계층 일관성: 폰트 크기/굵기가 헤드라인>서브>본문 순서인가?"),
     ("IV-5",  "카피 배치 적합성: 텍스트 슬롯 위치가 광고 포맷에 자연스러운가?"),
+    ("IV-6",  "[배경 이미지 (T2I) 확인] 텍스트 환각/OCR: 텍스트-프리 배경에 글자/숫자/로고가 새어나오지 않았는가? (TLFP 핵심 불변식 — VLM false-negative 잡는 ground-truth)"),
+    ("IV-7",  "[배경 이미지 (T2I) 확인] 구도·왜곡 품질: 배경 구도가 자연스럽고 오브젝트 왜곡/아티팩트가 없는가?"),
     ("IV-8",  "[최종 광고 이미지 확인] 가독성 및 침범 (Readability): PIL 합성 텍스트가 핵심 오브젝트를 가리지 않고 배경색에 묻히지 않는가?"),
     ("IV-9",  "[최종 광고 이미지 확인] 상용화 완성도 (Commercial Viability): 최종 광고가 인스타그램/배너 등 실제 마케팅 채널에 즉시 집행 가능한 수준인가?"),
     ("V-3",   "비용 효율: plan 대비 LLM 사용량이 적절한가?"),
@@ -124,9 +129,10 @@ def _display_context(job_id: str, conn: sqlite3.Connection) -> None:
             final_img = rp.get("output_path") or rp.get("final_image_path")
             if bg_img:
                 print(f"\n[배경 이미지 (T2I)] {bg_img}")
+                print("  ← 배경 이미지를 직접 열어 IV-6(텍스트 환각)·IV-7(구도·왜곡) 채점")
             if final_img:
                 print(f"[최종 광고 (PIL 합성)] {final_img}")
-                print("  ← 위 경로를 직접 열어 최종 광고 품질 확인 후 IV-8/IV-9 채점")
+                print("  ← 최종 광고를 직접 열어 III-6(시각 브랜드 톤)·IV-8(가독성)·IV-9(상용화) 채점")
             elif bg_img:
                 print("  ← 배경 이미지를 직접 열어 시각적 품질 확인")
 
