@@ -50,5 +50,7 @@ def test_update_asset_can_require_pending_upload_status(monkeypatch):
         pending_only_upload_status=True,
         connection=mock_conn,
     )
-    sql = mock_cursor.execute.call_args[0][0]
+    sql, params = mock_cursor.execute.call_args.args
+    assert "where id = %s and workspace_id = %s" in sql.lower()
     assert "metadata->'upload'->>'status' = 'pending'" in sql
+    assert params[-2:] == ("123", "ws1")

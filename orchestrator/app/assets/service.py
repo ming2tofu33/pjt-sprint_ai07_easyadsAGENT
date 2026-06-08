@@ -81,6 +81,12 @@ def _normalize_upload_filename(filename: str) -> str:
     return basename
 
 
+def _normalize_mime(value: Any) -> str | None:
+    if not value:
+        return None
+    return str(value).split(";", 1)[0].strip().lower()
+
+
 def _row_to_response(row: dict) -> AssetResponse:
     metadata = row.get("metadata") or {}
     upload_meta = metadata.get("upload") or {}
@@ -101,7 +107,7 @@ def _row_to_response(row: dict) -> AssetResponse:
                 object_key=row["object_key"],
             )
             image_url = urls.get("public_url") or urls.get("final_image_url")
-        except Exception:
+        except R2StorageUnavailableError:
             image_url = None
         
     return AssetResponse(
@@ -133,9 +139,16 @@ def get_asset_response(
     workspace_id: str | None = None,
     user_id: str | None = None,
 ) -> AssetResponse:
-    resolved_ws = _resolve_workspace_id(workspace_id, user_id=user_id)
+    from orchestrator.app.db import settings as db_settings
+    resolved_user_id = user_id or db_settings.get_demo_user_id()
+    resolved_ws = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
     with db_transaction() as conn:
-        row = asset_repo.get_asset_by_public_id(public_asset_id, workspace_id=resolved_ws, connection=conn)
+        row = asset_repo.get_asset_by_public_id(
+            public_asset_id,
+            workspace_id=resolved_ws,
+            created_by=resolved_user_id,
+            connection=conn,
+        )
         if not row:
             raise NotFoundError(message="Asset not found", error_code="asset_not_found")
     
@@ -191,8 +204,8 @@ def presign_asset_upload(
             raise ServiceUnavailableError("R2 bucket unavailable", error_code="asset_storage_unavailable")
             
         ttl = storage_settings.get_r2_signed_url_ttl_seconds()
-        client = create_r2_client()
         try:
+            client = create_r2_client()
             presigned_url = create_presigned_put_url(
                 client=client,
                 bucket=bucket,
@@ -201,7 +214,10 @@ def presign_asset_upload(
                 expires_in=ttl,
             )
         except R2StorageUnavailableError as exc:
-            raise ServiceUnavailableError(str(exc), error_code="asset_storage_unavailable")
+            raise ServiceUnavailableError(
+                "Asset upload storage is unavailable.",
+                error_code="asset_storage_unavailable",
+            ) from exc
 
         metadata = {
             "origin": "user_upload",
@@ -257,12 +273,14 @@ def _mark_asset_upload_failed(
     *,
     public_asset_id: str,
     workspace_id: str,
+    user_id: str | None,
     error_code: str,
 ) -> None:
     with db_transaction() as conn:
         row = asset_repo.get_asset_by_public_id(
             public_asset_id,
             workspace_id=workspace_id,
+            created_by=user_id,
             for_update=True,
             connection=conn,
         )
@@ -292,12 +310,15 @@ def complete_asset_upload(
     user_id: str | None = None,
 ) -> AssetResponse:
     from orchestrator.app.assets.errors import AssetServiceError
+    from orchestrator.app.db import settings as db_settings
     _validate_public_asset_id(public_asset_id)
-    resolved_ws = _resolve_workspace_id(workspace_id, user_id=user_id)
+    resolved_user_id = user_id or db_settings.get_demo_user_id()
+    resolved_ws = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
     try:
         updated_row = _complete_asset_upload_internal(
             public_asset_id=public_asset_id,
             workspace_id=resolved_ws,
+            user_id=resolved_user_id,
         )
         return _row_to_response(updated_row)
     except AssetServiceError as exc:
@@ -313,14 +334,21 @@ def complete_asset_upload(
             _mark_asset_upload_failed(
                 public_asset_id=public_asset_id,
                 workspace_id=resolved_ws,
+                user_id=resolved_user_id,
                 error_code=exc.error_code or "internal_error",
             )
         raise
 
-def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> AssetResponse:
+def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str, user_id: str | None) -> dict:
     _validate_public_asset_id(public_asset_id)
     with db_transaction() as conn:
-        row = asset_repo.get_asset_by_public_id(public_asset_id, workspace_id=workspace_id, for_update=True, connection=conn)
+        row = asset_repo.get_asset_by_public_id(
+            public_asset_id,
+            workspace_id=workspace_id,
+            created_by=user_id,
+            for_update=True,
+            connection=conn,
+        )
         if not row:
             raise NotFoundError(message="Asset not found", error_code="asset_not_found")
             
@@ -339,11 +367,19 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
         row_id = str(row["id"])
 
     # Outside transaction: R2 fetching and processing
-    client = create_r2_client()
     try:
+        if not bucket or not object_key:
+            raise ConflictError(
+                "Asset storage metadata is incomplete.",
+                error_code="asset_storage_metadata_invalid",
+            )
+        client = create_r2_client()
         head_res = head_object(client=client, bucket=bucket, object_key=object_key)
-    except R2StorageUnavailableError:
-        raise ConflictError("File not found on R2 or incomplete", error_code="file_not_found")
+    except R2StorageUnavailableError as exc:
+        raise ServiceUnavailableError(
+            "Asset storage is temporarily unavailable.",
+            error_code="asset_storage_unavailable",
+        ) from exc
         
     actual_size = head_res.get("ContentLength")
     actual_mime = head_res.get("ContentType")
@@ -381,7 +417,6 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
                 original_format = image.format
                 original_mode = image.mode
                 raw_width, raw_height = image.size
-                orientation = image.getexif().get(274) if hasattr(image, "getexif") else None
                 
                 # Default max_pixel_count if not in settings
                 max_pixels = getattr(vision_settings, "max_pixel_count", 89478485) # default max
@@ -392,8 +427,11 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
                 
             with Image.open(local_path) as image:
                 image.load()
+                orientation = image.getexif().get(274) if hasattr(image, "getexif") else None
                 transposed = ImageOps.exif_transpose(image)
-                processed_width, processed_height = transposed.size
+                rgb_image = transposed.convert("RGB")
+                rgb_image.load()
+                processed_width, processed_height = rgb_image.size
                 detected_mime = Image.MIME.get(image.format)
                 
         except Image.DecompressionBombError as exc:
@@ -405,11 +443,13 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
         if original_format not in allowed_formats:
             raise UnprocessableEntityError(f"Unsupported image format: {original_format}", error_code="unsupported_asset_media_type")
             
-        expected_mime = upload_meta.get("expected_mime_type")
-        if expected_mime and detected_mime != expected_mime:
+        expected_mime = _normalize_mime(upload_meta.get("expected_mime_type"))
+        normalized_detected_mime = _normalize_mime(detected_mime)
+        normalized_actual_mime = _normalize_mime(actual_mime)
+        if expected_mime and normalized_detected_mime != expected_mime:
             raise UnsupportedMediaTypeError("Detected format does not match expected MIME type.", error_code="asset_media_type_mismatch")
             
-        if actual_mime and actual_mime.split(";", 1)[0] != detected_mime:
+        if normalized_actual_mime and normalized_actual_mime != normalized_detected_mime:
             raise UnsupportedMediaTypeError("R2 Content-Type does not match detected format.", error_code="asset_media_type_mismatch")
             
         from orchestrator.app.storage.file_metadata import get_file_checksum
@@ -423,7 +463,7 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
             },
             "image": {
                 "format": original_format,
-                "mime_type": detected_mime or actual_mime or "application/octet-stream",
+                "mime_type": normalized_detected_mime or normalized_actual_mime or "application/octet-stream",
                 "width": raw_width,
                 "height": raw_height,
                 "mode": original_mode,
@@ -432,7 +472,7 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
             },
             "preprocess": {
                 "status": "validated",
-                "mode": "exif_transpose_and_rgb_validation",
+                "mode": "exif_transpose_and_decode_validation",
                 "original_width": raw_width,
                 "original_height": raw_height,
                 "processed_width": processed_width,
@@ -448,7 +488,13 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
         
         with db_transaction() as conn:
             # Re-fetch to ensure it is still pending
-            current_row = asset_repo.get_asset_by_public_id(public_asset_id, workspace_id=workspace_id, for_update=True, connection=conn)
+            current_row = asset_repo.get_asset_by_public_id(
+                public_asset_id,
+                workspace_id=workspace_id,
+                created_by=user_id,
+                for_update=True,
+                connection=conn,
+            )
             if not current_row:
                 raise ConflictError("Asset state changed during upload completion.", error_code="asset_completion_conflict")
             
@@ -462,7 +508,7 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
                 updated_row = asset_repo.update_asset(
                     row_id,
                     workspace_id=workspace_id,
-                    mime_type=detected_mime or actual_mime,
+                    mime_type=normalized_detected_mime or normalized_actual_mime,
                     size_bytes=actual_size,
                     width=raw_width,
                     height=raw_height,

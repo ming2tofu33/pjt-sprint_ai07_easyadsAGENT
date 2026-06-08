@@ -68,8 +68,8 @@ def test_complete_asset_api(monkeypatch):
     monkeypatch.setattr("orchestrator.app.assets.service.head_object", mock_head)
     
     resp = client.post(f"/api/v1/assets/uploads/{VALID_ASSET_ID}/complete", params={"workspace_id": "ws1", "user_id": "user1"})
-    assert resp.status_code == 409
-    assert "File not found" in resp.json()["detail"]["message"]
+    assert resp.status_code == 503
+    assert resp.json()["detail"]["error_code"] == "asset_storage_unavailable"
 
 def test_get_asset_api(monkeypatch):
     mock_row = {

@@ -73,8 +73,8 @@ def test_complete_records_failed_status(monkeypatch):
     monkeypatch.setattr("orchestrator.app.assets.service.head_object", mock_head)
     monkeypatch.setattr("orchestrator.app.assets.service.create_r2_client", lambda: None)
     
-    # 1. file_not_found is retryable, should NOT update to failed
-    with pytest.raises(ConflictError):
+    # 1. storage unavailable is retryable, should NOT update to failed
+    with pytest.raises(ServiceUnavailableError):
         service.complete_asset_upload(ASSET_ID)
     assert mock_repo.last_update is None
     
@@ -83,7 +83,10 @@ def test_complete_records_failed_status(monkeypatch):
         return {"ContentLength": 9999999999, "ContentType": "image/png"} # Too large
         
     monkeypatch.setattr("orchestrator.app.assets.service.head_object", mock_head_terminal)
-    monkeypatch.setattr("orchestrator.app.vision.settings.get_vision_settings", lambda: type("Settings", (), {"max_file_size_mb": 1})())
+    monkeypatch.setattr(
+        "orchestrator.app.assets.service.get_vision_settings",
+        lambda: type("Settings", (), {"max_file_size_mb": 1, "max_pixel_count": 1_000_000})(),
+    )
     
     with pytest.raises(PayloadTooLargeError):
         service.complete_asset_upload(ASSET_ID)

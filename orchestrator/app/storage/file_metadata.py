@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mimetypes
+import hashlib
 from pathlib import Path
 
 
@@ -16,6 +17,14 @@ def get_file_size(path: str | Path) -> int | None:
         return Path(path).stat().st_size
     except OSError:
         return None
+
+
+def get_file_checksum(path: str | Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def read_image_dimensions(path: str | Path) -> tuple[int | None, int | None]:
