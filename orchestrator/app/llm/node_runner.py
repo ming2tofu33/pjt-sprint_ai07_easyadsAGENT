@@ -12,6 +12,7 @@ from orchestrator.app.llm.metadata_contracts import sanitize_metadata
 from orchestrator.app.llm.model_router import choose_model
 from orchestrator.app.llm.settings import LLMSettings, get_llm_settings, is_api_call_allowed
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult
+from orchestrator.app.usage import service as usage_service
 
 
 FallbackFn = Callable[[], Any]
@@ -67,6 +68,7 @@ def run_structured_node(
 
     adapter = get_llm_adapter_safe(selection.provider, settings, allow_mock_fallback=True)
     result = adapter.invoke_structured(output_schema, prompt, selection, metadata=safe_metadata(metadata))
+    record_llm_usage_from_result(state, result)
     append_llm_call_result(state, result)
     if result.success:
         try:
@@ -142,6 +144,39 @@ def append_model_selection(state: dict[str, Any], selection: Any) -> None:
 def append_llm_call_result(state: dict[str, Any], result: Any) -> None:
     state.setdefault("llm_call_results", [])
     state["llm_call_results"].append(safe_llm_call_result(result))
+
+
+def record_llm_usage_from_result(state: dict[str, Any], result: Any) -> None:
+    if not getattr(result, "success", False) and not getattr(result, "token_usage", None):
+        return
+    selection = getattr(result, "model_selection", None)
+    provider = getattr(selection, "provider", None)
+    if provider in {None, "mock"}:
+        return
+    workspace_id = state.get("workspace_id")
+    if not workspace_id:
+        return
+    token_usage = getattr(result, "token_usage", None) or {}
+    try:
+        usage_service.record_llm_usage(
+            workspace_id=str(workspace_id),
+            provider=str(provider),
+            model_name=str(getattr(selection, "model_name", None) or getattr(selection, "provider_profile", None) or getattr(selection, "selected_model_class", "")),
+            plan=str(state.get("user_plan") or "free"),
+            input_tokens=token_usage.get("input_tokens"),
+            output_tokens=token_usage.get("output_tokens"),
+            total_tokens=token_usage.get("total_tokens"),
+            cached_input_tokens=token_usage.get("cached_tokens") or token_usage.get("cached_input_tokens"),
+            created_by=state.get("user_id"),
+            thread_id=state.get("thread_id"),
+            job_id=state.get("job_id"),
+            task_name=getattr(selection, "node_name", None),
+            node_name=getattr(selection, "node_name", None),
+            provider_request_id=(getattr(result, "metadata", None) or {}).get("provider_request_id"),
+            request_status="succeeded" if getattr(result, "success", False) else "failed",
+        )
+    except Exception:
+        state.setdefault("usage_recording_warnings", []).append({"event_type": "llm_call", "reason": "usage_record_failed"})
 
 
 def safe_llm_call_result(result: Any) -> dict[str, Any]:

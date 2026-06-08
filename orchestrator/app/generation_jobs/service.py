@@ -52,6 +52,7 @@ from orchestrator.app.storage import settings as storage_settings
 from orchestrator.app.storage.errors import AssetStorageError
 from orchestrator.app.storage.object_keys import build_generation_object_key
 from orchestrator.app.storage.r2_service import upload_file_to_r2
+from orchestrator.app.usage import service as usage_service
 from orchestrator.app.archive import service as archive_service
 
 _GENERATION_JOBS: dict[str, GenerationJobResponse] = {}
@@ -1777,6 +1778,12 @@ def _upload_final_asset_to_r2(
         metadata=uploaded.metadata,
         connection=connection,
     )
+    _record_r2_usage_for_uploaded_asset(
+        row=row,
+        uploaded_size_bytes=uploaded.size_bytes,
+        asset_id=str(asset.get("id")) if asset else None,
+        connection=connection,
+    )
     effective_result_payload = merge_final_asset_into_result_payload(
         result_payload=result_payload,
         asset_row=asset,
@@ -1789,6 +1796,35 @@ def _upload_final_asset_to_r2(
         connection=connection,
     ) or row
     return asset, effective_result_payload, updated_row
+
+
+def _record_r2_usage_for_uploaded_asset(
+    *,
+    row: dict,
+    uploaded_size_bytes: int | None,
+    asset_id: str | None,
+    connection: object | None,
+) -> None:
+    if not uploaded_size_bytes or uploaded_size_bytes <= 0 or not row.get("workspace_id"):
+        return
+    public_job_id = str(row.get("public_job_id") or row.get("id") or "")
+    usage_service.record_r2_upload_usage(
+        workspace_id=str(row["workspace_id"]),
+        quantity=uploaded_size_bytes,
+        created_by=row.get("requested_by"),
+        thread_id=str(row.get("thread_id")) if row.get("thread_id") else None,
+        job_id=str(row.get("id")) if row.get("id") else None,
+        provider="cloudflare_r2",
+        plan=(row.get("metadata") or {}).get("user_plan"),
+        idempotency_key=f"r2_upload:{public_job_id}:{asset_id or 'unknown'}",
+        metadata={
+            "asset_id_present": bool(asset_id),
+            "asset_kind": "result",
+            "source": "generation_job_r2_upload",
+            "size_bytes": uploaded_size_bytes,
+        },
+        connection=connection,
+    )
 
 
 def _record_generation_job_event_db(

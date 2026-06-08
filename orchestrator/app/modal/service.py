@@ -7,7 +7,7 @@ import base64
 from orchestrator.app.artifacts.service import ensure_job_output_dir
 from orchestrator.app.db.repositories import generation_job_events as event_repo
 from orchestrator.app.db.repositories import generation_jobs as job_repo
-from orchestrator.app.db.repositories import usage_events as usage_repo
+from orchestrator.app.usage import service as usage_service
 from orchestrator.app.modal.client import poll_modal_t2i_result, submit_modal_t2i_job
 from orchestrator.app.modal.errors import ModalExecutionError, ModalResultError
 from orchestrator.app.modal.schemas import ModalPollResult, ModalSubmitResult, ModalT2IRequest
@@ -205,20 +205,17 @@ def _record_usage(row: dict, poll_result: ModalPollResult):
     usage = poll_result.usage or {}
     if not row.get("workspace_id") or not row.get("id"):
         return None
-    return usage_repo.record_usage_event(
+    return usage_service.record_modal_gpu_usage(
         workspace_id=str(row["workspace_id"]),
         thread_id=str(row.get("thread_id")) if row.get("thread_id") else None,
         job_id=str(row["id"]),
-        event_type="modal_gpu_seconds",
-        provider="modal",
         model_name=usage.get("model_name") or row.get("model_name"),
         plan=(row.get("metadata") or {}).get("user_plan"),
-        quantity=usage.get("gpu_seconds"),
-        unit="seconds",
-        cost_usd=usage.get("cost_usd"),
+        runtime_seconds=usage.get("gpu_seconds"),
+        gpu_type=usage.get("gpu_type"),
+        modal_call_id=poll_result.modal_call_id,
+        completion_status=poll_result.status,
         metadata={
-            "modal_call_id_present": True,
-            "gpu_type": usage.get("gpu_type"),
             "duration_ms": usage.get("duration_ms"),
         },
     )

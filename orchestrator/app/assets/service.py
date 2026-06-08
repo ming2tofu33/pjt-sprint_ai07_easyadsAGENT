@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import tempfile
 import uuid
+import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,7 +32,11 @@ from orchestrator.app.storage import settings as storage_settings
 from orchestrator.app.storage.r2_service import create_presigned_put_url, head_object, download_file_from_r2, create_r2_client
 from orchestrator.app.storage.object_keys import build_upload_object_key
 from orchestrator.app.storage.errors import R2StorageUnavailableError
+from orchestrator.app.usage import service as usage_service
 from orchestrator.app.vision.settings import get_vision_settings
+
+
+logger = logging.getLogger(__name__)
 
 
 def _iso(dt: datetime | str | None) -> str:
@@ -521,5 +526,38 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str, use
                 
             if not updated_row:
                 raise ConflictError("Asset state changed during upload completion.", error_code="asset_completion_conflict")
-                
+            _record_r2_upload_usage_for_asset(updated_row, actual_size, checksum, connection=conn)
             return updated_row
+
+
+def _record_r2_upload_usage_for_asset(
+    row: dict,
+    size_bytes: int | None,
+    checksum_sha256: str | None,
+    *,
+    connection: object | None,
+) -> None:
+    if not size_bytes or size_bytes <= 0 or row.get("storage_provider") != "r2":
+        return
+    try:
+        usage_service.record_r2_upload_usage(
+            workspace_id=str(row["workspace_id"]),
+            quantity=size_bytes,
+            created_by=row.get("created_by"),
+            thread_id=str(row.get("thread_id")) if row.get("thread_id") else None,
+            provider="cloudflare_r2",
+            plan=None,
+            idempotency_key=f"r2_upload:{row.get('public_asset_id') or row.get('id')}:{checksum_sha256 or size_bytes}",
+            metadata={
+                "asset_public_id": row.get("public_asset_id"),
+                "asset_kind": row.get("kind"),
+                "source": "asset_upload_complete",
+                "size_bytes": size_bytes,
+                "mime_type": row.get("mime_type"),
+                "width": row.get("width"),
+                "height": row.get("height"),
+            },
+            connection=connection,
+        )
+    except Exception:
+        logger.warning("Failed to record R2 asset upload usage.", exc_info=True)
