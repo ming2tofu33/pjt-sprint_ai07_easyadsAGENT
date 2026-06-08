@@ -1,5 +1,4 @@
 from orchestrator.app.ocr_gate.persistence import build_ocr_event_payload, build_ocr_gate_payload, event_type_for_ocr_result
-from orchestrator.app.llm.nodes.result import result_node
 
 
 def test_ocr_gate_payload_excludes_raw_provider_fields():
@@ -43,6 +42,8 @@ def test_unavailable_event_type_uses_status():
 
 
 def test_result_payload_contains_ocr_gate_summary():
+    from orchestrator.app.llm.nodes.result import result_node
+
     update = result_node(
         {
             "job_id": "job",

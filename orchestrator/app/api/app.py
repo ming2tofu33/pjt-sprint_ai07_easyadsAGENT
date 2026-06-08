@@ -17,6 +17,7 @@ from orchestrator.app.api.routers.generation_outputs import router as generation
 from orchestrator.app.api.routers.references import router as references_router
 from orchestrator.app.api.routers.assets import router as assets_router
 from orchestrator.app.api.routers.usage import router as usage_router
+from orchestrator.app.api.routers.validation_feedback import router as validation_feedback_router
 from orchestrator.app.api.schemas.common import ErrorResponse
 
 
@@ -62,6 +63,11 @@ def create_app() -> FastAPI:
         generation_outputs_router,
         prefix="/api/v1",
         tags=["generation-outputs"],
+    )
+    app.include_router(
+        validation_feedback_router,
+        prefix="/api/v1",
+        tags=["validation-feedback"],
     )
     app.include_router(
         usage_router,
