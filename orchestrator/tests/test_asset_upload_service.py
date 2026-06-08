@@ -10,6 +10,8 @@ from orchestrator.app.assets.errors import (
     AssetServiceError,
 )
 
+ASSET_ID = "asset_" + "a" * 32
+
 def test_presign_success(monkeypatch):
     req = AssetPresignRequest(
         kind="source",
@@ -54,7 +56,7 @@ def test_presign_oversize(monkeypatch):
 
 def test_get_asset_no_signed_url_if_not_ready(monkeypatch):
     mock_row = {
-        "public_asset_id": "asset_123",
+        "public_asset_id": ASSET_ID,
         "kind": "source",
         "metadata": {"upload": {"status": "pending"}},
         "storage_provider": "r2",
@@ -69,13 +71,13 @@ def test_get_asset_no_signed_url_if_not_ready(monkeypatch):
             return mock_row
     monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", MockRepo())
     
-    res = service.get_asset_response("asset_123", workspace_id="ws1")
+    res = service.get_asset_response(ASSET_ID, workspace_id="ws1")
     assert res.status == "pending"
     assert res.image_url is None
 
 def test_complete_idempotency(monkeypatch):
     mock_row = {
-        "public_asset_id": "asset_123",
+        "public_asset_id": ASSET_ID,
         "kind": "source",
         "metadata": {"upload": {"status": "ready"}},
         "storage_provider": "r2",
@@ -91,6 +93,31 @@ def test_complete_idempotency(monkeypatch):
             return mock_row
     monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", MockRepo())
     
-    res = service.complete_asset_upload("asset_123", workspace_id="ws1")
+    res = service.complete_asset_upload(ASSET_ID, workspace_id="ws1")
     assert res.status == "ready"
     assert res.image_url == "http://existing"
+
+
+def test_ready_signed_url_failure_returns_ready_without_image_url(monkeypatch):
+    mock_row = {
+        "public_asset_id": ASSET_ID,
+        "kind": "source",
+        "metadata": {"upload": {"status": "ready"}},
+        "storage_provider": "r2",
+        "bucket": "b",
+        "object_key": "k",
+        "public_url": None,
+    }
+    monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, **kw: "ws1")
+    monkeypatch.setattr("orchestrator.app.assets.service.db_transaction", lambda *a, **kw: __import__("contextlib").nullcontext())
+
+    class MockRepo:
+        def get_asset_by_public_id(self, *args, **kwargs):
+            return mock_row
+    monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", MockRepo())
+    monkeypatch.setattr("orchestrator.app.storage.r2_service.create_r2_client", lambda: object())
+    monkeypatch.setattr("orchestrator.app.storage.url_policy.resolve_asset_urls", lambda **kw: (_ for _ in ()).throw(RuntimeError("sign failed")))
+
+    res = service.get_asset_response(ASSET_ID, workspace_id="ws1")
+    assert res.status == "ready"
+    assert res.image_url is None

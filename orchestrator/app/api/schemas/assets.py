@@ -8,6 +8,9 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+PUBLIC_ASSET_ID_PATTERN = r"^asset_[0-9a-f]{32}$"
+
+
 AssetUploadKind = Literal["upload", "source", "reference"]
 UploadMethod = Literal["PUT"]
 UploadStatus = Literal["pending", "ready", "failed"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -14,6 +15,7 @@ from orchestrator.app.api.schemas.assets import (
     AssetResponse,
     AssetInfo,
     UploadInstruction,
+    PUBLIC_ASSET_ID_PATTERN,
 )
 from orchestrator.app.assets.errors import (
     NotFoundError,
@@ -66,6 +68,19 @@ def _resolve_workspace_id(
         ) from exc
 
 
+def _validate_public_asset_id(public_asset_id: str) -> None:
+    if not re.match(PUBLIC_ASSET_ID_PATTERN, public_asset_id or ""):
+        raise UnprocessableEntityError("Invalid asset ID format.", error_code="invalid_asset_id")
+
+
+def _normalize_upload_filename(filename: str) -> str:
+    basename = Path(filename.replace("\\", "/")).name.strip()
+    basename = "".join(ch for ch in basename if ch >= " " and ch != "\x7f")
+    if not basename or len(basename) > 255:
+        raise UnprocessableEntityError("Invalid filename provided.", error_code="invalid_filename")
+    return basename
+
+
 def _row_to_response(row: dict) -> AssetResponse:
     metadata = row.get("metadata") or {}
     upload_meta = metadata.get("upload") or {}
@@ -86,7 +101,7 @@ def _row_to_response(row: dict) -> AssetResponse:
                 object_key=row["object_key"],
             )
             image_url = urls.get("public_url") or urls.get("final_image_url")
-        except R2StorageUnavailableError:
+        except Exception:
             image_url = None
         
     return AssetResponse(
@@ -140,10 +155,7 @@ def presign_asset_upload(
     except R2StorageUnavailableError as e:
         raise ServiceUnavailableError(str(e), error_code="asset_upload_unavailable")
 
-    safe_filename = Path(req.filename.replace("\\", "/")).name.strip()
-    if not safe_filename:
-        raise UnprocessableEntityError("Invalid filename provided.", error_code="invalid_filename")
-    safe_filename = safe_filename[:255]
+    safe_filename = _normalize_upload_filename(req.filename)
 
     ext = Path(safe_filename).suffix.lower()
     if ext not in vision_settings.allowed_extensions:
@@ -270,6 +282,7 @@ def _mark_asset_upload_failed(
                         "failed_at": _iso(datetime.now(timezone.utc)),
                     }
                 },
+                pending_only_upload_status=True,
                 connection=conn,
             )
 
@@ -279,6 +292,7 @@ def complete_asset_upload(
     user_id: str | None = None,
 ) -> AssetResponse:
     from orchestrator.app.assets.errors import AssetServiceError
+    _validate_public_asset_id(public_asset_id)
     resolved_ws = _resolve_workspace_id(workspace_id, user_id=user_id)
     try:
         updated_row = _complete_asset_upload_internal(
@@ -288,8 +302,8 @@ def complete_asset_upload(
         return _row_to_response(updated_row)
     except AssetServiceError as exc:
         _TERMINAL_UPLOAD_ERROR_CODES = {
-            "invalid_image",
-            "unsupported_format",
+            "invalid_image_asset",
+            "unsupported_asset_media_type",
             "asset_media_type_mismatch",
             "asset_too_large",
             "asset_pixel_count_too_large",
@@ -304,6 +318,7 @@ def complete_asset_upload(
         raise
 
 def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> AssetResponse:
+    _validate_public_asset_id(public_asset_id)
     with db_transaction() as conn:
         row = asset_repo.get_asset_by_public_id(public_asset_id, workspace_id=workspace_id, for_update=True, connection=conn)
         if not row:
@@ -352,6 +367,12 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
             download_file_from_r2(client=client, bucket=bucket, object_key=object_key, target_path=local_path)
         except R2StorageUnavailableError:
             raise ConflictError("Failed to download object", error_code="file_not_found")
+        downloaded_size = local_path.stat().st_size
+        if downloaded_size != actual_size:
+            raise UnprocessableEntityError(
+                "Downloaded object size does not match R2 metadata.",
+                error_code="asset_size_mismatch",
+            )
             
         from PIL import Image, ImageOps, UnidentifiedImageError
         
@@ -360,6 +381,7 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
                 original_format = image.format
                 original_mode = image.mode
                 raw_width, raw_height = image.size
+                orientation = image.getexif().get(274) if hasattr(image, "getexif") else None
                 
                 # Default max_pixel_count if not in settings
                 max_pixels = getattr(vision_settings, "max_pixel_count", 89478485) # default max
@@ -377,11 +399,11 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
         except Image.DecompressionBombError as exc:
             raise PayloadTooLargeError("Image is a decompression bomb.", error_code="asset_pixel_count_too_large") from exc
         except (UnidentifiedImageError, OSError) as exc:
-            raise UnprocessableEntityError("Invalid or corrupted image asset.", error_code="invalid_image") from exc
+            raise UnprocessableEntityError("Invalid or corrupted image asset.", error_code="invalid_image_asset") from exc
             
         allowed_formats = {"JPEG", "PNG", "WEBP"}
         if original_format not in allowed_formats:
-            raise UnprocessableEntityError(f"Unsupported image format: {original_format}", error_code="unsupported_format")
+            raise UnprocessableEntityError(f"Unsupported image format: {original_format}", error_code="unsupported_asset_media_type")
             
         expected_mime = upload_meta.get("expected_mime_type")
         if expected_mime and detected_mime != expected_mime:
@@ -415,7 +437,10 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
                 "original_height": raw_height,
                 "processed_width": processed_width,
                 "processed_height": processed_height,
-                "exif_transposed": True
+                "exif_transposed": bool(
+                    orientation in {5, 6, 7, 8}
+                    or (processed_width, processed_height) != (raw_width, raw_height)
+                ),
             }
         }
         
@@ -444,6 +469,7 @@ def _complete_asset_upload_internal(public_asset_id: str, workspace_id: str) -> 
                     checksum_sha256=checksum,
                     public_url=None, # URL will be generated dynamically
                     metadata_merge=meta_update,
+                    pending_only_upload_status=True,
                     connection=conn,
                 )
                 
