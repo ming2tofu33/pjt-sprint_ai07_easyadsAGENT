@@ -5,6 +5,7 @@ from __future__ import annotations
 from langgraph.graph import END
 
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.ocr_gate import settings as ocr_settings
 
 
 def route_by_entry_mode(state: MarketingState) -> str:
@@ -74,7 +75,27 @@ def route_after_t2i_generation(state: MarketingState) -> str:
     status = state.get("status")
     if status in {"modal_running", "failed"}:
         return END
-    return "background_validation"
+    return "background_ocr_gate"
+
+
+def route_after_ocr_gate(state: MarketingState) -> str:
+    decision = state.get("ocr_gate_decision")
+    attempts = int(state.get("ocr_revision_attempts") or 0)
+    if not ocr_settings.is_ocr_gate_enabled():
+        return "continue"
+    if decision == "reject":
+        return "rejected_result"
+    if decision in {"manual_review", "unavailable"}:
+        return "manual_review_result"
+    if not ocr_settings.is_revision_loop_enabled():
+        return "continue"
+    if decision in {"retry_image", "retry_layout"} and attempts >= ocr_settings.get_max_revisions():
+        return "manual_review_result"
+    if decision == "retry_image":
+        return "ocr_image_revision"
+    if decision == "retry_layout":
+        return "ocr_layout_revision"
+    return "continue"
 
 
 route_after_validator = route_after_validator_for_intake
