@@ -82,6 +82,47 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
       { role: "assistant", text: "홍보할 상품이나 서비스는 무엇인가요?" }
     ]);
   });
+
+  it("restores nested graph context from a waiting snapshot", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_nested_context",
+      thread_id: "thread_nested_context",
+      job_id: "job_nested_context",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "waiting_user_input",
+      state_payload: {
+        user_input: "고기집 원육 세팅 피드 스타일로 고기92의 음식점 광고를 만들어줘",
+        context: {
+          business_type: "restaurant",
+          item_or_service: "원육",
+          promotion_goal: null
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {
+        pending_interrupt: {
+          type: "option_question",
+          option_question: {
+            field: "promotion_goal",
+            question: "어떤 목적의 광고를 만들까요?",
+            options: [{ id: 1, label: "할인 이벤트", value: "discount_event" }]
+          }
+        },
+        missing_fields: ["promotion_goal"]
+      },
+      created_at: "2026-06-06T00:00:00+00:00"
+    });
+
+    expect(restore?.context).toEqual({
+      businessType: "음식점/식당",
+      itemOrService: "원육",
+      promotionGoal: ""
+    });
+    expect(restore?.currentQuestion?.field).toBe("promotion_goal");
+  });
 });
 
 describe("mapChatMessagesToTranscript", () => {

@@ -639,8 +639,13 @@ export function getGenerationJob(jobId: string): Promise<GenerationJobResponse> 
   return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`);
 }
 
-export function answerGenerationJob(jobId: string, payload: GenerationJobAnswerPayload): Promise<GenerationJobResponse> {
-  return postJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}/answer`, compactPayload(payload));
+export async function answerGenerationJob(jobId: string, payload: GenerationJobAnswerPayload): Promise<GenerationJobResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return postJson<GenerationJobResponse>(
+    `/api/generation-jobs/${encodeURIComponent(jobId)}/answer`,
+    compactPayload(payload),
+    authHeaders
+  );
 }
 
 export async function saveArchiveItem(input: ArchiveItemCreateInput): Promise<ArchiveMutationResponse> {

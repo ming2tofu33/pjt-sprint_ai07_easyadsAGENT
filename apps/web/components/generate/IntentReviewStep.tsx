@@ -17,6 +17,8 @@ const toneIconMap = {
   star: Star
 };
 
+const loadingAnalysisSteps = ["요청 문장 읽는 중", "필요한 정보 찾는 중", "다음 질문 준비 중"];
+
 type IntentReviewStepProps = {
   state: ChatFlowState;
   onSelectTone: (tone: string) => void;
@@ -41,36 +43,47 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
     state.contextSource === "backend" &&
     Boolean(state.inferredContext.businessType && state.inferredContext.itemOrService && state.inferredContext.promotionGoal);
   const cannotContinue = state.isLoading || !hasBackendSession || !hasBackendContext;
-  const contextBadge = hasBackendContext ? "요청 분석" : state.isLoading ? "분석 중" : "확인 필요";
+  const contextBadge = hasBackendContext ? "요청 분석" : state.isLoading ? "진행 중" : "확인 필요";
 
   return (
     <>
-      <h2 className={styles.timelineSectionTitle}>{state.isLoading ? "요청 분석 중" : "AI가 이렇게 이해했어요"}</h2>
+      <h2 className={styles.timelineSectionTitle}>{state.isLoading ? "요청을 살펴보고 있어요" : "AI가 이렇게 이해했어요"}</h2>
 
       <div className={styles.assistantBubble}>
         <span className={styles.assistantAvatar}>AI</span>
         <p className={styles.bubble}>
           {state.isLoading
-            ? "요청을 분석하고 있어요. 응답을 받기 전에는 임시 추론값을 보여주지 않아요."
+            ? "잠시만요. 요청을 읽고 있어요. 필요한 정보가 정리되면 바로 이어서 물어볼게요."
             : hasBackendContext
               ? "좋아요! 파악한 내용을 아래에 정리했어요."
               : "아직 분석값을 충분히 받지 못했어요. 확인이 필요한 항목을 다시 채워야 해요."}
         </p>
       </div>
 
-      <section className={styles.contextCard} aria-label="AI가 파악한 내용">
+      <section className={`${styles.contextCard} ${state.isLoading ? styles.contextCardPending : ""}`} aria-label="AI가 파악한 내용">
         <div className={styles.contextReviewHeader}>
           <div className={styles.contextTitleGroup}>
             <MascotImage role={state.isLoading ? "questionPaper" : "checkPaper"} decorative className={styles.contextTitleMascot} />
-            <h2 className={styles.contextTitle}>{state.isLoading ? "요청 분석 중" : "파악한 내용"}</h2>
+            <h2 className={styles.contextTitle}>{state.isLoading ? "차근차근 살펴보는 중" : "파악한 내용"}</h2>
           </div>
           <span>{contextBadge}</span>
         </div>
 
         {state.isLoading ? (
-          <p className={styles.contextSourceNote}>
-            지금은 응답을 기다리는 중이에요. 업종, 상품, 광고 목적은 분석이 끝난 뒤에만 표시합니다.
-          </p>
+          <>
+            <p className={styles.contextSourceNote}>
+              업종, 상품, 광고 목적을 안전하게 정리한 뒤 보여드릴게요.
+            </p>
+            <div className={styles.analysisLoadingSteps} aria-label="요청 분석 진행 상태">
+              {loadingAnalysisSteps.map((step, index) => (
+                <span key={step} className={styles.analysisLoadingStep} style={{ ["--step-index" as string]: index }}>
+                  <span className={styles.analysisLoadingDot} aria-hidden="true" />
+                  {step}
+                </span>
+              ))}
+            </div>
+            <div className={styles.analysisLoadingBar} aria-hidden="true" />
+          </>
         ) : (
           <>
             <p className={styles.contextSourceNote}>
@@ -126,7 +139,12 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
         {state.errorMessage ? (
           <p className={styles.helperText}>{state.errorMessage}</p>
         ) : state.isLoading ? (
-          <p className={styles.helperText}>요청을 분석하고 있어요.</p>
+          <p className={`${styles.helperText} ${styles.loadingHelperText}`}>
+            AI가 요청을 읽고 있어요
+            <span aria-hidden="true">.</span>
+            <span aria-hidden="true">.</span>
+            <span aria-hidden="true">.</span>
+          </p>
         ) : !hasBackendSession ? (
           <p className={styles.helperText}>응답을 받은 뒤 문구 선택으로 이동할 수 있어요.</p>
         ) : !hasBackendContext ? (
@@ -142,7 +160,7 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
         </div>
 
         <button className={styles.primaryButton} type="button" disabled={cannotContinue} onClick={onContinue}>
-          {state.isLoading ? "분석 중..." : "문구 고르기"}
+          {state.isLoading ? "살펴보는 중..." : "문구 고르기"}
         </button>
       </div>
     </>

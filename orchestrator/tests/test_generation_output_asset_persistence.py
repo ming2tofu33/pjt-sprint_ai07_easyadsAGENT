@@ -69,7 +69,7 @@ def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
     monkeypatch.setattr(
         service.generation_output_repo,
         "mark_output_final",
-        lambda output_id, connection=None: marked_final.append(output_id) or {
+        lambda output_id, *args, **kwargs: marked_final.append(output_id) or {
             "id": output_id,
             "asset_id": "asset_uuid",
             "is_final": True,
@@ -100,6 +100,7 @@ def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
     assert assets[0]["object_key"] == "data/outputs/job_db/final_0.png"
     assert assets[0]["metadata"]["public_serving"] is False
     assert outputs[0]["asset_id"] == "asset_uuid"
+    assert outputs[0]["previous_output_id"] is None
     assert outputs[0]["is_final"] is False
     assert marked_final == ["output_uuid"]
     assert outputs[0]["variant_index"] == 0

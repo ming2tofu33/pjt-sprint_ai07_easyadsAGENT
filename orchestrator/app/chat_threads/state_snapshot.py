@@ -48,6 +48,7 @@ PERSISTENT_FIELDS = {
     "context", 
     "current_brief",
     "marketing_copy",
+    "copy_candidates",
     "image_prompt_spec",
     "copy_spec",
     "copy_required",

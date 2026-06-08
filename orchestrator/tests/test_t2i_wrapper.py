@@ -53,6 +53,7 @@ def test_t2i_health_reports_mock_and_graph_actual_engine_status(monkeypatch):
     assert health["mock"]["loaded"] is True
     assert health["sd35_large"]["available"] is False
     assert health["flux"]["available"] is False
+    assert "reason" in health["gpt_image_1"]
     assert "reason" in health["gpt_image_2"]
 
 

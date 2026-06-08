@@ -132,3 +132,39 @@ def test_t2i_request_metadata_aligns_tlfp_reference_and_product_fields():
     assert metadata["product_preserve_spec"]["product_bbox"]["w"] == 0.50
     assert metadata["selected_reference_template"]["template_id"] == "ref-1"
     assert metadata["reference_template_style_keywords"] == ["fresh", "clean"]
+
+
+def test_t2i_request_builder_consumes_regeneration_image_prompt_patch():
+    state = create_initial_marketing_state(
+        InitialMarketingRequest(
+            user_input="ready",
+            job_id="regen-builder-job",
+            thread_id="regen-builder-thread",
+            context=MarketingContext(business_type="cafe", item_or_service="latte", promotion_goal="new_menu"),
+        )
+    )
+    state["prompt_render_output"] = {
+        "engine": "mock",
+        "positive_prompt": "premium cafe background",
+        "negative_prompt": "watermark",
+        "width": 1080,
+        "height": 1080,
+    }
+    state["regeneration_patch"] = {
+        "scope": "image",
+        "patches": {
+            "removeFakeText": {
+                "target": "image_prompt",
+                "addNegativeConstraints": ["no visible writing", "no fake text"],
+                "simplifyBackground": True,
+                "changeSeed": True,
+            }
+        },
+    }
+
+    request = t2i_request_builder_node(state)["t2i_request"]
+
+    assert "no visible writing" in request["negative_prompt"]
+    assert "no fake text" in request["negative_prompt"]
+    assert "clean simple background" in request["prompt"]
+    assert request["seed"] is not None

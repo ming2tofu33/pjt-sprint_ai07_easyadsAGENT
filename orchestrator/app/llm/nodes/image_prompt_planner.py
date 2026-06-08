@@ -115,7 +115,7 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
     )
     preset_id = preset["preset_id"]
     policy = build_prompt_quality_policy(preset)
-    engine = state.get("engine") or "gpt_image_2"
+    engine = state.get("engine") or "gpt_image_1"
     adapter_output = render_engine_prompt(engine, scene_plan, policy, preset_id=preset_id)
     adapter_positive_prompt = adapter_output.prompt
     if extra_hints:

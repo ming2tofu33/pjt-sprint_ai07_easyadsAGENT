@@ -7,6 +7,7 @@ from langgraph.types import Command
 from PIL import Image
 
 import orchestrator.app.graph.builder as graph_builder
+from orchestrator.app.ocr_gate.schemas import OCRValidationResult
 
 
 TRACEABLE_NODE_ATTRS = {
@@ -33,9 +34,13 @@ TRACEABLE_NODE_ATTRS = {
     "prompt_renderer": "prompt_renderer_node",
     "t2i_request_builder": "t2i_request_builder_node",
     "t2i_generation": "t2i_generation_node",
+    "background_ocr_gate": "background_ocr_gate_node",
+    "ocr_image_revision": "ocr_image_revision_node",
     "background_validation": "background_validation_node",
     "safe_area_gate": "safe_area_gate_node",
     "text_renderer": "text_renderer_node",
+    "final_ocr_gate": "final_ocr_gate_node",
+    "ocr_layout_revision": "ocr_layout_revision_node",
     "readability_gate": "readability_gate_node",
     "final_validation": "final_validation_node",
     "result": "result_node",
@@ -56,6 +61,7 @@ NODE_UTILIZATION_MATRIX = {
             "auto_pilot_copywriting",
             "copy_spec_parser",
             "text_renderer",
+            "final_ocr_gate",
             "readability_gate",
             "final_validation",
             "result",
@@ -71,6 +77,7 @@ NODE_UTILIZATION_MATRIX = {
             "state_update_selected_copy",
             "t2i_request_builder",
             "t2i_generation",
+            "background_ocr_gate",
             "result",
         ],
         "excludes": ["reference_template_resolve", "custom_copy_input", "no_copy_bypass"],
@@ -81,7 +88,7 @@ NODE_UTILIZATION_MATRIX = {
     },
     "no_copy_image_only": {
         "includes": ["no_copy_bypass", "copy_spec_parser", "safe_area_gate", "result"],
-        "excludes": ["text_renderer", "readability_gate", "final_validation"],
+        "excludes": ["text_renderer", "final_ocr_gate", "readability_gate", "final_validation"],
     },
     "reference_template": {
         "includes": ["reference_template_resolve", "image_prompt_planner", "t2i_request_builder", "result"],
@@ -90,6 +97,10 @@ NODE_UTILIZATION_MATRIX = {
     "reference_image": {
         "includes": ["reference_preprocess", "image_prompt_planner", "t2i_request_builder", "result"],
         "excludes": ["product_preprocess", "reference_template_resolve"],
+    },
+    "ocr_revision_loop": {
+        "includes": ["background_ocr_gate", "ocr_image_revision", "final_ocr_gate", "ocr_layout_revision", "result"],
+        "excludes": ["copy_candidate_generation", "custom_copy_input", "no_copy_bypass"],
     },
 }
 
@@ -187,6 +198,25 @@ def _run_photo_suggest_candidates(graph, trace: list[str], tmp_path: Path):
     return _capture(trace, action)[0]
 
 
+def _run_ocr_revision_loop(graph, trace: list[str], monkeypatch):
+    calls = {"background": 0, "final_ad": 0}
+
+    def fake_run_ocr_gate(*, request, **kwargs):
+        calls[request.stage] += 1
+        if request.stage == "background" and calls["background"] == 1:
+            return OCRValidationResult(stage="background", provider="fake", status="fail", decision="retry_image", revision_action="retry_image", retry_feedback=["remove fake text"])
+        if request.stage == "final_ad" and calls["final_ad"] == 1:
+            return OCRValidationResult(stage="final_ad", provider="fake", status="fail", decision="retry_layout", revision_action="retry_layout", retry_feedback=["improve text fit"])
+        return OCRValidationResult(stage=request.stage, provider="fake", status="pass", decision="pass")
+
+    monkeypatch.setenv("EASYADS_OCR_GATE_ENABLED", "true")
+    monkeypatch.setenv("EASYADS_OCR_REVISION_LOOP_ENABLED", "true")
+    monkeypatch.setenv("EASYADS_OCR_MAX_REVISIONS", "2")
+    monkeypatch.setattr("orchestrator.app.llm.nodes.ocr_gate.run_ocr_gate", fake_run_ocr_gate)
+
+    return _run_complete_request(graph, trace, _base_request("node-matrix-ocr-revision", copy_generation_mode="auto_pilot"))
+
+
 def _assert_matrix_expectation(scenario: str, trace: list[str]) -> None:
     expectation = NODE_UTILIZATION_MATRIX[scenario]
     missing = [node for node in expectation["includes"] if node not in trace]
@@ -225,6 +255,7 @@ def test_marketing_graph_node_utilization_matrix_covers_all_nodes(monkeypatch, t
             trace,
             _base_request("node-matrix-reference-image", reference_image_path=_make_image(tmp_path / "reference.png", color=(120, 160, 240))),
         ),
+        "ocr_revision_loop": _run_ocr_revision_loop(graph, trace, monkeypatch),
     }
 
     for scenario, scenario_trace in scenario_traces.items():

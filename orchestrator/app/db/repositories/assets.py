@@ -12,6 +12,7 @@ def create_asset(
     bucket: str,
     object_key: str,
     kind: str,
+    public_asset_id: str | None = None,
     storage_provider: str = "r2",
     mime_type: str | None = None,
     size_bytes: int | None = None,
@@ -28,40 +29,27 @@ def create_asset(
 ) -> dict:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
+            # If public_asset_id is not provided, generate a fallback (though it should be provided by service)
+            import uuid
+            effective_public_id = public_asset_id or f"asset_{uuid.uuid4().hex}"
             cur.execute(
                 """
                 insert into assets (
-                workspace_id, thread_id, project_id, created_by,
+                public_asset_id, workspace_id, thread_id, project_id, created_by,
                 bucket, object_key, kind, storage_provider,
                 mime_type, size_bytes, width, height, checksum_sha256,
                 public_url, signed_url_expires_at, metadata
                 )
                 values (
-                %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
                 %s, %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s::jsonb
                 )
-                on conflict (bucket, object_key)
-                do update set
-                workspace_id = excluded.workspace_id,
-                thread_id = excluded.thread_id,
-                project_id = excluded.project_id,
-                created_by = excluded.created_by,
-                kind = excluded.kind,
-                storage_provider = excluded.storage_provider,
-                mime_type = excluded.mime_type,
-                size_bytes = excluded.size_bytes,
-                width = excluded.width,
-                height = excluded.height,
-                checksum_sha256 = excluded.checksum_sha256,
-                public_url = excluded.public_url,
-                signed_url_expires_at = excluded.signed_url_expires_at,
-                metadata = excluded.metadata,
-                updated_at = now()
                 returning *
                 """,
                 (
+                    effective_public_id,
                     workspace_id,
                     thread_id,
                     project_id,
@@ -79,6 +67,84 @@ def create_asset(
                     signed_url_expires_at,
                     jsonb_param(metadata or {}),
                 ),
+            )
+            return cur.fetchone()
+
+
+def get_asset_by_public_id(
+    public_asset_id: str,
+    *,
+    workspace_id: str,
+    created_by: str | None = None,
+    for_update: bool = False,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            query = "select * from assets where public_asset_id = %s and workspace_id = %s"
+            params = [public_asset_id, workspace_id]
+            if created_by:
+                query += " and created_by = %s"
+                params.append(created_by)
+            query += " and deleted_at is null"
+            if for_update:
+                query += " for update"
+                
+            cur.execute(query, tuple(params))
+            return cur.fetchone()
+
+
+def update_asset(
+    asset_id: str,
+    *,
+    workspace_id: str,
+    mime_type: str | None = None,
+    size_bytes: int | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    checksum_sha256: str | None = None,
+    public_url: str | None = None,
+    metadata_merge: dict | None = None,
+    pending_only_upload_status: bool = False,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            updates = ["updated_at = now()"]
+            params = []
+            
+            if mime_type is not None:
+                updates.append("mime_type = %s")
+                params.append(mime_type)
+            if size_bytes is not None:
+                updates.append("size_bytes = %s")
+                params.append(size_bytes)
+            if width is not None:
+                updates.append("width = %s")
+                params.append(width)
+            if height is not None:
+                updates.append("height = %s")
+                params.append(height)
+            if checksum_sha256 is not None:
+                updates.append("checksum_sha256 = %s")
+                params.append(checksum_sha256)
+            if public_url is not None:
+                updates.append("public_url = %s")
+                params.append(public_url)
+            if metadata_merge:
+                # Merge jsonb dictionary
+                updates.append("metadata = metadata || %s::jsonb")
+                params.append(jsonb_param(metadata_merge))
+                
+            params.append(asset_id)
+            params.append(workspace_id)
+            where_clause = "where id = %s and workspace_id = %s"
+            if pending_only_upload_status:
+                where_clause += " and metadata->'upload'->>'status' = 'pending'"
+            
+            cur.execute(
+                f"update assets set {', '.join(updates)} {where_clause} returning *",
+                tuple(params),
             )
             return cur.fetchone()
 

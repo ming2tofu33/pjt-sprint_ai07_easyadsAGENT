@@ -311,6 +311,7 @@ def infer_business_type(text: str) -> str | None:
 def infer_item_or_service(text: str) -> str | None:
     rules = [
         ("한우 선물세트", "한우 선물세트"),
+        ("원육", "원육"),
         ("네일 아트", "네일 아트"),
         ("네일아트", "네일 아트"),
         ("젤네일", "젤네일"),

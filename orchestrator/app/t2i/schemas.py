@@ -7,7 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-T2IEngineName = Literal["mock", "gpt_image_2", "sd35_large", "flux"]
+T2IEngineName = Literal["mock", "gpt_image_1", "gpt_image_2", "sd35_large", "flux", "flux2_klein_4b"]
 
 
 class T2IRequest(BaseModel):

@@ -495,6 +495,58 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("verifies Supabase sessions before forwarding generation job answers", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1", email: "owner@example.com" });
+      }
+      return jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed", stage_order: [] },
+          metadata: { execution_mode: "graph_execution" }
+        }
+      });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs/job_1/answer",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: { field: "business_type", value: "restaurant", userId: "spoofed_user" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://supabase.example.com/auth/v1/user",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: "anon_key",
+          authorization: "Bearer access_token_1"
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/generation-jobs/job_1/answer",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ field: "business_type", value: "restaurant", userId: "user_uuid_1" })
+      })
+    );
+    await app.close();
+  });
+
   it("validates chat start payloads", async () => {
     const app = buildApp({ fetchImpl: vi.fn() });
 

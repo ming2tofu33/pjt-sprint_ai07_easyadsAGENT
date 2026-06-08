@@ -13,7 +13,7 @@ from orchestrator.app.llm.settings import get_llm_settings
 from orchestrator.app.schemas.prompt_critic import PromptCriticOutput
 
 
-SUPPORTED_PROMPT_CRITIC_ENGINES = {"gpt_image_2", "sd35_large", "flux"}
+SUPPORTED_PROMPT_CRITIC_ENGINES = {"gpt_image_1", "gpt_image_2", "sd35_large", "flux"}
 
 
 def critique_prompt_draft(
@@ -103,6 +103,10 @@ def build_prompt_critic_prompt(*, prompt_draft: str, target_engine: str, prompt_
         "Only suggest improvements to subject hierarchy, commercial realism, business fit, lighting, "
         "composition, material realism, negative space, clutter reduction, and model-specific phrasing. "
         "Do not weaken any safety or no-text constraint. "
+        # quality_score/confidence는 스키마가 [0,1] float인데 모델이 0-10으로 줘 le=1.0 위반→매 premium 런 폐기됐다.
+        # 스케일 명시로 conform 유도(스키마/extra=forbid 안전 가드는 그대로). fix.md #16.
+        "quality_score and confidence MUST each be a decimal float between 0.0 and 1.0 "
+        "(for example 0.82), never a 0-10 or 0-100 score. "
         f"Target engine: {target_engine}. "
         f"Prompt context: {metadata_contract_to_prompt_json(metadata)}. "
         f"Prompt draft: {prompt_draft[:1800]}"

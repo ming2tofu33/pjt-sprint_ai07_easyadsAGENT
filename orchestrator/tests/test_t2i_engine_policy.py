@@ -15,14 +15,15 @@ def test_free_plan_allows_sd35_large_and_flux():
     assert is_engine_allowed_for_plan("flux", "free") is True
 
 
-def test_free_plan_blocks_gpt_image_2():
+def test_free_plan_blocks_openai_image_engines():
+    assert is_engine_allowed_for_plan("gpt_image_1", "free") is False
     assert is_engine_allowed_for_plan("gpt_image_2", "free") is False
 
 
 def test_economic_plan_allows_all_engines():
     policy = get_image_engine_policy("economic")
 
-    assert policy.allowed_engines == ["gpt_image_2", "sd35_large", "flux"]
+    assert policy.allowed_engines == ["gpt_image_1", "sd35_large", "flux"]
     assert policy.allow_external_api is True
     assert policy.allow_parallel_comparison is False
 
@@ -30,9 +31,10 @@ def test_economic_plan_allows_all_engines():
 def test_premium_plan_allows_all_engines_and_parallel_comparison():
     policy = get_image_engine_policy("premium")
 
-    assert policy.allowed_engines == ["gpt_image_2", "sd35_large", "flux"]
+    assert policy.allowed_engines == ["gpt_image_1", "gpt_image_2", "sd35_large", "flux"]
     assert policy.allow_parallel_comparison is True
     assert resolve_requested_engines_for_plan(plan="premium", include_comparison=True) == [
+        "gpt_image_1",
         "gpt_image_2",
         "sd35_large",
         "flux",
@@ -62,8 +64,8 @@ def test_duplicate_requested_engines_are_deduplicated():
 
 def test_default_engine_by_plan():
     assert choose_default_engine_for_plan("free") == "flux"
-    assert choose_default_engine_for_plan("economic") == "gpt_image_2"
-    assert choose_default_engine_for_plan("premium") == "gpt_image_2"
+    assert choose_default_engine_for_plan("economic") == "gpt_image_1"
+    assert choose_default_engine_for_plan("premium") == "gpt_image_1"
 
 
 def test_plan_aliases():

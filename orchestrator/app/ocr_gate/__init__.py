@@ -1,0 +1,2 @@
+"""Runtime OCR quality gate."""
+

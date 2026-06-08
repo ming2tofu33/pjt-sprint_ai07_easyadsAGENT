@@ -95,6 +95,21 @@ function applyUserPromptToTranscript(
   return [...messages, { role: "user", text: prompt }];
 }
 
+function appendAssistantMessageOnce(
+  messages: ChatFlowState["conversationMessages"],
+  text: string
+): ChatFlowState["conversationMessages"] {
+  const lastMessage = messages[messages.length - 1];
+  if (lastMessage?.role === "assistant" && lastMessage.text === text) {
+    return messages;
+  }
+  return [...messages, { role: "assistant", text }];
+}
+
+function isGenerationJobTerminalStatus(status: string): boolean {
+  return status === "done" || status === "failed" || status === "cancelled";
+}
+
 export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): ChatFlowState {
   switch (action.type) {
     case "reset":
@@ -138,7 +153,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         },
         contextSource: "backend",
         currentQuestion: action.question,
-        conversationMessages: [...state.conversationMessages, { role: "assistant", text: action.question.question }],
+        conversationMessages: appendAssistantMessageOnce(state.conversationMessages, action.question.question),
         isLoading: false,
         errorMessage: null
       };
@@ -227,10 +242,29 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         ...state,
         customDirection: action.value
       };
+    case "submitBriefRefinement":
+      return {
+        ...state,
+        customDirection: action.customDirection,
+        conversationMessages: [...state.conversationMessages, { role: "user", text: action.message }],
+        isLoading: true,
+        errorMessage: null
+      };
     case "backendBriefSucceeded":
       return {
         ...state,
         brief: action.brief,
+        isLoading: false,
+        errorMessage: null
+      };
+    case "briefRefinementSucceeded":
+      return {
+        ...state,
+        brief: action.brief,
+        conversationMessages: [
+          ...state.conversationMessages,
+          { role: "assistant", text: "좋아요. 요청을 반영해서 브리프를 다시 정리했어요." }
+        ],
         isLoading: false,
         errorMessage: null
       };
@@ -333,13 +367,24 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       };
 
     case "generationJobUpdated":
+      const shouldKeepInitialAnalysisPending =
+        state.step === 2 &&
+        !state.currentQuestion &&
+        action.generationJob.status !== "waiting_user_input" &&
+        !isGenerationJobTerminalStatus(action.generationJob.status);
+      const shouldKeepAnswerPending =
+        state.step === 4 &&
+        state.isLoading &&
+        action.generationJob.status !== "waiting_user_input" &&
+        !isGenerationJobTerminalStatus(action.generationJob.status);
+
       return {
         ...state,
         jobId: action.generationJob.job_id ?? state.jobId,
         threadId: action.generationJob.thread_id ?? state.threadId,
         generationJob: action.generationJob,
         currentQuestion: action.generationJob.status === "waiting_user_input" ? state.currentQuestion : null,
-        isLoading: false,
+        isLoading: shouldKeepInitialAnalysisPending || shouldKeepAnswerPending,
         errorMessage: null
       };
 
@@ -349,11 +394,16 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         step: 4,
         progress: { current: 4, total: 4, label: "추가 정보" },
         generationJob: action.generationJob,
+        sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
+        referenceImagePath: action.referenceImagePath ?? state.referenceImagePath ?? null,
+        inferredContext: {
+          businessType: action.context?.businessType ?? state.inferredContext.businessType,
+          itemOrService: action.context?.itemOrService ?? state.inferredContext.itemOrService,
+          promotionGoal: action.context?.promotionGoal ?? state.inferredContext.promotionGoal
+        },
+        contextSource: action.context ? "backend" : state.contextSource,
         currentQuestion: action.question,
-        conversationMessages: [
-          ...state.conversationMessages,
-          { role: "assistant", text: action.question.question }
-        ],
+        conversationMessages: appendAssistantMessageOnce(state.conversationMessages, action.question.question),
         isLoading: false,
         errorMessage: null
       };

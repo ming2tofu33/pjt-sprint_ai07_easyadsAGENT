@@ -254,7 +254,7 @@ def test_postgres_backend_mark_done_and_failed_preserve_shape(monkeypatch):
     )
     monkeypatch.setattr(service.asset_repo, "create_asset", lambda **kwargs: {"id": "asset_uuid", **kwargs})
     monkeypatch.setattr(service.generation_output_repo, "create_generation_output", lambda **kwargs: {"id": "output_uuid", "asset_id": kwargs["asset_id"], **kwargs})
-    monkeypatch.setattr(service.generation_output_repo, "mark_output_final", lambda output_id, connection=None: {"id": output_id})
+    monkeypatch.setattr(service.generation_output_repo, "mark_output_final", lambda output_id, *args, **kwargs: {"id": output_id})
     monkeypatch.setattr("orchestrator.app.archive.service.sync_archive_for_output", MagicMock())
 
     done = service.mark_generation_job_done("job_db", result_payload={"schema_version": "result_artifact_v1"}, output_path="data/outputs/job_db/final_0.png")

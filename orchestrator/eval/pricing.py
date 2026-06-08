@@ -232,6 +232,25 @@ def t2i_image_cost(engine: str | None, n_images: int) -> tuple[float | None, str
     return round(rate * max(0, n_images), 8), "exact"
 
 
+# Self-hosted local T2I engines bill by GPU time (gpu_seconds), not per image —
+# same standard as the self-hosted LLM lane (#13). The SD3.5/FLUX local engines
+# surface gpu_seconds (+gpu_type) in T2IResult.metadata; price via gpu_cost.
+SELF_HOSTED_T2I_ENGINES: set[str] = {"sd35_large", "flux"}
+
+
+def t2i_cost(engine: str | None, n_images: int, metadata: dict | None = None) -> tuple[float | None, str]:
+    """T2I 비용 디스패처: 셀프호스트(sd35_large/flux)는 gpu_seconds로, API 엔진(gpt_image_2)은 이미지당 정액으로.
+
+    self-hosted → gpu_cost(metadata.gpu_type, metadata.gpu_seconds):
+        gpu_exact(요율 있음) | gpu_unpriced(요율 미설정) | gpu_seconds_missing.
+    flat → t2i_image_cost: exact | image_unpriced | engine_unknown.
+    """
+    if engine in SELF_HOSTED_T2I_ENGINES:
+        md = metadata or {}
+        return gpu_cost(md.get("gpu_type"), md.get("gpu_seconds"))
+    return t2i_image_cost(engine, n_images)
+
+
 def price_for(model_key: str | None) -> ModelPrice | None:
     """Resolve a price by internal class or concrete model name. None if unpriced."""
     if not model_key:

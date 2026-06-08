@@ -21,6 +21,7 @@ from orchestrator.app.generation_jobs.service import (
     create_generation_job,
     get_generation_job,
     mark_generation_job_running,
+    maybe_mark_stale_generation_job_failed,
     maybe_poll_generation_job_from_modal,
     maybe_submit_generation_job_to_modal,
     should_route_generation_job_to_modal,
@@ -70,16 +71,25 @@ def create_generation_job_route(
 ) -> GenerationJobCreateResponse:
     if request.selected_reference_template_id and not get_reference_template(request.selected_reference_template_id):
         _reference_template_not_found(request.selected_reference_template_id)
+    from orchestrator.app.generation_jobs.errors import GenerationJobError
     try:
         job = create_generation_job(request)
     except ChatThreadServiceError as exc:
         _chat_thread_error(exc)
+    except GenerationJobError as exc:
+        raise_api_error(
+            status_code=exc.status_code,
+            error_code=exc.error_code,
+            message=exc.message,
+        )
     if should_route_generation_job_to_modal(request):
         job = maybe_submit_generation_job_to_modal(job, request)
     elif request.run_mode == "mock_immediate":
         job = execute_generation_job_immediate(job.job_id, request)
     elif request.run_mode == "graph_job":
         background_tasks.add_task(execute_generation_job_graph, job.job_id, request)
+    elif request.run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke"}:
+        job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_1")
     elif request.run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_2")
     elif request.run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
@@ -94,7 +104,9 @@ def get_generation_job_route(job_id: str) -> GenerationJobGetResponse:
     job = get_generation_job(job_id)
     if not job:
         _generation_job_not_found(job_id)
-    job = maybe_poll_generation_job_from_modal(job)
+    job = maybe_mark_stale_generation_job_failed(job)
+    if job.status != "failed":
+        job = maybe_poll_generation_job_from_modal(job)
     return GenerationJobGetResponse(job=job)
 
 

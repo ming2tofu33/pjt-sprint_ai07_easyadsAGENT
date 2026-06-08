@@ -347,11 +347,11 @@ def test_graph_modal_poll_completion_runs_post_t2i_nodes(monkeypatch, tmp_path):
     assert completed.status == "done"
     assert completed.metadata["execution_mode"] == "graph_modal_completed"
     assert completed.result_payload["status"] == "done"
-    assert completed.result_payload["output_path"] == str(tmp_path / "job-modal-complete" / "final_0.png")
+    assert completed.result_payload["output_path"].replace("\\", "/") == str(tmp_path / "job-modal-complete" / "final_0.png").replace("\\", "/")
     assert completed.result_payload["validation_summary"]["background"]["overall_pass"] is True
 
 
-def test_execute_generation_job_graph_receives_source_image_path(monkeypatch):
+def test_execute_generation_job_graph_receives_source_asset_id(monkeypatch):
     received_payload = {}
 
     class MockGraph:
@@ -368,21 +368,29 @@ def test_execute_generation_job_graph_receives_source_image_path(monkeypatch):
             return state
 
     monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job", lambda j: type("J", (), {"job_id": j, "request_payload": {}, "status": "done", "thread_id": "t", "user_id": "u", "metadata": {}})())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_running", lambda j, **k: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_done", lambda j, **k: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.append_generation_job_user_answer_message", lambda j, **k: None)
+
+    class MockSnapshotService:
+        def get_chat_state_snapshot_by_key(self, **kwargs):
+            return type("S", (), {"state_payload": {}})()
+    monkeypatch.setattr("orchestrator.app.chat_threads.state_service", MockSnapshotService())
 
     request = GenerationJobCreateRequest(
         user_input="이 사진으로 신메뉴 광고 만들어줘",
         run_mode="graph_job",
-        sourceImagePath="data/uploads/photo_1.png",
+        source_asset_id="asset_" + "a"*32,
     )
-    job = create_generation_job(request)
 
-    executed = execute_generation_job_graph(job.job_id, request)
+    executed = execute_generation_job_graph("job_123", request)
 
     assert executed.status == "done"
-    assert received_payload["source_image_path"] == "data/uploads/photo_1.png"
+    assert received_payload["source_asset_id"] == "asset_" + "a"*32
 
 
-def test_execute_generation_job_graph_receives_reference_image_path(monkeypatch):
+def test_execute_generation_job_graph_receives_reference_asset_id(monkeypatch):
     received_payload = {}
 
     class MockGraph:
@@ -399,18 +407,26 @@ def test_execute_generation_job_graph_receives_reference_image_path(monkeypatch)
             return state
 
     monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job", lambda j: type("J", (), {"job_id": j, "request_payload": {}, "status": "done", "thread_id": "t", "user_id": "u", "metadata": {}})())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_running", lambda j, **k: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_done", lambda j, **k: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.append_generation_job_user_answer_message", lambda j, **k: None)
+
+    class MockSnapshotService:
+        def get_chat_state_snapshot_by_key(self, **kwargs):
+            return type("S", (), {"state_payload": {}})()
+    monkeypatch.setattr("orchestrator.app.chat_threads.state_service", MockSnapshotService())
 
     request = GenerationJobCreateRequest(
         user_input="이 레퍼런스 분위기로 광고 만들어줘",
         run_mode="graph_job",
-        referenceImagePath="data/uploads/reference_1.png",
+        reference_asset_id="asset_" + "b"*32,
     )
-    job = create_generation_job(request)
 
-    executed = execute_generation_job_graph(job.job_id, request)
+    executed = execute_generation_job_graph("job_123", request)
 
     assert executed.status == "done"
-    assert received_payload["reference_image_path"] == "data/uploads/reference_1.png"
+    assert received_payload["reference_asset_id"] == "asset_" + "b"*32
 
 
 def test_execute_generation_job_graph_receives_selected_ui_values(monkeypatch):
@@ -628,3 +644,55 @@ def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
         "어떤 업종인가요?",
         "카페",
     ]
+
+
+def test_resume_generation_job_graph_marks_failed_when_graph_raises(monkeypatch):
+    calls = []
+    expected_job_id = None
+    expected_thread_id = None
+
+    class MockSharedGraph:
+        def invoke(self, payload, config: dict | None = None) -> dict:
+            nonlocal expected_job_id, expected_thread_id
+            calls.append(payload)
+            if len(calls) == 1:
+                state = dict(payload)
+                expected_job_id = state["job_id"]
+                expected_thread_id = state["thread_id"]
+                state["__interrupt__"] = [
+                    FakeInterrupt(
+                        {
+                            "type": "option_question",
+                            "job_id": state["job_id"],
+                            "thread_id": state["thread_id"],
+                            "option_question": {
+                                "field": "item_or_service",
+                                "question": "홍보할 상품이나 서비스는 무엇인가요?",
+                                "options": [{"id": 1, "label": "대표 메뉴", "value": "대표 메뉴"}],
+                            },
+                        }
+                    )
+                ]
+                state["status"] = "waiting_user_input"
+                state["messages"] = [{"role": "assistant", "content": "홍보할 상품이나 서비스는 무엇인가요?"}]
+                return state
+
+            raise RuntimeError("resume graph crashed while planning image generation")
+
+    shared_graph = MockSharedGraph()
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: shared_graph)
+
+    request = GenerationJobCreateRequest(user_input="햄버거집 광고 만들어줘", run_mode="graph_job")
+    job = create_generation_job(request)
+    waiting = execute_generation_job_graph(job.job_id, request)
+    assert waiting.status == "waiting_user_input"
+
+    answer = GenerationJobAnswerRequest(field="item_or_service", value="햄버거 대표 메뉴", display_text="햄버거 대표 메뉴")
+    resumed = resume_generation_job_graph(waiting.job_id, answer)
+
+    assert resumed.status == "failed"
+    assert resumed.progress.current_stage == "failed"
+    assert resumed.error is not None
+    assert resumed.error.error_code == "generation_job_execution_failed"
+    assert resumed.metadata["execution_mode"] == "graph_resume_failed"
+    assert "resume graph crashed" in resumed.error.detail

@@ -76,3 +76,58 @@ def upload_file_to_r2(
         width=width,
         height=height,
     )
+
+
+def create_presigned_put_url(
+    *,
+    client: object | None = None,
+    bucket: str,
+    object_key: str,
+    content_type: str,
+    expires_in: int = 3600,
+) -> str:
+    effective_client = client or create_r2_client()
+    try:
+        url = effective_client.generate_presigned_url(
+            ClientMethod="put_object",
+            Params={
+                "Bucket": bucket,
+                "Key": object_key,
+                "ContentType": content_type,
+            },
+            ExpiresIn=expires_in,
+        )
+        return url
+    except Exception as exc:
+        raise R2StorageUnavailableError("Failed to generate presigned upload URL.") from exc
+
+
+def download_file_from_r2(
+    *,
+    client: object | None = None,
+    bucket: str,
+    object_key: str,
+    target_path: str | Path,
+) -> Path:
+    effective_client = client or create_r2_client()
+    path = Path(target_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        effective_client.download_file(bucket, object_key, str(path))
+        return path
+    except Exception as exc:
+        raise R2StorageUnavailableError(f"Failed to download from R2: {object_key}") from exc
+
+
+def head_object(
+    *,
+    client: object | None = None,
+    bucket: str,
+    object_key: str,
+) -> dict:
+    effective_client = client or create_r2_client()
+    try:
+        response = effective_client.head_object(Bucket=bucket, Key=object_key)
+        return response
+    except Exception as exc:
+        raise R2StorageUnavailableError(f"Failed to head R2 object: {object_key}") from exc

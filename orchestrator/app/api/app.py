@@ -15,6 +15,9 @@ from orchestrator.app.api.routers.chat_threads import router as chat_threads_rou
 from orchestrator.app.api.routers.generation_jobs import router as generation_jobs_router
 from orchestrator.app.api.routers.generation_outputs import router as generation_outputs_router
 from orchestrator.app.api.routers.references import router as references_router
+from orchestrator.app.api.routers.assets import router as assets_router
+from orchestrator.app.api.routers.usage import router as usage_router
+from orchestrator.app.api.routers.validation_feedback import router as validation_feedback_router
 from orchestrator.app.api.schemas.common import ErrorResponse
 
 
@@ -37,6 +40,11 @@ def create_app() -> FastAPI:
         tags=["brand-kits"],
     )
     app.include_router(
+        assets_router,
+        prefix="/api/v1",
+        tags=["assets"],
+    )
+    app.include_router(
         generation_jobs_router,
         prefix="/api/v1",
         tags=["generation-jobs"],
@@ -55,6 +63,16 @@ def create_app() -> FastAPI:
         generation_outputs_router,
         prefix="/api/v1",
         tags=["generation-outputs"],
+    )
+    app.include_router(
+        validation_feedback_router,
+        prefix="/api/v1",
+        tags=["validation-feedback"],
+    )
+    app.include_router(
+        usage_router,
+        prefix="/api/v1",
+        tags=["usage"],
     )
 
     @app.get("/health")
@@ -84,6 +102,20 @@ def create_app() -> FastAPI:
                 detail=str(exc),
             )
             return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.endswith("/regenerate"):
+            error = ErrorResponse(
+                error_code="invalid_regeneration_request",
+                message="Invalid regeneration request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.endswith("/validation"):
+            error = ErrorResponse(
+                error_code="invalid_validation_feedback_request",
+                message="Invalid validation feedback request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
         if request.url.path.startswith("/api/v1/generation-outputs"):
             error = ErrorResponse(
                 error_code="invalid_generation_output_request",
@@ -95,6 +127,21 @@ def create_app() -> FastAPI:
             error = ErrorResponse(
                 error_code="invalid_chat_thread_request",
                 message="Invalid chat thread request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+
+        if request.url.path.startswith("/api/v1/assets"):
+            error = ErrorResponse(
+                error_code="invalid_asset_request",
+                message="Invalid asset request.",
+                detail=str(exc),
+            )
+            return JSONResponse(status_code=400, content=error.model_dump(mode="json"))
+        if request.url.path.startswith("/api/v1/usage"):
+            error = ErrorResponse(
+                error_code="invalid_usage_request",
+                message="Invalid usage request.",
                 detail=str(exc),
             )
             return JSONResponse(status_code=400, content=error.model_dump(mode="json"))

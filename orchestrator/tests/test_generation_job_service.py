@@ -1,9 +1,13 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
-from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest, GenerationJobResponse, GenerationProgress
 from orchestrator.app.generation_jobs.service import (
     create_generation_job,
     get_generation_job,
+    mark_generation_job_running,
+    maybe_mark_stale_generation_job_failed,
     reset_generation_job_store_for_tests,
 )
 from orchestrator.app.chat_threads.service import reset_chat_thread_store_for_tests
@@ -93,6 +97,43 @@ def test_create_generation_job_graph_job_degrades_metadata():
     assert job.metadata["execution_mode"] == "pending_graph_execution"
     assert job.output_path is None
     assert job.result_payload is None
+
+
+def test_maybe_mark_stale_generation_job_failed_keeps_fresh_running_job():
+    now = datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
+    fresh_job = GenerationJobResponse(
+        job_id="job_fresh",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        created_at=(now - timedelta(minutes=1)).isoformat(),
+        updated_at=(now - timedelta(minutes=1)).isoformat(),
+        metadata={},
+    )
+
+    result = maybe_mark_stale_generation_job_failed(fresh_job, now=now, stale_after_seconds=900)
+
+    assert result is fresh_job
+
+
+def test_maybe_mark_stale_generation_job_failed_fails_old_running_job():
+    now = datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
+    job = create_generation_job(GenerationJobCreateRequest(user_input="햄버거 광고", run_mode="graph_job"))
+    running = mark_generation_job_running(job.job_id, stage="planning")
+    stale_running = running.model_copy(
+        update={
+            "updated_at": (now - timedelta(minutes=30)).isoformat(),
+            "metadata": {**(running.metadata or {}), "execution_mode": "graph_execution"},
+        }
+    )
+
+    result = maybe_mark_stale_generation_job_failed(stale_running, now=now, stale_after_seconds=900)
+
+    assert result.status == "failed"
+    assert result.progress.current_stage == "failed"
+    assert result.error is not None
+    assert result.error.error_code == "generation_job_stale_running"
+    assert result.metadata["execution_mode"] == "stale_running_recovered"
+    assert result.metadata["stale_running_stage"] == "planning"
 
 
 def test_graph_job_snapshot_preserves_selected_engine():

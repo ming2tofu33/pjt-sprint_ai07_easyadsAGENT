@@ -6,7 +6,7 @@ import json
 from time import perf_counter
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from orchestrator.app.llm.adapters.base import BaseLLMAdapter
 from orchestrator.app.llm.metadata_contracts import sanitize_metadata
@@ -38,6 +38,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             from openai import OpenAI
         except Exception:
             return self._error(model_selection, "openai_sdk_missing", started, metadata)
+        raw_text = ""
         try:
             client = OpenAI(api_key=self.settings.openai_api_key, timeout=self.settings.request_timeout_seconds)
             text_format = self._response_format(schema)
@@ -69,7 +70,11 @@ class OpenAIAdapter(BaseLLMAdapter):
                 metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "model_configured": True},
             )
         except json.JSONDecodeError:
-            return self._error(model_selection, "structured_output_parse_failed", started, metadata)
+            return self._error(model_selection, "structured_output_parse_failed", started, metadata, raw_text=raw_text)
+        except ValidationError:
+            # 모델이 JSON은 줬지만 pydantic 스키마 검증 실패(예: extra 필드, enum/범위 위반).
+            # API/네트워크 오류가 아님 → 별도 코드로 분리(과거엔 openai_api_error로 오인). raw_text 보존해 추후 원인 추적. fix.md #16.
+            return self._error(model_selection, "structured_output_schema_invalid", started, metadata, raw_text=raw_text)
         except Exception as exc:
             return self._error(model_selection, f"openai_api_error:{type(exc).__name__}", started, metadata)
 
@@ -156,18 +161,21 @@ class OpenAIAdapter(BaseLLMAdapter):
             }
         return {"format": {"type": "json_object"}}
 
-    def _error(self, model_selection: ModelSelection, error: str | None, started: float, metadata: dict[str, Any] | None) -> LLMCallResult:
+    def _error(self, model_selection: ModelSelection, error: str | None, started: float, metadata: dict[str, Any] | None, raw_text: str | None = None) -> LLMCallResult:
+        # raw_text: 스키마 검증/파싱 실패 시 모델 원문(앞 500자)을 보존 → 어떤 필드가 깨졌는지 추후 확인.
+        # sanitize_metadata가 prompt/api_key는 지우지만 raw_text는 모델 출력이라 안 지움.
+        snippet = raw_text[:500] if raw_text else None
         return LLMCallResult(
             success=False,
             node_name=model_selection.node_name,
             model_selection=model_selection,
             output=None,
-            raw_text=None,
+            raw_text=snippet,
             error=error or "openai_adapter_error",
             latency_ms=elapsed_ms(started),
             token_usage=None,
             cost_estimate=None,
-            metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "api_key_present": bool(self.settings.openai_api_key)},
+            metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "api_key_present": bool(self.settings.openai_api_key), "raw_text_snippet": snippet},
         )
 
 

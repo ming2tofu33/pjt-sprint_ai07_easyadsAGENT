@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,10 @@ from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.schemas.llm_marketing import ArtifactRef, GeneratedImageCandidate
 from orchestrator.app.t2i.schemas import T2IRequest
 from orchestrator.app.t2i.service import generate_image_v1
+from orchestrator.app.usage import service as usage_service
+
+
+logger = logging.getLogger(__name__)
 
 
 def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
@@ -33,6 +38,7 @@ def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
         output_dir=request.output_dir,
         metadata=metadata,
     )
+    _record_t2i_usage(state, result)
     modal_pending = (
         result.metadata.get("execution_backend") == "modal"
         and result.metadata.get("modal_call_id_present") is True
@@ -70,3 +76,31 @@ def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
         "status": "modal_running" if modal_pending else ("done" if not result.error else "failed"),
         "error_message": result.error,
     }
+
+
+def _record_t2i_usage(state: MarketingState, result) -> None:
+    if result.error or not result.image_paths or result.engine == "mock":
+        return
+    workspace_id = state.get("workspace_id")
+    if not workspace_id:
+        return
+    try:
+        usage_service.record_t2i_usage(
+            workspace_id=str(workspace_id),
+            engine=result.engine,
+            model_name=(result.metadata or {}).get("model") or result.engine,
+            image_count=len(result.image_paths),
+            plan=str(state.get("user_plan") or "free"),
+            created_by=state.get("user_id"),
+            thread_id=state.get("usage_thread_db_id"),
+            job_id=state.get("usage_job_db_id"),
+            width=result.width,
+            height=result.height,
+            quality=(result.metadata or {}).get("quality"),
+            request_mode=(result.metadata or {}).get("requested_run_mode") or (result.metadata or {}).get("execution_mode"),
+            provider_request_id=(result.metadata or {}).get("provider_request_id"),
+            attempt_index=(result.metadata or {}).get("generation_attempt"),
+            generation_status="succeeded",
+        )
+    except Exception:
+        logger.warning("Failed to record T2I usage.", exc_info=True)
