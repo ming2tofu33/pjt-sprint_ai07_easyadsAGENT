@@ -12,11 +12,13 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from PIL import Image, ImageStat
+
 from orchestrator.app.quality_gate.schemas import VLMQualityRequest
-from orchestrator.app.quality_gate.service import deterministic_gate
+from orchestrator.app.quality_gate.service import deterministic_gate, run_quality_gate
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
-from orchestrator.app.t2i.engines.flux2_klein import FLUX2_KLEIN_ENGINE
-from orchestrator.app.t2i.settings import get_hf_token, load_t2i_settings
+from orchestrator.app.t2i.engines.flux2_klein import FLUX2_KLEIN_ENGINE, Flux2KleinGenerationFailed
+from orchestrator.app.t2i.settings import load_t2i_settings
 
 
 OUTPUT_DIR = Path("data/outputs/vlm_quality_gate_smoke")
@@ -51,6 +53,7 @@ def main() -> int:
         "retry_requested": False,
         "errors": [],
         "modal_actual_called": False,
+        "timings": {},
     }
     missing = _missing_requirements(args)
     if missing:
@@ -109,11 +112,19 @@ def main() -> int:
         return 0
 
     image_path = t2i_output.image_paths[0] if t2i_output.image_paths else None
-    quality_result = deterministic_gate(request=VLMQualityRequest(stage="background", business_type="cafe"), detected_text=[])
+    image_validation = validate_generated_image(image_path) if image_path else None
+    gate_request = VLMQualityRequest(stage="background", business_type="cafe")
+    quality_result = run_quality_gate(image_path=image_path, request=gate_request) if image_path else deterministic_gate(request=gate_request, detected_text=[])
+    image_generation_status = "success" if image_path and image_validation else "blocked"
+    quality_gate_status = quality_result.decision
+    overall_status = "success" if image_generation_status == "success" and quality_gate_status not in {"unavailable"} else "partial"
     report.update(
         {
-            "status": "success" if image_path else "blocked",
+            "status": overall_status,
+            "image_generation_status": image_generation_status,
+            "quality_gate_status": quality_gate_status,
             "generated_image_path": image_path,
+            "image_validation": image_validation,
             "image_engine": t2i_output.engine,
             "image_metadata": _redact_metadata(t2i_output.metadata),
             "background_decision": quality_result.decision,
@@ -135,14 +146,11 @@ def _missing_requirements(args) -> list[str]:
         missing.append("EASYADS_VLM_ACTUAL=1")
         return missing
     if args.backend == "local_diffusers":
-        if not get_hf_token():
-            missing.append("HF_TOKEN_or_HUGGINGFACE_TOKEN")
-            return missing
         try:
             import torch  # noqa: F401
-            import diffusers  # noqa: F401
+            from diffusers import Flux2KleinPipeline  # noqa: F401
         except Exception:
-            missing.append("torch_or_diffusers")
+            missing.append("flux2_klein_dependencies")
     if args.backend == "modal":
         missing.append("modal_actual_forbidden_in_this_task")
     return missing
@@ -150,6 +158,35 @@ def _missing_requirements(args) -> list[str]:
 
 def _write_report(report: dict) -> None:
     (OUTPUT_DIR / "quality_gate_result.json").write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def validate_generated_image(path: str) -> dict:
+    target = Path(path)
+    started = datetime.now(timezone.utc)
+    if not target.is_file():
+        raise Flux2KleinGenerationFailed("Generated image file does not exist.")
+    if target.stat().st_size <= 0:
+        raise Flux2KleinGenerationFailed("Generated image file is empty.")
+    with Image.open(target) as image:
+        image.verify()
+    with Image.open(target) as image:
+        image.load()
+        width, height = image.size
+        rgb = image.convert("RGB")
+        stats = ImageStat.Stat(rgb)
+        extrema = rgb.getextrema()
+    if width != 1024 or height != 1024:
+        raise Flux2KleinGenerationFailed("Generated image dimensions are invalid.")
+    if all(low == high for low, high in extrema):
+        raise Flux2KleinGenerationFailed("Generated image appears to be a flat image.")
+    return {
+        "width": width,
+        "height": height,
+        "size_bytes": target.stat().st_size,
+        "mean_rgb": stats.mean,
+        "stddev_rgb": stats.stddev,
+        "validated_at": started.isoformat().replace("+00:00", "Z"),
+    }
 
 
 def _redact_metadata(metadata: dict) -> dict:

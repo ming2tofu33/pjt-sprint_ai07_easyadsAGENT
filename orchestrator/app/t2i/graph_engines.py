@@ -43,9 +43,14 @@ def get_graph_actual_t2i_engine(name: GraphActualEngineName) -> BaseT2IEngine:
     existing guarded local engine lane so local smoke tests still exercise the
     same graph API surface.
     """
+    settings = load_t2i_settings()
+    if name == "flux2_klein_4b":
+        if settings.flux2_klein_backend == "modal":
+            return ModalGraphT2IEngine(name)
+        return GuardedLocalGraphT2IEngine(name)
     if modal_settings.is_modal_execution_enabled():
         return ModalGraphT2IEngine(name)
-    if name == "sd35_large" and load_t2i_settings().enable_sd35_local:
+    if name == "sd35_large" and settings.enable_sd35_local:
         try:
             from orchestrator.app.t2i.sd35_adapter import SD35LargeGraphEngine
 
@@ -168,7 +173,7 @@ class GuardedLocalGraphT2IEngine(BaseT2IEngine):
 
     def health(self) -> dict[str, Any]:
         settings = load_t2i_settings()
-        enabled = settings.flux2_klein_backend == "local_diffusers" if self.name == "flux2_klein_4b" else (settings.enable_flux_local if self.name == "flux" else settings.enable_sd35_local)
+        enabled = settings.enable_flux2_klein_local and settings.flux2_klein_backend == "local_diffusers" if self.name == "flux2_klein_4b" else (settings.enable_flux_local if self.name == "flux" else settings.enable_sd35_local)
         model_id = settings.flux2_klein_model_id if self.name == "flux2_klein_4b" else (settings.flux_model_id if self.name == "flux" else settings.sd35_model_id)
         return {
             "available": bool(enabled),
@@ -273,9 +278,10 @@ def _build_modal_graph_request(
         params.setdefault("num_inference_steps", 4)
         params.setdefault("guidance_scale", 0.0)
     elif engine == "flux2_klein_4b":
+        settings = load_t2i_settings()
         params.setdefault("render_mode", "flux2_klein_4b")
-        params.setdefault("num_inference_steps", 28)
-        params.setdefault("guidance_scale", 3.5)
+        params.setdefault("num_inference_steps", settings.flux2_klein_num_inference_steps)
+        params.setdefault("guidance_scale", settings.flux2_klein_guidance_scale)
     else:
         params.setdefault("render_mode", "sd35_large")
         params.setdefault("num_inference_steps", 8)

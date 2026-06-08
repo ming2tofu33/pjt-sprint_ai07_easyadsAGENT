@@ -66,9 +66,12 @@ def build_modal_t2i_request_from_job(
         params.setdefault("num_inference_steps", 8)
         params.setdefault("guidance_scale", 4.0)
     if run_mode == "flux2_klein_4b" or engine == "flux2_klein_4b":
+        from orchestrator.app.t2i.settings import load_t2i_settings
+
+        t2i_settings = load_t2i_settings()
         params.setdefault("render_mode", "flux2_klein_4b")
-        params.setdefault("num_inference_steps", 28)
-        params.setdefault("guidance_scale", 3.5)
+        params.setdefault("num_inference_steps", t2i_settings.flux2_klein_num_inference_steps)
+        params.setdefault("guidance_scale", t2i_settings.flux2_klein_guidance_scale)
     return ModalT2IRequest(
         job_id=public_job_id,
         thread_id=str(metadata.get("public_thread_id") or job_row.get("thread_id") or "") or None,

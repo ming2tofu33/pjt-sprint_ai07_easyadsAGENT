@@ -36,6 +36,20 @@ def get_api_vlm_model(deep: bool = False) -> str:
     return _get_env(key, "") or ("gpt-4o" if deep else "gpt-4o-mini")
 
 
+def get_openai_api_key() -> str:
+    return _get_env("OPENAI_API_KEY", "")
+
+
+def is_api_vlm_enabled() -> bool:
+    return env_bool("EASYADS_VLM_API_ENABLED", default=False) and bool(get_openai_api_key())
+
+
+def get_vlm_image_max_bytes() -> int:
+    try:
+        return int(_get_env("EASYADS_VLM_IMAGE_MAX_BYTES", str(8 * 1024 * 1024)))
+    except ValueError:
+        return 8 * 1024 * 1024
+
+
 def is_quality_gate_enabled() -> bool:
     return env_bool("EASYADS_VLM_GATE_ENABLED", default=False)
-

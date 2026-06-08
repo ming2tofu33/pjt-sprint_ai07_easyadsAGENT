@@ -1,5 +1,7 @@
 import json
 
+from PIL import Image
+
 from orchestrator.app.quality_gate.adapters.openai_compatible_vision import (
     OpenAICompatibleVisionAdapter,
     _build_payload,
@@ -36,7 +38,7 @@ class FakeResponse:
         ).encode("utf-8")
 
 
-def test_openai_compatible_adapter_parses_compact_json(monkeypatch):
+def test_openai_compatible_adapter_parses_compact_json(monkeypatch, tmp_path):
     captured = {}
 
     def fake_urlopen(req, timeout):
@@ -46,12 +48,16 @@ def test_openai_compatible_adapter_parses_compact_json(monkeypatch):
 
     monkeypatch.setattr("orchestrator.app.quality_gate.adapters.openai_compatible_vision.urlrequest.urlopen", fake_urlopen)
 
+    image_path = tmp_path / "test-adapter.png"
+    Image.new("RGB", (4, 4), "white").save(image_path)
+
     result = OpenAICompatibleVisionAdapter(base_url="http://localhost:1234/v1", model_name="local-vlm").inspect(
-        image_path="unused.png",
+        image_path=str(image_path),
         request=VLMQualityRequest(stage="background", business_type="cafe"),
     )
 
     assert captured["url"] == "http://localhost:1234/v1/chat/completions"
+    assert captured["body"]["messages"][0]["content"][1]["type"] == "image_url"
     assert result.provider == "local_openai_compat"
     assert result.decision == "pass"
     assert "raw" not in result.metadata

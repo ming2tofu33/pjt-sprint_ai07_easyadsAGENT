@@ -6,7 +6,10 @@ OpenAI-compatible multimodal endpoint when explicitly called.
 
 from __future__ import annotations
 
+import base64
 import json
+import mimetypes
+from pathlib import Path
 from time import perf_counter
 from urllib import request as urlrequest
 
@@ -20,20 +23,21 @@ from orchestrator.app.quality_gate.schemas import QualityCheckResult, VLMQuality
 class OpenAICompatibleVisionAdapter:
     provider = "local_openai_compat"
 
-    def __init__(self, *, base_url: str | None = None, model_name: str | None = None, timeout_seconds: int = 20) -> None:
+    def __init__(self, *, base_url: str | None = None, model_name: str | None = None, timeout_seconds: int = 20, headers: dict[str, str] | None = None) -> None:
         self.base_url = (base_url or settings.get_local_vlm_base_url()).rstrip("/")
         self.model_name = model_name or settings.get_local_vlm_model()
         self.timeout_seconds = timeout_seconds
+        self.headers = dict(headers or {})
 
     def inspect(self, *, image_path: str, request: VLMQualityRequest) -> VLMQualityGateResult:
         started = perf_counter()
         if not self.base_url:
             raise QualityGateUnavailable("Local VLM endpoint is unavailable.")
-        payload = _build_payload(model=self.model_name, request=request)
+        payload = _build_payload(model=self.model_name, request=request, image_path=image_path)
         req = urlrequest.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **self.headers},
             method="POST",
         )
         try:
@@ -54,15 +58,16 @@ class OpenAICompatibleVisionAdapter:
         return aggregate_quality_decision(result)
 
 
-def _build_payload(*, model: str, request: VLMQualityRequest) -> dict:
+def _build_payload(*, model: str, request: VLMQualityRequest, image_path: str | None = None) -> dict:
+    content = [{"type": "text", "text": _prompt_text(request)}]
+    if image_path:
+        content.append({"type": "image_url", "image_url": {"url": _image_data_url(image_path)}})
     return {
         "model": model,
         "messages": [
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": _prompt_text(request)},
-                ],
+                "content": content,
             }
         ],
         "temperature": 0,
@@ -78,6 +83,19 @@ def _prompt_text(request: VLMQualityRequest) -> str:
         f"stage={request.stage}; business_type={request.business_type}; expected_text={request.expected_text}; "
         "Do not include chain-of-thought."
     )
+
+
+def _image_data_url(image_path: str) -> str:
+    target = Path(image_path)
+    if not target.is_file():
+        raise QualityGateUnavailable("Quality Gate input image was not found.")
+    size_bytes = target.stat().st_size
+    max_bytes = settings.get_vlm_image_max_bytes()
+    if size_bytes > max_bytes:
+        raise QualityGateUnavailable("Quality Gate input image is too large.")
+    mime_type = mimetypes.guess_type(target.name)[0] or "image/png"
+    encoded = base64.b64encode(target.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"
 
 
 def _parse_result_json(content: str) -> dict:
@@ -119,4 +137,3 @@ def _check(value) -> QualityCheckResult:
         confidence=float(value.get("confidence") or 0),
         evidence=[str(item)[:160] for item in (value.get("evidence") or [])[:5]] if isinstance(value.get("evidence"), list) else [],
     )
-

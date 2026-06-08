@@ -7,6 +7,7 @@ from time import perf_counter
 from orchestrator.app.quality_gate import settings
 from orchestrator.app.quality_gate.adapters.base import VLMQualityAdapter
 from orchestrator.app.quality_gate.adapters.openai_compatible_vision import OpenAICompatibleVisionAdapter
+from orchestrator.app.quality_gate.adapters.openai_vision import OpenAIVisionAdapter
 from orchestrator.app.quality_gate.errors import QualityGateUnavailable
 from orchestrator.app.quality_gate.ocr_validation import validate_ocr_text
 from orchestrator.app.quality_gate.policy import aggregate_quality_decision, should_call_api_deep
@@ -34,14 +35,21 @@ def run_quality_gate(
         _safe_record_vlm_usage(result, request, workspace_id=workspace_id, created_by=created_by, job_id=job_id, thread_id=thread_id)
     except QualityGateUnavailable:
         result = _unavailable_result(request, "unavailable", "Local VLM unavailable.", latency_ms=int((perf_counter() - started) * 1000))
-    if should_call_api_deep(plan=request.plan, stage=request.stage, local_result=result) and api_adapter is not None:
+    resolved_api_adapter = api_adapter if api_adapter is not None else _build_api_adapter()
+    if should_call_api_deep(plan=request.plan, stage=request.stage, local_result=result) and resolved_api_adapter is not None:
         try:
-            api_result = api_adapter.inspect(image_path=image_path, request=request)
+            api_result = resolved_api_adapter.inspect(image_path=image_path, request=request)
             _safe_record_vlm_usage(api_result, request, workspace_id=workspace_id, created_by=created_by, job_id=job_id, thread_id=thread_id)
             return aggregate_quality_decision(api_result)
         except QualityGateUnavailable:
             return result.model_copy(update={"decision": "manual_review" if result.decision == "pass" else result.decision})
     return aggregate_quality_decision(result)
+
+
+def _build_api_adapter() -> VLMQualityAdapter | None:
+    if not settings.is_api_vlm_enabled():
+        return None
+    return OpenAIVisionAdapter(model_name=settings.get_api_vlm_model(deep=True))
 
 
 def deterministic_gate(*, request: VLMQualityRequest, detected_text: list[str] | None = None) -> VLMQualityGateResult:
@@ -92,4 +100,7 @@ def _safe_record_vlm_usage(result: VLMQualityGateResult, request: VLMQualityRequ
             request_status="succeeded" if result.decision != "unavailable" else "failed",
         )
     except Exception:
+        import logging
+
+        logging.getLogger(__name__).warning("VLM usage recording failed.", exc_info=True)
         return

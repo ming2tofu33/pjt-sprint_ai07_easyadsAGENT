@@ -13,6 +13,7 @@ from orchestrator.app.t2i.settings import T2IEngineUnavailableError, get_hf_toke
 FLUX2_KLEIN_ENGINE = "flux2_klein_4b"
 FLUX2_KLEIN_ALIASES = {"flux2_klein", "flux2-klein-4b", "flux_2_klein_4b", FLUX2_KLEIN_ENGINE}
 _PIPELINE = None
+_TORCH = None
 
 
 class Flux2KleinDependencyMissing(T2IEngineUnavailableError):
@@ -55,10 +56,15 @@ class Flux2KleinEngine:
 
         output_dir = Path(request.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
+        timings: dict[str, int] = {}
         try:
-            pipe = _load_pipeline(settings)
+            pipe = _load_pipeline(settings, timings)
             kwargs = _build_call_kwargs(request, settings)
+            inference_started = perf_counter()
+            print("[flux2-klein] inference started")
             result = pipe(**kwargs)  # pragma: no cover - actual local GPU opt-in
+            timings["inference_ms"] = int((perf_counter() - inference_started) * 1000)
+            print("[flux2-klein] inference completed")
         except Flux2KleinDependencyMissing:
             raise
         except RuntimeError as exc:
@@ -69,10 +75,12 @@ class Flux2KleinEngine:
             raise Flux2KleinGenerationFailed("FLUX.2 Klein generation failed.") from exc
 
         image_paths: list[str] = []
+        save_started = perf_counter()
         for index, image in enumerate(getattr(result, "images", []) or []):
             path = output_dir / f"flux2_klein_{index}.png"
             image.save(path)
             image_paths.append(path.as_posix())
+        timings["image_save_ms"] = int((perf_counter() - save_started) * 1000)
         if not image_paths:
             raise Flux2KleinGenerationFailed("FLUX.2 Klein response did not include images.")
 
@@ -92,23 +100,33 @@ class Flux2KleinEngine:
                 "hf_token_present": bool(get_hf_token()),
                 "num_inference_steps": settings.flux2_klein_num_inference_steps,
                 "guidance_scale": settings.flux2_klein_guidance_scale,
+                "timings": timings,
             },
         )
 
 
-def _load_pipeline(settings):
-    global _PIPELINE
+def _load_pipeline(settings, timings: dict[str, int] | None = None):
+    global _PIPELINE, _TORCH
     if _PIPELINE is not None:
         return _PIPELINE
+    timings = timings if timings is not None else {}
+    dependency_started = perf_counter()
+    print("[flux2-klein] dependency check started")
     try:
         import torch  # type: ignore
-        from diffusers import FluxPipeline  # type: ignore
+        from diffusers import Flux2KleinPipeline  # type: ignore
     except Exception as exc:  # pragma: no cover - depends on optional local deps
-        raise Flux2KleinDependencyMissing("FLUX.2 Klein dependencies are missing.") from exc
+        raise Flux2KleinDependencyMissing(
+            "Flux2KleinPipeline is unavailable. Install a Diffusers version with FLUX.2 Klein support."
+        ) from exc
+    timings["dependency_check_ms"] = int((perf_counter() - dependency_started) * 1000)
+    _TORCH = torch
 
     dtype = getattr(torch, settings.flux2_klein_dtype, torch.bfloat16)
     try:
-        pipe = FluxPipeline.from_pretrained(
+        load_started = perf_counter()
+        print("[flux2-klein] pipeline load started")
+        pipe = Flux2KleinPipeline.from_pretrained(
             settings.flux2_klein_model_id,
             torch_dtype=dtype,
             cache_dir=settings.flux2_klein_cache_dir,
@@ -118,6 +136,8 @@ def _load_pipeline(settings):
             pipe.enable_model_cpu_offload()
         elif hasattr(pipe, "to"):
             pipe.to(settings.flux2_klein_device)
+        timings["model_download_and_load_ms"] = int((perf_counter() - load_started) * 1000)
+        print("[flux2-klein] pipeline load completed")
     except RuntimeError as exc:
         if "out of memory" in str(exc).lower():
             raise Flux2KleinCudaOOM("FLUX.2 Klein CUDA out of memory.") from exc
@@ -137,8 +157,9 @@ def _build_call_kwargs(request: T2IGenerationInput, settings) -> dict[str, Any]:
         "num_inference_steps": settings.flux2_klein_num_inference_steps,
         "guidance_scale": settings.flux2_klein_guidance_scale,
     }
-    if request.negative_prompt:
-        kwargs["negative_prompt"] = request.negative_prompt
+    seed = getattr(request, "seed", None)
+    if seed is not None and _TORCH is not None:
+        kwargs["generator"] = _TORCH.Generator(device=settings.flux2_klein_device).manual_seed(seed)
     return kwargs
 
 

@@ -18,5 +18,5 @@ class OpenAIVisionAdapter(OpenAICompatibleVisionAdapter):
             base_url="https://api.openai.com/v1",
             model_name=model_name or settings.get_api_vlm_model(deep=True),
             timeout_seconds=timeout_seconds,
+            headers={"Authorization": f"Bearer {settings.get_openai_api_key()}"},
         )
-

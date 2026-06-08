@@ -40,10 +40,11 @@ def test_flux2_klein_fake_pipeline_success(monkeypatch, tmp_path):
         def __call__(self, **kwargs):
             return types.SimpleNamespace(images=[Image.new("RGB", (32, 32), "white")])
 
-    diffusers_module.FluxPipeline = FakePipeline
+    diffusers_module.Flux2KleinPipeline = FakePipeline
     monkeypatch.setitem(sys.modules, "torch", torch_module)
     monkeypatch.setitem(sys.modules, "diffusers", diffusers_module)
     monkeypatch.setenv("EASYADS_T2I_FLUX2_KLEIN_BACKEND", "local_diffusers")
+    monkeypatch.setenv("EASYADS_ENABLE_FLUX2_KLEIN_LOCAL", "true")
 
     output = Flux2KleinEngine().generate(
         T2IGenerationInput(
@@ -60,4 +61,3 @@ def test_flux2_klein_fake_pipeline_success(monkeypatch, tmp_path):
     assert output.image_paths
     assert output.metadata["execution_backend"] == "local_diffusers"
     assert output.metadata["model_loaded"] is True
-
