@@ -19,6 +19,7 @@ def create_generation_output(
     is_final: bool = False,
     metadata: dict | None = None,
     public_output_id: str | None = None,
+    previous_output_id: str | None = None,
     connection: object | None = None,
 ) -> dict:
     import uuid
@@ -29,9 +30,9 @@ def create_generation_output(
                 """
                 insert into generation_outputs (
                   workspace_id, thread_id, job_id, asset_id, thumbnail_asset_id, variant_index,
-                  output_type, result_payload, is_final, metadata, public_output_id
+                  output_type, result_payload, is_final, metadata, public_output_id, previous_output_id
                 )
-                values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s)
+                values (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s, %s)
                 returning *
                 """,
                 (
@@ -46,7 +47,31 @@ def create_generation_output(
                     is_final,
                     jsonb_param(metadata or {}),
                     actual_public_id,
+                    previous_output_id,
                 ),
+            )
+            return cur.fetchone()
+
+
+def update_generation_output_validation_summary(
+    *,
+    output_id: str,
+    workspace_id: str,
+    validation_summary: dict,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update generation_outputs
+                set metadata = jsonb_set(coalesce(metadata, '{}'::jsonb), '{validation}', %s::jsonb, true),
+                    result_payload = jsonb_set(coalesce(result_payload, '{}'::jsonb), '{validation}', %s::jsonb, true),
+                    updated_at = now()
+                where id = %s and workspace_id = %s
+                returning *
+                """,
+                (jsonb_param(validation_summary), jsonb_param(validation_summary), output_id, workspace_id),
             )
             return cur.fetchone()
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
@@ -52,7 +53,11 @@ from orchestrator.app.storage import settings as storage_settings
 from orchestrator.app.storage.errors import AssetStorageError
 from orchestrator.app.storage.object_keys import build_generation_object_key
 from orchestrator.app.storage.r2_service import upload_file_to_r2
+from orchestrator.app.usage import service as usage_service
 from orchestrator.app.archive import service as archive_service
+
+
+logger = logging.getLogger(__name__)
 
 _GENERATION_JOBS: dict[str, GenerationJobResponse] = {}
 _GENERATION_JOB_LOCK = RLock()
@@ -985,6 +990,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
     prompt_preview = _preview_user_input(request.user_input)
     request_payload = _request_payload_summary(request)
     engine_preference = _engine_preference_for_request(request)
+    r2_usage_payload: dict | None = None
     with db_transaction() as conn:
         workspace = workspace_repo.ensure_demo_workspace(user_id=user_id, connection=conn)
 
@@ -1344,7 +1350,13 @@ def _mark_generation_job_done_db(
             return None
 
         try:
-            output, row = _create_output_records_for_done_job_db(row, result_payload, final_path, connection=conn)
+            output, row, r2_usage_payload = _create_output_records_for_done_job_db(
+                row,
+                result_payload,
+                final_path,
+                connection=conn,
+                include_usage_payload=True,
+            )
         except AssetStorageError as exc:
             return _mark_generation_job_failed_from_row_db(
                 row,
@@ -1428,6 +1440,8 @@ def _mark_generation_job_done_db(
                 },
                 connection=conn,
             )
+    if r2_usage_payload:
+        _safe_record_r2_usage(r2_usage_payload)
     return _job_response_from_db_row(row)
 
 
@@ -1622,12 +1636,14 @@ def _create_output_records_for_done_job_db(
     result_payload: dict,
     final_path: str | None,
     connection: object,
-) -> tuple[dict | None, dict]:
+    include_usage_payload: bool = False,
+):
     if not final_path or not row.get("workspace_id") or not row.get("thread_id") or not row.get("id"):
-        return None, row
+        return (None, row, None) if include_usage_payload else (None, row)
 
     effective_result_payload = dict(result_payload or {})
     asset = None
+    r2_usage_payload = None
     if _should_attempt_r2_upload():
         _record_generation_job_event_db(
             row,
@@ -1636,7 +1652,7 @@ def _create_output_records_for_done_job_db(
             connection=connection,
         )
         try:
-            asset, effective_result_payload, row = _upload_final_asset_to_r2(
+            asset, effective_result_payload, row, r2_usage_payload = _upload_final_asset_to_r2(
                 row,
                 effective_result_payload,
                 final_path,
@@ -1718,6 +1734,7 @@ def _create_output_records_for_done_job_db(
         is_final=False,
         result_payload=effective_result_payload,
         metadata={"result_payload_summary": _result_payload_summary(effective_result_payload)},
+        previous_output_id=str(row["previous_output_id"]) if row.get("previous_output_id") else None,
         connection=connection,
     )
     final_output = generation_output_repo.mark_output_final(str(output["id"]), workspace_id=str(row["workspace_id"]), connection=connection)
@@ -1730,8 +1747,10 @@ def _create_output_records_for_done_job_db(
     _record_generation_job_event_db(row, "archive_linked", payload={"public_output_id": output.get("public_output_id")}, connection=connection)
 
     if final_output:
-        return {**output, **final_output}, row
-    return output, row
+        result = ({**output, **final_output}, row, r2_usage_payload)
+        return result if include_usage_payload else result[:2]
+    result = (output, row, r2_usage_payload)
+    return result if include_usage_payload else result[:2]
 
 
 def _upload_final_asset_to_r2(
@@ -1739,7 +1758,7 @@ def _upload_final_asset_to_r2(
     result_payload: dict,
     final_path: str,
     connection: object,
-) -> tuple[dict, dict, dict]:
+) -> tuple[dict, dict, dict, dict | None]:
     workspace_id = str(row["workspace_id"])
     public_thread_id = _thread_public_or_internal(row)
     public_job_id = str(row["public_job_id"])
@@ -1777,6 +1796,7 @@ def _upload_final_asset_to_r2(
         metadata=uploaded.metadata,
         connection=connection,
     )
+    r2_usage_payload = _build_r2_usage_payload(row=row, uploaded_size_bytes=uploaded.size_bytes, asset_id=str(asset.get("id")) if asset else None)
     effective_result_payload = merge_final_asset_into_result_payload(
         result_payload=result_payload,
         asset_row=asset,
@@ -1788,7 +1808,53 @@ def _upload_final_asset_to_r2(
         result_payload=effective_result_payload,
         connection=connection,
     ) or row
-    return asset, effective_result_payload, updated_row
+    return asset, effective_result_payload, updated_row, r2_usage_payload
+
+
+def _build_r2_usage_payload(
+    *,
+    row: dict,
+    uploaded_size_bytes: int | None,
+    asset_id: str | None,
+) -> dict | None:
+    if not uploaded_size_bytes or uploaded_size_bytes <= 0 or not row.get("workspace_id"):
+        return None
+    public_job_id = str(row.get("public_job_id") or row.get("id") or "")
+    return {
+        "workspace_id": str(row["workspace_id"]),
+        "quantity": uploaded_size_bytes,
+        "created_by": row.get("requested_by"),
+        "thread_id": str(row.get("thread_id")) if row.get("thread_id") else None,
+        "job_id": str(row.get("id")) if row.get("id") else None,
+        "provider": "cloudflare_r2",
+        "plan": (row.get("metadata") or {}).get("user_plan"),
+        "idempotency_key": f"r2_upload:{public_job_id}:{asset_id or 'unknown'}",
+        "metadata": {
+            "asset_id_present": bool(asset_id),
+            "asset_kind": "result",
+            "source": "generation_job_r2_upload",
+            "size_bytes": uploaded_size_bytes,
+        },
+    }
+
+
+def _record_r2_usage_for_uploaded_asset(
+    *,
+    row: dict,
+    uploaded_size_bytes: int | None,
+    asset_id: str | None,
+    connection: object | None = None,
+) -> None:
+    payload = _build_r2_usage_payload(row=row, uploaded_size_bytes=uploaded_size_bytes, asset_id=asset_id)
+    if payload:
+        _safe_record_r2_usage(payload)
+
+
+def _safe_record_r2_usage(payload: dict) -> None:
+    try:
+        usage_service.record_r2_upload_usage(**payload)
+    except Exception:
+        logger.warning("Failed to record generation R2 usage.", exc_info=True)
 
 
 def _record_generation_job_event_db(

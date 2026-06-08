@@ -339,6 +339,9 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
 
         if request.selected_reference_template_id is not None:
             initial_state["selected_reference_template_id"] = request.selected_reference_template_id
+        regeneration_patch = (request.metadata or {}).get("regeneration_patch")
+        if regeneration_patch:
+            initial_state["regeneration_patch"] = regeneration_patch
 
         # Execute
         graph = get_generation_job_graph()
@@ -703,12 +706,14 @@ def _run_graph_post_t2i_nodes(state: dict) -> None:
     from orchestrator.app.graph.routers import route_by_copy_presence
     from orchestrator.app.llm.nodes.background_validation import background_validation_node
     from orchestrator.app.llm.nodes.final_validation import final_validation_node
+    from orchestrator.app.llm.nodes.ocr_gate import background_ocr_gate_node, final_ocr_gate_node
     from orchestrator.app.llm.nodes.readability_gate import readability_gate_node
     from orchestrator.app.llm.nodes.result import result_node
     from orchestrator.app.llm.nodes.safe_area_gate import safe_area_gate_node
     from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
 
     for update in (
+        background_ocr_gate_node(state),
         background_validation_node(state),
         safe_area_gate_node(state),
     ):
@@ -720,6 +725,7 @@ def _run_graph_post_t2i_nodes(state: dict) -> None:
 
     for update in (
         text_renderer_node(state),
+        final_ocr_gate_node(state),
         readability_gate_node(state),
         final_validation_node(state),
         result_node(state),
@@ -733,9 +739,11 @@ def _normalize_graph_t2i_engine(value: object) -> str:
         return "sd35_large"
     if normalized in {"flux", "flux_schnell", "flux_1_schnell"}:
         return "flux"
+    if normalized in {"flux2_klein", "flux2_klein_4b", "flux_2_klein_4b"}:
+        return "flux2_klein_4b"
     if normalized in {"gpt_image_2", "gpt_image2"}:
         return "gpt_image_2"
-    return "flux"
+    raise ValueError(f"Unsupported graph T2I engine: {value}")
 
 
 def _safe_modal_error(error: dict | None) -> dict:
@@ -771,6 +779,15 @@ def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest,
                 },
             )
         )
+        generation_error = getattr(generation, "error", None)
+        if generation_error:
+            metadata = generation.metadata or {}
+            error_code = str(metadata.get("error_code") or "t2i_engine_unavailable")
+            if error_code == "t2i_engine_not_enabled":
+                raise T2IEngineNotEnabledError(generation_error)
+            exc = T2IEngineUnavailableError(generation_error)
+            setattr(exc, "error_code", error_code)
+            raise exc
         if not generation.image_paths:
             raise T2IEngineUnavailableError(f"{engine_name} did not return an image.")
 
