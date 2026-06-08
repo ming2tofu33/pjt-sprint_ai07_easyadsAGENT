@@ -3350,6 +3350,115 @@
   --mascot-width: 112px;
 }
 
+.resultStatusPanel {
+  margin-top: 18px;
+  border: 1px solid rgba(171, 146, 255, 0.38);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(248, 245, 255, 0.94), rgba(255, 253, 248, 0.96)),
+    var(--color-bg-card);
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.pendingPreviewFrame {
+  min-height: 146px;
+  border: 1px dashed rgba(126, 103, 216, 0.34);
+  border-radius: 16px;
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.72) 42%, rgba(255, 255, 255, 0.22) 78%),
+    #fbfaf6;
+  background-size: 240% 100%;
+  color: var(--color-brand-purple-strong);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 22px;
+  text-align: center;
+  animation: shimmer 1.9s ease-in-out infinite;
+}
+
+.pendingPreviewFrame svg {
+  animation: spin 0.9s linear infinite;
+}
+
+.pendingPreviewFrame strong {
+  color: var(--color-text-primary);
+  font-size: 15px;
+  line-height: 1.35;
+  font-weight: 950;
+}
+
+.pendingPreviewFrame p {
+  max-width: 260px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 780;
+}
+
+.resultStatusList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.resultStatusList li {
+  min-height: 38px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--color-muted);
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 900;
+}
+
+.resultStatusList li > span {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: #eee9df;
+  color: #978b7f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.resultStatusList li[data-state="done"] {
+  color: var(--color-text-primary);
+}
+
+.resultStatusList li[data-state="done"] > span {
+  background: rgba(85, 190, 138, 0.16);
+  color: #168051;
+}
+
+.resultStatusList li[data-state="active"] {
+  border-color: rgba(126, 103, 216, 0.32);
+  background: rgba(245, 239, 255, 0.92);
+  color: var(--color-brand-purple-strong);
+}
+
+.resultStatusList li[data-state="active"] > span {
+  background: var(--color-brand-purple-soft);
+  color: var(--color-brand-purple-strong);
+}
+
+.resultStatusList li[data-state="active"] svg {
+  animation: spin 0.9s linear infinite;
+}
+
 .validationPanel {
   margin-top: 14px;
   border: 1px solid var(--color-border-soft);

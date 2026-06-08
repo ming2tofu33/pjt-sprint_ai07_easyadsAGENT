@@ -3,16 +3,20 @@
 import { Check, PenLine, Send } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ParsedGenerationJobInterrupt } from "@/lib/generation-job-interrupt";
+import type { ChatFlowState } from "@/types/marketing";
 import { AutosizeTextarea } from "./AutosizeTextarea";
+import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
 type GenerationJobInterruptStepProps = {
   interrupt: ParsedGenerationJobInterrupt;
+  state?: ChatFlowState;
   isLoading?: boolean;
   errorMessage?: string | null;
   onBack: () => void;
+  onDelete?: () => void;
   onSelectCopyCandidate: (input: { selectedCopyId: string; label: string }) => void;
   onSubmitCustomCopy: (input: { userCustomHeadline: string; userCustomSubcopy?: string; label: string }) => void;
 };
@@ -35,9 +39,11 @@ const fallbackCustomFields = [
 
 export function GenerationJobInterruptStep({
   interrupt,
+  state,
   isLoading = false,
   errorMessage,
   onBack,
+  onDelete,
   onSelectCopyCandidate,
   onSubmitCustomCopy
 }: GenerationJobInterruptStepProps) {
@@ -61,10 +67,8 @@ export function GenerationJobInterruptStep({
     });
   }
 
-  return (
+  const content = (
     <>
-      <StepHeader title="생성에 필요한 선택을 마저 해주세요" canGoBack onBack={onBack} />
-
       <div className={styles.assistantBubble}>
         <span className={styles.assistantAvatar}>AI</span>
         <p className={styles.bubble}>
@@ -158,6 +162,21 @@ export function GenerationJobInterruptStep({
           <PenLine size={14} aria-hidden="true" /> 선택하면 같은 생성 요청이 이어집니다.
         </p>
       ) : null}
+    </>
+  );
+
+  if (state) {
+    return (
+      <ChatTimelineStep state={state} onBack={onBack} onDelete={onDelete}>
+        {content}
+      </ChatTimelineStep>
+    );
+  }
+
+  return (
+    <>
+      <StepHeader title="생성에 필요한 선택을 마저 해주세요" canGoBack onBack={onBack} />
+      {content}
     </>
   );
 }

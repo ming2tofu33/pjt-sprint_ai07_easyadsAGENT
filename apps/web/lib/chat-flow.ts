@@ -106,6 +106,10 @@ function appendAssistantMessageOnce(
   return [...messages, { role: "assistant", text }];
 }
 
+function isGenerationJobTerminalStatus(status: string): boolean {
+  return status === "done" || status === "failed" || status === "cancelled";
+}
+
 export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): ChatFlowState {
   switch (action.type) {
     case "reset":
@@ -363,13 +367,24 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       };
 
     case "generationJobUpdated":
+      const shouldKeepInitialAnalysisPending =
+        state.step === 2 &&
+        !state.currentQuestion &&
+        action.generationJob.status !== "waiting_user_input" &&
+        !isGenerationJobTerminalStatus(action.generationJob.status);
+      const shouldKeepAnswerPending =
+        state.step === 4 &&
+        state.isLoading &&
+        action.generationJob.status !== "waiting_user_input" &&
+        !isGenerationJobTerminalStatus(action.generationJob.status);
+
       return {
         ...state,
         jobId: action.generationJob.job_id ?? state.jobId,
         threadId: action.generationJob.thread_id ?? state.threadId,
         generationJob: action.generationJob,
         currentQuestion: action.generationJob.status === "waiting_user_input" ? state.currentQuestion : null,
-        isLoading: false,
+        isLoading: shouldKeepInitialAnalysisPending || shouldKeepAnswerPending,
         errorMessage: null
       };
 

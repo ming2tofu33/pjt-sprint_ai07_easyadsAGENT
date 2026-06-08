@@ -179,6 +179,43 @@ describe("chat flow state", () => {
     expect(state.currentQuestion?.field).toBe("promotion_goal");
   });
 
+  it("keeps loading after a generation job answer while the graph continues running", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "광고 만들어줘"
+    });
+    state = chatFlowReducer(state, {
+      type: "generationJobQuestionReceived",
+      generationJob: {
+        job_id: "job_1",
+        status: "waiting_user_input",
+        progress: { progress_percent: 50, current_stage: "waiting_user_input" }
+      },
+      question: {
+        field: "business_type",
+        question: "어떤 업종의 광고인가요?",
+        options: [{ id: 1, label: "카페/디저트", value: "cafe" }]
+      }
+    });
+    state = chatFlowReducer(state, {
+      type: "submitGenerationJobAnswer",
+      label: "카페/디저트"
+    });
+    state = chatFlowReducer(state, {
+      type: "generationJobUpdated",
+      generationJob: {
+        job_id: "job_1",
+        status: "running",
+        progress: { progress_percent: 60, current_stage: "brief_interpretation" }
+      }
+    });
+
+    expect(state.currentQuestion).toBeNull();
+    expect(state.isLoading).toBe(true);
+    expect(state.conversationMessages.at(-1)).toEqual({ role: "user", text: "카페/디저트" });
+  });
+
   it("keeps the selected image generation engine through backend responses", () => {
     let state = createInitialChatFlowState();
     state = chatFlowReducer(state, {
