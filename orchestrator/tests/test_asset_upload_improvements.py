@@ -14,6 +14,8 @@ from orchestrator.app.assets.errors import (
     ServiceUnavailableError,
 )
 
+ASSET_ID = "asset_" + "a" * 32
+
 def test_presign_requires_workspace(monkeypatch):
     req = AssetPresignRequest(
         kind="source",
@@ -45,7 +47,7 @@ def test_presign_validates_mime_type(monkeypatch):
 def test_complete_records_failed_status(monkeypatch):
     mock_row = {
         "id": "internal-uuid",
-        "public_asset_id": "asset_123",
+        "public_asset_id": ASSET_ID,
         "metadata": {"upload": {"status": "pending"}},
         "bucket": "test-bucket",
         "object_key": "test-key"
@@ -71,9 +73,9 @@ def test_complete_records_failed_status(monkeypatch):
     monkeypatch.setattr("orchestrator.app.assets.service.head_object", mock_head)
     monkeypatch.setattr("orchestrator.app.assets.service.create_r2_client", lambda: None)
     
-    # 1. file_not_found is retryable, should NOT update to failed
-    with pytest.raises(ConflictError):
-        service.complete_asset_upload("asset_123")
+    # 1. storage unavailable is retryable, should NOT update to failed
+    with pytest.raises(ServiceUnavailableError):
+        service.complete_asset_upload(ASSET_ID)
     assert mock_repo.last_update is None
     
     # 2. Mock a terminal error
@@ -81,11 +83,19 @@ def test_complete_records_failed_status(monkeypatch):
         return {"ContentLength": 9999999999, "ContentType": "image/png"} # Too large
         
     monkeypatch.setattr("orchestrator.app.assets.service.head_object", mock_head_terminal)
-    monkeypatch.setattr("orchestrator.app.vision.settings.get_vision_settings", lambda: type("Settings", (), {"max_file_size_mb": 1})())
+    monkeypatch.setattr(
+        "orchestrator.app.assets.service.get_vision_settings",
+        lambda: type("Settings", (), {"max_file_size_mb": 1, "max_pixel_count": 1_000_000})(),
+    )
     
     with pytest.raises(PayloadTooLargeError):
-        service.complete_asset_upload("asset_123")
+        service.complete_asset_upload(ASSET_ID)
         
     assert mock_repo.last_update is not None
     assert mock_repo.last_update["upload"]["status"] == "failed"
     assert mock_repo.last_update["upload"]["error_code"] == "asset_too_large"
+
+
+def test_complete_rejects_invalid_public_asset_id():
+    with pytest.raises(UnprocessableEntityError):
+        service.complete_asset_upload("asset_123", workspace_id="ws1")

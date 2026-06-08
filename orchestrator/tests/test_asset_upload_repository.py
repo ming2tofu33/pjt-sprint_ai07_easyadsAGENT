@@ -35,3 +35,22 @@ def test_update_asset_with_workspace(monkeypatch):
     )
     assert updated is not None
     assert "workspace_id = %s" in mock_cursor.execute.call_args[0][0]
+
+
+def test_update_asset_can_require_pending_upload_status(monkeypatch):
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+    mock_cursor.fetchone.return_value = {"id": "123"}
+
+    asset_repo.update_asset(
+        "123",
+        workspace_id="ws1",
+        metadata_merge={"upload": {"status": "failed"}},
+        pending_only_upload_status=True,
+        connection=mock_conn,
+    )
+    sql, params = mock_cursor.execute.call_args.args
+    assert "where id = %s and workspace_id = %s" in sql.lower()
+    assert "metadata->'upload'->>'status' = 'pending'" in sql
+    assert params[-2:] == ("123", "ws1")

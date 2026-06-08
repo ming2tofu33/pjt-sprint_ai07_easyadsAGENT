@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from orchestrator.app.api.schemas.assets import PUBLIC_ASSET_ID_PATTERN
 from orchestrator.app.api.schemas.common import ApiMeta, ErrorResponse
 
 
@@ -86,7 +87,7 @@ class GenerationJobCreateRequest(BaseModel):
     def validate_public_asset_id(cls, value):
         import re
         if value is not None:
-            ASSET_ID_PATTERN = re.compile(r"^asset_[0-9a-f]{32}$")
+            ASSET_ID_PATTERN = re.compile(PUBLIC_ASSET_ID_PATTERN)
             if not ASSET_ID_PATTERN.match(value):
                 raise ValueError("asset ID must match 'asset_<32-hex-chars>'")
         return value

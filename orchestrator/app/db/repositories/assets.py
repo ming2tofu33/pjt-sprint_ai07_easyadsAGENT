@@ -105,6 +105,7 @@ def update_asset(
     checksum_sha256: str | None = None,
     public_url: str | None = None,
     metadata_merge: dict | None = None,
+    pending_only_upload_status: bool = False,
     connection: object | None = None,
 ) -> dict | None:
     with db_transaction(connection) as conn:
@@ -137,9 +138,12 @@ def update_asset(
                 
             params.append(asset_id)
             params.append(workspace_id)
+            where_clause = "where id = %s and workspace_id = %s"
+            if pending_only_upload_status:
+                where_clause += " and metadata->'upload'->>'status' = 'pending'"
             
             cur.execute(
-                f"update assets set {', '.join(updates)} where id = %s and workspace_id = %s returning *",
+                f"update assets set {', '.join(updates)} {where_clause} returning *",
                 tuple(params),
             )
             return cur.fetchone()

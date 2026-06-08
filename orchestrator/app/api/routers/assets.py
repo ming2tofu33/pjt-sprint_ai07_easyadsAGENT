@@ -11,6 +11,7 @@ from orchestrator.app.api.schemas.assets import (
     AssetPresignResponse,
     AssetCompleteResponse,
     AssetGetResponse,
+    PUBLIC_ASSET_ID_PATTERN,
 )
 from orchestrator.app.assets import service
 
@@ -19,8 +20,6 @@ router = APIRouter(prefix="/assets", tags=["Assets"])
 
 from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.assets.errors import AssetServiceError
-
-ASSET_ID_PATTERN = r"^asset_[0-9a-f]{32}$"
 
 def _handle_asset_error(exc: Exception):
     if isinstance(exc, AssetServiceError):
@@ -40,7 +39,7 @@ def presign_asset_upload(
 
 @router.post("/uploads/{asset_id}/complete", response_model=AssetCompleteResponse)
 def complete_asset_upload(
-    asset_id: str = Path(pattern=ASSET_ID_PATTERN),
+    asset_id: str = Path(pattern=PUBLIC_ASSET_ID_PATTERN),
     workspace_id: str | None = None,
     user_id: str | None = None,
 ) -> Any:
@@ -57,7 +56,7 @@ def complete_asset_upload(
 
 @router.get("/{asset_id}", response_model=AssetGetResponse)
 def get_asset(
-    asset_id: str = Path(pattern=ASSET_ID_PATTERN),
+    asset_id: str = Path(pattern=PUBLIC_ASSET_ID_PATTERN),
     workspace_id: str | None = None,
     user_id: str | None = None,
 ) -> Any:
