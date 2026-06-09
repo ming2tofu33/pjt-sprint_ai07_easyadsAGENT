@@ -77,9 +77,13 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
             reasoning_summary="Copy mode inferred by guarded brief interpreter.",
             metadata={"source": "brief_interpreter_llm", "source_detail": "copy_generation_mode inferred by guarded brief interpreter"},
         )
-    if copy_mode is None and "copy_generation_mode" not in missing_fields:
+    # copy_generation_mode is the 4-mode HITL choice (AI 추천 / AI 알아서 / 직접 입력 / 카피 없음).
+    # Heuristic/LLM inference only seeds the recommended default and must not satisfy the field;
+    # the question is surfaced until the user confirms (or supplied a mode up front).
+    copy_mode_confirmed = bool(state.get("current_brief", {}).get("copy_generation_mode_confirmed"))
+    if not copy_mode_confirmed and "copy_generation_mode" not in missing_fields:
         missing_fields.append("copy_generation_mode")
-    if copy_mode and "copy_generation_mode" in missing_fields:
+    if copy_mode_confirmed and "copy_generation_mode" in missing_fields:
         missing_fields.remove("copy_generation_mode")
     progress_state = build_progress_state(missing_fields)
     inferred_ad_format = build_ad_format_spec(requested_ad_format) if requested_ad_format else None
@@ -174,7 +178,7 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
         extra[f"{field}_option_value"] = original_value
         context_data["extra"] = extra
     if field == "copy_generation_mode":
-        update_current_brief(state, {"copy_generation_mode": value})
+        update_current_brief(state, {"copy_generation_mode": value, "copy_generation_mode_confirmed": True})
         extra_return.update(
             {
                 "copy_generation_mode": value,

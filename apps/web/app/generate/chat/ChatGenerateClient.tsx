@@ -1313,6 +1313,36 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         return;
       }
 
+      const pendingInterrupt = getPendingGenerationJobParsedInterrupt(response.job);
+      if (
+        response.job.status === "waiting_user_input" &&
+        pendingInterrupt &&
+        pendingInterrupt.type !== "option_question"
+      ) {
+        // Copy-selection / custom-copy interrupts must stop for an explicit user choice,
+        // not auto-pick the recommended candidate. Route through the same interrupt handler
+        // as the polled path so both entry paths behave identically. option_question keeps
+        // its existing intake-step rendering below.
+        writeChatTurnSnapshot({
+          ...turnSnapshotBase,
+          generationJob: response.job,
+          response: null
+        });
+        setOptimisticSurface("chat");
+        stopForGenerationJobInterrupt(response.job, {
+          prompt,
+          copyGenerationMode: options.copyGenerationMode,
+          imageGenerationEngine,
+          sourceImagePath: null,
+          referenceImagePath: referenceImagePath ?? null,
+          selectedReferenceTemplateId: selectedReferenceTemplateId ?? null,
+          selectedReferenceTemplateTitle: requestContext?.selectedReferenceTemplateTitle ?? null,
+          userCustomHeadline: options.userCustomHeadline ?? null,
+          userCustomSubcopy: options.userCustomSubcopy ?? null
+        });
+        return;
+      }
+
       const turnResponse = generationJobToChatTurnResponse(response.job, options.copyGenerationMode);
       writeChatTurnSnapshot({
         ...turnSnapshotBase,
@@ -1536,24 +1566,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     const interrupt = getPendingGenerationJobParsedInterrupt(job);
     if (!interrupt) {
       return false;
-    }
-
-    if (initialChatIntake && interrupt.type === "copy_candidate_selection") {
-      const turnResponse = generationJobToChatTurnResponse(job, initialChatIntake.copyGenerationMode);
-      applyTurnResponse(
-        initialChatIntake.prompt,
-        turnResponse,
-        initialChatIntake.imageGenerationEngine,
-        initialChatIntake.sourceImagePath ?? null,
-        initialChatIntake.referenceImagePath ?? null,
-        initialChatIntake.userCustomHeadline ?? null,
-        initialChatIntake.userCustomSubcopy ?? null
-      );
-      setGenerationStage("brief");
-      lastPrimedStageRef.current = "start";
-      setOptimisticSurface("chat");
-      router.replace(buildChatStageHrefWithJob("start", { threadId: job.thread_id }));
-      return true;
     }
 
     if (interrupt.type === "option_question") {

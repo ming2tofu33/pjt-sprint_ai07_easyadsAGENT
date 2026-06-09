@@ -24,6 +24,9 @@ class T2ISettings(BaseModel):
     hf_token_present: bool = False
     sd35_model_id: str | None = "stabilityai/stable-diffusion-3.5-large"
     sd35_local_path: str | None = None
+    # 비-distilled SD3.5-Large는 ~28-40 steps 필요. 과거 하드코딩 8 steps → 언더-디노이징(노이즈/스미어) trash.
+    sd35_num_inference_steps: int = Field(default=28, ge=1, le=60)
+    sd35_guidance_scale: float = Field(default=4.0, ge=0.0, le=20.0)
     flux_model_id: str | None = "black-forest-labs/FLUX.1-schnell"
     flux_local_path: str | None = None
     flux_device: str = "auto"
@@ -68,6 +71,8 @@ def load_t2i_settings() -> T2ISettings:
             or "stabilityai/stable-diffusion-3.5-large"
         ),
         sd35_local_path=_get_env("EASYADS_SD35_LOCAL_PATH", "") or None,
+        sd35_num_inference_steps=_env_int("EASYADS_SD35_STEPS", 28, minimum=1, maximum=60),
+        sd35_guidance_scale=_env_float("EASYADS_SD35_GUIDANCE_SCALE", 4.0, minimum=0.0, maximum=20.0),
         flux_model_id=(
             _get_env("EASYADS_FLUX_MODEL_ID", "")
             or _get_env("T2I_FLUX_MODEL_ID", "")

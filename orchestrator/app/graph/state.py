@@ -222,6 +222,10 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "requested_ad_format": request.requested_ad_format,
         "requested_platform": request.requested_platform,
         "copy_generation_mode": request.copy_generation_mode,
+        # Confirmed only when the user explicitly supplied a mode up front. Heuristic/LLM
+        # inference in the validator must NOT flip this true; otherwise the 4-mode question
+        # is never asked.
+        "copy_generation_mode_confirmed": request.copy_generation_mode is not None,
         "user_custom_headline": request.user_custom_headline,
         "user_custom_subcopy": request.user_custom_subcopy,
         "source_asset_id": request.source_asset_id if hasattr(request, "source_asset_id") else None,
