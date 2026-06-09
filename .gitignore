@@ -21,3 +21,5 @@ playwright-report/
 test-results/
 .agents/
 .hf-cache/
+.env.flux2.local
+.env.*.local
