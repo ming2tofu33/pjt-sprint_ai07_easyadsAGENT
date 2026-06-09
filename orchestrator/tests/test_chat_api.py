@@ -33,7 +33,7 @@ def test_chat_start_returns_inferred_context_and_copy_candidates():
         "promotionGoal": "신메뉴 출시",
     }
     assert [candidate["id"] for candidate in payload["copyCandidates"]] == ["copy_1", "copy_2"]
-    assert payload["recommendedCopyId"] == "copy_1"
+    assert payload["recommendedCopyId"] in {"copy_1", "copy_2"}
     assert payload["copyCandidateOrigin"] == "rule_based"
 
 

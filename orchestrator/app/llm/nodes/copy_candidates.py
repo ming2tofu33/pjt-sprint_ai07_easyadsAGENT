@@ -9,6 +9,7 @@ from langgraph.types import interrupt
 from orchestrator.app.graph.state import MarketingState, context_to_model
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
+from orchestrator.app.llm.copy_quality_v2 import annotate_and_rank_candidate_output, generate_copy_candidates_v2
 from orchestrator.app.llm.copy_tone_policy import normalize_copy_for_business
 from orchestrator.app.llm.metadata_builders import build_copy_generation_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -45,12 +46,14 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
     if not isinstance(output, CopyCandidateListOutput) or not output.candidates:
         output = build_rule_based_candidate_output(state)
         llm_metadata = {**llm_metadata, "fallback_used": True, "fallback_reason": "invalid_candidate_output"}
-    output, llm_metadata = validate_or_fallback_candidate_output(state, output, llm_metadata)
     max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
+    output, llm_metadata = validate_or_fallback_candidate_output(state, output, llm_metadata)
+    output = annotate_and_rank_candidate_output(output, state=state, max_candidates=max_candidates)
     candidates = [apply_candidate_quality_policy(candidate) for candidate in normalize_candidate_ids(output.candidates[: max(1, max_candidates)])]
+    recommended_candidate_id = output.recommended_candidate_id or candidates[0].id
     output = CopyCandidateListOutput(
         candidates=candidates,
-        recommended_candidate_id=output.recommended_candidate_id or candidates[0].id,
+        recommended_candidate_id=recommended_candidate_id,
         metadata={**output.metadata, "source_node": "copy_candidate_generation", "llm_metadata": llm_metadata},
     )
     candidate_origin = classify_copy_candidate_origin(output.metadata, llm_metadata)
@@ -68,17 +71,18 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
 
 
 def build_rule_based_candidate_output(state: MarketingState) -> CopyCandidateListOutput:
-    context = context_to_model(state.get("context"))
-    item = display_item_or_service(context.item_or_service)
-    if is_reservation_service_item(context.item_or_service, item, context.extra):
-        candidates = build_reservation_service_candidates(item)
-    elif context.business_type == "cafe":
-        candidates = build_cafe_candidates(item, context.promotion_goal)
-    elif context.business_type == "restaurant":
-        candidates = build_restaurant_candidates(item)
-    else:
-        candidates = build_generic_candidates(item, context.promotion_goal)
-    return CopyCandidateListOutput(candidates=candidates, recommended_candidate_id="copy_1", metadata={"source_node": "copy_candidate_generation", "fallback": "rule_based"})
+    max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
+    output = generate_copy_candidates_v2(state, max_candidates=max_candidates)
+    return CopyCandidateListOutput(
+        candidates=output.candidates,
+        recommended_candidate_id=output.recommended_candidate_id,
+        metadata={
+            "source_node": "copy_candidate_generation",
+            "fallback": "rule_based_v2",
+            "message_strategy": output.message_strategy.model_dump(),
+            "copy_quality_v2_ranking": output.ranking.model_dump(),
+        },
+    )
 
 
 def classify_copy_candidate_origin(metadata: dict[str, Any], llm_metadata: dict[str, Any]) -> str:
@@ -405,12 +409,13 @@ def build_candidate_prompt(state: MarketingState, metadata_contract: dict[str, A
 
 def copy_candidate_selection_interrupt_node(state: MarketingState) -> dict[str, Any]:
     candidates = list(state.get("copy_candidates", []))
+    output = state.get("copywriting_output") or {}
     payload = {
         "type": "copy_candidate_selection",
         "job_id": state["job_id"],
         "thread_id": state["thread_id"],
         "candidates": candidates,
-        "recommended_candidate_id": "copy_1",
+        "recommended_candidate_id": output.get("recommended_candidate_id") or _recommended_candidate_id_from_candidates(candidates),
         "copy_candidate_origin": state.get("copy_candidate_origin") or "unknown",
     }
     resume_payload = interrupt(payload)
@@ -424,13 +429,14 @@ def state_update_selected_copy_node(state: MarketingState) -> dict[str, Any]:
     selection.setdefault("selected_ad_format", state.get("selected_ad_format"))
     selection.setdefault("selected_tone", state.get("selected_tone"))
     selection.setdefault("custom_direction", state.get("custom_direction"))
-    selected_id = selection.get("selected_copy_id") or "copy_1"
+    recommended_id = _recommended_candidate_id_from_state(state)
+    selected_id = selection.get("selected_copy_id") or recommended_id
     candidates = list(state.get("copy_candidates", []))
     candidate = next((item for item in candidates if item.get("id") == selected_id), None)
     warnings: list[str] = []
     if candidate is None:
-        candidate = next((item for item in candidates if item.get("id") == "copy_1"), None)
-        selected_id = "copy_1"
+        candidate = next((item for item in candidates if item.get("id") == recommended_id), None)
+        selected_id = recommended_id
         warnings.append("Invalid selected_copy_id; recommended candidate fallback applied.")
     if candidate is None:
         return {"status": "failed", "error_message": "No copy candidate available for selection."}
@@ -450,6 +456,22 @@ def state_update_selected_copy_node(state: MarketingState) -> dict[str, Any]:
         "text_overlay_pending": True,
         "status": "applying_selected_copy",
     }
+
+
+def _recommended_candidate_id_from_state(state: MarketingState) -> str:
+    output = state.get("copywriting_output") or {}
+    return str(output.get("recommended_candidate_id") or _recommended_candidate_id_from_candidates(list(state.get("copy_candidates", []))))
+
+
+def _recommended_candidate_id_from_candidates(candidates: list[dict[str, Any]]) -> str:
+    if not candidates:
+        return "copy_1"
+    for candidate in candidates:
+        metadata = candidate.get("metadata") or {}
+        score = metadata.get("copy_quality_v2_score") or {}
+        if score and not score.get("hard_blocked"):
+            return str(candidate.get("id") or "copy_1")
+    return str(candidates[0].get("id") or "copy_1")
 
 
 def build_frontend_selection_state_update(state: MarketingState, selection: dict[str, Any]) -> dict[str, Any]:
