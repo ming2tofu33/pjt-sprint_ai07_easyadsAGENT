@@ -41,8 +41,10 @@ class SD35LargeLocalEngine:
             width=request.width,
             height=request.height,
             num_images_per_prompt=min(request.num_images, settings.max_images_per_job),
-            num_inference_steps=8,
-            guidance_scale=4.0,
+            # 비-distilled SD3.5-Large는 8 steps면 언더-디노이징(trash). 기본 28 steps/guidance 4.0.
+            # EASYADS_SD35_STEPS / EASYADS_SD35_GUIDANCE_SCALE로 튜닝(steps는 VRAM 무관, 렌더만 느려짐).
+            num_inference_steps=settings.sd35_num_inference_steps,
+            guidance_scale=settings.sd35_guidance_scale,
         )
 
         image_paths: list[str] = []

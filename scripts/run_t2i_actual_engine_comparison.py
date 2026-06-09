@@ -33,13 +33,16 @@ ENGINE_RUN_MODES = {
     "gpt_image_1": "gpt_image_1_actual",
     "gpt_image_2": "gpt_image_2_actual",
     "sd35_large": "sd35_local",
-    "flux": "flux_local",
+    # FLUX lane replaced by FLUX2 Klein (develop merge). The lane exposes a single run_mode
+    # (`flux2_klein_4b`); smoke vs real is decided by the modal worker payload, not by a
+    # separate `_smoke` run_mode string, so actual and smoke map to the same value here.
+    "flux2_klein_4b": "flux2_klein_4b",
 }
 SMOKE_RUN_MODES = {
     "gpt_image_1": "gpt_image_1_smoke",
     "gpt_image_2": "gpt_image_2_smoke",
     "sd35_large": "sd35_local_smoke",
-    "flux": "flux_local_smoke",
+    "flux2_klein_4b": "flux2_klein_4b",
 }
 SECRET_ENV_NAMES = (
     "OPENAI_API_KEY",
@@ -295,18 +298,18 @@ def _engine_readiness(engine: str, *, execution_backend: str, require_db_r2: boo
             if not (settings.hf_token_present or settings.sd35_local_path):
                 missing.append("HF_TOKEN_or_EASYADS_SD35_LOCAL_PATH")
 
-    elif engine == "flux":
+    elif engine == "flux2_klein_4b":
         if effective_backend == "modal":
             _extend_modal_readiness(missing)
         else:
-            if not settings.enable_flux_local:
-                missing.append("EASYADS_ENABLE_FLUX_LOCAL")
-            if not (settings.hf_token_present or settings.flux_local_path):
-                missing.append("HF_TOKEN_or_EASYADS_FLUX_LOCAL_PATH")
+            if not settings.enable_flux2_klein_local:
+                missing.append("EASYADS_ENABLE_FLUX2_KLEIN_LOCAL")
+            if not (settings.hf_token_present or settings.flux2_klein_cache_dir):
+                missing.append("HF_TOKEN_or_EASYADS_T2I_FLUX2_KLEIN_CACHE_DIR")
     else:
         missing.append("known_engine")
 
-    if effective_backend == "modal" and engine in {"sd35_large", "flux"}:
+    if effective_backend == "modal" and engine in {"sd35_large", "flux2_klein_4b"}:
         modal = modal_settings.get_modal_readiness()
         missing.extend(f"modal:{item}" for item in modal["missing_requirements"])
         if not modal["enabled"]:

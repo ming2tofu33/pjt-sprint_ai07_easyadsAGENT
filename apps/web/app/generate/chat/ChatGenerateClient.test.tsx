@@ -1472,17 +1472,15 @@ describe("ChatGenerateClient", () => {
     });
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
-    await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
-    expect(screen.getByText("네일샵")).toBeTruthy();
-    expect(screen.getByText("시즌 한정 홍보")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "문구 고르기" }));
-
-    expect(screen.getByRole("heading", { name: "추천 문구" })).toBeTruthy();
+    // Copy-selection interrupt must stop for an explicit user choice, not auto-pick the
+    // recommended candidate and advance to the brief review screen.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
     expect(screen.getByText("여름 네일은 지금이 딱 좋아요")).toBeTruthy();
+    expect(screen.queryByText("AI가 이렇게 이해했어요")).toBeNull();
     expect(screen.queryByText("추가 정보가 필요합니다.")).toBeNull();
   });
 
-  it("keeps polled initial copy-candidate interrupts inside the chat intake flow", async () => {
+  it("routes polled initial copy-candidate interrupts into copy selection", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
       success: true,
@@ -1538,13 +1536,11 @@ describe("ChatGenerateClient", () => {
     });
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
-    await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
-    expect(screen.queryByText("생성에 필요한 선택을 마저 해주세요")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "문구 고르기" }));
-
-    expect(screen.getByRole("heading", { name: "추천 문구" })).toBeTruthy();
+    // Polled copy-selection interrupt routes to the same selection screen as the
+    // synchronous path — no auto-pick, no auto-advance to the brief review.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
     expect(screen.getByText("여름 네일은 지금이 딱 좋아요")).toBeTruthy();
+    expect(screen.queryByText("AI가 이렇게 이해했어요")).toBeNull();
   });
 
   it("skips copy selection when chat generation starts in image-only mode", async () => {
