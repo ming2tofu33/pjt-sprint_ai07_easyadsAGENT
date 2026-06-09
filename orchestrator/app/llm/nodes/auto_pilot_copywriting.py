@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.llm.copy_quality_v2 import generate_copy_candidates_v2, rank_copy_candidates, select_recommended_copy
 from orchestrator.app.llm.metadata_builders import build_copy_generation_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.nodes.copywriting import copywriting_node
-from orchestrator.app.schemas.llm_marketing import CopywritingOutput
+from orchestrator.app.schemas.llm_marketing import CopyCandidate, CopywritingOutput, MarketingCopy
 
 
 def auto_pilot_copywriting_node(state: MarketingState) -> dict[str, Any]:
@@ -29,6 +30,7 @@ def auto_pilot_copywriting_node(state: MarketingState) -> dict[str, Any]:
         metadata=metadata_contract,
     )
     if isinstance(output, CopywritingOutput):
+        output = apply_auto_pilot_v2_quality(state, output)
         update = {
             "marketing_copy": output.marketing_copy.model_dump(),
             "copywriting_output": output.model_dump(),
@@ -48,6 +50,42 @@ def auto_pilot_copywriting_node(state: MarketingState) -> dict[str, Any]:
         "copy_generation_mode": "auto_pilot",
     }
     return update
+
+
+def apply_auto_pilot_v2_quality(state: MarketingState, output: CopywritingOutput) -> CopywritingOutput:
+    candidate = CopyCandidate(
+        id="auto_1",
+        headline=output.marketing_copy.headline,
+        subcopy=output.marketing_copy.subcopy,
+        cta=output.marketing_copy.cta,
+        hashtags=output.marketing_copy.hashtags,
+        angle="benefit_action_first",
+        metadata={"source": "auto_pilot_llm"},
+    )
+    ranking = rank_copy_candidates([candidate], state=state)
+    if ranking.scorecards and ranking.scorecards[0].hard_blocked:
+        fallback = generate_copy_candidates_v2(state)
+        selected = select_recommended_copy(fallback.candidates, fallback.ranking)
+        if selected is not None:
+            replacement = MarketingCopy(
+                headline=selected.headline,
+                subcopy=selected.subcopy,
+                cta=selected.cta,
+                hashtags=selected.hashtags,
+                metadata={
+                    **output.marketing_copy.metadata,
+                    "copy_quality_v2_ranking": ranking.model_dump(),
+                    "copy_quality_v2_fallback_used": True,
+                    "recommended_candidate_id": selected.id,
+                },
+            )
+            return output.model_copy(update={"marketing_copy": replacement})
+    metadata = {
+        **output.marketing_copy.metadata,
+        "copy_quality_v2_ranking": ranking.model_dump(),
+        "copy_quality_v2_fallback_used": False,
+    }
+    return output.model_copy(update={"marketing_copy": output.marketing_copy.model_copy(update={"metadata": metadata})})
 
 
 def build_auto_pilot_prompt(state: MarketingState, metadata_contract: dict[str, Any] | None = None) -> str:

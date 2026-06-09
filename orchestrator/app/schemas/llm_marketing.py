@@ -303,6 +303,21 @@ class MarketingCopy(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+CopyCandidateAngle = Literal["product_first", "emotion_first", "benefit_action_first"]
+
+
+class CopyMessageStrategy(BaseModel):
+    target_persona: str | None = None
+    product_truths: list[str] = Field(default_factory=list)
+    customer_desires: list[str] = Field(default_factory=list)
+    promotion_intent: str | None = None
+    brand_voice: str | None = None
+    message_angles: list[CopyCandidateAngle] = Field(default_factory=list)
+    forbidden_claims: list[str] = Field(default_factory=list)
+    strategy_summary: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class CopyCandidate(BaseModel):
     id: str
     headline: str
@@ -310,7 +325,31 @@ class CopyCandidate(BaseModel):
     cta: str | None = None
     hashtags: list[str] = Field(default_factory=list)
     tone_label: str | None = None
+    angle: CopyCandidateAngle | None = None
+    strategy_summary: str | None = None
     rationale: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CopyCandidateScoreCard(BaseModel):
+    candidate_id: str
+    hard_blocked: bool = False
+    final_score: float = Field(..., ge=0.0, le=1.0)
+    generic_phrase_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    fact_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    length_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    diversity_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    tone_fit_score: float = Field(default=1.0, ge=0.0, le=1.0)
+    action_clarity_score: float = Field(default=1.0, ge=0.0, le=1.0)
+    warnings: list[str] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+
+
+class CopyCandidateRankingOutput(BaseModel):
+    recommended_candidate_id: str | None = None
+    scorecards: list[CopyCandidateScoreCard] = Field(default_factory=list)
+    blocked_candidate_ids: list[str] = Field(default_factory=list)
+    diversity_warnings: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -318,6 +357,14 @@ class CopyCandidateListOutput(BaseModel):
     candidates: list[CopyCandidate]
     recommended_candidate_id: str | None = None
     generation_mode: Literal["suggest_candidates"] = "suggest_candidates"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CopyGenerationV2Output(BaseModel):
+    message_strategy: CopyMessageStrategy
+    candidates: list[CopyCandidate]
+    ranking: CopyCandidateRankingOutput
+    recommended_candidate_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
