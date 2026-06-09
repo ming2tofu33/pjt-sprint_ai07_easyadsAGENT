@@ -4,17 +4,17 @@ from orchestrator.app.llm.copy_tone_policy import (
 )
 
 
-def test_cafe_policy_removes_tacky_discount_terms():
+def test_cafe_policy_warns_tacky_discount_terms_without_rewriting():
     result = normalize_copy_for_business(
         {"headline": "\uc5ed\ub300\uae09 \ub300\ubc15 \ub525\uae30\ub77c\ub5bc \uc2e0\uba54\ub274!!", "subcopy": "\ubbf8\uce5c \ud560\uc778", "cta": "\uc9c0\uae08 \ub9cc\ub098\ubcf4\uae30"},
         "cafe",
     )
 
     normalized = result["normalized_copy"]
-    assert "\uc5ed\ub300\uae09" not in normalized["headline"]
-    assert "\ub300\ubc15" not in normalized["headline"]
-    assert "\ubbf8\uce5c \ud560\uc778" not in normalized["subcopy"]
-    assert "removed_avoid_terms" in result["applied_rules"]
+    assert "\uc5ed\ub300\uae09" in normalized["headline"]
+    assert "\ub300\ubc15" in normalized["headline"]
+    assert "\ubbf8\uce5c \ud560\uc778" in normalized["subcopy"]
+    assert "avoid_term_detected" in result["warnings"]
 
 
 def test_restaurant_bbq_policy_uses_reservation_cta():
@@ -24,16 +24,17 @@ def test_restaurant_bbq_policy_uses_reservation_cta():
     assert policy["promotion_style"] == "reservation_visit"
 
 
-def test_beauty_skincare_policy_removes_medical_claims():
+def test_beauty_skincare_policy_warns_medical_claims_without_rewriting():
     result = normalize_copy_for_business(
         {"headline": "100% \uac1c\uc120 \uae30\uc801 \ucf00\uc5b4", "subcopy": "\uc989\uc2dc \ud6a8\uacfc", "cta": "\uc0c1\ub2f4 \uc608\uc57d\ud558\uae30"},
         "beauty_skincare",
     )
 
     normalized = result["normalized_copy"]
-    assert "100% \uac1c\uc120" not in normalized["headline"]
-    assert "\uae30\uc801" not in normalized["headline"]
-    assert "\uc989\uc2dc \ud6a8\uacfc" not in normalized["subcopy"]
+    assert "100% \uac1c\uc120" in normalized["headline"]
+    assert "\uae30\uc801" in normalized["headline"]
+    assert "\uc989\uc2dc \ud6a8\uacfc" in normalized["subcopy"]
+    assert "avoid_term_detected" in result["warnings"]
 
 
 def test_beauty_hair_policy_has_hair_or_style_cta():
