@@ -85,4 +85,60 @@ describe("GenerationCompleteStep", () => {
 
     expect(onOpenArchive).toHaveBeenCalledTimes(1);
   });
+
+  it("shows blocked copy and disables archive navigation for rejected results", () => {
+    const onOpenArchive = vi.fn();
+    render(
+      <GenerationCompleteStep
+        state={{
+          ...createInitialChatFlowState(),
+          generationJob: {
+            job_id: "job_rejected",
+            status: "done",
+            result_payload: {
+              final_image_url: "https://cdn.example.com/rejected.png",
+              qualityRejected: true,
+              qualityDecision: "reject",
+              ocr_gate: { decision: "reject" }
+            }
+          }
+        }}
+        onBrowseSimilar={vi.fn()}
+        onOpenArchive={onOpenArchive}
+        onRegenerate={vi.fn()}
+        onGoHome={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText("검수에서 사용할 수 없는 결과로 판단됐어요.").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /보관함/ })).toHaveProperty("disabled", true);
+  });
+
+  it("shows manual review feedback for OCR warning results", () => {
+    render(
+      <GenerationCompleteStep
+        state={{
+          ...createInitialChatFlowState(),
+          generationJob: {
+            job_id: "job_review",
+            status: "done",
+            result_payload: {
+              final_image_url: "https://cdn.example.com/review.png",
+              requiresManualReview: true,
+              qualityDecision: "manual_review",
+              ocr_gate: { decision: "manual_review" },
+              validation_summary: { final: { overall_pass: true } }
+            }
+          }
+        }}
+        onBrowseSimilar={vi.fn()}
+        onOpenArchive={vi.fn()}
+        onRegenerate={vi.fn()}
+        onGoHome={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText("사용 전에 결과를 한 번 더 확인해야 해요.").length).toBeGreaterThan(0);
+    expect(screen.getByText("문구 검수")).toBeTruthy();
+  });
 });

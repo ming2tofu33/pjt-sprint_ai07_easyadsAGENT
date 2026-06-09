@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import threading
 from time import perf_counter
 from typing import Any
 
@@ -11,13 +12,22 @@ from orchestrator.app.t2i.settings import T2IEngineUnavailableError, get_hf_toke
 
 
 FLUX2_KLEIN_ENGINE = "flux2_klein_4b"
-FLUX2_KLEIN_ALIASES = {"flux2_klein", "flux2-klein-4b", "flux_2_klein_4b", FLUX2_KLEIN_ENGINE}
-_PIPELINE = None
+FLUX2_KLEIN_ALIASES = {"flux2_klein", "flux2-klein-4b", "flux_2_klein_4b", "flux2_klein_local", FLUX2_KLEIN_ENGINE}
+_PIPELINE_CACHE: dict[tuple[str | None, str, str, bool], Any] = {}
+_PIPELINE_LOCK = threading.Lock()
 _TORCH = None
 
 
 class Flux2KleinDependencyMissing(T2IEngineUnavailableError):
     error_code = "flux2_klein_dependency_missing"
+
+
+class Flux2KleinBackendInvalid(T2IEngineUnavailableError):
+    error_code = "flux2_klein_backend_invalid"
+
+
+class Flux2KleinCudaUnavailable(T2IEngineUnavailableError):
+    error_code = "flux2_klein_cuda_unavailable"
 
 
 class Flux2KleinModelLoadFailed(T2IEngineUnavailableError):
@@ -29,7 +39,15 @@ class Flux2KleinGenerationFailed(T2IEngineUnavailableError):
 
 
 class Flux2KleinCudaOOM(T2IEngineUnavailableError):
-    error_code = "flux2_klein_oom"
+    error_code = "flux2_klein_cuda_oom"
+
+
+class Flux2KleinImageCountInvalid(T2IEngineUnavailableError):
+    error_code = "flux2_klein_image_count_invalid"
+
+
+class Flux2KleinOutputMissing(T2IEngineUnavailableError):
+    error_code = "flux2_klein_output_missing"
 
 
 def normalize_flux2_klein_engine_key(engine_name: str | None) -> str | None:
@@ -38,8 +56,12 @@ def normalize_flux2_klein_engine_key(engine_name: str | None) -> str | None:
 
 
 def clear_flux2_klein_pipeline_cache() -> None:
-    global _PIPELINE
-    _PIPELINE = None
+    with _PIPELINE_LOCK:
+        _PIPELINE_CACHE.clear()
+
+
+def reset_flux2_klein_pipeline_cache_for_tests() -> None:
+    clear_flux2_klein_pipeline_cache()
 
 
 class Flux2KleinEngine:
@@ -50,9 +72,11 @@ class Flux2KleinEngine:
         settings = load_t2i_settings()
         require_t2i_enabled(self.engine_name, settings)
         if settings.flux2_klein_backend == "modal":
-            raise T2IEngineUnavailableError("FLUX.2 Klein Modal execution is handled by graph/modal adapter.")
-        if request.num_images > 1:
-            raise Flux2KleinGenerationFailed("FLUX.2 Klein smoke supports one image per request.")
+            raise Flux2KleinBackendInvalid("FLUX.2 Klein Modal execution is handled by graph/modal adapter.")
+        if settings.flux2_klein_backend != "local_diffusers":
+            raise Flux2KleinBackendInvalid("FLUX.2 Klein backend is invalid.")
+        if request.num_images != 1:
+            raise Flux2KleinImageCountInvalid("FLUX.2 Klein local lane supports exactly one image per request.")
 
         output_dir = Path(request.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -65,14 +89,24 @@ class Flux2KleinEngine:
             result = pipe(**kwargs)  # pragma: no cover - actual local GPU opt-in
             timings["inference_ms"] = int((perf_counter() - inference_started) * 1000)
             print("[flux2-klein] inference completed")
-        except Flux2KleinDependencyMissing:
+        except T2IEngineUnavailableError:
             raise
         except RuntimeError as exc:
-            if "out of memory" in str(exc).lower() or "cuda oom" in str(exc).lower():
-                raise Flux2KleinCudaOOM("FLUX.2 Klein CUDA out of memory.") from exc
-            raise Flux2KleinGenerationFailed("FLUX.2 Klein generation failed.") from exc
+            if (
+                "out of memory" in str(exc).lower()
+                or "cuda oom" in str(exc).lower()
+            ):
+                raise Flux2KleinCudaOOM(
+                    "FLUX.2 Klein CUDA out of memory."
+                ) from exc
+
+            raise Flux2KleinGenerationFailed(
+                "FLUX.2 Klein generation failed."
+            ) from exc
         except Exception as exc:
-            raise Flux2KleinGenerationFailed("FLUX.2 Klein generation failed.") from exc
+            raise Flux2KleinGenerationFailed(
+                "FLUX.2 Klein generation failed."
+            ) from exc
 
         image_paths: list[str] = []
         save_started = perf_counter()
@@ -82,7 +116,7 @@ class Flux2KleinEngine:
             image_paths.append(path.as_posix())
         timings["image_save_ms"] = int((perf_counter() - save_started) * 1000)
         if not image_paths:
-            raise Flux2KleinGenerationFailed("FLUX.2 Klein response did not include images.")
+            raise Flux2KleinOutputMissing("FLUX.2 Klein response did not include images.")
 
         return T2IGenerationOutput(
             engine=self.engine_name,
@@ -93,59 +127,74 @@ class Flux2KleinEngine:
                 "engine": self.engine_name,
                 "model_name": settings.flux2_klein_model_id,
                 "execution_backend": "local_diffusers",
+                "provider": "local_diffusers",
                 "dtype": settings.flux2_klein_dtype,
                 "device_summary": _device_summary(settings.flux2_klein_device),
+                "cpu_offload": settings.flux2_klein_enable_cpu_offload,
+                "pipeline_class": "Flux2KleinPipeline",
                 "model_loaded": True,
                 "api_call": False,
                 "hf_token_present": bool(get_hf_token()),
                 "num_inference_steps": settings.flux2_klein_num_inference_steps,
                 "guidance_scale": settings.flux2_klein_guidance_scale,
+                "seed": getattr(request, "seed", None),
                 "timings": timings,
             },
         )
 
 
 def _load_pipeline(settings, timings: dict[str, int] | None = None):
-    global _PIPELINE, _TORCH
-    if _PIPELINE is not None:
-        return _PIPELINE
-    timings = timings if timings is not None else {}
-    dependency_started = perf_counter()
-    print("[flux2-klein] dependency check started")
-    try:
-        import torch  # type: ignore
-        from diffusers import Flux2KleinPipeline  # type: ignore
-    except Exception as exc:  # pragma: no cover - depends on optional local deps
-        raise Flux2KleinDependencyMissing(
-            "Flux2KleinPipeline is unavailable. Install a Diffusers version with FLUX.2 Klein support."
-        ) from exc
-    timings["dependency_check_ms"] = int((perf_counter() - dependency_started) * 1000)
-    _TORCH = torch
+    global _TORCH
+    cache_key = (
+        settings.flux2_klein_model_id,
+        settings.flux2_klein_device,
+        settings.flux2_klein_dtype,
+        bool(settings.flux2_klein_enable_cpu_offload),
+    )
+    with _PIPELINE_LOCK:
+        if cache_key in _PIPELINE_CACHE:
+            return _PIPELINE_CACHE[cache_key]
+        timings = timings if timings is not None else {}
+        dependency_started = perf_counter()
+        print("[flux2-klein] dependency check started")
+        try:
+            import torch  # type: ignore
+            from diffusers import Flux2KleinPipeline  # type: ignore
+        except Exception as exc:  # pragma: no cover - depends on optional local deps
+            raise Flux2KleinDependencyMissing(
+                "Flux2KleinPipeline is unavailable. Install a Diffusers version with FLUX.2 Klein support."
+            ) from exc
+        timings["dependency_check_ms"] = int((perf_counter() - dependency_started) * 1000)
+        _TORCH = torch
+        if str(settings.flux2_klein_device).startswith("cuda") and hasattr(torch, "cuda") and not torch.cuda.is_available():
+            raise Flux2KleinCudaUnavailable("CUDA is unavailable for FLUX.2 Klein local generation.")
 
-    dtype = getattr(torch, settings.flux2_klein_dtype, torch.bfloat16)
-    try:
-        load_started = perf_counter()
-        print("[flux2-klein] pipeline load started")
-        pipe = Flux2KleinPipeline.from_pretrained(
-            settings.flux2_klein_model_id,
-            torch_dtype=dtype,
-            cache_dir=settings.flux2_klein_cache_dir,
-            token=get_hf_token() or None,
-        )
-        if settings.flux2_klein_enable_cpu_offload and hasattr(pipe, "enable_model_cpu_offload"):
-            pipe.enable_model_cpu_offload()
-        elif hasattr(pipe, "to"):
-            pipe.to(settings.flux2_klein_device)
-        timings["model_download_and_load_ms"] = int((perf_counter() - load_started) * 1000)
-        print("[flux2-klein] pipeline load completed")
-    except RuntimeError as exc:
-        if "out of memory" in str(exc).lower():
-            raise Flux2KleinCudaOOM("FLUX.2 Klein CUDA out of memory.") from exc
-        raise Flux2KleinModelLoadFailed("FLUX.2 Klein model load failed.") from exc
-    except Exception as exc:
-        raise Flux2KleinModelLoadFailed("FLUX.2 Klein model load failed.") from exc
-    _PIPELINE = pipe
-    return pipe
+        dtype = getattr(torch, settings.flux2_klein_dtype, torch.bfloat16)
+        try:
+            if hasattr(torch, "cuda") and torch.cuda.is_available():
+                torch.cuda.reset_peak_memory_stats()
+            load_started = perf_counter()
+            print("[flux2-klein] pipeline load started")
+            pipe = Flux2KleinPipeline.from_pretrained(
+                settings.flux2_klein_model_id,
+                torch_dtype=dtype,
+                cache_dir=settings.flux2_klein_cache_dir,
+                token=get_hf_token() or None,
+            )
+            if settings.flux2_klein_enable_cpu_offload and hasattr(pipe, "enable_model_cpu_offload"):
+                pipe.enable_model_cpu_offload()
+            elif hasattr(pipe, "to"):
+                pipe.to(settings.flux2_klein_device)
+            timings["model_download_and_load_ms"] = int((perf_counter() - load_started) * 1000)
+            print("[flux2-klein] pipeline load completed")
+        except RuntimeError as exc:
+            if "out of memory" in str(exc).lower():
+                raise Flux2KleinCudaOOM("FLUX.2 Klein CUDA out of memory.") from exc
+            raise Flux2KleinModelLoadFailed("FLUX.2 Klein model load failed.") from exc
+        except Exception as exc:
+            raise Flux2KleinModelLoadFailed("FLUX.2 Klein model load failed.") from exc
+        _PIPELINE_CACHE[cache_key] = pipe
+        return pipe
 
 
 def _build_call_kwargs(request: T2IGenerationInput, settings) -> dict[str, Any]:

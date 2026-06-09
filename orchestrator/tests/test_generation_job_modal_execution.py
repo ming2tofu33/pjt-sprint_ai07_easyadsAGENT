@@ -145,7 +145,7 @@ def test_modal_poll_adapter_unavailable_does_not_fail_job(monkeypatch):
 def test_graph_modal_pending_polls_through_graph_completion_path(monkeypatch):
     captured = {}
 
-    def fake_graph_poll(job_id):
+    def fake_graph_poll(job_id, **kwargs):
         captured["job_id"] = job_id
         return _job(status="done")
 

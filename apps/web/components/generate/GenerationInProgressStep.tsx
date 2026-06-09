@@ -51,10 +51,19 @@ export function GenerationInProgressStep({ state, onBrowse }: GenerationInProgre
       <div className={styles.generationProgress}>
         <div className={styles.progressMeta}>
           <strong>현재 상태</strong>
-          <span>{generationStage.label}</span>
+          <span>
+            {generationStage.label}
+            {generationStage.progressPercent !== null ? <strong>{generationStage.progressPercent}%</strong> : null}
+          </span>
         </div>
-        <span className={`${styles.progressTrack} ${styles.indeterminateProgressTrack}`} aria-hidden="true">
-          <span className={styles.progressBar} />
+        <span
+          className={`${styles.progressTrack} ${generationStage.progressPercent === null ? styles.indeterminateProgressTrack : ""}`}
+          aria-hidden="true"
+        >
+          <span
+            className={styles.progressBar}
+            style={generationStage.progressPercent === null ? undefined : { width: `${generationStage.progressPercent}%` }}
+          />
         </span>
         <p>{generationStage.detail}</p>
       </div>

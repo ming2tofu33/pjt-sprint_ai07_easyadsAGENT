@@ -21,7 +21,7 @@ def _row(public_job_id="job_db", status="queued", metadata=None, result_payload=
     return {
         "id": "job_uuid",
         "public_job_id": public_job_id,
-        "workspace_id": "workspace_uuid",
+        "workspace_id": "11111111-1111-1111-1111-111111111111",
         "thread_id": "thread_uuid",
         "requested_by": "demo_user",
         "status": status,
@@ -98,7 +98,7 @@ def test_postgres_backend_create_uses_repository_path(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
     _patch_noop_side_effects(monkeypatch)
-    monkeypatch.setattr(service.workspace_repo, "ensure_demo_workspace", lambda user_id=None, connection=None: {"id": "workspace_uuid"})
+    monkeypatch.setattr(service.workspace_repo, "get_workspace_for_user", lambda *, workspace_id, user_id, connection=None: {"id": workspace_id, "owner_user_id": None})
     monkeypatch.setattr(
         service.chat_thread_repo,
         "create_chat_thread",
@@ -124,6 +124,8 @@ def test_postgres_backend_create_uses_repository_path(monkeypatch):
 
     request = GenerationJobCreateRequest(
         user_input="Create an ad",
+        user_id="demo_user",
+        workspace_id="11111111-1111-1111-1111-111111111111",
         run_mode="queued_only",
         selected_reference_template_id="seed_1",
         brand_kit_id="bk_public",
@@ -134,7 +136,7 @@ def test_postgres_backend_create_uses_repository_path(monkeypatch):
     assert job.thread_id == "thread_db"
     assert job.status == "queued"
     assert job.selected_reference_template_id == "seed_1"
-    assert captured["workspace_id"] == "workspace_uuid"
+    assert captured["workspace_id"] == "11111111-1111-1111-1111-111111111111"
     assert captured["thread_id"] == "thread_uuid"
     assert captured_thread["brand_kit_id"] is None
     assert job.brand_kit_id == "bk_public"
@@ -186,7 +188,7 @@ def test_postgres_backend_sanitizes_nested_metadata(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
     _patch_noop_side_effects(monkeypatch)
-    monkeypatch.setattr(service.workspace_repo, "ensure_demo_workspace", lambda user_id=None, connection=None: {"id": "workspace_uuid"})
+    monkeypatch.setattr(service.workspace_repo, "get_workspace_for_user", lambda *, workspace_id, user_id, connection=None: {"id": workspace_id, "owner_user_id": None})
     monkeypatch.setattr(service.chat_thread_repo, "create_chat_thread", lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_db"})
     monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
     monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
@@ -204,6 +206,8 @@ def test_postgres_backend_sanitizes_nested_metadata(monkeypatch):
 
     request = GenerationJobCreateRequest(
         user_input="Create an ad",
+        user_id="demo_user",
+        workspace_id="11111111-1111-1111-1111-111111111111",
         run_mode="queued_only",
         metadata={"debug": {"api_key": "sk-should-not-leak", "safe": "visible"}},
     )
