@@ -64,3 +64,42 @@ def test_memory_snapshot_service():
         assert len(lst) == 2
     finally:
         chat_service.get_chat_thread = original_get_chat_thread
+
+
+def test_snapshot_serialization_keeps_ui_visible_generation_state():
+    from orchestrator.app.chat_threads.state_snapshot import serialize_marketing_state_snapshot
+
+    snapshot = serialize_marketing_state_snapshot(
+        {
+            "job_id": "job_ui_state",
+            "thread_id": "thread_ui_state",
+            "user_input": "카페 신메뉴 광고 만들어줘",
+            "copy_candidates": [{"id": "copy_1", "headline": "오늘만 신메뉴"}],
+            "copy_candidate_origin": "llm",
+            "selected_copy_id": "copy_1",
+            "progress_state": {"progress_percent": 65, "current_stage": "modal_running", "message": "이미지를 만들고 있어요."},
+            "ocr_gate_decision": "manual_review",
+            "ocr_gate_status": "fail",
+            "ocr_gate_retry_feedback": ["문구 위치를 다시 확인해주세요."],
+            "quality_gate_decision": "warn",
+            "quality_gate_status": "manual_review",
+            "result_payload": {
+                "status": "done",
+                "final_image_url": "https://assets.example.com/final.png",
+                "qualityDecision": "manual_review",
+                "requiresManualReview": True,
+                "qualityRejected": False,
+            },
+            "raw_provider_response": {"api_key": "sk-hidden"},
+        }
+    )
+
+    assert snapshot["copy_candidate_origin"] == "llm"
+    assert snapshot["selected_copy_id"] == "copy_1"
+    assert snapshot["progress_state"]["current_stage"] == "modal_running"
+    assert snapshot["ocr_gate_decision"] == "manual_review"
+    assert snapshot["ocr_gate_retry_feedback"] == ["문구 위치를 다시 확인해주세요."]
+    assert snapshot["quality_gate_decision"] == "warn"
+    assert snapshot["result_payload"]["requiresManualReview"] is True
+    assert "raw_provider_response" not in snapshot
+    assert "sk-hidden" not in str(snapshot)
