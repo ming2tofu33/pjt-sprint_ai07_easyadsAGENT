@@ -61,8 +61,11 @@ function copyMode(value: unknown): CopyGenerationMode {
 
 function imageEngine(value: unknown): ImageGenerationEngine {
   const engine = stringValue(value);
-  if (engine === "gpt_image_1" || engine === "gpt_image_2" || engine === "flux_schnell" || engine === "sd35_large") {
+  if (engine === "gpt_image_1" || engine === "gpt_image_2" || engine === "flux2_klein_4b" || engine === "sd35_large") {
     return engine;
+  }
+  if (engine === "flux" || engine === "flux_schnell" || engine === "flux_1_schnell" || engine === "flux2_klein") {
+    return "flux2_klein_4b";
   }
   return DEFAULT_IMAGE_GENERATION_ENGINE;
 }

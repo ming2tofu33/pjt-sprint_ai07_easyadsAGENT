@@ -40,6 +40,7 @@ GenerationRunMode = Literal[
     "flux_schnell_real",
     "flux",
     "flux_smoke",
+    "flux2_klein_4b",
 ]
 ResultArtifactPayloadDict = dict[str, Any]
 

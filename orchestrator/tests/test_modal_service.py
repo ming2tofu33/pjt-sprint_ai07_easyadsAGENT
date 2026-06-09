@@ -29,27 +29,26 @@ def test_build_modal_t2i_request_from_generation_job_row():
     assert request.metadata["selected_reference_template_id"] == "seed_ref"
 
 
-def test_build_modal_t2i_request_for_flux_schnell_real_includes_generation_params():
+def test_build_modal_t2i_request_for_flux2_klein_includes_generation_params():
     row = {
         "public_job_id": "job_modal",
         "workspace_id": "workspace_uuid",
         "thread_id": "thread_uuid",
-        "run_mode": "flux_schnell_real",
-        "engine": "flux",
+        "run_mode": "flux2_klein_4b",
+        "engine": "flux2_klein_4b",
         "prompt_preview": "Create a premium cafe ad",
         "metadata": {"public_thread_id": "thread_public"},
     }
     generation_request = GenerationJobCreateRequest(
         userInput="Create a premium cafe ad",
-        runMode="flux_schnell_real",
+        runMode="flux2_klein_4b",
         metadata={
             "width": 768,
             "height": 768,
             "seed": 42,
             "t2i_params": {
                 "num_inference_steps": 6,
-                "guidance_scale": 0.0,
-                "max_sequence_length": 256,
+                "guidance_scale": 1.0,
                 "ignored": "not-forwarded",
             },
         },
@@ -60,15 +59,14 @@ def test_build_modal_t2i_request_for_flux_schnell_real_includes_generation_param
         generation_request=generation_request,
     )
 
-    assert request.run_mode == "flux_schnell_real"
-    assert request.engine == "flux"
+    assert request.run_mode == "flux2_klein_4b"
+    assert request.engine == "flux2_klein_4b"
     assert request.width == 768
     assert request.height == 768
     assert request.seed == 42
-    assert request.params["render_mode"] == "flux_schnell"
+    assert request.params["render_mode"] == "flux2_klein_4b"
     assert request.params["num_inference_steps"] == 6
-    assert request.params["guidance_scale"] == 0.0
-    assert request.params["max_sequence_length"] == 256
+    assert request.params["guidance_scale"] == 1.0
     assert "ignored" not in request.params
 
 

@@ -1,12 +1,12 @@
 import base64
 
 from modal_apps.easyads_t2i_worker import (
-    _flux_generation_options,
-    _is_real_flux_request,
+    _flux2_klein_generation_options,
+    _is_real_flux2_klein_request,
     _is_real_sd35_request,
     _render_mock_png_base64,
     _sd35_generation_options,
-    generate_flux_schnell_image,
+    generate_flux2_klein_image,
     generate_image,
     generate_sd35_large_image,
 )
@@ -49,8 +49,8 @@ def test_modal_worker_mock_function_rejects_real_model_modes():
     result = generate_image.local(
         {
             "job_id": "job_modal",
-            "engine": "flux",
-            "run_mode": "flux_schnell_real",
+            "engine": "flux2_klein_4b",
+            "run_mode": "flux2_klein_4b",
             "prompt": "premium cafe ad",
         }
     )
@@ -72,18 +72,18 @@ def test_modal_worker_mock_function_rejects_real_model_modes():
     assert sd35_result["error"]["error_code"] == "modal_function_mismatch"
 
 
-def test_modal_worker_real_flux_function_rejects_smoke_mode_without_loading_model():
-    result = generate_flux_schnell_image.local(
+def test_modal_worker_real_flux2_klein_function_rejects_smoke_mode_without_loading_model():
+    result = generate_flux2_klein_image.local(
         {
             "job_id": "job_modal",
-            "engine": "flux",
+            "engine": "flux2_klein_4b",
             "run_mode": "flux_local_smoke",
             "prompt": "premium cafe ad",
         }
     )
 
     assert result["status"] == "failed"
-    assert result["error"]["error_code"] == "modal_real_flux_run_mode_required"
+    assert result["error"]["error_code"] == "modal_real_flux2_klein_run_mode_required"
 
 
 def test_modal_worker_real_sd35_function_rejects_smoke_mode_without_loading_model():
@@ -100,10 +100,12 @@ def test_modal_worker_real_sd35_function_rejects_smoke_mode_without_loading_mode
     assert result["error"]["error_code"] == "modal_real_sd35_run_mode_required"
 
 
-def test_modal_worker_real_flux_request_detection():
-    assert _is_real_flux_request({"run_mode": "flux_schnell_real"}) is True
-    assert _is_real_flux_request({"run_mode": "flux_local_smoke"}) is False
-    assert _is_real_flux_request({"params": {"render_mode": "flux_schnell"}}) is True
+def test_modal_worker_real_flux2_klein_request_detection():
+    assert _is_real_flux2_klein_request({"run_mode": "flux2_klein_4b"}) is True
+    assert _is_real_flux2_klein_request({"run_mode": "flux_schnell_real"}) is True
+    assert _is_real_flux2_klein_request({"run_mode": "flux_local_smoke"}) is False
+    assert _is_real_flux2_klein_request({"params": {"render_mode": "flux2_klein_4b"}}) is True
+    assert _is_real_flux2_klein_request({"params": {"render_mode": "flux_schnell"}}) is True
 
 
 def test_modal_worker_real_sd35_request_detection():
@@ -112,15 +114,15 @@ def test_modal_worker_real_sd35_request_detection():
     assert _is_real_sd35_request({"params": {"render_mode": "sd35_large"}}) is True
 
 
-def test_modal_worker_flux_options_are_bounded_and_snapped():
-    options = _flux_generation_options(
+def test_modal_worker_flux2_klein_options_are_bounded_and_snapped():
+    options = _flux2_klein_generation_options(
         {
             "width": 333,
             "height": 4097,
             "seed": "123",
             "params": {
                 "num_inference_steps": 50,
-                "guidance_scale": 9.0,
+                "guidance_scale": 99.0,
                 "max_sequence_length": 999,
             },
         }
@@ -129,9 +131,8 @@ def test_modal_worker_flux_options_are_bounded_and_snapped():
     assert options == {
         "width": 320,
         "height": 1024,
-        "num_inference_steps": 8,
-        "guidance_scale": 5.0,
-        "max_sequence_length": 512,
+        "num_inference_steps": 28,
+        "guidance_scale": 20.0,
         "seed": 123,
     }
 

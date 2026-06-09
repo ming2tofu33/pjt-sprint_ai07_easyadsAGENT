@@ -102,5 +102,7 @@ def _dispatch_regeneration_job(background_tasks: BackgroundTasks, dispatch: dict
         background_tasks.add_task(execute_generation_job_t2i, job_id, request, "gpt_image_2")
     elif run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         background_tasks.add_task(execute_generation_job_t2i, job_id, request, "sd35_large")
+    elif run_mode == "flux2_klein_4b":
+        background_tasks.add_task(execute_generation_job_t2i, job_id, request, "flux2_klein_4b")
     elif run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
-        background_tasks.add_task(execute_generation_job_t2i, job_id, request, "flux")
+        background_tasks.add_task(execute_generation_job_t2i, job_id, request, "flux2_klein_4b")

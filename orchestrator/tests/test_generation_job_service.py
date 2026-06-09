@@ -141,9 +141,9 @@ def test_graph_job_snapshot_preserves_selected_engine():
         user_input="카페 신메뉴 광고 만들어줘",
         run_mode="graph_job",
         metadata={
-            "selected_engine": "flux_schnell",
-            "requested_engine": "flux",
-            "t2i_engine": "flux",
+            "selected_engine": "flux2_klein_4b",
+            "requested_engine": "flux2_klein_4b",
+            "t2i_engine": "flux2_klein_4b",
         },
     )
 
@@ -156,10 +156,10 @@ def test_graph_job_snapshot_preserves_selected_engine():
     )
 
     assert snapshot is not None
-    assert job.metadata["engine_preference"] == "flux"
-    assert job.metadata["t2i_engine"] == "flux"
-    assert snapshot.state_payload["engine"] == "flux"
-    assert snapshot.state_payload["current_brief"]["requested_engine"] == "flux"
+    assert job.metadata["engine_preference"] == "flux2_klein_4b"
+    assert job.metadata["t2i_engine"] == "flux2_klein_4b"
+    assert snapshot.state_payload["engine"] == "flux2_klein_4b"
+    assert snapshot.state_payload["current_brief"]["requested_engine"] == "flux2_klein_4b"
 
 
 def test_get_missing_generation_job_returns_none_and_reset_clears_store():

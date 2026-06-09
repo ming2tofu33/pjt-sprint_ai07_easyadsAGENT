@@ -164,7 +164,7 @@ def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
         return "gpt_image_2_actual", "pending_t2i_actual"
     if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         return "sd35_local", "pending_t2i_actual"
-    if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
+    if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke", "flux2_klein_4b"}:
         return "flux_local", "pending_t2i_actual"
     return "queued_only", "queued_only"
 
@@ -1021,9 +1021,12 @@ def _normalize_engine_preference(value: object) -> str | None:
         "gpt_image_2": "gpt_image_2",
         "gpt_image2": "gpt_image_2",
         "gptimage2": "gpt_image_2",
-        "flux": "flux",
-        "flux_schnell": "flux",
-        "flux_1_schnell": "flux",
+        "flux": "flux2_klein_4b",
+        "flux_schnell": "flux2_klein_4b",
+        "flux_1_schnell": "flux2_klein_4b",
+        "flux2_klein": "flux2_klein_4b",
+        "flux2_klein_4b": "flux2_klein_4b",
+        "flux_2_klein_4b": "flux2_klein_4b",
         "sd35": "sd35_large",
         "sd35_large": "sd35_large",
         "sd3_5_large": "sd35_large",
@@ -1038,8 +1041,8 @@ def _engine_preference(run_mode: str) -> str | None:
         return "gpt_image_2"
     if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         return "sd35_large"
-    if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
-        return "flux"
+    if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke", "flux2_klein_4b"}:
+        return "flux2_klein_4b"
     return None
 
 
@@ -1068,7 +1071,17 @@ def _model_provider_for_run_mode(run_mode: str) -> str | None:
         return "mock"
     if run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke", "gpt_image_2_actual", "gpt_image_2_smoke"}:
         return "openai"
-    if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real", "flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
+    if run_mode in {
+        "sd35_local",
+        "sd35_local_smoke",
+        "sd35_large_real",
+        "flux_local",
+        "flux_local_smoke",
+        "flux_schnell_real",
+        "flux",
+        "flux_smoke",
+        "flux2_klein_4b",
+    }:
         return "local"
     return None
 
