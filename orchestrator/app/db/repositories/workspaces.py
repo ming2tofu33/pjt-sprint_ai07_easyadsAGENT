@@ -16,6 +16,29 @@ def get_workspace(workspace_id: str, connection: object | None = None) -> dict |
             return cur.fetchone()
 
 
+def get_workspace_for_user(*, workspace_id: str, user_id: str, connection: object | None = None) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select w.*
+                from workspaces w
+                where w.id = %s::uuid
+                  and (
+                    w.owner_user_id = %s
+                    or exists (
+                      select 1
+                      from workspace_members wm
+                      where wm.workspace_id = w.id
+                        and wm.user_id = %s
+                    )
+                  )
+                """,
+                (workspace_id, user_id, user_id),
+            )
+            return cur.fetchone()
+
+
 def ensure_demo_workspace(workspace_id: str | None = None, user_id: str | None = None, connection: object | None = None) -> dict:
     workspace_id = workspace_id or get_demo_workspace_id()
     user_id = user_id or get_demo_user_id()
