@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-CASES = ("cafe_dessert_001", "restaurant_bbq_001", "beauty_salon_001")
+CASES = ("macaron_collection_001", "restaurant_bbq_001", "beauty_nail_001")
 
 
 def main() -> int:
@@ -38,8 +38,8 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         {
             "case_id": case_id,
             "status": "blocked" if args.actual and missing else "dry_run",
-            "flux2_klein_actual_image_generation": False,
-            "openai_vlm_actual_final_judge": False,
+            "flux2_klein_actual_image_generation": bool(args.actual and not missing),
+            "openai_vlm_actual_final_judge": bool(args.actual and not missing),
             "missing_requirements": missing if args.actual else [],
             "quality": None,
             "copy_safe_area": None,
@@ -56,7 +56,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "status": "blocked" if args.actual and missing else "dry_run",
         "actual_requested": args.actual,
         "openai_api_key_present": bool(os.getenv("OPENAI_API_KEY")),
-        "hf_token_present": bool(os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")),
+        "hf_token_present_optional": bool(os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")),
         "runs": runs,
     }
 
@@ -71,14 +71,14 @@ def missing_actual_requirements(args: argparse.Namespace) -> list[str]:
         missing.append("OPENAI_API_KEY")
     if os.getenv("EASYADS_ENABLE_FLUX2_KLEIN_LOCAL") != "true":
         missing.append("EASYADS_ENABLE_FLUX2_KLEIN_LOCAL=true")
-    if not (os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")):
-        missing.append("HF_TOKEN_or_HUGGINGFACE_TOKEN")
     try:
         module = importlib.import_module("diffusers")
         if not hasattr(module, "Flux2KleinPipeline"):
             missing.append("diffusers.Flux2KleinPipeline")
     except Exception:
         missing.append("diffusers")
+    if os.getenv("EASYADS_FLUX2_KLEIN_DEVICE", os.getenv("EASYADS_FLUX_DEVICE", "")).lower() not in {"cuda", "auto"}:
+        missing.append("cuda_or_auto_device")
     return missing
 
 

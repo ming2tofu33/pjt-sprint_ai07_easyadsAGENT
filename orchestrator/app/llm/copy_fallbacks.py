@@ -29,15 +29,18 @@ class CopyTheme:
 THEMES: tuple[CopyTheme, ...] = (
     CopyTheme("cafe", ("cafe", "dessert", "bakery"), ("신메뉴 보기", "오늘 만나보기", "메뉴 확인하기"), "{item} 신메뉴", "오늘의 달콤한 한 잔", "{item}, 지금 만나보기", "부드럽고 산뜻한 카페 혜택 메뉴", "잠깐의 휴식에 어울리는 달콤함", "오늘 혜택과 함께 즐기기 좋은 메뉴", "warm seasonal cafe copy"),
     CopyTheme("restaurant_bbq", ("restaurant", "restaurant_bbq", "bbq", "meat_restaurant", "korean_food"), ("예약 문의하기", "지금 예약하기", "회식 문의하기"), "숯불향 가득한 한상", "회식은 역시 {item}", "{item} 예약 가능", "따뜻하게 구워 즐기는 프리미엄 메뉴", "모임과 회식에 어울리는 든든한 시간", "편한 저녁 자리를 미리 준비하세요", "appetizing reservation copy"),
-    CopyTheme("beauty_skincare", ("beauty", "beauty_skincare", "skincare", "salon"), ("상담 예약하기", "케어 문의하기", "예약 문의하기"), "맑은 피부 루틴", "깨끗하게 빛나는 시간", "맞춤 케어 상담", "나에게 맞춘 프리미엄 스킨케어", "차분하고 깨끗한 케어 경험", "피부 고민에 맞춰 상담해보세요", "clean trustworthy beauty copy"),
-    CopyTheme("beauty_hair", ("beauty_hair", "hair", "hair_salon"), ("예약 상담하기", "스타일 상담하기", "헤어 상담하기"), "오늘의 스타일 변화", "나에게 어울리는 무드", "헤어 상담 예약", "얼굴형과 취향에 맞춘 헤어 제안", "기분까지 달라지는 스타일링", "원하는 스타일을 상담으로 시작하세요", "stylish salon copy"),
+    CopyTheme("beauty_skincare", ("beauty", "beauty_skincare", "skincare", "salon"), ("상담 예약하기", "케어 문의하기", "예약 문의하기"), "맑은 피부 루틴", "깨끗하게 빛나는 시간", "맞춤 케어 상담", "차분한 프리미엄 스킨케어", "깨끗한 무드를 위한 케어 경험", "피부 컨디션을 상담해보세요", "clean trustworthy beauty copy"),
+    CopyTheme("beauty_hair", ("beauty_hair", "hair", "hair_salon"), ("예약 상담하기", "스타일 상담하기", "헤어 상담하기"), "오늘의 스타일 변화", "나에게 어울리는 무드", "헤어 상담 예약", "새로운 분위기를 위한 헤어 제안", "기분까지 달라지는 스타일링", "원하는 스타일을 상담으로 시작하세요", "stylish salon copy"),
     CopyTheme("beauty_nail", ("beauty_nail", "nail"), ("디자인 상담하기", "예약 문의하기", "무드 상담하기"), "감각적인 네일 디자인", "손끝에 남는 무드", "네일 디자인 상담", "계절과 취향을 담은 섬세한 디자인", "작은 디테일까지 기분 좋게", "원하는 무드를 상담해보세요", "delicate nail copy"),
     CopyTheme("beauty_spa", ("beauty_spa", "spa", "wellness"), ("예약 문의하기", "케어 예약하기", "상담 예약하기"), "부드러운 웰니스 케어", "하루를 쉬게 하는 시간", "스파 예약 문의", "몸과 마음을 차분하게 쉬게 하는 케어", "조용히 회복되는 프리미엄 휴식", "원하는 시간에 맞춰 문의하세요", "calm wellness copy"),
-    CopyTheme("fitness", ("fitness", "gym", "pilates", "yoga"), ("상담 예약하기", "프로그램 보기", "체험 문의하기"), "나에게 맞는 운동 루틴", "가볍게 시작하는 변화", "오늘부터 루틴 시작", "목표와 생활에 맞춘 운동 프로그램", "무리 없이 이어가는 건강한 습관", "상담으로 내 루틴을 찾아보세요", "supportive fitness copy"),
+    CopyTheme("fitness", ("fitness", "gym", "pilates", "yoga"), ("상담 예약하기", "프로그램 보기", "체험 문의하기"), "가볍게 시작하는 운동 루틴", "가볍게 시작하는 변화", "오늘부터 루틴 시작", "꾸준히 이어가기 좋은 운동 프로그램", "무리 없이 이어가는 건강한 습관", "운동 상담으로 루틴을 시작하세요", "supportive fitness copy"),
     CopyTheme("clinic", ("clinic", "dental", "medical"), ("상담 예약하기", "진료 문의하기", "예약 문의하기"), "꼼꼼한 상담과 진료", "안심하고 묻는 시간", "진료 상담 예약", "필요한 내용을 차분하게 확인합니다", "편안하게 상담받을 수 있는 안내", "방문 전 상담으로 확인해보세요", "careful clinic copy"),
-    CopyTheme("education", ("education", "academy", "class", "tutoring"), ("상담 신청하기", "수업 문의하기", "커리큘럼 보기"), "맞춤 학습 커리큘럼", "배움이 달라지는 순간", "학습 상담 신청", "목표와 수준에 맞춰 설계한 수업", "꾸준히 성장하는 학습 경험", "상담으로 필요한 수업을 확인하세요", "clear education copy"),
-    CopyTheme("retail", ("retail", "shop", "fashion", "store"), ("상품 보기", "컬렉션 보기", "문의하기"), "{item} 컬렉션", "오늘의 취향을 고르는 시간", "{item} 지금 보기", "취향과 일상에 어울리는 셀렉션", "작은 선택으로 분위기를 바꿔보세요", "준비된 상품을 지금 확인하세요", "curated retail copy"),
-    CopyTheme("generic", ("generic", "store", "service"), ("문의하기", "예약하기", "자세히 보기"), "{item} 안내", "필요한 순간에 맞춘 선택", "{item} 문의하기", "핵심 정보를 간결하게 전하는 안내", "고객에게 필요한 가치를 분명하게 전합니다", "궁금한 내용을 편하게 문의하세요", "clear generic copy"),
+    CopyTheme("education", ("education", "academy", "class", "tutoring"), ("상담 신청하기", "수업 문의하기", "커리큘럼 보기"), "배움의 다음 단계를 위한 수업", "배움이 달라지는 순간", "학습 상담 신청", "차분히 이어가는 학습 루틴", "꾸준히 성장하는 학습 경험", "상담으로 수업 방향을 정해보세요", "clear education copy"),
+    CopyTheme("retail", ("retail", "shop", "fashion", "store"), ("상품 보기", "컬렉션 보기", "문의하기"), "{item} 컬렉션", "오늘의 취향을 고르는 시간", "{item} 둘러보기", "취향과 일상에 어울리는 셀렉션", "작은 선택으로 분위기를 바꿔보세요", "새로운 컬렉션을 둘러보세요", "curated retail copy"),
+    CopyTheme("macaron", ("macaron", "dessert_macaron"), ("라인업 보기", "오늘 만나보기", "예약 문의하기"), "마카롱 컬렉션", "달콤한 색을 고르는 시간", "마카롱 예약 문의", "선물하기 좋은 디저트 라인업", "작은 디저트가 주는 기분 좋은 순간", "원하는 구성은 매장에 문의하세요", "delicate dessert copy"),
+    CopyTheme("photo_studio", ("photo_studio", "flower_profile", "profile_photo"), ("예약 문의하기", "촬영 상담하기", "일정 문의하기"), "꽃다발 프로필 촬영", "오늘을 오래 남기는 장면", "촬영 일정 상담", "인물과 분위기를 담는 프로필 촬영", "소중한 순간을 자연스럽게 남겨보세요", "원하는 무드를 상담해보세요", "warm photography copy"),
+    CopyTheme("car_detailing", ("car_detailing", "car_care", "vehicle_detailing"), ("예약 문의하기", "관리 상담하기", "서비스 문의하기"), "차량 디테일링 관리", "깨끗함이 오래 남는 시간", "차량 관리 상담", "실내외 컨디션을 정돈하는 관리", "매일 타는 차를 더 산뜻하게", "차량 상태에 맞춰 상담해보세요", "clean vehicle care copy"),
+    CopyTheme("generic", ("generic", "store", "service"), ("문의하기", "예약하기", "상담하기"), "{item} 상담 안내", "필요한 순간에 맞춘 선택", "{item} 문의하기", "상황에 맞춰 안내받는 상담", "고객의 상황에 맞춰 차분히 안내합니다", "궁금한 내용을 편하게 문의하세요", "clear generic copy"),
 )
 
 
@@ -47,12 +50,21 @@ def build_message_strategy(context: Any) -> CopyMessageStrategy:
     target = _get(context, "target_persona")
     brand_voice = _get(context, "brand_tone")
     theme = resolve_copy_theme(_get(context, "business_type"))
+    desire = _goal_to_desire(promotion_goal)
     return CopyMessageStrategy(
         target_persona=target,
         product_truths=[str(item)],
-        customer_desires=[_goal_to_desire(promotion_goal)],
+        customer_desires=[desire],
         promotion_intent=promotion_goal,
         brand_voice=brand_voice or theme.voice,
+        primary_value=item,
+        customer_desire=desire,
+        emotional_hook=_emotional_hook(theme.key),
+        proof_or_detail=_proof_or_detail(theme.key),
+        conversion_goal=_conversion_goal(promotion_goal),
+        headline_angle="product/emotion/action",
+        cta_intent=_cta_intent(promotion_goal),
+        supported_facts=[str(item), str(promotion_goal or "")],
         message_angles=list(ANGLES),
         forbidden_claims=["invented price", "invented discount", "invented phone", "guaranteed effect"],
         strategy_summary=f"{theme.key}: {item} 중심의 3-angle 광고 카피",
@@ -113,7 +125,56 @@ def _goal_to_desire(goal: str | None) -> str:
         return "부담 없이 혜택을 확인하고 싶음"
     if goal == "review_event":
         return "경험을 공유하고 참여하고 싶음"
-    return "필요한 정보를 빠르게 확인하고 싶음"
+    if goal == "consultation":
+        return "상담으로 다음 단계를 정하고 싶음"
+    if goal == "menu_discovery":
+        return "메뉴 구성을 편하게 살펴보고 싶음"
+    if goal == "visit":
+        return "방문 전에 분위기를 알고 싶음"
+    if goal == "inquiry":
+        return "궁금한 내용을 문의하고 싶음"
+    if goal == "purchase":
+        return "구매 전에 상품을 살펴보고 싶음"
+    return "상담이나 문의로 필요한 내용을 확인하고 싶음"
+
+
+def _conversion_goal(goal: str | None) -> str:
+    if goal == "reservation_cta":
+        return "reservation"
+    if goal == "purchase":
+        return "purchase"
+    if goal in {"consultation", "inquiry"}:
+        return "consultation"
+    return "visit_or_interest"
+
+
+def _cta_intent(goal: str | None) -> str:
+    if goal == "reservation_cta":
+        return "예약 문의"
+    if goal == "consultation":
+        return "상담 신청"
+    if goal == "new_launch":
+        return "신규 상품 탐색"
+    return "문의 또는 방문 유도"
+
+
+def _emotional_hook(theme: str) -> str:
+    return {
+        "cafe": "잠깐의 휴식",
+        "restaurant_bbq": "따뜻한 모임",
+        "beauty_skincare": "차분한 케어",
+        "beauty_hair": "새로운 분위기",
+        "beauty_nail": "손끝의 무드",
+    }.get(theme, "필요한 순간에 맞춘 선택")
+
+
+def _proof_or_detail(theme: str) -> str:
+    return {
+        "cafe": "디저트와 음료",
+        "restaurant_bbq": "예약과 방문",
+        "beauty_skincare": "상담 기반 케어",
+        "car_detailing": "차량 상태 상담",
+    }.get(theme, "상담 가능한 서비스")
 
 
 def _display_item(value: str | None) -> str:

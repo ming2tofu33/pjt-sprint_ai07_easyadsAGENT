@@ -312,6 +312,14 @@ class CopyMessageStrategy(BaseModel):
     customer_desires: list[str] = Field(default_factory=list)
     promotion_intent: str | None = None
     brand_voice: str | None = None
+    primary_value: str | None = None
+    customer_desire: str | None = None
+    emotional_hook: str | None = None
+    proof_or_detail: str | None = None
+    conversion_goal: str | None = None
+    headline_angle: str | None = None
+    cta_intent: str | None = None
+    supported_facts: list[str] = Field(default_factory=list)
     message_angles: list[CopyCandidateAngle] = Field(default_factory=list)
     forbidden_claims: list[str] = Field(default_factory=list)
     strategy_summary: str | None = None
@@ -335,6 +343,12 @@ class CopyCandidateScoreCard(BaseModel):
     candidate_id: str
     hard_blocked: bool = False
     final_score: float = Field(..., ge=0.0, le=1.0)
+    specificity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    business_fit_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    emotional_pull_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    clarity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    cta_relevance_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    visual_fit_score: float = Field(default=0.0, ge=0.0, le=1.0)
     generic_phrase_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
     fact_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
     length_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -347,6 +361,7 @@ class CopyCandidateScoreCard(BaseModel):
 
 class CopyCandidateRankingOutput(BaseModel):
     recommended_candidate_id: str | None = None
+    requires_regeneration: bool = False
     scorecards: list[CopyCandidateScoreCard] = Field(default_factory=list)
     blocked_candidate_ids: list[str] = Field(default_factory=list)
     diversity_warnings: list[str] = Field(default_factory=list)

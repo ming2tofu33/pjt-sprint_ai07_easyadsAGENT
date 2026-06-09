@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from difflib import SequenceMatcher
-from typing import Any
+from typing import Any, Callable
 
 from orchestrator.app.llm.copy_fallbacks import build_message_strategy, generate_fallback_candidates
 from orchestrator.app.llm.copy_tone_policy import get_copy_tone_policy, normalize_copy_for_business
@@ -38,12 +38,30 @@ GENERIC_META_TOKENS = (
     "다운로드",
 )
 
-ANGLE_ORDER = {"product_first": 0, "emotion_first": 1, "benefit_action_first": 2, None: 9}
+GENERIC_PATTERNS = (
+    r"(정보|내용|상품|메뉴).{0,10}확인",
+    r"(간결하게|쉽게).{0,10}(안내|전달)",
+    r"필요한.{0,12}(안내|정보|내용)",
+    r"(자세히|지금).{0,5}(보기|확인)",
+)
+
+HIGH_RISK_CLAIM_TERMS = (
+    "프리미엄",
+    "맞춤",
+    "수제",
+    "당일 생산",
+    "시그니처",
+    "개인별",
+    "효과",
+    "개선",
+    "보장",
+    "완성",
+)
 
 
-def generate_copy_candidates_v2(state: dict[str, Any] | Any, max_candidates: int = 3) -> CopyGenerationV2Output:
+def build_deterministic_copy_output_v2(state: dict[str, Any] | Any, max_candidates: int = 3) -> CopyGenerationV2Output:
     context = _context_from_state(state)
-    candidates = generate_fallback_candidates(context, max_candidates=max_candidates)
+    candidates = generate_fallback_candidates(context, max_candidates=min(3, max(1, max_candidates)))
     ranking = rank_copy_candidates(candidates, state=state)
     return CopyGenerationV2Output(
         message_strategy=build_message_strategy(context),
@@ -52,6 +70,54 @@ def generate_copy_candidates_v2(state: dict[str, Any] | Any, max_candidates: int
         recommended_candidate_id=ranking.recommended_candidate_id,
         metadata={"source": "deterministic_fallback_v2"},
     )
+
+
+def generate_fallback_candidates_v2(state: dict[str, Any] | Any, max_candidates: int = 3) -> CopyGenerationV2Output:
+    return build_deterministic_copy_output_v2(state, max_candidates=max_candidates)
+
+
+def generate_copy_candidates_v2(state: dict[str, Any] | Any, max_candidates: int = 3) -> CopyGenerationV2Output:
+    """Compatibility alias for deterministic v2 generation."""
+
+    return build_deterministic_copy_output_v2(state, max_candidates=max_candidates)
+
+
+def generate_copy_candidates_v2_actual(
+    state: dict[str, Any],
+    *,
+    run_structured_node_fn: Callable[..., tuple[Any, dict[str, Any]]],
+    prompt: str,
+    max_candidates: int = 3,
+) -> tuple[CopyGenerationV2Output, dict[str, Any]]:
+    fallback = lambda: build_deterministic_copy_output_v2(state, max_candidates=max_candidates)
+    output, metadata = run_structured_node_fn(
+        state,
+        node_name="copy_generation_v2_actual",
+        output_schema=CopyGenerationV2Output,
+        prompt=prompt,
+        fallback_fn=fallback,
+        risk_level="medium",
+        confidence=0.6,
+        latency_budget="standard",
+        metadata={"schema_version": "copy_generation_v2_actual"},
+    )
+    if not isinstance(output, CopyGenerationV2Output):
+        output = CopyGenerationV2Output(**(output or fallback().model_dump()))
+    ranked = annotate_and_rank_candidate_output(
+        CopyCandidateListOutput(candidates=output.candidates, recommended_candidate_id=output.recommended_candidate_id),
+        state=state,
+        max_candidates=max_candidates,
+    )
+    ranking = CopyCandidateRankingOutput(**ranked.metadata["copy_quality_v2_ranking"])
+    result = output.model_copy(
+        update={
+            "candidates": ranked.candidates,
+            "ranking": ranking,
+            "recommended_candidate_id": ranking.recommended_candidate_id,
+            "metadata": {**output.metadata, "source": "actual_llm_or_fallback_v2"},
+        }
+    )
+    return result, metadata
 
 
 def rank_copy_candidates(
@@ -68,22 +134,26 @@ def rank_copy_candidates(
         score_copy_candidate_v2(candidate, policy=policy, duplicate=duplicate_ids.get(candidate.id), state=state)
         for candidate in candidates
     ]
+    valid_cards = [card for card in scorecards if not card.hard_blocked]
     ranked = sorted(
         scorecards,
         key=lambda card: (
             card.hard_blocked,
             -card.final_score,
-            ANGLE_ORDER.get(_candidate_angle(candidates, card.candidate_id), 9),
+            -card.business_fit_score,
+            -card.specificity_score,
+            -card.clarity_score,
             card.candidate_id,
         ),
     )
-    recommended = next((card.candidate_id for card in ranked if not card.hard_blocked), ranked[0].candidate_id if ranked else None)
+    recommended = ranked[0].candidate_id if ranked and valid_cards and not ranked[0].hard_blocked else None
     return CopyCandidateRankingOutput(
         recommended_candidate_id=recommended,
+        requires_regeneration=bool(scorecards and not valid_cards),
         scorecards=scorecards,
         blocked_candidate_ids=[card.candidate_id for card in scorecards if card.hard_blocked],
         diversity_warnings=[f"near_duplicate:{left}:{right}" for left, right in sorted(set(duplicate_ids.values()))],
-        metadata={"ranker": "copy_quality_v2"},
+        metadata={"ranker": "copy_quality_v2", "candidate_count": len(candidates)},
     )
 
 
@@ -91,8 +161,10 @@ def select_recommended_copy(candidates: list[CopyCandidate], ranking: CopyCandid
     if not candidates:
         return None
     ranking = ranking or rank_copy_candidates(candidates)
+    if ranking.requires_regeneration or not ranking.recommended_candidate_id:
+        return None
     selected_id = ranking.recommended_candidate_id
-    return next((candidate for candidate in candidates if candidate.id == selected_id), candidates[0])
+    return next((candidate for candidate in candidates if candidate.id == selected_id), None)
 
 
 def validate_candidate_diversity(candidates: list[CopyCandidate], threshold: float = 0.82) -> dict[str, Any]:
@@ -111,7 +183,7 @@ def annotate_and_rank_candidate_output(
     state: dict[str, Any],
     max_candidates: int,
 ) -> CopyCandidateListOutput:
-    candidates = output.candidates[: max(1, max_candidates)]
+    candidates = output.candidates[: min(3, max(1, max_candidates))]
     context = _context_from_state(state)
     normalized: list[CopyCandidate] = []
     for index, candidate in enumerate(candidates, start=1):
@@ -167,11 +239,14 @@ def score_copy_candidate_v2(
         warnings.append("generic_or_meta_phrase_detected")
         reasons.append("Generated copy contains generic/meta placeholder wording.")
     fact_penalty = 0.0
-    if state and _invented_fact_detected(text, state):
+    unsupported_claims = _unsupported_claims(text, state or {})
+    if state and (_invented_fact_detected(text, state) or unsupported_claims):
         fact_penalty = 0.4
         hard_blocked = True
         warnings.append("unsupported_fact_detected")
-        reasons.append("Copy appears to introduce unsupported price, discount, phone, or address facts.")
+        reasons.append("Copy appears to introduce unsupported facts or high-risk claims.")
+        if unsupported_claims:
+            warnings.extend(f"unsupported_claim:{claim}" for claim in unsupported_claims)
     length_penalty = _length_penalty(candidate, policy, warnings)
     diversity_penalty = 0.15 if duplicate else 0.0
     if duplicate:
@@ -180,13 +255,33 @@ def score_copy_candidate_v2(
     tone_fit = 0.85 if any(term and term in text for term in policy.get("avoid_terms", [])) else 1.0
     if tone_fit < 1.0:
         warnings.append("business_tone_avoid_term_detected")
-    action_clarity = 1.0 if candidate.cta else 0.7
-    final = 1.0 - generic_penalty - fact_penalty - length_penalty - diversity_penalty
-    final = final * tone_fit * action_clarity
+    specificity = _specificity_score(candidate)
+    business_fit = _business_fit_score(text, policy)
+    emotional_pull = _emotional_pull_score(text)
+    clarity = _clarity_score(candidate)
+    cta_relevance = _cta_relevance_score(candidate, policy)
+    visual_fit = _visual_fit_score(candidate)
+    action_clarity = cta_relevance
+    semantic = (
+        specificity * 0.18
+        + business_fit * 0.2
+        + emotional_pull * 0.14
+        + clarity * 0.18
+        + cta_relevance * 0.18
+        + visual_fit * 0.12
+    )
+    final = semantic - generic_penalty - fact_penalty - length_penalty - diversity_penalty
+    final = final * tone_fit
     return CopyCandidateScoreCard(
         candidate_id=candidate.id,
         hard_blocked=hard_blocked,
         final_score=max(0.0, min(1.0, round(final, 3))),
+        specificity_score=specificity,
+        business_fit_score=business_fit,
+        emotional_pull_score=emotional_pull,
+        clarity_score=clarity,
+        cta_relevance_score=cta_relevance,
+        visual_fit_score=visual_fit,
         generic_phrase_penalty=generic_penalty,
         fact_penalty=fact_penalty,
         length_penalty=length_penalty,
@@ -202,6 +297,8 @@ def contains_generic_meta_phrase(text: str) -> bool:
     normalized = _normalize_text(text)
     if any(_normalize_text(phrase) in normalized for phrase in GENERIC_META_PHRASES):
         return True
+    if any(re.search(pattern, text or "") for pattern in GENERIC_PATTERNS):
+        return True
     return any(token.lower() in normalized.lower() for token in GENERIC_META_TOKENS)
 
 
@@ -210,7 +307,7 @@ def find_near_duplicate_candidate_ids(candidates: list[CopyCandidate], threshold
     for left_index, left in enumerate(candidates):
         for right in candidates[left_index + 1 :]:
             similarity = SequenceMatcher(None, _normalize_text(joined_candidate_text(left)), _normalize_text(joined_candidate_text(right))).ratio()
-            if similarity >= threshold or (left.angle and left.angle == right.angle):
+            if similarity >= threshold:
                 pair = (left.id, right.id)
                 duplicates[left.id] = pair
                 duplicates[right.id] = pair
@@ -253,6 +350,73 @@ def _invented_fact_detected(text: str, state: dict[str, Any]) -> bool:
     if re.search(r"(₩\s*\d|[0-9][0-9,]*\s*원)", text) and not re.search(r"(₩\s*\d|[0-9][0-9,]*\s*원)", provided):
         return True
     return False
+
+
+def _unsupported_claims(text: str, state: dict[str, Any]) -> list[str]:
+    context = _context_from_state(state)
+    supported = " ".join(
+        str(value or "")
+        for value in (
+            context.item_or_service,
+            context.usp,
+            context.price_or_discount,
+            context.user_input if hasattr(context, "user_input") else None,
+            state.get("user_input"),
+        )
+    )
+    claims: list[str] = []
+    for term in HIGH_RISK_CLAIM_TERMS:
+        if term in text and term not in supported:
+            claims.append(term)
+    return claims
+
+
+def _specificity_score(candidate: CopyCandidate) -> float:
+    text = joined_candidate_text(candidate)
+    if any(char.isdigit() for char in text):
+        return 0.8
+    if candidate.headline and len(candidate.headline) >= 6:
+        return 0.74
+    return 0.55
+
+
+def _business_fit_score(text: str, policy: dict[str, Any]) -> float:
+    avoid_terms = policy.get("avoid_terms", [])
+    if any(term and term in text for term in avoid_terms):
+        return 0.55
+    notes = " ".join(str(value) for value in policy.get("visual_fit_notes", []))
+    return 0.82 if notes else 0.72
+
+
+def _emotional_pull_score(text: str) -> float:
+    emotional_terms = ("오늘", "시간", "무드", "휴식", "달콤", "따뜻", "차분", "기분")
+    return 0.86 if any(term in text for term in emotional_terms) else 0.62
+
+
+def _clarity_score(candidate: CopyCandidate) -> float:
+    text = joined_candidate_text(candidate)
+    if len(text) > 80:
+        return 0.62
+    return 0.86 if candidate.headline and candidate.subcopy else 0.7
+
+
+def _cta_relevance_score(candidate: CopyCandidate, policy: dict[str, Any]) -> float:
+    cta = candidate.cta or ""
+    if not cta:
+        return 0.45
+    if cta in policy.get("cta_candidates", []):
+        return 0.92
+    if any(token in cta for token in ("예약", "문의", "상담", "보기", "신청")):
+        return 0.82
+    return 0.65
+
+
+def _visual_fit_score(candidate: CopyCandidate) -> float:
+    if candidate.angle == "emotion_first":
+        return 0.86
+    if candidate.angle == "product_first":
+        return 0.78
+    return 0.8
 
 
 def _candidate_angle(candidates: list[CopyCandidate], candidate_id: str) -> str | None:
