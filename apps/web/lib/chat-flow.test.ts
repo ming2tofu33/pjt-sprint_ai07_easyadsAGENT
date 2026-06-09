@@ -221,7 +221,7 @@ describe("chat flow state", () => {
     state = chatFlowReducer(state, {
       type: "submitPrompt",
       prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘",
-      imageGenerationEngine: "flux_schnell"
+      imageGenerationEngine: "flux2_klein_4b"
     });
     state = chatFlowReducer(state, {
       type: "backendStartSucceeded",
@@ -237,7 +237,7 @@ describe("chat flow state", () => {
       recommendedCopyId: "copy_backend"
     });
 
-    expect(state.selectedImageGenerationEngine).toBe("flux_schnell");
+    expect(state.selectedImageGenerationEngine).toBe("flux2_klein_4b");
   });
 
   it("marks copy candidates as backend-generated when the backend returns candidates", () => {

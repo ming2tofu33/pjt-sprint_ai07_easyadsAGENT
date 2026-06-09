@@ -71,11 +71,11 @@ def test_submit_modal_t2i_job_routes_real_model_functions(monkeypatch):
     monkeypatch.setenv("MODAL_TOKEN_ID", "token-id")
     monkeypatch.setenv("MODAL_TOKEN_SECRET", "token-secret")
 
-    modal_client.submit_modal_t2i_job(_request(run_mode="flux_schnell_real", engine="flux"))
+    modal_client.submit_modal_t2i_job(_request(run_mode="flux2_klein_4b", engine="flux2_klein_4b"))
     modal_client.submit_modal_t2i_job(_request(run_mode="sd35_large_real", engine="sd35_large"))
 
     assert captured == [
-        ("easyads-t2i", "generate_flux_schnell_image"),
+        ("easyads-t2i", "generate_flux2_klein_image"),
         ("easyads-t2i", "generate_sd35_large_image"),
     ]
 

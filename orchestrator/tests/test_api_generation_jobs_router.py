@@ -193,18 +193,18 @@ def test_graph_job_routes_to_graph_executor_with_engine_metadata(client, monkeyp
             "user_input": "카페 신메뉴 광고 만들어줘",
             "run_mode": "graph_job",
             "metadata": {
-                "selected_engine": "flux_schnell",
-                "requested_engine": "flux",
-                "t2i_engine": "flux",
+                "selected_engine": "flux2_klein_4b",
+                "requested_engine": "flux2_klein_4b",
+                "t2i_engine": "flux2_klein_4b",
             },
         },
     )
 
     assert response.status_code == 201
     assert captured["run_mode"] == "graph_job"
-    assert captured["metadata"]["selected_engine"] == "flux_schnell"
-    assert captured["metadata"]["requested_engine"] == "flux"
-    assert captured["metadata"]["t2i_engine"] == "flux"
+    assert captured["metadata"]["selected_engine"] == "flux2_klein_4b"
+    assert captured["metadata"]["requested_engine"] == "flux2_klein_4b"
+    assert captured["metadata"]["t2i_engine"] == "flux2_klein_4b"
 
 
 def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
@@ -269,7 +269,7 @@ def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
     assert flux.status_code == 201
     assert flux.json()["job"]["status"] == "failed"
     assert flux.json()["job"]["error"]["error_code"] == "t2i_engine_not_enabled"
-    assert flux.json()["job"]["metadata"]["t2i_engine"] == "flux"
+    assert flux.json()["job"]["metadata"]["t2i_engine"] == "flux2_klein_4b"
 
 
 def test_create_generation_job_accepts_camel_case_reference_alias(client):

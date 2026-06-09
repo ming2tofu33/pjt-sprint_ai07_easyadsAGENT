@@ -13,7 +13,7 @@ from orchestrator.app.llm.settings import get_llm_settings
 from orchestrator.app.schemas.prompt_critic import PromptCriticOutput
 
 
-SUPPORTED_PROMPT_CRITIC_ENGINES = {"gpt_image_1", "gpt_image_2", "sd35_large", "flux"}
+SUPPORTED_PROMPT_CRITIC_ENGINES = {"gpt_image_1", "gpt_image_2", "sd35_large", "flux", "flux2_klein_4b"}
 
 
 def critique_prompt_draft(

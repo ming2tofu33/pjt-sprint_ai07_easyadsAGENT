@@ -40,8 +40,24 @@ def get_modal_app_name() -> str | None:
 
 def get_modal_function_name(*, run_mode: str | None = None, engine: str | None = None) -> str | None:
     normalized_run_mode = (run_mode or "").strip().lower()
-    if normalized_run_mode in {"flux_schnell_real", "flux_real", "flux_modal_real"}:
-        return _get_env("EASYADS_MODAL_FLUX_FUNCTION_NAME", "generate_flux_schnell_image").strip() or None
+    normalized_engine = (engine or "").strip().lower().replace("-", "_")
+    flux2_klein_run_modes = {
+        "flux2_klein_4b",
+        "flux2_klein",
+        "flux2-klein-4b",
+        "flux_2_klein_4b",
+        "flux_schnell_real",
+        "flux_real",
+        "flux_modal_real",
+    }
+    if normalized_run_mode in flux2_klein_run_modes or normalized_engine == "flux2_klein_4b":
+        return (
+            _get_env(
+                "EASYADS_MODAL_FLUX2_KLEIN_FUNCTION_NAME",
+                _get_env("EASYADS_MODAL_FLUX_FUNCTION_NAME", "generate_flux2_klein_image"),
+            ).strip()
+            or None
+        )
     if normalized_run_mode in {"sd35_large_real", "sd35_real", "sd35_modal_real"}:
         return _get_env("EASYADS_MODAL_SD35_FUNCTION_NAME", "generate_sd35_large_image").strip() or None
     return _get_env("EASYADS_MODAL_FUNCTION_NAME", "generate_image").strip() or None

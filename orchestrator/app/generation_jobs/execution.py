@@ -38,6 +38,7 @@ _EFFECTIVE_RUN_MODE_BY_ENGINE = {
     "sd35_large": "sd35_local",
     "flux": "flux_local",
     "flux_local": "flux_local",
+    "flux2_klein_4b": "flux2_klein_4b",
 }
 
 
@@ -773,9 +774,7 @@ def _normalize_graph_t2i_engine(value: object) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_")
     if normalized in {"sd35", "sd3_5", "sd3_5_large", "sd35_large"}:
         return "sd35_large"
-    if normalized in {"flux", "flux_schnell", "flux_1_schnell"}:
-        return "flux"
-    if normalized in {"flux2_klein", "flux2_klein_4b", "flux_2_klein_4b"}:
+    if normalized in {"flux", "flux_schnell", "flux_1_schnell", "flux2_klein", "flux2_klein_4b", "flux_2_klein_4b"}:
         return "flux2_klein_4b"
     if normalized in {"gpt_image_1", "gpt_image1"}:
         return "gpt_image_1"

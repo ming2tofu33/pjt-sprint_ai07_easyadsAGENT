@@ -54,7 +54,7 @@ def render_prompt_for_engine(
     elif engine == "sd35_large":
         positive_prompt = base
         notes.append("SD3.5 renderer separates positive and negative prompts.")
-    elif engine == "flux":
+    elif engine in {"flux", "flux2_klein_4b"}:
         positive_prompt = f"{base}, {NO_TEXT_CLAUSE}"
         notes.append("FLUX may underweight negative prompts; no-text constraints are repeated in positive prompt.")
     elif engine in {"gpt_image_1", "gpt_image_2"}:
@@ -90,7 +90,7 @@ def render_prompt_spec_for_engine(
     positive_prompt = spec.positive_prompt_en or spec.scene_description
     negative_prompt = spec.negative_prompt_en
     notes = ["TLFP ImagePromptSpec is used as the primary prompt source."]
-    if engine == "flux":
+    if engine in {"flux", "flux2_klein_4b"}:
         positive_prompt = f"{positive_prompt} no text, no watermark, no logo, no letters, no numbers"
         notes.append("FLUX receives no-text constraints in the positive prompt as well.")
     elif engine in {"gpt_image_1", "gpt_image_2"}:

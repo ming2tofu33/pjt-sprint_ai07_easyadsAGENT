@@ -220,6 +220,9 @@ def test_postgres_backend_sanitizes_nested_metadata(monkeypatch):
 
 def test_postgres_backend_mark_done_and_failed_preserve_shape(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ASSET_STORAGE_BACKEND", "local_dev")
+    monkeypatch.setenv("EASYADS_ENABLE_R2_UPLOAD", "false")
+    monkeypatch.setenv("EASYADS_R2_UPLOAD_REQUIRED", "false")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
     _patch_noop_side_effects(monkeypatch)
     state = {"row": _row(public_job_id="job_db")}

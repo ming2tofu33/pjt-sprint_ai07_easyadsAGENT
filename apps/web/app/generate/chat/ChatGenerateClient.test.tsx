@@ -1292,7 +1292,7 @@ describe("ChatGenerateClient", () => {
         progress: { progress_percent: 8, current_stage: "queued" },
         result_payload: null,
         metadata: {
-          selected_engine_label: "FLUX.1-schnell",
+          selected_engine_label: "FLUX.2 Klein 4B",
           context: {
             business_type: "beauty_nail",
             item_or_service: "네일 서비스",
@@ -1324,10 +1324,10 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_initial_pending%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_initial_pending%2Ffinal_0.png",
           final_image_path: "data/outputs/job_initial_pending/final_0.png",
-          engine: "flux"
+          engine: "flux2_klein_4b"
         },
         metadata: {
-          selected_engine_label: "FLUX.1-schnell",
+          selected_engine_label: "FLUX.2 Klein 4B",
           context: {
             business_type: "beauty_nail",
             item_or_service: "네일 서비스",
@@ -1351,7 +1351,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="chat" />);
 
-    fireEvent.click(screen.getByText("FLUX.1-schnell"));
+    fireEvent.click(screen.getByText("FLUX.2 Klein 4B"));
     fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
       target: { value: "네일샵 여름 이벤트 인스타 스토리 만들어줘" }
     });
@@ -1364,10 +1364,10 @@ describe("ChatGenerateClient", () => {
           runMode: "graph_job",
           metadata: expect.objectContaining({
             source: "web_chat_intake",
-            selected_engine: "flux_schnell",
-            requested_engine: "flux",
-            t2i_engine: "flux",
-            selected_engine_label: "FLUX.1-schnell"
+            selected_engine: "flux2_klein_4b",
+            requested_engine: "flux2_klein_4b",
+            t2i_engine: "flux2_klein_4b",
+            selected_engine_label: "FLUX.2 Klein 4B"
           })
         })
       )
@@ -1611,7 +1611,7 @@ describe("ChatGenerateClient", () => {
       target: { value: "우리 카페 딸기라떼 신메뉴 광고 만들어줘" }
     });
     fireEvent.click(screen.getByText("AI 자동 완성"));
-    fireEvent.click(screen.getByText("FLUX.1-schnell"));
+    fireEvent.click(screen.getByText("FLUX.2 Klein 4B"));
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
@@ -1622,15 +1622,15 @@ describe("ChatGenerateClient", () => {
         expect.objectContaining({
           runMode: "graph_job",
           metadata: expect.objectContaining({
-            selected_engine: "flux_schnell",
-            requested_engine: "flux",
-            t2i_engine: "flux",
-            selected_engine_label: "FLUX.1-schnell"
+            selected_engine: "flux2_klein_4b",
+            requested_engine: "flux2_klein_4b",
+            t2i_engine: "flux2_klein_4b",
+            selected_engine_label: "FLUX.2 Klein 4B"
           })
         })
       )
     );
-    await waitFor(() => expect(screen.getByText("FLUX.1-schnell")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("FLUX.2 Klein 4B")).toBeTruthy());
   });
 
   it("passes uploaded referenceImagePath to chat start and the final generation job", async () => {

@@ -134,8 +134,10 @@ def create_generation_job_route(
         job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_2")
     elif request.run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         job = execute_generation_job_t2i(job.job_id, request, engine_name="sd35_large")
+    elif request.run_mode == "flux2_klein_4b":
+        job = execute_generation_job_t2i(job.job_id, request, engine_name="flux2_klein_4b")
     elif request.run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
-        job = execute_generation_job_t2i(job.job_id, request, engine_name="flux")
+        job = execute_generation_job_t2i(job.job_id, request, engine_name="flux2_klein_4b")
     return GenerationJobCreateResponse(job=job)
 
 

@@ -204,7 +204,7 @@ def engine_for_render_profile(render_profile: RenderProfile) -> GenerationEngine
     if render_profile == "fast":
         return "mock"
     if render_profile == "premium_local":
-        return "flux"
+        return "flux2_klein_4b"
     if render_profile == "premium_api":
         return "gpt_image_1"
     return "sd35_large"
