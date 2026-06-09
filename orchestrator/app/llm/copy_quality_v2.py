@@ -93,7 +93,7 @@ def generate_copy_candidates_v2_actual(
     output, metadata = run_structured_node_fn(
         state,
         node_name="copy_generation_v2_actual",
-        output_schema=CopyGenerationV2Output,
+        output_schema=CopyCandidateListOutput,
         prompt=prompt,
         fallback_fn=fallback,
         risk_level="medium",
@@ -101,21 +101,23 @@ def generate_copy_candidates_v2_actual(
         latency_budget="standard",
         metadata={"schema_version": "copy_generation_v2_actual"},
     )
-    if not isinstance(output, CopyGenerationV2Output):
-        output = CopyGenerationV2Output(**(output or fallback().model_dump()))
+    if isinstance(output, CopyGenerationV2Output):
+        output = CopyCandidateListOutput(candidates=output.candidates, recommended_candidate_id=output.recommended_candidate_id, metadata=output.metadata)
+    elif not isinstance(output, CopyCandidateListOutput):
+        fallback_output = fallback()
+        output = CopyCandidateListOutput(candidates=fallback_output.candidates, recommended_candidate_id=fallback_output.recommended_candidate_id, metadata=fallback_output.metadata)
     ranked = annotate_and_rank_candidate_output(
         CopyCandidateListOutput(candidates=output.candidates, recommended_candidate_id=output.recommended_candidate_id),
         state=state,
         max_candidates=max_candidates,
     )
     ranking = CopyCandidateRankingOutput(**ranked.metadata["copy_quality_v2_ranking"])
-    result = output.model_copy(
-        update={
-            "candidates": ranked.candidates,
-            "ranking": ranking,
-            "recommended_candidate_id": ranking.recommended_candidate_id,
-            "metadata": {**output.metadata, "source": "actual_llm_or_fallback_v2"},
-        }
+    result = CopyGenerationV2Output(
+        message_strategy=build_message_strategy(_context_from_state(state)),
+        candidates=ranked.candidates,
+        ranking=ranking,
+        recommended_candidate_id=ranking.recommended_candidate_id,
+        metadata={**output.metadata, "source": "actual_llm_or_fallback_v2"},
     )
     return result, metadata
 
