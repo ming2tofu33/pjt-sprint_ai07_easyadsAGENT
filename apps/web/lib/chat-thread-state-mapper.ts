@@ -1,4 +1,11 @@
-import type { ChatFlowState, CopyGenerationMode, InferredContext, OptionQuestion } from "@/types/marketing";
+import type {
+  ChatFlowState,
+  CopyCandidateOrigin,
+  CopyGenerationMode,
+  CopyOption,
+  InferredContext,
+  OptionQuestion
+} from "@/types/marketing";
 import type { ChatMessageResponse, ChatStateSnapshotResponse, GenerationJob } from "./api-client";
 import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "./generation-engine";
 
@@ -8,6 +15,9 @@ export type ThreadSnapshotRestoreState = {
   threadId: string;
   context: InferredContext;
   copyGenerationMode: CopyGenerationMode;
+  copyCandidates: CopyOption[];
+  copyCandidateOrigin: CopyCandidateOrigin;
+  selectedCopyId: string;
   selectedChannelId: string;
   selectedTone: string;
   selectedImageGenerationEngine: ImageGenerationEngine;
@@ -55,6 +65,45 @@ function imageEngine(value: unknown): ImageGenerationEngine {
     return engine;
   }
   return DEFAULT_IMAGE_GENERATION_ENGINE;
+}
+
+function snapshotStatus(snapshotKind: string, payload: Record<string, unknown>, currentQuestion: OptionQuestion | null): string {
+  if (snapshotKind === "waiting_user_input" || currentQuestion) {
+    return "waiting_user_input";
+  }
+  if (snapshotKind === "job_completed" || asRecord(payload.result_payload).status === "done") {
+    return "done";
+  }
+  if (snapshotKind === "job_failed") {
+    return "failed";
+  }
+  return "queued";
+}
+
+function copyCandidatesFrom(value: unknown): CopyOption[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const candidates: CopyOption[] = [];
+  value.forEach((candidate, index) => {
+    const raw = asRecord(candidate);
+    const headline = firstString(raw.headline, raw.title, raw.copy);
+    if (!headline) {
+      return;
+    }
+    candidates.push({
+      id: firstString(raw.id) || `copy_${index + 1}`,
+      headline,
+      subcopy: firstString(raw.subcopy, raw.body) || null,
+      cta: firstString(raw.cta) || null
+    });
+  });
+  return candidates;
+}
+
+function copyCandidateOrigin(value: unknown): CopyCandidateOrigin {
+  const origin = stringValue(value);
+  return origin === "llm" || origin === "rule_based" || origin === "fallback" || origin === "unknown" ? origin : "unknown";
 }
 
 const contextDisplayLabels: Record<string, string> = {
@@ -123,7 +172,10 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
   }
 
   const currentQuestion = extractQuestion(payload, metadata);
-  const status = snapshot.snapshot_kind === "waiting_user_input" || currentQuestion ? "waiting_user_input" : "queued";
+  const resultPayload = asRecord(payload.result_payload);
+  const progressState = asRecord(payload.progress_state);
+  const copyCandidates = copyCandidatesFrom(payload.copy_candidates ?? payload.copyCandidates);
+  const status = snapshotStatus(snapshot.snapshot_kind, payload, currentQuestion);
   const context = {
     businessType: contextValue(
       payloadContext.business_type,
@@ -171,6 +223,9 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     threadId,
     context,
     copyGenerationMode: copyMode(payload.copy_generation_mode ?? payload.copyGenerationMode),
+    copyCandidates,
+    copyCandidateOrigin: copyCandidateOrigin(payload.copy_candidate_origin ?? payload.copyCandidateOrigin),
+    selectedCopyId: firstString(payload.selected_copy_id, payload.selectedCopyId, copyCandidates[0]?.id),
     selectedChannelId: firstString(payload.selected_channel_id, payload.selectedChannelId, payload.ad_format) || "instagram-feed",
     selectedTone: firstString(payload.selected_tone, payload.selectedTone) || "감성적인",
     selectedImageGenerationEngine: imageEngine(
@@ -190,6 +245,12 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       job_id: jobId,
       thread_id: threadId,
       status,
+      progress: {
+        progress_percent: Number(progressState.progress_percent ?? progressState.progressPercent ?? (status === "done" ? 100 : 0)),
+        current_stage: firstString(progressState.current_stage, progressState.currentStage) || (status === "done" ? "completed" : status),
+        message: firstString(progressState.message) || null
+      },
+      result_payload: Object.keys(resultPayload).length > 0 ? resultPayload : null,
       metadata: currentQuestion ? { pending_interrupt: { type: "option_question", option_question: currentQuestion } } : {}
     },
     currentQuestion,

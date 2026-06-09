@@ -9,6 +9,7 @@ export type GenerationStageView = {
   activeStepIndex: number;
   isTerminal: boolean;
   isFailed: boolean;
+  progressPercent: number | null;
 };
 
 export const generationStatusSteps = [
@@ -21,15 +22,18 @@ export const generationStatusSteps = [
 export function generationStageViewFromJob(job: GenerationJob | null | undefined): GenerationStageView {
   const status = normalizeStage(job?.status);
   const stage = normalizeStage(job?.progress?.current_stage ?? job?.current_stage ?? job?.status);
+  const percent = progressPercent(job);
+  const message = progressMessage(job);
 
   if (status === "failed" || stage === "failed") {
     return {
       key: "failed",
       label: "생성 오류 확인 중",
-      detail: "작업 중 문제가 생겼는지 확인하고 있어요.",
+      detail: message ?? "작업 중 문제가 생겼는지 확인하고 있어요.",
       activeStepIndex: 0,
       isTerminal: true,
-      isFailed: true
+      isFailed: true,
+      progressPercent: percent
     };
   }
 
@@ -37,10 +41,11 @@ export function generationStageViewFromJob(job: GenerationJob | null | undefined
     return {
       key: "completed",
       label: "보관함 연결 완료",
-      detail: "완성된 이미지를 보관함에서 확인할 수 있어요.",
+      detail: message ?? "완성된 이미지를 보관함에서 확인할 수 있어요.",
       activeStepIndex: 3,
       isTerminal: true,
-      isFailed: false
+      isFailed: false,
+      progressPercent: percent
     };
   }
 
@@ -48,10 +53,11 @@ export function generationStageViewFromJob(job: GenerationJob | null | undefined
     return {
       key: "waiting",
       label: "추가 정보 확인 중",
-      detail: "이미지를 만들기 전에 필요한 답변을 기다리고 있어요.",
+      detail: message ?? "이미지를 만들기 전에 필요한 답변을 기다리고 있어요.",
       activeStepIndex: 1,
       isTerminal: false,
-      isFailed: false
+      isFailed: false,
+      progressPercent: percent
     };
   }
 
@@ -59,10 +65,11 @@ export function generationStageViewFromJob(job: GenerationJob | null | undefined
     return {
       key: "image",
       label: "이미지 생성 중",
-      detail: "선택한 모델이 광고 이미지를 만들고 있어요.",
+      detail: message ?? "선택한 모델이 광고 이미지를 만들고 있어요.",
       activeStepIndex: 2,
       isTerminal: false,
-      isFailed: false
+      isFailed: false,
+      progressPercent: percent
     };
   }
 
@@ -70,21 +77,33 @@ export function generationStageViewFromJob(job: GenerationJob | null | undefined
     return {
       key: "planning",
       label: "광고 방향 정리 중",
-      detail: "브리프와 이미지 생성 방향을 정리하고 있어요.",
+      detail: message ?? "브리프와 이미지 생성 방향을 정리하고 있어요.",
       activeStepIndex: 1,
       isTerminal: false,
-      isFailed: false
+      isFailed: false,
+      progressPercent: percent
     };
   }
 
   return {
     key: "queued",
     label: "생성 요청 접수 중",
-    detail: "요청을 보내고 작업을 시작할 준비를 하고 있어요.",
+    detail: message ?? "요청을 보내고 작업을 시작할 준비를 하고 있어요.",
     activeStepIndex: 0,
     isTerminal: false,
-    isFailed: false
+    isFailed: false,
+    progressPercent: percent
   };
+}
+
+function progressPercent(job: GenerationJob | null | undefined): number | null {
+  const value = job?.progress?.progress_percent ?? job?.progress_percent;
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : null;
+}
+
+function progressMessage(job: GenerationJob | null | undefined): string | null {
+  const value = job?.progress?.message;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function normalizeStage(value: unknown): string {

@@ -47,7 +47,16 @@ describe("ui orchestrator route coverage", () => {
     expect(row?.executionMode).toBe("generation-job-graph");
     expect(row?.apiCalls).toEqual(["POST /api/generation-jobs", "GET /api/generation-jobs/{job_id}"]);
     expect(row?.fullGraphExecution).toBe(true);
-    expect(row?.graphStateFields).toEqual(["image_generation_engine", "requested_engine", "t2i_engine"]);
+    expect(row?.graphStateFields).toEqual([
+      "image_generation_engine",
+      "requested_engine",
+      "t2i_engine",
+      "progress_state",
+      "copy_candidate_origin",
+      "result_payload",
+      "ocr_gate_decision",
+      "quality_gate_decision"
+    ]);
     expect(row?.graphNodesReached).toEqual(
       expect.arrayContaining([
         "format_planner",
@@ -69,6 +78,20 @@ describe("ui orchestrator route coverage", () => {
       expect.arrayContaining([
         "apps/web/app/generate/chat/ChatGenerateClient.test.tsx",
         "orchestrator/tests/test_generation_job_graph_execution.py"
+      ])
+    );
+  });
+
+  it("tracks final generation result state fields, not only engine fields", () => {
+    const finalRoute = UI_ORCHESTRATOR_ROUTE_COVERAGE.find((item) => item.id === "final-model-generation");
+
+    expect(finalRoute?.graphStateFields).toEqual(
+      expect.arrayContaining([
+        "result_payload",
+        "progress_state",
+        "ocr_gate_decision",
+        "quality_gate_decision",
+        "copy_candidate_origin"
       ])
     );
   });

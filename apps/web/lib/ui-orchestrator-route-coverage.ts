@@ -99,7 +99,16 @@ export const UI_ORCHESTRATOR_ROUTE_COVERAGE: UiOrchestratorRouteCoverageRow[] = 
     executionMode: "generation-job-graph",
     connected: true,
     fullGraphExecution: true,
-    graphStateFields: ["image_generation_engine", "requested_engine", "t2i_engine"],
+    graphStateFields: [
+      "image_generation_engine",
+      "requested_engine",
+      "t2i_engine",
+      "progress_state",
+      "copy_candidate_origin",
+      "result_payload",
+      "ocr_gate_decision",
+      "quality_gate_decision"
+    ],
     graphNodesReached: FINAL_GENERATION_GRAPH_CHAIN,
     graphNodesBypassed: [],
     testEvidence: ["apps/web/app/generate/chat/ChatGenerateClient.test.tsx", "orchestrator/tests/test_generation_job_graph_execution.py"],

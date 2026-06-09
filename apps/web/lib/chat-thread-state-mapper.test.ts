@@ -123,6 +123,59 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     });
     expect(restore?.currentQuestion?.field).toBe("promotion_goal");
   });
+
+  it("restores completed generation result and copy candidate state", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_done",
+      thread_id: "thread_done",
+      job_id: "job_done",
+      snapshot_version: 3,
+      schema_version: 1,
+      snapshot_kind: "job_completed",
+      state_payload: {
+        user_input: "원육 광고 만들어줘",
+        context: {
+          business_type: "restaurant",
+          item_or_service: "원육",
+          promotion_goal: "review_event"
+        },
+        copy_generation_mode: "suggest_candidates",
+        copy_candidates: [{ id: "copy_1", headline: "오늘 저녁 원육 한 판", subcopy: "방문 전 예약" }],
+        copy_candidate_origin: "llm",
+        selected_copy_id: "copy_1",
+        selected_channel_id: "instagram-feed",
+        selected_tone: "bold",
+        image_generation_engine: "gpt_image_1",
+        result_payload: {
+          final_image_url: "https://cdn.example.com/job_done.png",
+          qualityDecision: "pass"
+        },
+        progress_state: {
+          progress_percent: 100,
+          current_stage: "completed",
+          message: "보관함 연결 완료"
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {},
+      created_at: "2026-06-09T00:00:00+00:00"
+    });
+
+    expect(restore).toMatchObject({
+      jobId: "job_done",
+      threadId: "thread_done",
+      copyCandidates: [{ id: "copy_1", headline: "오늘 저녁 원육 한 판", subcopy: "방문 전 예약" }],
+      copyCandidateOrigin: "llm",
+      selectedCopyId: "copy_1",
+      generationJob: {
+        status: "done",
+        result_payload: { final_image_url: "https://cdn.example.com/job_done.png" },
+        progress: { progress_percent: 100, current_stage: "completed", message: "보관함 연결 완료" }
+      }
+    });
+  });
 });
 
 describe("mapChatMessagesToTranscript", () => {

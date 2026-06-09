@@ -19,7 +19,10 @@ export type UiGraphCapability =
   | "generation.selected-copy-state"
   | "generation.selected-channel-state"
   | "generation.selected-tone-state"
-  | "validation.feedback-visible";
+  | "validation.feedback-visible"
+  | "thread.state-restore"
+  | "result.quality-feedback"
+  | "generation.progress-visible";
 
 export type UiGraphCoveragePhase =
   | "initial-generation"
@@ -71,6 +74,9 @@ export const CURRENT_UI_GRAPH_CAPABILITIES: UiGraphCapability[] = [
   "generation.selected-channel-state",
   "generation.selected-tone-state",
   "validation.feedback-visible",
+  "thread.state-restore",
+  "result.quality-feedback",
+  "generation.progress-visible",
 ];
 
 export const UI_GRAPH_COVERAGE_MATRIX: UiGraphCoverageExpectation[] = [
@@ -93,7 +99,7 @@ export const UI_GRAPH_COVERAGE_MATRIX: UiGraphCoverageExpectation[] = [
   {
     id: "chat-suggest-candidates",
     label: "대화 기반 추천 문구 선택",
-    userFlow: "대화로 시작해서 AI 추천 문구를 선택하고 브리프 생성",
+    userFlow: "대화로 시작해서 추천 문구를 선택하고 브리프 생성",
     phase: "initial-generation",
     requiredCapabilities: ["chat.start", "copy-mode.suggest-candidates", "copy-selection.copy-channel-tone"],
     expectedGraphNodes: ["copy_candidate_generation", "copy_candidate_selection_interrupt", "state_update_selected_copy"],
@@ -197,6 +203,22 @@ export const UI_GRAPH_COVERAGE_MATRIX: UiGraphCoverageExpectation[] = [
     phase: "result-feedback",
     requiredCapabilities: ["validation.feedback-visible"],
     expectedGraphNodes: ["background_validation", "safe_area_gate", "readability_gate", "final_validation"],
+  },
+  {
+    id: "thread-state-restore",
+    label: "작업방 상태 복원",
+    userFlow: "최근 작업방에서 보기를 누르면 이전 대화, 선택 문구, 생성 결과 상태를 복원",
+    phase: "result-feedback",
+    requiredCapabilities: ["thread.state-restore"],
+    expectedGraphNodes: ["validator", "copy_candidate_generation", "t2i_generation", "result"],
+  },
+  {
+    id: "result-quality-feedback",
+    label: "결과 품질/검수 상태 표시",
+    userFlow: "최종 결과 화면에서 OCR, 검수, 수동 확인 필요 여부를 표시",
+    phase: "result-feedback",
+    requiredCapabilities: ["result.quality-feedback", "validation.feedback-visible"],
+    expectedGraphNodes: ["background_ocr_gate", "final_ocr_gate", "readability_gate", "final_validation", "result"],
   },
 ];
 

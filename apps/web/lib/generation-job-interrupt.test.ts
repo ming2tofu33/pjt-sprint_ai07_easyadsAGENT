@@ -47,15 +47,28 @@ describe("generation job interrupt helpers", () => {
           { id: "copy_1", headline: "오늘만 할인" },
           { id: "copy_2", headline: "이번 주 신메뉴" }
         ],
-        recommended_candidate_id: "copy_1"
+        recommended_candidate_id: "copy_1",
+        copy_candidate_origin: "rule_based"
       })
     ).toMatchObject({
       type: "copy_candidate_selection",
       recommendedCandidateId: "copy_1",
+      copyCandidateOrigin: "rule_based",
       candidates: [
         { id: "copy_1", headline: "오늘만 할인" },
         { id: "copy_2", headline: "이번 주 신메뉴" }
       ]
+    });
+
+    expect(
+      parseGenerationJobInterrupt({
+        type: "copy_candidate_selection",
+        candidates: [{ id: "copy_1", headline: "오늘만 할인" }],
+        metadata: { copyCandidateOrigin: "fallback" }
+      })
+    ).toMatchObject({
+      type: "copy_candidate_selection",
+      copyCandidateOrigin: "fallback"
     });
   });
 

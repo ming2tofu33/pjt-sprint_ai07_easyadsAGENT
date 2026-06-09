@@ -76,7 +76,15 @@ import {
 import { buildNotificationHref } from "@/lib/notification-navigation";
 import { buildReferenceStyleHref } from "@/lib/reference-navigation";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
-import type { ChatBrief, ChatFlowState, CopyGenerationMode, InferredContext, OptionQuestion, PartialInferredContext } from "@/types/marketing";
+import type {
+  ChatBrief,
+  ChatFlowState,
+  CopyCandidateOrigin,
+  CopyGenerationMode,
+  InferredContext,
+  OptionQuestion,
+  PartialInferredContext
+} from "@/types/marketing";
 import styles from "@/components/generate/generate.module.css";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing" | "jobQuestion";
@@ -302,6 +310,11 @@ function getPayloadString(payload: Record<string, unknown>, ...keys: string[]): 
   return null;
 }
 
+function getCopyCandidateOrigin(payload: Record<string, unknown>, ...keys: string[]): CopyCandidateOrigin {
+  const value = getPayloadString(payload, ...keys);
+  return value === "llm" || value === "rule_based" || value === "fallback" || value === "unknown" ? value : "unknown";
+}
+
 const contextDisplayLabels: Record<string, string> = {
   beauty_nail: "네일샵",
   beauty_salon: "뷰티/미용실",
@@ -467,6 +480,7 @@ function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerat
         context: normalizeInferredContext(context),
         copyCandidates: interrupt.candidates as never[],
         recommendedCopyId: interrupt.recommendedCandidateId ?? null,
+        copyCandidateOrigin: interrupt.copyCandidateOrigin,
         copyGenerationMode: fallbackCopyGenerationMode ?? "suggest_candidates"
       };
     }
@@ -516,6 +530,7 @@ function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerat
       context: normalizedContext,
       copyCandidates: copyCandidates as never[],
       recommendedCopyId: getPayloadString(payload, "recommendedCopyId", "recommended_copy_id"),
+      copyCandidateOrigin: getCopyCandidateOrigin(payload, "copyCandidateOrigin", "copy_candidate_origin"),
       copyGenerationMode: fallbackCopyGenerationMode
     };
   }
@@ -653,6 +668,7 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
       copyCandidates: [],
       recommendedCopyId: null,
       copyCandidateSource: "empty",
+      copyCandidateOrigin: "unknown",
       copyGenerationMode: snapshot.response.copyGenerationMode,
       imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceImagePath: snapshot.sourceImagePath ?? null,
@@ -672,6 +688,7 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
     context: snapshot.response.context,
     copyCandidates: snapshot.response.copyCandidates,
     recommendedCopyId: snapshot.response.recommendedCopyId,
+    copyCandidateOrigin: snapshot.response.copyCandidateOrigin,
     copyGenerationMode: snapshot.response.copyGenerationMode,
     imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
     sourceImagePath: snapshot.sourceImagePath ?? null,
@@ -752,6 +769,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       copyCandidates: snapshot.copyCandidates,
       recommendedCopyId: snapshot.selectedCopyId,
       copyCandidateSource: snapshot.copyCandidateSource,
+      copyCandidateOrigin: snapshot.copyCandidateOrigin,
       imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceImagePath: snapshot.sourceImagePath ?? null,
       referenceImagePath: snapshot.referenceImagePath ?? null,
@@ -793,6 +811,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         context: response.context,
         copyCandidates: [],
         copyCandidateSource: "empty" as const,
+        copyCandidateOrigin: "unknown" as const,
         selectedCopyId: "",
         selectedChannelId: "instagram-feed",
         selectedTone: "",
@@ -813,6 +832,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         copyCandidates: [],
         recommendedCopyId: null,
         copyCandidateSource: "empty",
+        copyCandidateOrigin: "unknown",
         copyGenerationMode: response.copyGenerationMode ?? "no_copy",
         imageGenerationEngine: response.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
         sourceImagePath: response.sourceImagePath ?? null,
@@ -873,6 +893,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       context: response.context,
       copyCandidates: response.copyCandidates,
       recommendedCopyId: response.recommendedCopyId,
+      copyCandidateOrigin: response.copyCandidateOrigin,
       copyGenerationMode: response.copyGenerationMode,
       imageGenerationEngine: imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceImagePath: sourceImagePath ?? null,
@@ -1421,6 +1442,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       context: state.inferredContext,
       copyCandidates: state.copyCandidates,
       copyCandidateSource: state.copyCandidateSource,
+      copyCandidateOrigin: state.copyCandidateOrigin,
       selectedCopyId: state.selectedCopyId,
       selectedChannelId: state.selectedChannelId,
       selectedTone: state.selectedTone,
