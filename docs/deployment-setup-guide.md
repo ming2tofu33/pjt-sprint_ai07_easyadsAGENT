@@ -205,10 +205,15 @@ T2I_ENABLE_API_COST_GUARD=true
 T2I_GPT_IMAGE_MODEL=gpt-image-2
 T2I_SD35_MODEL_ID=stabilityai/stable-diffusion-3.5-large
 T2I_FLUX_MODEL_ID=black-forest-labs/FLUX.1-schnell
+EASYADS_T2I_FLUX2_KLEIN_MODEL_ID=black-forest-labs/FLUX.2-klein-4B
+EASYADS_T2I_FLUX2_KLEIN_BACKEND=modal
+EASYADS_T2I_FLUX2_KLEIN_STEPS=4
+EASYADS_T2I_FLUX2_KLEIN_GUIDANCE_SCALE=1.0
 
 EASYADS_ENABLE_EXTERNAL_T2I=false
 EASYADS_ENABLE_GPT_IMAGE_2=false
 EASYADS_ENABLE_SD35_LOCAL=false
+EASYADS_ENABLE_FLUX2_KLEIN_LOCAL=false
 
 LLM_ENABLE_API_CALL=false
 LLM_DEFAULT_PROVIDER=mock
@@ -375,10 +380,10 @@ EASYADS_MODAL_POLL_TIMEOUT_SECONDS=0
 ```
 
 `EASYADS_MODAL_FUNCTION_NAME=generate_image`는 GPU 없는 mock/R2 smoke용입니다.
-실제 FLUX.1-schnell을 실행할 때만 다음 값으로 바꿉니다.
+실제 FLUX.2 Klein 4B를 실행할 때는 모델별 함수 변수를 추가합니다.
 
 ```text
-EASYADS_MODAL_FUNCTION_NAME=generate_flux_schnell_image
+EASYADS_MODAL_FLUX2_KLEIN_FUNCTION_NAME=generate_flux2_klein_image
 ```
 
 모델 weight는 R2가 아니라 Modal cache 또는 Modal Volume에 둡니다.
@@ -995,10 +1000,10 @@ EASYADS_MODAL_APP_NAME=easyads-t2i
 EASYADS_MODAL_FUNCTION_NAME=generate_image
 ```
 
-같은 파일에는 실제 FLUX.1-schnell worker와 SD3.5 Large worker도 함께 들어 있습니다. 이 함수들은 GPU와 Hugging Face secret을 사용합니다.
+같은 파일에는 실제 FLUX.2 Klein 4B worker와 SD3.5 Large worker도 함께 들어 있습니다. 이 함수들은 GPU와 Hugging Face secret을 사용합니다.
 
 ```text
-EASYADS_MODAL_FLUX_FUNCTION_NAME=generate_flux_schnell_image
+EASYADS_MODAL_FLUX2_KLEIN_FUNCTION_NAME=generate_flux2_klein_image
 EASYADS_MODAL_SD35_FUNCTION_NAME=generate_sd35_large_image
 ```
 
@@ -1014,7 +1019,7 @@ EASYADS_ENABLE_MODAL_EXECUTION=true
 EASYADS_MODAL_POLL_ON_GET=true
 EASYADS_MODAL_APP_NAME=easyads-t2i
 EASYADS_MODAL_FUNCTION_NAME=generate_image
-EASYADS_MODAL_FLUX_FUNCTION_NAME=generate_flux_schnell_image
+EASYADS_MODAL_FLUX2_KLEIN_FUNCTION_NAME=generate_flux2_klein_image
 EASYADS_MODAL_SD35_FUNCTION_NAME=generate_sd35_large_image
 EASYADS_MODAL_ENVIRONMENT=main
 EASYADS_MODAL_RESULT_TRANSPORT=inline_base64
@@ -1027,23 +1032,22 @@ orchestrator는 `runMode`에 따라 Modal 함수를 자동 선택합니다.
 
 ```text
 mock/smoke        -> EASYADS_MODAL_FUNCTION_NAME
-flux_schnell_real -> EASYADS_MODAL_FLUX_FUNCTION_NAME
+flux2_klein_4b    -> EASYADS_MODAL_FLUX2_KLEIN_FUNCTION_NAME
 sd35_large_real   -> EASYADS_MODAL_SD35_FUNCTION_NAME
 ```
 
-실제 FLUX.1-schnell smoke 요청:
+실제 FLUX.2 Klein 4B smoke 요청:
 
 ```json
 {
   "userInput": "Create a premium cafe ad",
-  "runMode": "flux_schnell_real",
+  "runMode": "flux2_klein_4b",
   "metadata": {
     "width": 768,
     "height": 768,
     "t2i_params": {
       "num_inference_steps": 4,
-      "guidance_scale": 0.0,
-      "max_sequence_length": 256
+      "guidance_scale": 1.0
     }
   }
 }
@@ -1113,7 +1117,7 @@ R2는 서비스 파일과 산출물 저장소로 사용하고, 모델 weight는 
 L40S
 ```
 
-실제 FLUX.1-schnell worker의 기본값은 `EASYADS_MODAL_FLUX_GPU=L40S`입니다.
+실제 FLUX.2 Klein 4B worker의 기본값은 `EASYADS_MODAL_FLUX_GPU=L40S`입니다.
 실제 SD3.5 Large worker의 기본값은 `EASYADS_MODAL_SD35_GPU=L40S`입니다.
 Modal worker 배포 전에 로컬 환경변수로 바꾸면 다른 GPU로 배포할 수 있습니다.
 

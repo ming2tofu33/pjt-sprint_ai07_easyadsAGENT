@@ -10,7 +10,7 @@ PromotionGoal = Literal["launch", "discount_event", "reservation_cta", "brand_aw
 BrandTone = Literal["warm_cozy", "hip_trendy", "premium_refined", "bold_urgent", "natural_healthy", "custom"]
 USP = Literal["group_reservation", "view_spot", "value_for_money", "late_hours", "fresh_ingredients", "custom"]
 CopySpace = Literal["top", "bottom", "left", "right", "center", "top-right"]
-GenerationEngine = Literal["sd35_large", "flux", "gpt_image_1", "gpt_image_2"]
+GenerationEngine = Literal["sd35_large", "flux", "flux2_klein_4b", "gpt_image_1", "gpt_image_2"]
 JobStatus = Literal[
     "created",
     "validating",

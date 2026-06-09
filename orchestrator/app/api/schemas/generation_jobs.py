@@ -40,6 +40,7 @@ GenerationRunMode = Literal[
     "flux_schnell_real",
     "flux",
     "flux_smoke",
+    "flux2_klein_4b",
 ]
 ResultArtifactPayloadDict = dict[str, Any]
 
@@ -48,6 +49,7 @@ class GenerationJobCreateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     user_id: str | None = Field(default=None, alias="userId")
+    workspace_id: str | None = Field(default=None, alias="workspaceId")
     thread_id: str | None = Field(default=None, alias="threadId")
     brand_kit_id: str | None = Field(default=None, alias="brandKitId")
     entry_mode: str = Field(default="chat_start", alias="entryMode")

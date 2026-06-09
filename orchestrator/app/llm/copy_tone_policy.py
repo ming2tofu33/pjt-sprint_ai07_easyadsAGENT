@@ -175,13 +175,9 @@ def _clean_text(text: str, avoid_terms: list[str], max_chars: int, warnings: lis
         applied.append("normalized_spacing_or_punctuation")
     for term in avoid_terms:
         if term in value:
-            value = value.replace(term, "").strip()
-            warnings.append("avoid_term_removed")
-            applied.append("removed_avoid_terms")
+            warnings.append("avoid_term_detected")
     if len(value) > max_chars:
-        value = value[:max_chars].rstrip()
-        warnings.append("copy_trimmed_to_policy_length")
-        applied.append("trimmed_length")
+        warnings.append("copy_exceeds_policy_length")
     return value
 
 
@@ -189,9 +185,11 @@ def _normalize_cta(text: str, policy: dict[str, Any], warnings: list[str], appli
     original = str(text or "")
     had_avoid_term = any(term in original for term in policy["avoid_terms"])
     value = _clean_text(original, policy["avoid_terms"], policy["cta_max_chars"], warnings, applied)
-    if not value or had_avoid_term or len(value) > policy["cta_max_chars"]:
+    if had_avoid_term:
+        warnings.append("cta_avoid_term_detected")
+    if not value:
         if had_avoid_term:
-            warnings.append("cta_avoid_term_replaced")
+            warnings.append("cta_empty_after_quality_check")
         applied.append("selected_policy_cta")
         return policy["cta_candidates"][0]
     return value

@@ -118,6 +118,7 @@ class MarketingState(TypedDict, total=False):
     copywriting_output: dict[str, Any] | CopywritingOutput | None
     copy_generation_mode: CopyGenerationMode | None
     copy_candidates: list[dict[str, Any] | CopyCandidate]
+    copy_candidate_origin: str | None
     selected_copy_id: str | None
     selected_channel_id: str | None
     selected_ad_format: str | None
@@ -203,7 +204,7 @@ def engine_for_render_profile(render_profile: RenderProfile) -> GenerationEngine
     if render_profile == "fast":
         return "mock"
     if render_profile == "premium_local":
-        return "flux"
+        return "flux2_klein_4b"
     if render_profile == "premium_api":
         return "gpt_image_1"
     return "sd35_large"
@@ -284,6 +285,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "copywriting_output": None,
         "copy_generation_mode": request.copy_generation_mode,
         "copy_candidates": [],
+        "copy_candidate_origin": None,
         "selected_copy_id": None,
         "selected_channel_id": None,
         "selected_ad_format": None,

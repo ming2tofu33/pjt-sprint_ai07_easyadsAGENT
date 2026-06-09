@@ -1,7 +1,7 @@
 import { buildGeneratedAssetUrl } from "@/lib/generated-assets";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
 import type { ImageGenerationEngine } from "@/lib/generation-engine";
-import type { ChatBrief, CopyCandidateSource, CopyOption, InferredContext } from "@/types/marketing";
+import type { ChatBrief, CopyCandidateOrigin, CopyCandidateSource, CopyOption, InferredContext } from "@/types/marketing";
 
 export type GeneratedCreativeSnapshot = {
   prompt: string;
@@ -10,6 +10,7 @@ export type GeneratedCreativeSnapshot = {
   context: InferredContext;
   copyCandidates: CopyOption[];
   copyCandidateSource?: CopyCandidateSource;
+  copyCandidateOrigin?: CopyCandidateOrigin;
   selectedCopyId: string;
   selectedChannelId: string;
   selectedTone: string;

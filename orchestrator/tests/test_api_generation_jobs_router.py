@@ -58,7 +58,7 @@ def test_create_generation_job_and_get_job(client):
     assert job["metadata"]["effective_run_mode"] == "queued_only"
     assert job["output_path"] is None
 
-    fetched = client.get(f"/api/v1/generation-jobs/{job['job_id']}")
+    fetched = client.get(f"/api/v1/generation-jobs/{job['job_id']}?workspace_id=mem_workspace")
     assert fetched.status_code == 200
     assert fetched.json()["job"]["job_id"] == job["job_id"]
 
@@ -83,9 +83,9 @@ def test_get_generation_job_marks_stale_running_planning_job_failed(client, monk
     )
     calls = []
 
-    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job", lambda job_id: stale_job)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", lambda job_id, **kwargs: stale_job)
 
-    def fake_maybe_mark_stale_generation_job_failed(job):
+    def fake_maybe_mark_stale_generation_job_failed(job, **kwargs):
         calls.append(job.job_id)
         return failed_job
 
@@ -94,7 +94,7 @@ def test_get_generation_job_marks_stale_running_planning_job_failed(client, monk
         fake_maybe_mark_stale_generation_job_failed,
     )
 
-    response = client.get("/api/v1/generation-jobs/job_stale_1")
+    response = client.get("/api/v1/generation-jobs/job_stale_1?workspace_id=mem_workspace")
 
     assert response.status_code == 200
     assert response.json()["job"]["status"] == "failed"
@@ -125,7 +125,7 @@ def test_create_generation_job_mock_immediate_completes(client):
 
 
 def test_invalid_job_reference_and_request_errors(client):
-    missing_job = client.get("/api/v1/generation-jobs/job_missing")
+    missing_job = client.get("/api/v1/generation-jobs/job_missing?workspace_id=mem_workspace")
     assert missing_job.status_code == 404
     assert missing_job.json()["detail"]["error_code"] == "generation_job_not_found"
 
@@ -193,24 +193,24 @@ def test_graph_job_routes_to_graph_executor_with_engine_metadata(client, monkeyp
             "user_input": "카페 신메뉴 광고 만들어줘",
             "run_mode": "graph_job",
             "metadata": {
-                "selected_engine": "flux_schnell",
-                "requested_engine": "flux",
-                "t2i_engine": "flux",
+                "selected_engine": "flux2_klein_4b",
+                "requested_engine": "flux2_klein_4b",
+                "t2i_engine": "flux2_klein_4b",
             },
         },
     )
 
     assert response.status_code == 201
     assert captured["run_mode"] == "graph_job"
-    assert captured["metadata"]["selected_engine"] == "flux_schnell"
-    assert captured["metadata"]["requested_engine"] == "flux"
-    assert captured["metadata"]["t2i_engine"] == "flux"
+    assert captured["metadata"]["selected_engine"] == "flux2_klein_4b"
+    assert captured["metadata"]["requested_engine"] == "flux2_klein_4b"
+    assert captured["metadata"]["t2i_engine"] == "flux2_klein_4b"
 
 
 def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
     captured = {}
 
-    def fake_resume_generation_job_graph(job_id, answer, *, allow_running=False):
+    def fake_resume_generation_job_graph(job_id, answer, *, allow_running=False, **kwargs):
         from orchestrator.app.generation_jobs.service import get_generation_job, update_generation_job
 
         captured["job_id"] = job_id
@@ -237,7 +237,7 @@ def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
     update_generation_job(job["job_id"], status="waiting_user_input")
 
     answer_response = client.post(
-        f"/api/v1/generation-jobs/{job['job_id']}/answer",
+        f"/api/v1/generation-jobs/{job['job_id']}/answer?workspace_id=mem_workspace",
         json={"field": "business_type", "value": "cafe"},
     )
 
@@ -269,7 +269,7 @@ def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
     assert flux.status_code == 201
     assert flux.json()["job"]["status"] == "failed"
     assert flux.json()["job"]["error"]["error_code"] == "t2i_engine_not_enabled"
-    assert flux.json()["job"]["metadata"]["t2i_engine"] == "flux"
+    assert flux.json()["job"]["metadata"]["t2i_engine"] == "flux2_klein_4b"
 
 
 def test_create_generation_job_accepts_camel_case_reference_alias(client):

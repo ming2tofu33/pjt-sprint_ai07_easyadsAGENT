@@ -1,5 +1,5 @@
 import type { GenerationJob } from "./api-client";
-import type { CopyOption, OptionQuestion } from "@/types/marketing";
+import type { CopyCandidateOrigin, CopyOption, OptionQuestion } from "@/types/marketing";
 
 export type GenerationJobPendingInterrupt = {
   type?: string;
@@ -25,6 +25,7 @@ export type ParsedGenerationJobInterrupt =
       type: "copy_candidate_selection";
       candidates: CopyOption[];
       recommendedCandidateId?: string | null;
+      copyCandidateOrigin: CopyCandidateOrigin;
       raw: GenerationJobPendingInterrupt;
     }
   | {
@@ -65,6 +66,10 @@ function asBoolean(value: unknown, fallback = false): boolean {
 
 function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function asCopyCandidateOrigin(value: unknown): CopyCandidateOrigin {
+  return value === "llm" || value === "rule_based" || value === "fallback" || value === "unknown" ? value : "unknown";
 }
 
 function normalizeCandidate(raw: unknown, index: number): CopyOption | null {
@@ -135,10 +140,12 @@ export function parseGenerationJobInterrupt(raw: unknown): ParsedGenerationJobIn
     const candidates = Array.isArray(interrupt.candidates)
       ? interrupt.candidates.map(normalizeCandidate).filter((candidate): candidate is CopyOption => Boolean(candidate))
       : [];
+    const metadata = isRecord(interrupt.metadata) ? interrupt.metadata : {};
     return {
       type: "copy_candidate_selection",
       candidates,
       recommendedCandidateId: asString(interrupt.recommended_candidate_id) ?? candidates[0]?.id ?? null,
+      copyCandidateOrigin: asCopyCandidateOrigin(interrupt.copy_candidate_origin ?? interrupt.copyCandidateOrigin ?? metadata.copy_candidate_origin ?? metadata.copyCandidateOrigin),
       raw: interrupt
     };
   }

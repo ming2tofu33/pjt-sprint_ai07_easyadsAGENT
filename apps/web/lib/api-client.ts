@@ -1,5 +1,6 @@
 import type {
   ChatBrief,
+  CopyCandidateOrigin,
   CopyGenerationMode,
   CopyOption,
   CustomCopyFields,
@@ -29,6 +30,7 @@ export type ChatStartResponse = {
   context: InferredContext;
   copyCandidates: CopyOption[];
   recommendedCopyId?: string | null;
+  copyCandidateOrigin?: CopyCandidateOrigin;
   copyGenerationMode?: CopyGenerationMode;
 };
 
@@ -165,6 +167,14 @@ export interface GenerationProgress {
   message?: string | null;
 }
 
+export type ResultQualityDecision = "pass" | "manual_review" | "unavailable" | "retry_image" | "retry_layout" | "reject" | string;
+
+export type ResultCompliancePayload = {
+  status?: "pass" | "rewritten" | "blocked" | "needs_review" | string;
+  summary?: string | null;
+  findings?: unknown[];
+};
+
 export interface ResultArtifactPayload {
   schema_version?: "result_artifact_v1" | string;
   job_id?: string;
@@ -188,6 +198,11 @@ export interface ResultArtifactPayload {
   copy_summary?: Record<string, unknown> | null;
   layout_summary?: Record<string, unknown> | null;
   render_summary?: Record<string, unknown> | null;
+  ocr_gate?: Record<string, unknown> | null;
+  qualityDecision?: ResultQualityDecision | null;
+  requiresManualReview?: boolean | null;
+  qualityRejected?: boolean | null;
+  compliance?: ResultCompliancePayload | null;
   has_text_overlay?: boolean;
   engine?: string;
   render_mode?: string;

@@ -58,9 +58,12 @@ def build_modal_t2i_request_from_job(
         **(t2i_request.get("params") or {}),
     }
     if run_mode == "flux_schnell_real":
-        params.setdefault("render_mode", "flux_schnell")
-        params.setdefault("num_inference_steps", 4)
-        params.setdefault("guidance_scale", 0.0)
+        from orchestrator.app.t2i.settings import load_t2i_settings
+
+        t2i_settings = load_t2i_settings()
+        params.setdefault("render_mode", "flux2_klein_4b")
+        params.setdefault("num_inference_steps", t2i_settings.flux2_klein_num_inference_steps)
+        params.setdefault("guidance_scale", t2i_settings.flux2_klein_guidance_scale)
     if run_mode == "sd35_large_real":
         params.setdefault("render_mode", "sd35_large")
         params.setdefault("num_inference_steps", 8)
@@ -275,7 +278,7 @@ def _engine_from_run_mode(run_mode: str | None) -> str | None:
     if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         return "sd35_large"
     if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
-        return "flux"
+        return "flux2_klein_4b"
     if run_mode in {"flux2_klein_4b", "flux2_klein", "flux2-klein-4b", "flux_2_klein_4b"}:
         return "flux2_klein_4b"
     return None

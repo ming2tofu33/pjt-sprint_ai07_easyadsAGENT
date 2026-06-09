@@ -2,7 +2,7 @@
 
 import React from "react";
 import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
-import { buildValidationFeedbackItems } from "@/lib/generation-result-utils";
+import { buildResultReviewItems } from "@/lib/generation-result-utils";
 import type { ResultArtifactPayload } from "@/lib/api-client";
 import styles from "./generate.module.css";
 
@@ -17,7 +17,7 @@ const statusLabels = {
 } as const;
 
 export function ValidationSummaryPanel({ payload }: ValidationSummaryPanelProps) {
-  const items = buildValidationFeedbackItems(payload?.validation_summary ?? null);
+  const items = buildResultReviewItems(payload);
   if (items.length === 0) {
     return null;
   }

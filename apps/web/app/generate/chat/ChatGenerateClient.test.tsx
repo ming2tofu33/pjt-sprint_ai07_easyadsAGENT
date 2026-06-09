@@ -138,7 +138,8 @@ vi.mock("@/lib/api-client", () => ({
         { id: "copy_1", headline: "봄을 닮은 한 잔, 딸기라떼 출시" },
         { id: "copy_2", headline: "오늘만 더 달콤하게, 신메뉴 딸기라떼" }
       ],
-      recommendedCopyId: "copy_1"
+      recommendedCopyId: "copy_1",
+      copyCandidateOrigin: "rule_based"
     };
   }),
   answerChatQuestion: vi.fn(async () => ({
@@ -152,7 +153,8 @@ vi.mock("@/lib/api-client", () => ({
       promotionGoal: "광고 홍보"
     },
     copyCandidates: [{ id: "copy_1", headline: "우리 가게 대표 메뉴를 알려요" }],
-    recommendedCopyId: "copy_1"
+    recommendedCopyId: "copy_1",
+    copyCandidateOrigin: "rule_based"
   })),
   createChatBrief: vi.fn(async () => ({
     jobId: "job_1",
@@ -429,6 +431,7 @@ vi.mock("@/lib/api-client", () => ({
               { id: "copy_2", headline: "오늘만 더 달콤하게, 신메뉴 딸기라떼" }
             ],
             recommendedCopyId: "copy_1",
+            copyCandidateOrigin: "rule_based",
             copyGenerationMode
           },
           metadata: {},
@@ -1040,8 +1043,8 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByText("문구 고르기"));
 
     expect(screen.getByText("문구와 채널을 골라주세요")).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "AI 추천 문구" })).toBeTruthy();
-    expect(screen.getByText("요청 기반")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "추천 문구" })).toBeTruthy();
+    expect(screen.getByText("자동 추천")).toBeTruthy();
     expect(screen.queryByText("백엔드 생성")).toBeNull();
     fireEvent.click(screen.getByText("인스타 스토리"));
     fireEvent.click(screen.getByText("브리프 확인하기"));
@@ -1289,7 +1292,7 @@ describe("ChatGenerateClient", () => {
         progress: { progress_percent: 8, current_stage: "queued" },
         result_payload: null,
         metadata: {
-          selected_engine_label: "FLUX.1-schnell",
+          selected_engine_label: "FLUX.2 Klein 4B",
           context: {
             business_type: "beauty_nail",
             item_or_service: "네일 서비스",
@@ -1321,10 +1324,10 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_initial_pending%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fjob_initial_pending%2Ffinal_0.png",
           final_image_path: "data/outputs/job_initial_pending/final_0.png",
-          engine: "flux"
+          engine: "flux2_klein_4b"
         },
         metadata: {
-          selected_engine_label: "FLUX.1-schnell",
+          selected_engine_label: "FLUX.2 Klein 4B",
           context: {
             business_type: "beauty_nail",
             item_or_service: "네일 서비스",
@@ -1348,7 +1351,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="chat" />);
 
-    fireEvent.click(screen.getByText("FLUX.1-schnell"));
+    fireEvent.click(screen.getByText("FLUX.2 Klein 4B"));
     fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
       target: { value: "네일샵 여름 이벤트 인스타 스토리 만들어줘" }
     });
@@ -1361,10 +1364,10 @@ describe("ChatGenerateClient", () => {
           runMode: "graph_job",
           metadata: expect.objectContaining({
             source: "web_chat_intake",
-            selected_engine: "flux_schnell",
-            requested_engine: "flux",
-            t2i_engine: "flux",
-            selected_engine_label: "FLUX.1-schnell"
+            selected_engine: "flux2_klein_4b",
+            requested_engine: "flux2_klein_4b",
+            t2i_engine: "flux2_klein_4b",
+            selected_engine_label: "FLUX.2 Klein 4B"
           })
         })
       )
@@ -1474,7 +1477,7 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("시즌 한정 홍보")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "문구 고르기" }));
 
-    expect(screen.getByRole("heading", { name: "AI 추천 문구" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "추천 문구" })).toBeTruthy();
     expect(screen.getByText("여름 네일은 지금이 딱 좋아요")).toBeTruthy();
     expect(screen.queryByText("추가 정보가 필요합니다.")).toBeNull();
   });
@@ -1540,7 +1543,7 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "문구 고르기" }));
 
-    expect(screen.getByRole("heading", { name: "AI 추천 문구" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "추천 문구" })).toBeTruthy();
     expect(screen.getByText("여름 네일은 지금이 딱 좋아요")).toBeTruthy();
   });
 
@@ -1568,7 +1571,7 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("문구 없이 이미지로만")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "추천 문구" })).toBeNull();
   });
 
   it("skips copy selection when chat generation starts in auto-pilot mode", async () => {
@@ -1597,7 +1600,7 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("AI가 고른 딸기라떼 한 잔")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "추천 문구" })).toBeNull();
   });
 
   it("creates the final generation job with the selected FLUX engine", async () => {
@@ -1612,7 +1615,7 @@ describe("ChatGenerateClient", () => {
       target: { value: "우리 카페 딸기라떼 신메뉴 광고 만들어줘" }
     });
     fireEvent.click(screen.getByText("AI 자동 완성"));
-    fireEvent.click(screen.getByText("FLUX.1-schnell"));
+    fireEvent.click(screen.getByText("FLUX.2 Klein 4B"));
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
@@ -1623,15 +1626,15 @@ describe("ChatGenerateClient", () => {
         expect.objectContaining({
           runMode: "graph_job",
           metadata: expect.objectContaining({
-            selected_engine: "flux_schnell",
-            requested_engine: "flux",
-            t2i_engine: "flux",
-            selected_engine_label: "FLUX.1-schnell"
+            selected_engine: "flux2_klein_4b",
+            requested_engine: "flux2_klein_4b",
+            t2i_engine: "flux2_klein_4b",
+            selected_engine_label: "FLUX.2 Klein 4B"
           })
         })
       )
     );
-    await waitFor(() => expect(screen.getByText("FLUX.1-schnell")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("FLUX.2 Klein 4B")).toBeTruthy());
   });
 
   it("passes uploaded referenceImagePath to chat start and the final generation job", async () => {
@@ -2021,7 +2024,7 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("오늘만 딸기라떼 반값")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "추천 문구" })).toBeNull();
 
     fireEvent.click(screen.getByText(/이 내용으로 이미지 생성/));
 
@@ -2054,6 +2057,7 @@ describe("ChatGenerateClient", () => {
           },
           copyCandidates: [{ id: "copy_1", headline: "대표 메뉴를 더 맛있게 알리기" }],
           recommendedCopyId: "copy_1",
+          copyCandidateOrigin: "rule_based",
           copyGenerationMode: "suggest_candidates"
         },
         metadata: {},
@@ -2122,7 +2126,7 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "문구 고르기" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByText("문구 고르기"));
 
-    expect(screen.getByRole("heading", { name: "AI 추천 문구" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "추천 문구" })).toBeTruthy();
     expect(screen.getByText("문구 후보가 아직 없어요")).toBeTruthy();
     expect(screen.queryByText("봄을 닮은 한 잔, 딸기라떼 출시")).toBeNull();
     expect(screen.getByRole("button", { name: "브리프 확인하기" }).hasAttribute("disabled")).toBe(true);
@@ -2142,7 +2146,7 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("딸기라떼")).toBeTruthy());
     await waitFor(() => expect(screen.getByRole("button", { name: "문구 고르기" }).hasAttribute("disabled")).toBe(false));
     fireEvent.click(screen.getByText("문구 고르기"));
-    expect(screen.getByRole("heading", { name: "AI 추천 문구" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "추천 문구" })).toBeTruthy();
     fireEvent.click(screen.getByText("브리프 확인하기"));
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
 
@@ -3188,7 +3192,7 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("문구 없이 이미지로만")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "추천 문구" })).toBeNull();
   });
 
   it("routes photo generation directly to a backend brief in auto-pilot mode", async () => {
@@ -3219,7 +3223,7 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("AI가 고른 딸기라떼 한 잔")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "추천 문구" })).toBeNull();
   });
 
   it("routes photo generation directly to a backend brief with user-provided copy", async () => {
@@ -3256,7 +3260,7 @@ describe("ChatGenerateClient", () => {
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("오늘만 딸기라떼 반값")).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "AI 추천 문구" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "추천 문구" })).toBeNull();
   });
 
   it("sends saved brand kit context with photo generation requests", async () => {

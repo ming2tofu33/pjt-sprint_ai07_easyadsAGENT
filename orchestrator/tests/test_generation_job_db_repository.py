@@ -78,6 +78,29 @@ def test_get_generation_job_row_selects_by_public_job_id(monkeypatch):
     assert row["public_job_id"] == "job_db"
 
 
+def test_get_generation_job_by_public_id_scopes_by_workspace(monkeypatch):
+    conn = FakeConnection()
+    monkeypatch.setattr(repo, "db_transaction", fake_transaction)
+
+    row = repo.get_generation_job_by_public_id("job_db", workspace_id="workspace_id", connection=conn)
+
+    sql, params = conn.cursor_obj.calls[0]
+    assert "where gj.public_job_id = %s and gj.workspace_id = %s::uuid" in sql
+    assert params == ("job_db", "workspace_id")
+    assert row["public_job_id"] == "job_db"
+
+
+def test_update_generation_job_row_can_scope_by_workspace(monkeypatch):
+    conn = FakeConnection()
+    monkeypatch.setattr(repo, "db_transaction", fake_transaction)
+
+    repo.update_generation_job_row("job_db", workspace_id="workspace_id", status="running", connection=conn)
+
+    sql, params = conn.cursor_obj.calls[0]
+    assert "where public_job_id = %s and workspace_id = %s::uuid" in sql
+    assert params[-2:] == ("job_db", "workspace_id")
+
+
 def test_mark_running_done_failed_update_status(monkeypatch):
     conn = FakeConnection()
     monkeypatch.setattr(repo, "db_transaction", fake_transaction)

@@ -35,6 +35,21 @@ describe("generation job stage view", () => {
     expect(view.activeStepIndex).toBe(2);
   });
 
+  it("exposes backend progress percent and message when available", () => {
+    const view = generationStageViewFromJob({
+      job_id: "job_progress",
+      status: "running",
+      progress: {
+        progress_percent: 72,
+        current_stage: "modal_running",
+        message: "FLUX 모델이 이미지를 만들고 있어요."
+      }
+    });
+
+    expect(view.progressPercent).toBe(72);
+    expect(view.detail).toBe("FLUX 모델이 이미지를 만들고 있어요.");
+  });
+
   it("marks completed jobs as terminal storage-ready work", () => {
     const view = generationStageViewFromJob(job("done", "completed"));
 

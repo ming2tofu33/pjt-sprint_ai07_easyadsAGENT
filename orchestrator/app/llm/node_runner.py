@@ -199,6 +199,7 @@ def safe_llm_call_result(result: Any) -> dict[str, Any]:
         "model_name": selection.get("model_name"),
         "provider_profile": selection.get("provider_profile"),
         "latency_ms": data.get("latency_ms"),
+        "token_usage": data.get("token_usage"),
         "error": data.get("error"),
         "raw_text_present": bool(data.get("raw_text")),
         "output_candidate_count": output_count,

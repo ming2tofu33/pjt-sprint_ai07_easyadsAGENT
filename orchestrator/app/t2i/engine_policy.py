@@ -7,10 +7,10 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 ImagePlanTier = Literal["free", "economic", "premium"]
-ImageEngineName = Literal["gpt_image_1", "gpt_image_2", "sd35_large", "flux"]
+ImageEngineName = Literal["gpt_image_1", "gpt_image_2", "sd35_large", "flux2_klein_4b"]
 ExecutionBackend = Literal["local", "modal", "external_api"]
 
-_KNOWN_ENGINES: tuple[ImageEngineName, ...] = ("gpt_image_1", "gpt_image_2", "sd35_large", "flux")
+_KNOWN_ENGINES: tuple[ImageEngineName, ...] = ("gpt_image_1", "gpt_image_2", "sd35_large", "flux2_klein_4b")
 
 
 class ImageEnginePolicy(BaseModel):
@@ -38,8 +38,8 @@ def get_image_engine_policy(plan: str | None) -> ImageEnginePolicy:
     if normalized == "free":
         return ImageEnginePolicy(
             plan="free",
-            default_engine="flux",
-            allowed_engines=["sd35_large", "flux"],
+            default_engine="flux2_klein_4b",
+            allowed_engines=["sd35_large", "flux2_klein_4b"],
             blocked_engines=["gpt_image_1", "gpt_image_2"],
             allow_parallel_comparison=False,
             allow_external_api=False,
@@ -50,7 +50,7 @@ def get_image_engine_policy(plan: str | None) -> ImageEnginePolicy:
         return ImageEnginePolicy(
             plan="economic",
             default_engine="gpt_image_1",
-            allowed_engines=["gpt_image_1", "sd35_large", "flux"],
+            allowed_engines=["gpt_image_1", "sd35_large", "flux2_klein_4b"],
             allow_parallel_comparison=False,
             allow_external_api=True,
             allow_local_or_modal=True,
@@ -59,7 +59,7 @@ def get_image_engine_policy(plan: str | None) -> ImageEnginePolicy:
     return ImageEnginePolicy(
         plan="premium",
         default_engine="gpt_image_1",
-        allowed_engines=["gpt_image_1", "gpt_image_2", "sd35_large", "flux"],
+        allowed_engines=["gpt_image_1", "gpt_image_2", "sd35_large", "flux2_klein_4b"],
         allow_parallel_comparison=True,
         allow_external_api=True,
         allow_local_or_modal=True,
@@ -98,7 +98,9 @@ def resolve_requested_engines_for_plan(
 
 
 def _normalize_engine(engine: str | None) -> ImageEngineName | None:
-    normalized = (engine or "").strip().lower()
+    normalized = (engine or "").strip().lower().replace("-", "_")
+    if normalized in {"flux", "flux_schnell", "flux_1_schnell", "flux2_klein", "flux_2_klein_4b"}:
+        return "flux2_klein_4b"
     if normalized in _KNOWN_ENGINES:
         return normalized  # type: ignore[return-value]
     return None
