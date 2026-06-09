@@ -34,6 +34,7 @@ def test_chat_start_returns_inferred_context_and_copy_candidates():
     }
     assert [candidate["id"] for candidate in payload["copyCandidates"]] == ["copy_1", "copy_2"]
     assert payload["recommendedCopyId"] == "copy_1"
+    assert payload["copyCandidateOrigin"] == "rule_based"
 
 
 def test_chat_start_returns_option_question_when_context_is_missing():

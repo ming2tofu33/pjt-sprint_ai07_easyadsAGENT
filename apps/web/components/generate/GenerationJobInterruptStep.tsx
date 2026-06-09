@@ -37,6 +37,19 @@ const fallbackCustomFields = [
   }
 ];
 
+function copyOriginLabel(origin: string): string {
+  if (origin === "llm") {
+    return "AI 생성";
+  }
+  if (origin === "rule_based") {
+    return "자동 추천";
+  }
+  if (origin === "fallback") {
+    return "안전 추천";
+  }
+  return "요청 기반";
+}
+
 export function GenerationJobInterruptStep({
   interrupt,
   state,
@@ -73,7 +86,7 @@ export function GenerationJobInterruptStep({
         <span className={styles.assistantAvatar}>AI</span>
         <p className={styles.bubble}>
           {interrupt.type === "copy_candidate_selection"
-            ? "이미지 생성을 이어가기 전에 사용할 문구를 골라주세요."
+            ? "이미지에 반영할 문구를 골라주세요."
             : interrupt.type === "custom_copy_input"
               ? "직접 넣을 문구를 확인하면 같은 생성 요청을 이어갈게요."
               : "생성을 이어가기 위해 확인이 필요한 정보가 있어요."}
@@ -83,6 +96,9 @@ export function GenerationJobInterruptStep({
       {interrupt.type === "copy_candidate_selection" ? (
         <>
           <h2 className={styles.sectionTitle}>사용할 문구를 골라주세요</h2>
+          <p className={styles.helperText}>
+            {copyOriginLabel(interrupt.copyCandidateOrigin)} 문구 후보예요. 선택하면 같은 생성 요청이 이어집니다.
+          </p>
           <div className={styles.selectList}>
             {interrupt.candidates.map((candidate, index) => {
               const recommended = candidate.id === interrupt.recommendedCandidateId;
@@ -159,7 +175,7 @@ export function GenerationJobInterruptStep({
 
       {interrupt.type === "copy_candidate_selection" ? (
         <p className={styles.helperText}>
-          <PenLine size={14} aria-hidden="true" /> 선택하면 같은 생성 요청이 이어집니다.
+          <PenLine size={14} aria-hidden="true" /> 선택한 문구가 이미지에 반영되고, 같은 생성 요청이 이어집니다.
         </p>
       ) : null}
     </>

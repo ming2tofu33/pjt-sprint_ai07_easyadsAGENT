@@ -53,8 +53,10 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
         recommended_candidate_id=output.recommended_candidate_id or candidates[0].id,
         metadata={**output.metadata, "source_node": "copy_candidate_generation", "llm_metadata": llm_metadata},
     )
+    candidate_origin = classify_copy_candidate_origin(output.metadata, llm_metadata)
     return {
         "copy_candidates": [candidate.model_dump() for candidate in candidates],
+        "copy_candidate_origin": candidate_origin,
         "copywriting_output": output.model_dump(),
         "copy_generation_mode": "suggest_candidates",
         "copy_required": True,
@@ -77,6 +79,19 @@ def build_rule_based_candidate_output(state: MarketingState) -> CopyCandidateLis
     else:
         candidates = build_generic_candidates(item, context.promotion_goal)
     return CopyCandidateListOutput(candidates=candidates, recommended_candidate_id="copy_1", metadata={"source_node": "copy_candidate_generation", "fallback": "rule_based"})
+
+
+def classify_copy_candidate_origin(metadata: dict[str, Any], llm_metadata: dict[str, Any]) -> str:
+    if not llm_metadata:
+        return "unknown"
+    if not llm_metadata.get("fallback_used"):
+        return "llm"
+    fallback_reason = llm_metadata.get("fallback_reason")
+    if fallback_reason == "free_plan_deterministic_fallback":
+        return "rule_based"
+    if metadata.get("fallback") == "rule_based" and not fallback_reason:
+        return "rule_based"
+    return "fallback"
 
 
 def validate_or_fallback_candidate_output(
@@ -396,6 +411,7 @@ def copy_candidate_selection_interrupt_node(state: MarketingState) -> dict[str, 
         "thread_id": state["thread_id"],
         "candidates": candidates,
         "recommended_candidate_id": "copy_1",
+        "copy_candidate_origin": state.get("copy_candidate_origin") or "unknown",
     }
     resume_payload = interrupt(payload)
     return {"copy_selection": resume_payload, "status": "waiting_copy_selection"}
