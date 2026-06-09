@@ -48,7 +48,7 @@ def test_postgres_create_records_queued_event_and_active_thread(monkeypatch):
     thread_updates = []
     captured = {}
 
-    monkeypatch.setattr(service.workspace_repo, "ensure_demo_workspace", lambda user_id=None, connection=None: {"id": "workspace_uuid"})
+    monkeypatch.setattr(service.workspace_repo, "get_workspace", lambda workspace_id, connection=None: {"id": workspace_id, "owner_user_id": None})
     monkeypatch.setattr(service.chat_thread_repo, "create_chat_thread", lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_db"})
     monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
     monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
@@ -70,7 +70,7 @@ def test_postgres_create_records_queued_event_and_active_thread(monkeypatch):
     monkeypatch.setattr(service.generation_job_repo, "create_generation_job_row", create_row)
 
     job = service.create_generation_job(
-        GenerationJobCreateRequest(user_input="Create an ad", run_mode="queued_only", selected_reference_template_id="seed_1")
+        GenerationJobCreateRequest(user_input="Create an ad", workspace_id="workspace_uuid", run_mode="queued_only", selected_reference_template_id="seed_1")
     )
 
     assert job.job_id == "job_db"
@@ -88,7 +88,7 @@ def test_postgres_create_records_queued_event_and_active_thread(monkeypatch):
 
 def test_postgres_get_converts_db_row_to_response(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
-    monkeypatch.setattr(service.generation_job_repo, "get_generation_job_row", lambda job_id: _row())
+    monkeypatch.setattr(service.generation_job_repo, "get_generation_job_internal_by_public_id", lambda job_id: _row())
 
     job = service.get_generation_job("job_db")
 

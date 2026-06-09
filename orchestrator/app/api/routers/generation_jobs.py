@@ -100,8 +100,16 @@ def create_generation_job_route(
 
 
 @router.get("/generation-jobs/{job_id}", response_model=GenerationJobGetResponse)
-def get_generation_job_route(job_id: str) -> GenerationJobGetResponse:
-    job = get_generation_job(job_id)
+def get_generation_job_route(
+    job_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> GenerationJobGetResponse:
+    from orchestrator.app.generation_jobs.errors import GenerationJobError
+    try:
+        job = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id)
+    except GenerationJobError as exc:
+        raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)
     if not job:
         _generation_job_not_found(job_id)
     job = maybe_mark_stale_generation_job_failed(job)
@@ -115,8 +123,14 @@ def answer_generation_job_route(
     job_id: str,
     request: GenerationJobAnswerRequest,
     background_tasks: BackgroundTasks,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
 ) -> GenerationJobGetResponse:
-    job = get_generation_job(job_id)
+    from orchestrator.app.generation_jobs.errors import GenerationJobError
+    try:
+        job = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id)
+    except GenerationJobError as exc:
+        raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)
     if not job:
         _generation_job_not_found(job_id)
     if job.status != "waiting_user_input":

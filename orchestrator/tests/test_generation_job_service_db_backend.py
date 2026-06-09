@@ -98,7 +98,7 @@ def test_postgres_backend_create_uses_repository_path(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
     _patch_noop_side_effects(monkeypatch)
-    monkeypatch.setattr(service.workspace_repo, "ensure_demo_workspace", lambda user_id=None, connection=None: {"id": "workspace_uuid"})
+    monkeypatch.setattr(service.workspace_repo, "get_workspace", lambda workspace_id, connection=None: {"id": workspace_id, "owner_user_id": None})
     monkeypatch.setattr(
         service.chat_thread_repo,
         "create_chat_thread",
@@ -124,6 +124,7 @@ def test_postgres_backend_create_uses_repository_path(monkeypatch):
 
     request = GenerationJobCreateRequest(
         user_input="Create an ad",
+        workspace_id="workspace_uuid",
         run_mode="queued_only",
         selected_reference_template_id="seed_1",
         brand_kit_id="bk_public",
@@ -147,7 +148,7 @@ def test_postgres_backend_sanitizes_nested_metadata(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
     _patch_noop_side_effects(monkeypatch)
-    monkeypatch.setattr(service.workspace_repo, "ensure_demo_workspace", lambda user_id=None, connection=None: {"id": "workspace_uuid"})
+    monkeypatch.setattr(service.workspace_repo, "get_workspace", lambda workspace_id, connection=None: {"id": workspace_id, "owner_user_id": None})
     monkeypatch.setattr(service.chat_thread_repo, "create_chat_thread", lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_db"})
     monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
     monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
@@ -165,6 +166,7 @@ def test_postgres_backend_sanitizes_nested_metadata(monkeypatch):
 
     request = GenerationJobCreateRequest(
         user_input="Create an ad",
+        workspace_id="workspace_uuid",
         run_mode="queued_only",
         metadata={"debug": {"api_key": "sk-should-not-leak", "safe": "visible"}},
     )

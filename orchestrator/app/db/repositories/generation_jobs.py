@@ -116,7 +116,7 @@ def get_generation_job_by_regeneration_idempotency_key(
             return cur.fetchone()
 
 
-def get_generation_job_row(job_id: str, connection: object | None = None) -> dict | None:
+def get_generation_job_internal_by_public_id(job_id: str, connection: object | None = None) -> dict | None:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -127,6 +127,33 @@ def get_generation_job_row(job_id: str, connection: object | None = None) -> dic
                 where gj.public_job_id = %s
                 """,
                 (job_id,),
+            )
+            return cur.fetchone()
+
+
+def get_generation_job_row(job_id: str, connection: object | None = None) -> dict | None:
+    return get_generation_job_internal_by_public_id(job_id, connection=connection)
+
+
+def get_generation_job_by_public_id(
+    public_job_id: str,
+    *,
+    workspace_id: str,
+    connection: object | None = None,
+    for_update: bool = False,
+) -> dict | None:
+    lock_clause = " for update of gj" if for_update else ""
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                select gj.*, ct.public_thread_id as public_thread_id
+                from generation_jobs gj
+                left join chat_threads ct on ct.id = gj.thread_id
+                where gj.public_job_id = %s and gj.workspace_id = %s::uuid
+                {lock_clause}
+                """,
+                (public_job_id, workspace_id),
             )
             return cur.fetchone()
 
@@ -162,7 +189,7 @@ def get_generation_job_db(public_job_id: str, *, workspace_id: str, connection: 
             return cur.fetchone()
 
 
-def update_generation_job_row(job_id: str, connection: object | None = None, **fields) -> dict | None:
+def update_generation_job_row(job_id: str, connection: object | None = None, workspace_id: str | None = None, **fields) -> dict | None:
     allowed = {
         "status",
         "current_stage",
@@ -192,11 +219,15 @@ def update_generation_job_row(job_id: str, connection: object | None = None, **f
     values.append(job_id)
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
+            where = "public_job_id = %s"
+            if workspace_id:
+                where += " and workspace_id = %s::uuid"
+                values.append(workspace_id)
             cur.execute(
                 f"""
                 update generation_jobs
                 set {', '.join(assignments)}, updated_at = now()
-                where public_job_id = %s
+                where {where}
                 returning *
                 """,
                 tuple(values),

@@ -83,7 +83,7 @@ def test_get_generation_job_marks_stale_running_planning_job_failed(client, monk
     )
     calls = []
 
-    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job", lambda job_id: stale_job)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job", lambda job_id, **kwargs: stale_job)
 
     def fake_maybe_mark_stale_generation_job_failed(job):
         calls.append(job.job_id)

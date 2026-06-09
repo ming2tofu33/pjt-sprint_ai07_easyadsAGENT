@@ -37,3 +37,8 @@ def get_demo_workspace_id() -> str | None:
 
 def get_demo_user_id() -> str | None:
     return _get_env("EASYADS_DEMO_USER_ID", "").strip() or None
+
+
+def allow_demo_workspace_fallback() -> bool:
+    value = str(_get_env("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false") or "false").strip().lower()
+    return value in {"1", "true", "yes", "on"}

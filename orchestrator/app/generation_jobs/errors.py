@@ -25,3 +25,23 @@ class GenerationJobAssetKindInvalid(GenerationJobError):
 class GenerationJobAssetPersistenceRequired(GenerationJobError):
     status_code = 400
     error_code = "asset_persistence_required"
+
+
+class GenerationJobWorkspaceRequired(GenerationJobError):
+    status_code = 400
+    error_code = "workspace_required"
+
+
+class GenerationJobWorkspaceNotFound(GenerationJobError):
+    status_code = 404
+    error_code = "workspace_not_found"
+
+
+class GenerationJobWorkspaceForbidden(GenerationJobError):
+    status_code = 404
+    error_code = "workspace_not_found"
+
+
+class GenerationJobWorkspaceConflict(GenerationJobError):
+    status_code = 409
+    error_code = "generation_job_workspace_conflict"
