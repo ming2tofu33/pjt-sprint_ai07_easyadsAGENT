@@ -82,8 +82,11 @@ def load_t2i_settings() -> T2ISettings:
         flux2_klein_backend=_get_env("EASYADS_T2I_FLUX2_KLEIN_BACKEND", "") or "local_diffusers",
         flux2_klein_device=_get_env("EASYADS_T2I_FLUX2_KLEIN_DEVICE", "") or "cuda",
         flux2_klein_dtype=_get_env("EASYADS_T2I_FLUX2_KLEIN_DTYPE", "") or "bfloat16",
-        flux2_klein_enable_cpu_offload=_env_bool("EASYADS_T2I_FLUX2_KLEIN_ENABLE_CPU_OFFLOAD", default=False),
-        flux2_klein_cache_dir=_get_env("EASYADS_T2I_FLUX2_KLEIN_CACHE_DIR", "") or ".hf-cache",
+        flux2_klein_enable_cpu_offload=_env_bool(
+            "EASYADS_T2I_FLUX2_KLEIN_CPU_OFFLOAD",
+            default=_env_bool("EASYADS_T2I_FLUX2_KLEIN_ENABLE_CPU_OFFLOAD", default=False),
+        ),
+        flux2_klein_cache_dir=_get_env("EASYADS_T2I_FLUX2_KLEIN_CACHE_DIR", "") or None,
         flux2_klein_num_inference_steps=_env_int("EASYADS_T2I_FLUX2_KLEIN_STEPS", 4, minimum=1, maximum=80),
         flux2_klein_guidance_scale=_env_float("EASYADS_T2I_FLUX2_KLEIN_GUIDANCE_SCALE", 1.0, minimum=0.0, maximum=20.0),
         max_images_per_job=_env_int("EASYADS_T2I_MAX_IMAGES_PER_JOB", 1),
@@ -119,6 +122,11 @@ def is_flux2_klein_enabled(settings: T2ISettings) -> bool:
     return False
 
 
+def validate_flux2_klein_backend(settings: T2ISettings) -> None:
+    if settings.flux2_klein_backend not in {"local_diffusers", "modal"}:
+        raise T2IEngineUnavailableError("FLUX.2 Klein backend is invalid.")
+
+
 def require_t2i_enabled(engine: str, settings: T2ISettings) -> None:
     if engine == "gpt_image_1" and not is_gpt_image_1_enabled(settings):
         raise T2IEngineNotEnabledError("GPT-image-1 generation is disabled.")
@@ -129,6 +137,7 @@ def require_t2i_enabled(engine: str, settings: T2ISettings) -> None:
     if engine in {"flux", "flux_local", "flux_schnell"} and not is_flux_local_enabled(settings):
         raise T2IEngineNotEnabledError("FLUX local lane is disabled.")
     if engine == "flux2_klein_4b" and not is_flux2_klein_enabled(settings):
+        validate_flux2_klein_backend(settings)
         raise T2IEngineNotEnabledError("FLUX.2 Klein generation is disabled.")
 
 
