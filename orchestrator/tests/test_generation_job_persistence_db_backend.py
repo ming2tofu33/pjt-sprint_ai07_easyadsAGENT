@@ -20,7 +20,7 @@ def _row(status="queued", metadata=None, error=None):
     return {
         "id": "job_uuid",
         "public_job_id": "job_db",
-        "workspace_id": "workspace_uuid",
+        "workspace_id": "11111111-1111-1111-1111-111111111111",
         "thread_id": "thread_uuid",
         "requested_by": "demo_user",
         "status": status,
@@ -48,7 +48,7 @@ def test_postgres_create_records_queued_event_and_active_thread(monkeypatch):
     thread_updates = []
     captured = {}
 
-    monkeypatch.setattr(service.workspace_repo, "get_workspace", lambda workspace_id, connection=None: {"id": workspace_id, "owner_user_id": None})
+    monkeypatch.setattr(service.workspace_repo, "get_workspace_for_user", lambda *, workspace_id, user_id, connection=None: {"id": workspace_id, "owner_user_id": None})
     monkeypatch.setattr(service.chat_thread_repo, "create_chat_thread", lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_db"})
     monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
     monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
@@ -70,13 +70,13 @@ def test_postgres_create_records_queued_event_and_active_thread(monkeypatch):
     monkeypatch.setattr(service.generation_job_repo, "create_generation_job_row", create_row)
 
     job = service.create_generation_job(
-        GenerationJobCreateRequest(user_input="Create an ad", workspace_id="workspace_uuid", run_mode="queued_only", selected_reference_template_id="seed_1")
+        GenerationJobCreateRequest(user_input="Create an ad", user_id="demo_user", workspace_id="11111111-1111-1111-1111-111111111111", run_mode="queued_only", selected_reference_template_id="seed_1")
     )
 
     assert job.job_id == "job_db"
     assert job.thread_id == "thread_db"
     assert job.status == "queued"
-    assert captured["workspace_id"] == "workspace_uuid"
+    assert captured["workspace_id"] == "11111111-1111-1111-1111-111111111111"
     assert captured["thread_id"] == "thread_uuid"
     assert events[0]["event_type"] == "queued"
     assert thread_updates[0][1]["status"] == "generating"

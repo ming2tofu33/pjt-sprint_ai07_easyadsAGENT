@@ -443,12 +443,14 @@ def resume_generation_job_graph(
     answer: GenerationJobAnswerRequest,
     *,
     allow_running: bool = False,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
 ) -> GenerationJobResponse:
     from langgraph.types import Command
     from orchestrator.app.chat_threads.state_snapshot import calculate_changed_fields
     from orchestrator.app.generation_jobs.service import mark_generation_job_done, mark_generation_job_failed, mark_generation_job_running, mark_generation_job_waiting_user_input
 
-    job = get_generation_job(job_id)
+    job = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id) if workspace_id or user_id else get_generation_job(job_id)
     if not job:
         raise ValueError("generation job was not found")
     if job.status != "waiting_user_input" and not (allow_running and job.status == "running"):
@@ -457,11 +459,11 @@ def resume_generation_job_graph(
         raise ValueError("generation job has no thread_id")
 
     try:
-        running = mark_generation_job_running(job_id, stage="planning")
+        running = mark_generation_job_running(job_id, stage="planning", workspace_id=workspace_id, user_id=user_id)
         job = running or job
 
         resume_payload = answer.to_resume_payload(job_id=job_id, thread_id=job.thread_id)
-        append_generation_job_user_answer_message(job_id, answer)
+        append_generation_job_user_answer_message(job_id, answer, workspace_id=workspace_id, user_id=user_id)
         graph = get_generation_job_graph()
         result_state = graph.invoke(
             Command(resume=resume_payload),
@@ -504,6 +506,8 @@ def resume_generation_job_graph(
                     "execution_mode": "graph_execution",
                     "final_brief": result_state.get("current_brief"),
                 },
+                workspace_id=workspace_id,
+                user_id=user_id,
             )
             return done or job
 
@@ -518,6 +522,8 @@ def resume_generation_job_graph(
                     "detail": result_state.get("error_message"),
                 },
                 metadata={"execution_mode": "graph_execution_failed"},
+                workspace_id=workspace_id,
+                user_id=user_id,
             )
             return failed or job
 
@@ -531,17 +537,24 @@ def resume_generation_job_graph(
                 "detail": str(exc),
             },
             metadata={"execution_mode": "graph_resume_failed"},
+            workspace_id=workspace_id,
+            user_id=user_id,
         )
         return failed or job
 
 
-def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobResponse | None:
+def poll_and_process_graph_modal_generation_job(
+    job_id: str,
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> GenerationJobResponse | None:
     from orchestrator.app.chat_threads import state_service
     from orchestrator.app.chat_threads.state_snapshot import calculate_changed_fields, restore_persistent_state
     from orchestrator.app.modal.client import poll_modal_t2i_result
     from orchestrator.app.t2i.graph_engines import write_modal_graph_result_image
 
-    job = get_generation_job(job_id)
+    job = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id) if workspace_id or user_id else get_generation_job(job_id)
     if not job:
         return None
     if job.status not in {"queued", "running"}:
@@ -557,11 +570,13 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
                 "message": "Graph Modal job is missing its Modal call id.",
             },
             metadata={"execution_mode": "graph_modal_poll_failed"},
+            workspace_id=workspace_id,
+            user_id=user_id,
         ) or job
 
     poll_result = poll_modal_t2i_result(modal_call_id)
     if poll_result.status in {"pending", "running", "unknown"}:
-        return mark_generation_job_running(job_id, "modal_running") or job
+        return mark_generation_job_running(job_id, "modal_running", workspace_id=workspace_id, user_id=user_id) or job
 
     if poll_result.status in {"failed", "canceled"}:
         return mark_generation_job_failed(
@@ -576,6 +591,8 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
                 "execution_mode": "graph_modal_failed",
                 "modal_status": poll_result.status,
             },
+            workspace_id=workspace_id,
+            user_id=user_id,
         ) or job
 
     if poll_result.status != "succeeded":
@@ -595,6 +612,8 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
                 "message": "Graph Modal state snapshot was not found.",
             },
             metadata={"execution_mode": "graph_modal_poll_failed"},
+            workspace_id=workspace_id,
+            user_id=user_id,
         ) or job
 
     state = restore_persistent_state(snapshot.state_payload)
@@ -634,6 +653,8 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
                 "modal_status": "succeeded",
                 "final_brief": state.get("current_brief"),
             },
+            workspace_id=workspace_id,
+            user_id=user_id,
         ) or job
 
     error_info = state.get("error_info") or {}
@@ -649,6 +670,8 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
             "execution_mode": "graph_modal_postprocess_failed",
             "modal_status": "succeeded",
         },
+        workspace_id=workspace_id,
+        user_id=user_id,
     ) or job
 
 

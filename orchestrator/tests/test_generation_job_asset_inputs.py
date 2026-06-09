@@ -71,7 +71,8 @@ def test_create_generation_job_db_asset_integration(monkeypatch):
         source_asset_id="asset_" + "a"*32,
         reference_asset_id="asset_" + "b"*32,
         user_input="Test",
-        workspace_id="ws1",
+        user_id="demo",
+        workspace_id="11111111-1111-1111-1111-111111111111",
     )
     
     def fake_resolve(*, public_asset_id, expected_kind, **kwargs):
@@ -95,7 +96,7 @@ def test_create_generation_job_db_asset_integration(monkeypatch):
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.db_transaction", lambda: __import__("contextlib").nullcontext())
     monkeypatch.setattr("orchestrator.app.db.settings.get_demo_user_id", lambda: "demo")
     monkeypatch.setattr("orchestrator.app.db.settings.get_db_backend", lambda: "postgres")
-    monkeypatch.setattr("orchestrator.app.generation_jobs.service.workspace_repo", type("W", (), {"get_workspace": lambda *a, **k: {"id": "ws1", "owner_user_id": None}})())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.service.workspace_repo", type("W", (), {"get_workspace_for_user": lambda *a, **k: {"id": "11111111-1111-1111-1111-111111111111", "owner_user_id": None}})())
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.chat_thread_repo", type("T", (), {"get_chat_thread_by_public_id": lambda *a, **k: {"id": "t1"}, "create_chat_thread": lambda *a, **k: {"id": "t1"}, "set_chat_thread_active_job": lambda *a, **k: True})())
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.chat_message_repo", type("M", (), {"append_chat_message": lambda *a, **k: {"id": "m1"}, "append_generation_job_chat_event": lambda *a, **k: {"id": "m2"}})())
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.state_service", type("S", (), {"save_thread_state_snapshot": lambda *a, **k: None, "get_latest_thread_state_snapshot": lambda *a, **k: None, "restore_thread_state": lambda *a, **k: {}})())

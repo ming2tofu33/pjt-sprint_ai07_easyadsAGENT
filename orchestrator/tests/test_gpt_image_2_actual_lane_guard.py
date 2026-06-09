@@ -16,12 +16,17 @@ _ONE_BY_ONE_PNG_B64 = (
 )
 
 
-def test_gpt_image_1_default_env_does_not_call_api(monkeypatch):
+def test_gpt_image_1_default_env_does_not_call_api(monkeypatch, tmp_path: Path):
     reset_generation_job_store_for_tests()
     monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "false")
     monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_1", "false")
     monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "false")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-should-not-leak")
+    monkeypatch.setattr(
+        "orchestrator.app.generation_jobs.execution.ensure_job_output_dir",
+        lambda job_id: tmp_path / job_id,
+    )
 
     request = GenerationJobCreateRequest(user_input="Create a cafe ad", run_mode="gpt_image_1_smoke")
     job = create_generation_job(request)
@@ -111,4 +116,4 @@ def test_gpt_image1_actual_engine_uses_gpt_image_1(monkeypatch, tmp_path: Path):
 
     assert captured_kwargs["model"] == "gpt-image-1"
     assert output.engine == "gpt_image_1"
-    assert output.image_paths == [str(tmp_path / "gpt_image_1_0.png")]
+    assert [Path(path).resolve() for path in output.image_paths] == [(tmp_path / "gpt_image_1_0.png").resolve()]

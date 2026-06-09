@@ -38,6 +38,8 @@ from orchestrator.app.chat_threads.errors import (
     ChatThreadNotFoundError,
 )
 from orchestrator.app.generation_jobs.errors import (
+    GenerationJobAuthenticationRequired,
+    GenerationJobInvalidWorkspaceId,
     GenerationJobWorkspaceForbidden,
     GenerationJobWorkspaceNotFound,
     GenerationJobWorkspaceRequired,
@@ -85,6 +87,16 @@ _RESERVED_METADATA_KEYS = {
     "effective_run_mode",
     "execution_mode",
     "user_input_preview",
+}
+PUBLIC_METADATA_BLOCKED_KEYS = {
+    "workspace_id",
+    "internal_job_id",
+    "internal_thread_id",
+    "input_asset_uuid",
+    "reference_asset_uuid",
+    "bucket",
+    "object_key",
+    "modal_call_id",
 }
 
 DEFAULT_STAGE_ORDER = [
@@ -189,15 +201,21 @@ def _answer_message_payload(answer: GenerationJobAnswerRequest) -> dict:
     }
 
 
-def append_generation_job_user_answer_message(job_id: str, answer: GenerationJobAnswerRequest) -> None:
+def append_generation_job_user_answer_message(
+    job_id: str,
+    answer: GenerationJobAnswerRequest,
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> None:
     content = _answer_display_text(answer)
     if not content:
         return
     if _use_postgres_backend():
-        _append_generation_job_user_answer_message_db(job_id, answer, content)
+        _append_generation_job_user_answer_message_db(job_id, answer, content, workspace_id=workspace_id, user_id=user_id)
         return
 
-    job = get_generation_job(job_id)
+    job = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id) if workspace_id or user_id else get_generation_job_internal(job_id)
     if not job or not job.thread_id:
         return
     chat_thread_service.append_chat_message(
@@ -379,7 +397,7 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
         snapshot_kind = "restored_input" if latest_snapshot else "input"
         state_service.save_thread_state_snapshot(
             public_thread_id=public_thread_id,
-            workspace_id="mem_workspace",
+            workspace_id=workspace_id,
             snapshot_kind=snapshot_kind,
             state_payload=restored_payload,
             changed_fields=changed_fields,
@@ -411,15 +429,33 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
 
 
 def get_generation_job(job_id: str, *, workspace_id: str | None = None, user_id: str | None = None) -> GenerationJobResponse | None:
+    if workspace_id is not None or user_id is not None:
+        return get_generation_job_scoped(job_id, workspace_id=workspace_id, user_id=user_id)
+    return get_generation_job_internal(job_id)
+
+
+def get_generation_job_scoped(job_id: str, *, workspace_id: str | None, user_id: str | None) -> GenerationJobResponse | None:
+    if not workspace_id:
+        raise GenerationJobWorkspaceRequired("workspaceId is required.")
+    if not user_id and _use_postgres_backend() and not db_settings.allow_demo_workspace_fallback():
+        raise GenerationJobAuthenticationRequired("Authenticated user is required.")
     if _use_postgres_backend():
         return _get_generation_job_db(job_id, workspace_id=workspace_id, user_id=user_id)
     with _GENERATION_JOB_LOCK:
         job = _GENERATION_JOBS.get(job_id)
-        if job and workspace_id and _memory_job_workspace_id(job) != workspace_id:
+        if job and _memory_job_workspace_id(job) != workspace_id:
             return None
         if job and user_id and job.user_id and job.user_id != user_id:
             return None
         return job
+
+
+def get_generation_job_internal(job_id: str) -> GenerationJobResponse | None:
+    if _use_postgres_backend():
+        row = generation_job_repo.get_generation_job_internal_by_public_id(job_id)
+        return _job_response_from_db_row(row)
+    with _GENERATION_JOB_LOCK:
+        return _GENERATION_JOBS.get(job_id)
 
 
 def update_generation_job(job_id: str, *, workspace_id: str | None = None, user_id: str | None = None, **fields) -> GenerationJobResponse | None:
@@ -435,10 +471,10 @@ def update_generation_job(job_id: str, *, workspace_id: str | None = None, user_
     return updated
 
 
-def mark_generation_job_running(job_id: str, stage: str = "running") -> GenerationJobResponse | None:
+def mark_generation_job_running(job_id: str, stage: str = "running", *, workspace_id: str | None = None, user_id: str | None = None) -> GenerationJobResponse | None:
     if _use_postgres_backend():
-        return _mark_generation_job_running_db(job_id, stage)
-    existing = get_generation_job(job_id)
+        return _mark_generation_job_running_db(job_id, stage, workspace_id=workspace_id, user_id=user_id)
+    existing = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id) if workspace_id or user_id else get_generation_job_internal(job_id)
     if not existing:
         return None
     progress = existing.progress.model_copy(update={"progress_percent": 50, "current_stage": stage})
@@ -514,10 +550,13 @@ def mark_generation_job_done(
     result_payload: dict,
     output_path: str | None = None,
     metadata: dict | None = None,
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
 ) -> GenerationJobResponse | None:
     if _use_postgres_backend():
-        return _mark_generation_job_done_db(job_id, result_payload, output_path=output_path, metadata=metadata)
-    existing = get_generation_job(job_id)
+        return _mark_generation_job_done_db(job_id, result_payload, output_path=output_path, metadata=metadata, workspace_id=workspace_id, user_id=user_id)
+    existing = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id) if workspace_id or user_id else get_generation_job_internal(job_id)
     if not existing:
         return None
     progress = existing.progress.model_copy(update={"progress_percent": 100, "current_stage": "completed"})
@@ -577,10 +616,10 @@ def mark_generation_job_done(
     return updated
 
 
-def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None = None) -> GenerationJobResponse | None:
+def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None = None, *, workspace_id: str | None = None, user_id: str | None = None) -> GenerationJobResponse | None:
     if _use_postgres_backend():
-        return _mark_generation_job_failed_db(job_id, error, metadata=metadata)
-    existing = get_generation_job(job_id)
+        return _mark_generation_job_failed_db(job_id, error, metadata=metadata, workspace_id=workspace_id, user_id=user_id)
+    existing = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id) if workspace_id or user_id else get_generation_job_internal(job_id)
     if not existing:
         return None
     merged_metadata = _without_pending_interrupt({**existing.metadata, **(metadata or {})})
@@ -620,7 +659,7 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
         )
         state_service.save_thread_state_snapshot(
             public_thread_id=existing.thread_id,
-            workspace_id="mem_workspace",
+            workspace_id=_memory_job_workspace_id(existing) or "mem_workspace",
             snapshot_kind="job_failed",
             state_payload=latest_snapshot.state_payload if latest_snapshot else {},
             changed_fields=[],
@@ -652,6 +691,8 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
 def maybe_mark_stale_generation_job_failed(
     job: GenerationJobResponse,
     *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
     now: datetime | None = None,
     stale_after_seconds: int = DEFAULT_STALE_RUNNING_AFTER_SECONDS,
 ) -> GenerationJobResponse:
@@ -680,6 +721,8 @@ def maybe_mark_stale_generation_job_failed(
             "execution_mode": "stale_running_recovered",
             "stale_running_stage": job.progress.current_stage,
         },
+        workspace_id=workspace_id,
+        user_id=user_id,
     )
     return failed or job
 
@@ -754,7 +797,7 @@ def mark_generation_job_waiting_user_input(
     )
     state_service.save_thread_state_snapshot(
         public_thread_id=existing.thread_id,
-        workspace_id="mem_workspace",
+        workspace_id=_memory_job_workspace_id(existing) or "mem_workspace",
         snapshot_kind="waiting_user_input",
         state_payload=result_state,
         changed_fields=changed_fields,
@@ -799,6 +842,30 @@ def _without_pending_interrupt(metadata: dict | None) -> dict:
     cleaned.pop("pending_interrupt", None)
     cleaned.pop("assistant_message", None)
     return cleaned
+
+
+def sanitize_generation_job_metadata_for_api(metadata: dict | None) -> dict:
+    def sanitize_public(value):
+        if isinstance(value, dict):
+            output = {}
+            for key, item in value.items():
+                normalized = str(key).lower()
+                if normalized in PUBLIC_METADATA_BLOCKED_KEYS or normalized in _BLOCKED_METADATA_KEYS:
+                    continue
+                output[key] = sanitize_public(item)
+            return output
+        if isinstance(value, list):
+            return [sanitize_public(item) for item in value[:50]]
+        if isinstance(value, str):
+            return value[:500] + "..." if len(value) > 500 else value
+        return value
+
+    sanitized = sanitize_public(metadata or {})
+    return {
+        key: value
+        for key, value in sanitized.items()
+        if str(key).lower() not in PUBLIC_METADATA_BLOCKED_KEYS
+    }
 
 
 def should_route_generation_job_to_modal(request: GenerationJobCreateRequest) -> bool:
@@ -852,7 +919,12 @@ def maybe_submit_generation_job_to_modal(
     return get_generation_job(job.job_id) or job
 
 
-def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> GenerationJobResponse:
+def maybe_poll_generation_job_from_modal(
+    job: GenerationJobResponse,
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> GenerationJobResponse:
     graph_modal_pending = bool((job.metadata or {}).get("graph_modal_pending"))
     if graph_modal_pending:
         if job.status not in {"queued", "running"}:
@@ -860,10 +932,14 @@ def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> Generati
         try:
             from orchestrator.app.generation_jobs.execution import poll_and_process_graph_modal_generation_job
 
-            polled = poll_and_process_graph_modal_generation_job(job.job_id)
+            polled = poll_and_process_graph_modal_generation_job(job.job_id, workspace_id=workspace_id, user_id=user_id)
         except ModalJobPollError as exc:
             if _use_postgres_backend():
-                job_row = generation_job_repo.get_generation_job_row(job.job_id)
+                job_row = (
+                    generation_job_repo.get_generation_job_scoped_by_public_id(job.job_id, workspace_id=_require_workspace_uuid(workspace_id))
+                    if workspace_id
+                    else generation_job_repo.get_generation_job_row(job.job_id)
+                )
                 if job_row:
                     _record_generation_job_event_db(
                         job_row,
@@ -883,6 +959,8 @@ def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> Generati
                     "detail": str(exc),
                 },
                 metadata={"execution_backend": "modal", "execution_mode": "graph_modal_poll_failed"},
+                workspace_id=workspace_id,
+                user_id=user_id,
             ) or job
         return polled or job
 
@@ -892,13 +970,21 @@ def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> Generati
         return job
     if job.status not in {"queued", "running"}:
         return job
-    job_row = generation_job_repo.get_generation_job_row(job.job_id)
+    job_row = (
+        generation_job_repo.get_generation_job_scoped_by_public_id(job.job_id, workspace_id=_require_workspace_uuid(workspace_id))
+        if workspace_id
+        else generation_job_repo.get_generation_job_row(job.job_id)
+    )
     if not job_row or not job_row.get("modal_call_id"):
         return job
     try:
         polled = poll_and_process_modal_generation_job(job_id=job.job_id)
     except ModalJobPollError as exc:
-        job_row = generation_job_repo.get_generation_job_row(job.job_id)
+        job_row = (
+            generation_job_repo.get_generation_job_scoped_by_public_id(job.job_id, workspace_id=_require_workspace_uuid(workspace_id))
+            if workspace_id
+            else generation_job_repo.get_generation_job_row(job.job_id)
+        )
         if job_row:
             _record_generation_job_event_db(
                 job_row,
@@ -918,6 +1004,8 @@ def maybe_poll_generation_job_from_modal(job: GenerationJobResponse) -> Generati
                 "detail": str(exc),
             },
             metadata={"execution_backend": "modal", "modal_poll_failed": True},
+            workspace_id=workspace_id,
+            user_id=user_id,
         ) or job
     return polled or job
 
@@ -1004,6 +1092,15 @@ def _db_uuid_or_none(value: str | None) -> str | None:
         return None
 
 
+def _require_workspace_uuid(value: str | None) -> str:
+    if not value:
+        raise GenerationJobWorkspaceRequired("workspaceId is required.")
+    try:
+        return str(UUID(str(value)))
+    except (TypeError, ValueError) as exc:
+        raise GenerationJobInvalidWorkspaceId("workspaceId must be a UUID.") from exc
+
+
 def _use_postgres_backend() -> bool:
     return db_settings.get_db_backend() == "postgres"
 
@@ -1014,16 +1111,20 @@ def _memory_job_workspace_id(job: GenerationJobResponse) -> str | None:
 
 def _resolve_db_workspace_for_generation_request(request: GenerationJobCreateRequest, *, connection: object) -> dict:
     requested_workspace_id = (request.workspace_id or "").strip()
-    user_id = (request.user_id or db_settings.get_demo_user_id() or "").strip() or None
+    user_id = (request.user_id or "").strip() or None
     if requested_workspace_id:
-        workspace = workspace_repo.get_workspace(requested_workspace_id, connection=connection)
+        workspace_id = _require_workspace_uuid(requested_workspace_id)
+        if not user_id and not db_settings.allow_demo_workspace_fallback():
+            raise GenerationJobAuthenticationRequired("Authenticated user is required.")
+        if user_id:
+            workspace = workspace_repo.get_workspace_for_user(workspace_id=workspace_id, user_id=user_id, connection=connection)
+        else:
+            workspace = workspace_repo.get_workspace(workspace_id, connection=connection)
         if not workspace:
             raise GenerationJobWorkspaceNotFound("Workspace was not found.")
-        owner_user_id = workspace.get("owner_user_id")
-        if user_id and owner_user_id and str(owner_user_id) != user_id:
-            raise GenerationJobWorkspaceForbidden("Workspace was not found.")
         return workspace
     if db_settings.allow_demo_workspace_fallback():
+        user_id = user_id or db_settings.get_demo_user_id()
         return workspace_repo.ensure_demo_workspace(user_id=user_id, connection=connection)
     raise GenerationJobWorkspaceRequired("workspaceId is required.")
 
@@ -1035,18 +1136,22 @@ def _resolve_db_workspace_for_public_access(
     connection: object | None = None,
 ) -> str:
     workspace_id = (requested_workspace_id or "").strip()
-    resolved_user_id = (user_id or db_settings.get_demo_user_id() or "").strip() or None
+    resolved_user_id = (user_id or "").strip() or None
     if not workspace_id:
         if db_settings.allow_demo_workspace_fallback():
+            resolved_user_id = resolved_user_id or db_settings.get_demo_user_id()
             workspace = workspace_repo.ensure_demo_workspace(user_id=resolved_user_id, connection=connection)
             return str(workspace["id"])
         raise GenerationJobWorkspaceRequired("workspaceId is required.")
-    workspace = workspace_repo.get_workspace(workspace_id, connection=connection)
+    workspace_uuid = _require_workspace_uuid(workspace_id)
+    if not resolved_user_id and not db_settings.allow_demo_workspace_fallback():
+        raise GenerationJobAuthenticationRequired("Authenticated user is required.")
+    if resolved_user_id:
+        workspace = workspace_repo.get_workspace_for_user(workspace_id=workspace_uuid, user_id=resolved_user_id, connection=connection)
+    else:
+        workspace = workspace_repo.get_workspace(workspace_uuid, connection=connection)
     if not workspace:
         raise GenerationJobWorkspaceNotFound("Workspace was not found.")
-    owner_user_id = workspace.get("owner_user_id")
-    if resolved_user_id and owner_user_id and str(owner_user_id) != resolved_user_id:
-        raise GenerationJobWorkspaceForbidden("Workspace was not found.")
     return str(workspace["id"])
 
 
@@ -1362,17 +1467,20 @@ def _db_update_fields(existing: GenerationJobResponse, fields: dict) -> dict:
 
 
 def _get_generation_job_db(job_id: str, *, workspace_id: str | None = None, user_id: str | None = None) -> GenerationJobResponse | None:
-    if workspace_id is None and user_id is None:
-        row = generation_job_repo.get_generation_job_internal_by_public_id(job_id)
-        return _job_response_from_db_row(row)
+    if workspace_id is None or user_id is None:
+        raise GenerationJobWorkspaceRequired("Authenticated workspace scope is required.")
     resolved_workspace_id = _resolve_db_workspace_for_public_access(requested_workspace_id=workspace_id, user_id=user_id)
-    row = generation_job_repo.get_generation_job_by_public_id(job_id, workspace_id=resolved_workspace_id)
+    row = generation_job_repo.get_generation_job_scoped_by_public_id(job_id, workspace_id=resolved_workspace_id)
     return _job_response_from_db_row(row)
 
 
-def _append_generation_job_user_answer_message_db(job_id: str, answer: GenerationJobAnswerRequest, content: str) -> None:
+def _append_generation_job_user_answer_message_db(job_id: str, answer: GenerationJobAnswerRequest, content: str, *, workspace_id: str | None = None, user_id: str | None = None) -> None:
     with db_transaction() as conn:
-        row = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if workspace_id:
+            resolved_workspace_id = _resolve_db_workspace_for_public_access(requested_workspace_id=workspace_id, user_id=user_id, connection=conn)
+            row = generation_job_repo.get_generation_job_scoped_by_public_id(job_id, workspace_id=resolved_workspace_id, connection=conn)
+        else:
+            row = generation_job_repo.get_generation_job_internal_by_public_id(job_id, connection=conn)
         if not row or not row.get("thread_id"):
             return
         chat_message_repo.append_chat_message(
@@ -1403,9 +1511,15 @@ def _update_generation_job_db(job_id: str, *, workspace_id: str | None = None, u
     return _job_response_from_db_row(row)
 
 
-def _mark_generation_job_running_db(job_id: str, stage: str) -> GenerationJobResponse | None:
+def _mark_generation_job_running_db(job_id: str, stage: str, *, workspace_id: str | None = None, user_id: str | None = None) -> GenerationJobResponse | None:
     with db_transaction() as conn:
-        row = generation_job_repo.mark_generation_job_running_row(job_id, current_stage=stage, connection=conn)
+        resolved_workspace_id = None
+        if workspace_id is not None or user_id is not None:
+            resolved_workspace_id = _resolve_db_workspace_for_public_access(requested_workspace_id=workspace_id, user_id=user_id, connection=conn)
+        running_kwargs = {}
+        if resolved_workspace_id:
+            running_kwargs["workspace_id"] = resolved_workspace_id
+        row = generation_job_repo.mark_generation_job_running_row(job_id, current_stage=stage, connection=conn, **running_kwargs)
         if not row:
             return None
         cleaned_metadata = _without_pending_interrupt(row.get("metadata") or {})
@@ -1427,9 +1541,17 @@ def _mark_generation_job_done_db(
     result_payload: dict,
     output_path: str | None = None,
     metadata: dict | None = None,
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
 ) -> GenerationJobResponse | None:
     with db_transaction() as conn:
-        existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if workspace_id is not None or user_id is not None:
+            resolved_workspace_id = _resolve_db_workspace_for_public_access(requested_workspace_id=workspace_id, user_id=user_id, connection=conn)
+            existing = generation_job_repo.get_generation_job_scoped_by_public_id(job_id, workspace_id=resolved_workspace_id, connection=conn, for_update=True)
+        else:
+            resolved_workspace_id = None
+            existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
         if not existing:
             return None
 
@@ -1456,12 +1578,16 @@ def _mark_generation_job_done_db(
                 metadata={**merged_metadata, "storage_warning": "result_artifact_url_missing_required"},
                 connection=conn,
             )
+        done_kwargs = {}
+        if resolved_workspace_id:
+            done_kwargs["workspace_id"] = resolved_workspace_id
         row = generation_job_repo.mark_generation_job_done_row(
             job_id,
             result_payload=result_payload,
             output_path=final_path,
             metadata=merged_metadata,
             connection=conn,
+            **done_kwargs,
         )
         if not row:
             return None
@@ -1562,7 +1688,7 @@ def _mark_generation_job_done_db(
     return _job_response_from_db_row(row)
 
 
-def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | None = None) -> GenerationJobResponse | None:
+def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | None = None, *, workspace_id: str | None = None, user_id: str | None = None) -> GenerationJobResponse | None:
     error_payload = {
         "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
         "error_type": error.get("error_type"),
@@ -1570,7 +1696,12 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
         "detail": error.get("detail"),
     }
     with db_transaction() as conn:
-        existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if workspace_id is not None or user_id is not None:
+            resolved_workspace_id = _resolve_db_workspace_for_public_access(requested_workspace_id=workspace_id, user_id=user_id, connection=conn)
+            existing = generation_job_repo.get_generation_job_scoped_by_public_id(job_id, workspace_id=resolved_workspace_id, connection=conn, for_update=True)
+        else:
+            resolved_workspace_id = None
+            existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
         if not existing:
             return None
 
@@ -1585,7 +1716,10 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
             return _job_response_from_db_row(existing)
 
         merged_metadata = _without_pending_interrupt({**(existing.get("metadata") or {}), **(metadata or {})})
-        row = generation_job_repo.mark_generation_job_failed_row(job_id, error_payload, metadata=merged_metadata, connection=conn)
+        failed_kwargs = {}
+        if resolved_workspace_id:
+            failed_kwargs["workspace_id"] = resolved_workspace_id
+        row = generation_job_repo.mark_generation_job_failed_row(job_id, error_payload, metadata=merged_metadata, connection=conn, **failed_kwargs)
         if not row:
             return None
         _record_generation_job_event_db(
@@ -1997,7 +2131,7 @@ def _record_generation_job_event_db(
 def _job_response_from_db_row(row: dict | None) -> GenerationJobResponse | None:
     if not row:
         return None
-    metadata = row.get("metadata") or {}
+    metadata = sanitize_generation_job_metadata_for_api(row.get("metadata") or {})
     error = row.get("error")
     safe_result_payload = sanitize_result_artifact_payload_for_api(row.get("result_payload"))
     return GenerationJobResponse(

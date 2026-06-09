@@ -158,6 +158,21 @@ def get_generation_job_by_public_id(
             return cur.fetchone()
 
 
+def get_generation_job_scoped_by_public_id(
+    public_job_id: str,
+    *,
+    workspace_id: str,
+    connection: object | None = None,
+    for_update: bool = False,
+) -> dict | None:
+    return get_generation_job_by_public_id(
+        public_job_id,
+        workspace_id=workspace_id,
+        connection=connection,
+        for_update=for_update,
+    )
+
+
 def get_generation_job_db_by_id(job_id: str, *, workspace_id: str, connection: object | None = None) -> dict | None:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
@@ -235,7 +250,15 @@ def update_generation_job_row(job_id: str, connection: object | None = None, wor
             return cur.fetchone()
 
 
-def mark_generation_job_running_row(job_id: str, current_stage: str | None = None, connection: object | None = None) -> dict | None:
+def update_generation_job_scoped(public_job_id: str, *, workspace_id: str, connection: object | None = None, **fields) -> dict | None:
+    return update_generation_job_row(public_job_id, connection=connection, workspace_id=workspace_id, **fields)
+
+
+def update_generation_job_internal(public_job_id: str, connection: object | None = None, **fields) -> dict | None:
+    return update_generation_job_row(public_job_id, connection=connection, **fields)
+
+
+def mark_generation_job_running_row(job_id: str, current_stage: str | None = None, connection: object | None = None, workspace_id: str | None = None) -> dict | None:
     return update_generation_job_row(
         job_id,
         status="running",
@@ -243,6 +266,7 @@ def mark_generation_job_running_row(job_id: str, current_stage: str | None = Non
         progress_percent=50,
         started_at="__now_if_null__",
         connection=connection,
+        workspace_id=workspace_id,
     )
 
 
@@ -252,6 +276,7 @@ def mark_generation_job_done_row(
     output_path: str | None = None,
     metadata: dict | None = None,
     connection: object | None = None,
+    workspace_id: str | None = None,
 ) -> dict | None:
     fields = {
         "status": "done",
@@ -265,7 +290,7 @@ def mark_generation_job_done_row(
         fields["output_path"] = output_path
     if metadata is not None:
         fields["metadata"] = metadata
-    return update_generation_job_row(job_id, connection=connection, **fields)
+    return update_generation_job_row(job_id, connection=connection, workspace_id=workspace_id, **fields)
 
 
 def mark_generation_job_failed_row(
@@ -273,11 +298,12 @@ def mark_generation_job_failed_row(
     error: dict,
     metadata: dict | None = None,
     connection: object | None = None,
+    workspace_id: str | None = None,
 ) -> dict | None:
     fields = {"status": "failed", "current_stage": "failed", "error": error, "finished_at": "__now__"}
     if metadata is not None:
         fields["metadata"] = metadata
-    return update_generation_job_row(job_id, connection=connection, **fields)
+    return update_generation_job_row(job_id, connection=connection, workspace_id=workspace_id, **fields)
 
 
 def attach_modal_call_id(

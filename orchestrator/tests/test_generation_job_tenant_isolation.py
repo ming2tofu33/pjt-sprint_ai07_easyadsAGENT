@@ -6,7 +6,11 @@ import pytest
 
 from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
 from orchestrator.app.generation_jobs import service
-from orchestrator.app.generation_jobs.errors import GenerationJobWorkspaceRequired
+from orchestrator.app.generation_jobs.errors import GenerationJobWorkspaceNotFound, GenerationJobWorkspaceRequired
+
+
+WORKSPACE_A = "11111111-1111-1111-1111-111111111111"
+WORKSPACE_B = "22222222-2222-2222-2222-222222222222"
 
 
 @contextmanager
@@ -17,7 +21,7 @@ def fake_db_transaction():
     yield conn
 
 
-def _row(*, public_job_id="job_db", workspace_id="workspace_a", metadata=None):
+def _row(*, public_job_id="job_db", workspace_id=WORKSPACE_A, metadata=None):
     now = datetime.now(timezone.utc)
     return {
         "id": "job_uuid",
@@ -54,19 +58,19 @@ def reset(monkeypatch):
 
 
 def test_generation_job_create_request_accepts_workspace_id_alias():
-    request = GenerationJobCreateRequest(userInput="Create an ad", workspaceId="workspace_a")
+    request = GenerationJobCreateRequest(userInput="Create an ad", workspaceId=WORKSPACE_A)
 
-    assert request.workspace_id == "workspace_a"
+    assert request.workspace_id == WORKSPACE_A
 
 
 def test_memory_generation_job_get_is_workspace_scoped(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "memory")
     job = service.create_generation_job(
-        GenerationJobCreateRequest(userInput="Create an ad", workspaceId="workspace_a", userId="user_a")
+        GenerationJobCreateRequest(userInput="Create an ad", workspaceId=WORKSPACE_A, userId="user_a")
     )
 
-    assert service.get_generation_job(job.job_id, workspace_id="workspace_a", user_id="user_a") is not None
-    assert service.get_generation_job(job.job_id, workspace_id="workspace_b", user_id="user_a") is None
+    assert service.get_generation_job(job.job_id, workspace_id=WORKSPACE_A, user_id="user_a") is not None
+    assert service.get_generation_job(job.job_id, workspace_id=WORKSPACE_B, user_id="user_a") is None
     assert "workspace_id" not in job.metadata
 
 
@@ -82,21 +86,21 @@ def test_postgres_create_requires_workspace_without_demo_fallback(monkeypatch):
 def test_postgres_scoped_get_hides_cross_workspace_job(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
-    monkeypatch.setattr(service.workspace_repo, "get_workspace", lambda workspace_id, connection=None: {"id": workspace_id, "owner_user_id": "user_a"})
+    monkeypatch.setattr(service.workspace_repo, "get_workspace_for_user", lambda *, workspace_id, user_id, connection=None: {"id": workspace_id, "owner_user_id": "user_a"} if user_id == "user_a" and workspace_id == WORKSPACE_A else None)
 
     calls = []
 
     def fake_get_by_public_id(public_job_id, *, workspace_id, connection=None, for_update=False):
         calls.append((public_job_id, workspace_id))
-        if workspace_id == "workspace_a":
+        if workspace_id == WORKSPACE_A:
             return _row(public_job_id=public_job_id, workspace_id=workspace_id)
         return None
 
-    monkeypatch.setattr(service.generation_job_repo, "get_generation_job_by_public_id", fake_get_by_public_id)
+    monkeypatch.setattr(service.generation_job_repo, "get_generation_job_scoped_by_public_id", fake_get_by_public_id)
 
-    found = service.get_generation_job("job_db", workspace_id="workspace_a", user_id="user_a")
-    hidden = service.get_generation_job("job_db", workspace_id="workspace_b", user_id="user_a")
+    found = service.get_generation_job("job_db", workspace_id=WORKSPACE_A, user_id="user_a")
+    with pytest.raises(GenerationJobWorkspaceNotFound):
+        service.get_generation_job("job_db", workspace_id=WORKSPACE_B, user_id="user_a")
 
     assert found is not None
-    assert hidden is None
-    assert calls == [("job_db", "workspace_a"), ("job_db", "workspace_b")]
+    assert calls == [("job_db", WORKSPACE_A)]

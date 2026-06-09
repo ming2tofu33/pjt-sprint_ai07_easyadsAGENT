@@ -32,6 +32,16 @@ class GenerationJobWorkspaceRequired(GenerationJobError):
     error_code = "workspace_required"
 
 
+class GenerationJobAuthenticationRequired(GenerationJobError):
+    status_code = 401
+    error_code = "authentication_required"
+
+
+class GenerationJobInvalidWorkspaceId(GenerationJobError):
+    status_code = 400
+    error_code = "invalid_workspace_id"
+
+
 class GenerationJobWorkspaceNotFound(GenerationJobError):
     status_code = 404
     error_code = "workspace_not_found"
