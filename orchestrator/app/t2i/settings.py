@@ -35,7 +35,7 @@ class T2ISettings(BaseModel):
     flux2_klein_device: str = "cuda"
     flux2_klein_dtype: str = "bfloat16"
     flux2_klein_enable_cpu_offload: bool = False
-    flux2_klein_cache_dir: str | None = ".hf-cache"
+    flux2_klein_cache_dir: str | None = None
     flux2_klein_num_inference_steps: int = Field(default=4, ge=1, le=80)
     flux2_klein_guidance_scale: float = Field(default=1.0, ge=0.0, le=20.0)
     max_images_per_job: int = Field(default=1, ge=1, le=4)

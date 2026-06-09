@@ -115,7 +115,6 @@ def main() -> int:
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--actual", action="store_true")
-    parser.add_argument("--prepare-model", action="store_true")
     parser.add_argument("--prompt", default=DEFAULT_PROMPT)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--width", type=int, default=1024)

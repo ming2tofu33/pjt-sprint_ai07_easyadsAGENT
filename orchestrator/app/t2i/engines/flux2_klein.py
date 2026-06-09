@@ -89,14 +89,24 @@ class Flux2KleinEngine:
             result = pipe(**kwargs)  # pragma: no cover - actual local GPU opt-in
             timings["inference_ms"] = int((perf_counter() - inference_started) * 1000)
             print("[flux2-klein] inference completed")
-        except Flux2KleinDependencyMissing:
+        except T2IEngineUnavailableError:
             raise
         except RuntimeError as exc:
-            if "out of memory" in str(exc).lower() or "cuda oom" in str(exc).lower():
-                raise Flux2KleinCudaOOM("FLUX.2 Klein CUDA out of memory.") from exc
-            raise Flux2KleinGenerationFailed("FLUX.2 Klein generation failed.") from exc
+            if (
+                "out of memory" in str(exc).lower()
+                or "cuda oom" in str(exc).lower()
+            ):
+                raise Flux2KleinCudaOOM(
+                    "FLUX.2 Klein CUDA out of memory."
+                ) from exc
+
+            raise Flux2KleinGenerationFailed(
+                "FLUX.2 Klein generation failed."
+            ) from exc
         except Exception as exc:
-            raise Flux2KleinGenerationFailed("FLUX.2 Klein generation failed.") from exc
+            raise Flux2KleinGenerationFailed(
+                "FLUX.2 Klein generation failed."
+            ) from exc
 
         image_paths: list[str] = []
         save_started = perf_counter()

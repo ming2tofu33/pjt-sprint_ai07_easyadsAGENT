@@ -1,7 +1,18 @@
-diffusers==0.32.2
-transformers==4.46.3
-accelerate
-safetensors==0.7.0
-huggingface_hub
-sentencepiece
-protobuf
+# Compatibility-only GPU inference dependencies.
+# Canonical setup:
+#   uv sync --group dev --extra gpu-cu118
+#
+# Install the CUDA 11.8 PyTorch trio separately when using this
+# requirements compatibility path:
+#   uv pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 \
+#     --index-url https://download.pytorch.org/whl/cu118
+
+diffusers @ git+https://github.com/huggingface/diffusers.git@41875e08abc13e27c43620d6a9742e72646310e8
+
+transformers==5.10.2
+accelerate==1.13.0
+huggingface-hub==1.18.0
+
+safetensors==0.8.0rc1
+sentencepiece==0.2.1
+protobuf==6.33.6
