@@ -14,6 +14,7 @@ class T2IGenerationInput(BaseModel):
     width: int = 1024
     height: int = 1024
     num_images: int = Field(default=1, ge=1, le=4)
+    seed: int | None = None
     output_dir: str
     metadata: dict[str, Any] = Field(default_factory=dict)
 
