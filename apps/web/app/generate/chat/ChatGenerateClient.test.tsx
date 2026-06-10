@@ -1748,6 +1748,7 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "어떤 업종인가요?" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "카페" }));
+    fireEvent.click(await screen.findByRole("button", { name: "선택 완료" }));
 
     await waitFor(() =>
       expect(api.answerGenerationJob).toHaveBeenCalledWith("generation_job_waiting", {
@@ -2073,6 +2074,7 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("카페/디저트")).toBeTruthy();
 
     fireEvent.click(screen.getByText("카페/디저트"));
+    fireEvent.click(await screen.findByRole("button", { name: "선택 완료" }));
 
     await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
     expect(screen.getByText("요청 분석")).toBeTruthy();
@@ -2101,12 +2103,14 @@ describe("ChatGenerateClient", () => {
 
     const cafeButton = await screen.findByRole("button", { name: "카페/디저트" });
     fireEvent.click(cafeButton);
+    const confirmButton = await screen.findByRole("button", { name: "선택 완료" });
+    fireEvent.click(confirmButton);
 
     await waitFor(() => expect(cafeButton.hasAttribute("disabled")).toBe(true));
     fireEvent.click(cafeButton);
 
     expect(api.answerGenerationJob).toHaveBeenCalledTimes(1);
-    expect(screen.getByLabelText("직접 답변 입력").hasAttribute("disabled")).toBe(true);
+    expect(confirmButton.hasAttribute("disabled")).toBe(true);
   });
 
   it("shows an empty copy state and blocks brief creation when backend candidates are missing", async () => {

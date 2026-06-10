@@ -926,8 +926,18 @@
   background: var(--color-purple);
 }
 
+.indeterminateProgressTrack {
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+
 .indeterminateProgressTrack .progressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 42%;
+  height: 100%;
   background: linear-gradient(90deg, #8d73ff, #c9bbff);
   animation: progressSweep 1.35s ease-in-out infinite;
 }
@@ -1055,12 +1065,15 @@
 .assistantAvatar {
   width: 34px;
   height: 34px;
+  flex-shrink: 0;
   border-radius: 999px;
   background: var(--color-purple);
   color: var(--color-text-inverse);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-size: 11px;
+  line-height: 1;
   font-weight: 900;
 }
 
@@ -1177,7 +1190,10 @@
 
 .contextTitleMascot {
   --mascot-width: 36px;
+  width: var(--mascot-width);
+  height: auto;
   flex: 0 0 auto;
+  object-fit: contain;
   filter: drop-shadow(0 8px 14px rgba(90, 64, 177, 0.12));
 }
 
