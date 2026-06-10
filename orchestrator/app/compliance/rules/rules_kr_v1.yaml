@@ -1,0 +1,79 @@
+version: "kr_ad_compliance_v1"
+jurisdiction: "KR"
+updated_at: "2026-06-10"
+
+rules:
+  - rule_id: KR-FOOD-MEDICAL-CLAIM-001
+    domain: food
+    severity: block
+    title: "식품의 질병 예방·치료 또는 의학적 효능 암시"
+    patterns:
+      - "독소 배출"
+      - "면역력 강화"
+      - "체지방 감소"
+      - "다이어트 효과"
+      - "혈당 조절"
+      - "피로 회복 보장"
+    legal_basis_ref:
+      key: KR-FOOD-AD-8
+    evidence_requirements: []
+    safe_rewrite_hints:
+      - "맛, 향, 분위기, 재료, 계절감 중심으로"
+      - "신체 변화나 의학적 효과 표현 제거"
+    embedding_text: >
+      식품·음료 광고에서 신체 질환 개선, 독소 제거, 체중 감소,
+      면역 향상 같은 의학적 효능을 직접 또는 암시적으로 주장하는 표현.
+    examples:
+      - unsafe: "독소 배출에 도움을 주는 그린 스무디"
+        safe: "신선한 채소와 과일이 어우러진 그린 스무디"
+        index_for_rag: true
+
+  - rule_id: KR-FOOD-AMBIGUOUS-001
+    domain: food
+    severity: warn
+    title: "신체 효능 암시 가능성 표현 (문맥 의존)"
+    patterns:
+      - "디톡스"
+      - "몸이 가벼워"
+    legal_basis_ref:
+      key: KR-FOOD-AD-8
+    evidence_requirements: []
+    safe_rewrite_hints:
+      - "맛, 향, 분위기, 재료, 감성 중심으로"
+    hitl_question: "이 표현이 제품명이나 프로그램 기간을 설명하는 건가요, 신체 효능을 주장하는 건가요?"
+    context_upgrade:
+      body_effect_claim: "evidence_required"
+      medical_claim: "block"
+    embedding_text: >
+      식품·음료 광고에서 신체 정화, 다이어트, 피부 개선처럼
+      의학적 효능을 암시할 수 있는 표현.
+    examples:
+      - unsafe: "디톡스 딸기라떼로 몸이 가벼워지는 경험"
+        safe: "상큼한 딸기와 부드러운 라떼가 만난 기분 좋은 한 잔"
+        index_for_rag: true
+
+  - rule_id: KR-GENERAL-SUPERLATIVE-001
+    domain: general_ad
+    severity: evidence_required
+    title: "실증 없는 최상급·절대 표현"
+    patterns:
+      - "1위"
+      - "최고"
+      - "최초"
+      - "100% 보장"
+      - "완벽 보장"
+      - "무조건"
+    legal_basis_ref:
+      key: KR-FAIR-AD-3
+    evidence_requirements:
+      - "비교 기준"
+      - "조사 기관"
+      - "조사 기간"
+    safe_rewrite_hints:
+      - "보장·절대 표현 대신 경험·기대·제안 표현으로"
+    embedding_text: >
+      광고에서 객관적 근거 없이 최상급 또는 절대적 성과를 주장하는 표현.
+    examples:
+      - unsafe: "국내 1위 헬스장"
+        safe: "고객 만족 코칭 프로그램"
+        index_for_rag: true
