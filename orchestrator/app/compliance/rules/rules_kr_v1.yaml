@@ -77,3 +77,77 @@ rules:
       - unsafe: "국내 1위 헬스장"
         safe: "고객 만족 코칭 프로그램"
         index_for_rag: true
+
+  - rule_id: KR-FITNESS-GUARANTEE-001
+    domain: general_ad
+    severity: evidence_required
+    title: "특정 수치·기간 결과 보장 표현"
+    patterns:
+      - "10kg 감량 보장"
+      - "감량 보장"
+      - "복근 완성"
+      - "100% 성공"
+      - "확실한 변화"
+      - "몸이 바뀌는 기적"
+    legal_basis_ref:
+      key: KR-FAIR-AD-3
+    evidence_requirements:
+      - "측정 방법"
+      - "대상자 조건"
+      - "성과 산정 기준"
+    safe_rewrite_hints:
+      - "체계적인 준비, 운동 루틴, 맞춤 코칭 중심으로"
+    embedding_text: >
+      헬스·다이어트 광고에서 특정 기간 내 체중 감량, 복근 완성,
+      체형 변화를 보장하는 표현. 실증 자료 없이 확실한 결과를 단정하는 과장 광고.
+    examples:
+      - unsafe: "4주 만에 10kg 감량 보장"
+        safe: "4주 동안 체계적으로 준비하는 바디프로필 맞춤 코칭"
+        index_for_rag: true
+
+  - rule_id: KR-MEDICAL-BLOCK-001
+    domain: medical
+    severity: block
+    title: "치료 효과 보장·완치·Before&After 표현"
+    patterns:
+      - "완치"
+      - "여드름 완치"
+      - "Before & After"
+      - "비포 애프터"
+      - "치료 효과 100%"
+      - "확실히 사라지는"
+    legal_basis_ref:
+      key: KR-MEDICAL-AD-56
+    evidence_requirements: []
+    safe_rewrite_hints:
+      - "치료 효과 대신 상담, 관리 과정, 편안한 경험 중심으로"
+    embedding_text: >
+      의료 광고에서 치료 결과를 보장하거나 완치를 약속하는 표현.
+      의료법상 소비자 현혹 우려가 있는 의료광고 유형.
+    examples:
+      - unsafe: "여드름이 확실히 사라집니다"
+        safe: "피부 고민을 차분히 상담하고 맞춤 관리를 제안합니다"
+        index_for_rag: true
+
+  - rule_id: KR-COSMETIC-BLOCK-001
+    domain: cosmetic
+    severity: block
+    title: "화장품의 의약품·의료행위 오인 표현"
+    patterns:
+      - "여드름 치료"
+      - "100% 개선"
+      - "피부 재생"
+      - "흉터 치료"
+      - "탈모 방지"
+    legal_basis_ref:
+      key: KR-COSMETIC-AD-13
+    evidence_requirements: []
+    safe_rewrite_hints:
+      - "피부 고민 상담, 편안한 관리, 피부결 케어 중심으로"
+    embedding_text: >
+      화장품·뷰티샵 광고에서 피부 질환 치료, 의학적 개선,
+      의약품이나 의료행위로 오인될 수 있는 표현.
+    examples:
+      - unsafe: "여드름 치료 100% 보장"
+        safe: "피부결을 가꾸는 맞춤 관리"
+        index_for_rag: true

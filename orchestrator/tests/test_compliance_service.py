@@ -144,3 +144,52 @@ def test_get_compliance_service_returns_working_instance():
     svc = get_compliance_service()
     result = svc.check_copy({"headline": "기분 좋은 딸기라떼"}, business_type="cafe")
     assert result.status == "pass"
+
+
+# ── fitness 도메인 ─────────────────────────────────────────────────────────────
+
+def test_fitness_guarantee_is_evidence_required():
+    result = _svc().check_copy(
+        {"headline": "4주 만에 10kg 감량 보장"},
+        business_type="fitness",
+    )
+    assert result.status == "evidence_required"
+
+
+# ── medical 도메인 ─────────────────────────────────────────────────────────────
+
+def test_medical_treatment_guarantee_is_blocked():
+    result = _svc().check_copy(
+        {"headline": "여드름 완치 보장"},
+        business_type="hospital",
+    )
+    assert result.status == "blocked"
+
+
+def test_medical_before_after_is_blocked():
+    result = _svc().check_copy(
+        {"headline": "Before & After로 확인하는 시술 효과"},
+        business_type="hospital",
+    )
+    assert result.status == "blocked"
+
+
+# ── cosmetic 도메인 ────────────────────────────────────────────────────────────
+
+def test_cosmetic_medical_claim_is_blocked():
+    result = _svc().check_copy(
+        {"headline": "여드름 치료 100% 보장"},
+        business_type="beauty_skincare",
+    )
+    assert result.status == "blocked"
+
+
+# ── 도메인 격리: 다른 업종엔 medical 규칙 적용 안 됨 ─────────────────────────────
+
+def test_medical_rule_does_not_apply_to_cafe():
+    result = _svc().check_copy(
+        {"headline": "여드름 완치 보장"},
+        business_type="cafe",
+    )
+    medical_findings = [f for f in result.findings if f.rule_id and "MEDICAL" in f.rule_id]
+    assert medical_findings == []
