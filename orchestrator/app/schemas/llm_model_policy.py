@@ -25,6 +25,7 @@ NodeModelName = Literal[
     "background_validation",
     "final_validation",
     "revision_intent_classifier",
+    "option_suggester",
 ]
 RiskLevel = Literal["low", "medium", "high"]
 LatencyBudget = Literal["interactive", "standard", "batch"]
