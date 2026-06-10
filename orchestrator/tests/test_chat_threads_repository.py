@@ -93,6 +93,9 @@ def test_create_returns_public_thread_id(monkeypatch):
         "archived_at": None,
         "created_at": "2026-01-01T00:00:00+00:00",
         "updated_at": "2026-01-01T00:00:00+00:00",
+        # The pre-insert guard counts existing threads via the same cursor;
+        # a low total keeps us under the limit so the insert proceeds.
+        "total": 0,
     }
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
@@ -101,8 +104,40 @@ def test_create_returns_public_thread_id(monkeypatch):
         workspace_id="ws-1", created_by="user-1", title="Test"
     )
     assert result["public_thread_id"] == "thread_abc"
-    sql, _ = conn._cursor._executed[0]
-    assert "insert into chat_threads" in sql.lower()
+    executed_sql = " ".join(sql.lower() for sql, _ in conn._cursor._executed)
+    assert "insert into chat_threads" in executed_sql
+    # Guard ran the per-workspace advisory lock before inserting.
+    assert "pg_advisory_xact_lock" in executed_sql
+
+
+def test_create_raises_when_thread_limit_reached(monkeypatch):
+    from orchestrator.app.chat_threads.errors import ChatThreadLimitReachedError
+
+    # count_chat_threads (via the guard) reads "total" from fetchone → at the
+    # default limit of 3, creation must raise and never reach the insert.
+    conn = FakeConn(rows=[{"total": 3}])
+    _patch_transaction(monkeypatch, conn)
+
+    with pytest.raises(ChatThreadLimitReachedError) as exc_info:
+        repo.create_chat_thread(workspace_id="ws-1", created_by="user-1", title="Test")
+
+    assert exc_info.value.error_code == "thread_limit_reached"
+    executed_sql = " ".join(sql.lower() for sql, _ in conn._cursor._executed)
+    assert "insert into chat_threads" not in executed_sql
+
+
+def test_create_respects_configurable_limit(monkeypatch):
+    # With the limit raised to 5, a workspace at 4 threads can still create.
+    monkeypatch.setattr(
+        "orchestrator.app.db.repositories.chat_threads.db_settings.get_max_threads_per_workspace",
+        lambda: 5,
+    )
+    row = {"public_thread_id": "thread_ok", "total": 4}
+    conn = FakeConn(rows=[row])
+    _patch_transaction(monkeypatch, conn)
+
+    result = repo.create_chat_thread(workspace_id="ws-1", created_by="user-1")
+    assert result["public_thread_id"] == "thread_ok"
 
 
 # ---------------------------------------------------------------------------

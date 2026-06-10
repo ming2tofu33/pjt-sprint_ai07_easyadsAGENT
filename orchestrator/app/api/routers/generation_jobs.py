@@ -91,7 +91,7 @@ def _reference_template_not_found(template_id: str) -> None:
 def _chat_thread_error(exc: ChatThreadServiceError) -> None:
     if exc.error_code == "chat_thread_not_found":
         status_code = 404
-    elif exc.error_code in {"chat_thread_archived", "chat_thread_has_active_job"}:
+    elif exc.error_code in {"chat_thread_archived", "chat_thread_has_active_job", "thread_limit_reached"}:
         status_code = 409
     else:
         status_code = 400

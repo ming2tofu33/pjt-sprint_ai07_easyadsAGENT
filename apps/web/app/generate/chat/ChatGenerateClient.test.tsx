@@ -582,6 +582,25 @@ vi.mock("@/lib/api-client", () => ({
     items: [],
     pagination: { limit: 50, offset: 0, total: 0, hasMore: false }
   })),
+  getArchiveItem: vi.fn(async (archiveItemId: string) => ({
+    adId: archiveItemId,
+    jobId: "job_db_detail",
+    outputId: "output_db_detail",
+    title: "DB 상세 광고",
+    imageUrl: null,
+    thumbnailUrl: null,
+    downloadUrl: "https://cdn.example.com/archive-db-detail.png",
+    status: "saved",
+    adFormat: "1:1",
+    platform: "인스타 피드",
+    source: "generated",
+    storageProvider: "r2",
+    mimeType: "image/png",
+    width: 1200,
+    height: 1200,
+    savedAt: "2026-06-05T00:00:00+00:00",
+    metadata: { fileName: "archive-db-detail.png", fileType: "PNG", tags: ["카페"] }
+  })),
   listChatThreads: vi.fn(async () => ({
     success: true,
     threads: [],
@@ -717,6 +736,7 @@ describe("ChatGenerateClient", () => {
     navigationMock.replace.mockClear();
     searchParamsMock.value = new URLSearchParams();
     window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
   it("restores waiting graph question from a thread snapshot", async () => {
@@ -2380,7 +2400,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("shows a saved brand kit on the home and my page surfaces", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       BRAND_KIT_STORAGE_KEY,
       JSON.stringify({
         businessName: "연남 테스트 카페",
@@ -2436,7 +2456,7 @@ describe("ChatGenerateClient", () => {
   it("sends saved brand kit context with chat generation requests", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.createGenerationJob).mockClear();
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       BRAND_KIT_STORAGE_KEY,
       JSON.stringify({
         businessName: "연남 테스트 카페",
@@ -2695,7 +2715,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("opens the selected generated archive item instead of the active complete result", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -2745,7 +2765,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("opens archive search from the header icon and filters generated results", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -2801,8 +2821,23 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("최근 생성 광고")).toBeTruthy();
   });
 
+  it("renders a persisted archive detail through the direct archive API", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.getArchiveItem).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { AdSaveFlowStep } = await import("@/components/generate/AdSaveFlowStep");
+
+    render(<AdSaveFlowStep creativeId="archive_db_detail" step="detail" />);
+
+    await waitFor(() => expect(api.getArchiveItem).toHaveBeenCalledWith("archive_db_detail"));
+    await waitFor(() => expect(screen.getByText("DB 상세 광고")).toBeTruthy());
+    expect(screen.getByText("생성 이미지 보기")).toBeTruthy();
+    expect(document.querySelector('img[src*="archive-db-detail.png"]')).toBeTruthy();
+    expect(screen.queryByText("보관함에서 이 항목을 찾지 못했어요")).toBeNull();
+  });
+
   it("renders the selected generated archive detail from session storage", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -2858,7 +2893,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("shows a mock download action for generated archive items", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -3040,7 +3075,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("opens archive overflow actions and deletes an archive item", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -3263,7 +3298,7 @@ describe("ChatGenerateClient", () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.uploadPhotoAsset).mockClear();
     vi.mocked(api.startPhotoGeneration).mockClear();
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       BRAND_KIT_STORAGE_KEY,
       JSON.stringify({
         businessName: "연남 테스트 카페",

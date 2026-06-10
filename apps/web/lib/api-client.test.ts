@@ -11,6 +11,7 @@ import {
   getBrandKit,
   getCurrentBrandKit,
   getGenerationJob,
+  getArchiveItem,
   listReferenceTemplates,
   listArchiveItems,
   saveArchiveItem,
@@ -576,6 +577,27 @@ describe("api-client backend contract routes", () => {
           }
         });
       }
+      if (String(input).includes("/api/archive/items/archive_1")) {
+        return jsonResponse({
+          ad_id: "archive_1",
+          job_id: "job_1",
+          output_id: "output_1",
+          title: "봄을 닮은 한 잔",
+          image_url: null,
+          thumbnail_url: null,
+          download_url: "https://cdn.example.com/archive_1.png",
+          status: "saved",
+          ad_format: "1:1",
+          platform: "인스타 피드",
+          source: "generated",
+          storage_provider: "r2",
+          mime_type: "image/png",
+          width: 1200,
+          height: 1200,
+          saved_at: "2026-06-04T00:00:00+00:00",
+          metadata: { tags: ["카페"] }
+        });
+      }
       return jsonResponse({
         success: true,
         items: [
@@ -601,6 +623,7 @@ describe("api-client backend contract routes", () => {
       metadata: { tags: ["카페"] }
     });
     const listed = await listArchiveItems({ limit: 20 });
+    const detailed = await getArchiveItem("archive_1");
     const deleted = await deleteArchiveItem("archive_1");
 
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items");
@@ -613,6 +636,7 @@ describe("api-client backend contract routes", () => {
     });
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
     expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
+    expect(String(fetchMock.mock.calls[3][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
     expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
       expect.objectContaining({ authorization: "Bearer access_token_1" })
     );
@@ -622,9 +646,16 @@ describe("api-client backend contract routes", () => {
     expect(fetchMock.mock.calls[2][1]?.headers).toEqual(
       expect.objectContaining({ authorization: "Bearer access_token_1" })
     );
+    expect(fetchMock.mock.calls[3][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
     expect(saved.item.adId).toBe("archive_1");
     expect(saved.item.savedAt).toBe("2026-06-04T00:00:00+00:00");
     expect(listed.items[0].jobId).toBe("job_1");
+    expect(detailed.outputId).toBe("output_1");
+    expect(detailed.downloadUrl).toBe("https://cdn.example.com/archive_1.png");
+    expect(detailed.storageProvider).toBe("r2");
+    expect(detailed.width).toBe(1200);
     expect(deleted.item.adId).toBe("archive_1");
   });
 

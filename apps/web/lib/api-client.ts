@@ -235,13 +235,19 @@ export type ArchiveItemSource = "generated" | "reference_template" | "uploaded";
 export interface ArchiveItem {
   adId: string;
   jobId?: string | null;
+  outputId?: string | null;
   title: string;
   thumbnailUrl?: string | null;
   imageUrl?: string | null;
+  downloadUrl?: string | null;
   status: ArchiveItemStatus;
   adFormat?: string | null;
   platform?: string | null;
   source: string;
+  storageProvider?: string | null;
+  mimeType?: string | null;
+  width?: number | null;
+  height?: number | null;
   createdAt?: string | null;
   savedAt?: string | null;
   metadata: Record<string, unknown>;
@@ -278,13 +284,19 @@ export interface ArchiveMutationResponse {
 type RawArchiveItem = {
   ad_id: string;
   job_id?: string | null;
+  output_id?: string | null;
   title: string;
   thumbnail_url?: string | null;
   image_url?: string | null;
+  download_url?: string | null;
   status?: ArchiveItemStatus;
   ad_format?: string | null;
   platform?: string | null;
   source?: string;
+  storage_provider?: string | null;
+  mime_type?: string | null;
+  width?: number | null;
+  height?: number | null;
   created_at?: string | null;
   saved_at?: string | null;
   metadata?: Record<string, unknown>;
@@ -334,7 +346,7 @@ async function postJson<TResponse>(path: string, body: unknown, headers: Request
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(normalizeApiErrorMessage(payload?.message || payload?.error || "API request failed"));
+    throw apiErrorFrom(response, payload);
   }
   return payload as TResponse;
 }
@@ -354,7 +366,7 @@ async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(normalizeApiErrorMessage(payload?.message || payload?.error || "API request failed"));
+    throw apiErrorFrom(response, payload);
   }
   return payload as TResponse;
 }
@@ -382,7 +394,7 @@ async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, h
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(normalizeApiErrorMessage(payload?.message || payload?.error || "API request failed"));
+    throw apiErrorFrom(response, payload);
   }
   return payload as TResponse;
 }
@@ -395,12 +407,33 @@ async function patchJson<TResponse>(path: string, body: unknown): Promise<TRespo
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(normalizeApiErrorMessage(payload?.message || payload?.error || "API request failed"));
+    throw apiErrorFrom(response, payload);
   }
   return payload as TResponse;
 }
 
-function normalizeApiErrorMessage(message: string): string {
+export class ApiError extends Error {
+  errorCode?: string;
+  status: number;
+
+  constructor(message: string, options: { errorCode?: string; status: number }) {
+    super(message);
+    this.name = "ApiError";
+    this.errorCode = options.errorCode;
+    this.status = options.status;
+  }
+}
+
+function apiErrorFrom(response: Response, payload: { message?: string; error?: string; error_code?: string } | null): ApiError {
+  const errorCode = typeof payload?.error_code === "string" ? payload.error_code : undefined;
+  const rawMessage = payload?.message || payload?.error || "API request failed";
+  return new ApiError(normalizeApiErrorMessage(rawMessage, errorCode), { errorCode, status: response.status });
+}
+
+function normalizeApiErrorMessage(message: string, errorCode?: string): string {
+  if (errorCode === "thread_limit_reached") {
+    return "채팅 스레드 개수가 한도에 도달했어요. 기존 스레드를 보관함으로 정리한 뒤 새로 시작해주세요.";
+  }
   if (message.includes("OPENAI_API_KEY missing")) {
     return "이미지 생성 API 키가 설정되지 않았어요. OPENAI_API_KEY를 확인해주세요.";
   }
@@ -701,6 +734,13 @@ export async function listArchiveItems(params: {
   }));
 }
 
+export async function getArchiveItem(archiveItemId: string, params?: { workspaceId?: string }): Promise<ArchiveItem> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return getJson<RawArchiveItem>(`/api/archive/items/${encodeURIComponent(archiveItemId)}`, {
+    workspace_id: params?.workspaceId
+  }, authHeaders).then(mapArchiveItem);
+}
+
 export async function deleteArchiveItem(archiveItemId: string, params?: { workspaceId?: string }): Promise<ArchiveMutationResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   return deleteJson<RawArchiveMutationResponse>(`/api/archive/items/${encodeURIComponent(archiveItemId)}`, {
@@ -712,13 +752,19 @@ function mapArchiveItem(item: RawArchiveItem): ArchiveItem {
   return {
     adId: item.ad_id,
     jobId: item.job_id,
+    outputId: item.output_id,
     title: item.title,
     thumbnailUrl: item.thumbnail_url,
     imageUrl: item.image_url,
+    downloadUrl: item.download_url,
     status: item.status ?? "saved",
     adFormat: item.ad_format,
     platform: item.platform,
     source: item.source ?? "generated",
+    storageProvider: item.storage_provider,
+    mimeType: item.mime_type,
+    width: item.width,
+    height: item.height,
     createdAt: item.created_at,
     savedAt: item.saved_at,
     metadata: item.metadata ?? {}
