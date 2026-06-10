@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from orchestrator.app.core.config import _get_env
 from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.metadata_builders import metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -66,10 +67,20 @@ def interpret_brief_with_llm(state: MarketingState, text: str) -> tuple[BriefInt
 
 
 def should_attempt_brief_interpreter_llm(state: MarketingState) -> bool:
-    if str(state.get("user_plan") or "free") not in ALLOWED_BRIEF_LLM_PLANS:
-        return False
+    plan = str(state.get("user_plan") or "free")
     settings = get_llm_settings()
-    return settings.enable_api_call is True
+    if plan in ALLOWED_BRIEF_LLM_PLANS:
+        return settings.enable_api_call is True
+    # Task E B (2026-06-10): free 플랜은 유료 API 대신 로컬 self-hosted LLM(Gemma)이 배선됐을 때만
+    # 분류 LLM 허용 — 유료 호출 비용 0. node_runner free→local 게이트(#14)와 동일 전제
+    # (EASYADS_FREE_USE_LOCAL=1 + local_openai_compat base_url/model). 미배선이면 키워드+질문으로 degrade.
+    if plan == "free":
+        return (
+            _get_env("EASYADS_FREE_USE_LOCAL", "") == "1"
+            and bool(settings.local_llm_base_url)
+            and bool(settings.local_llm_model)
+        )
+    return False
 
 
 def build_brief_interpreter_metadata(state: MarketingState, text: str) -> dict[str, Any]:
