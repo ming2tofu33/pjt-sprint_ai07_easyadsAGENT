@@ -23,10 +23,10 @@ describe("SmartChatInput", () => {
   it("updates through the change event path used by existing flow tests", () => {
     render(<ControlledSmartChatInput />);
 
-    const input = screen.getByLabelText("광고 요청 입력");
+    const input = screen.getByLabelText("광고 요청 입력") as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "딸기라떼 광고 만들어줘" } });
 
-    expect(input.textContent).toBe("딸기라떼 광고 만들어줘");
+    expect(input.value).toBe("딸기라떼 광고 만들어줘");
   });
 
   it("submits on Enter", () => {
