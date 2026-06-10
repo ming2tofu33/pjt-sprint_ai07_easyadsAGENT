@@ -7,6 +7,9 @@ from difflib import SequenceMatcher
 from typing import Any, Callable
 
 from orchestrator.app.llm.copy_fallbacks import build_message_strategy, generate_fallback_candidates
+from orchestrator.app.llm.copy_grounding import evaluate_copy_grounding
+from orchestrator.app.llm.copy_prompts import build_copy_generation_v2_prompt
+from orchestrator.app.llm.copy_visual_intent import resolve_copy_visual_intent
 from orchestrator.app.llm.copy_tone_policy import get_copy_tone_policy, normalize_copy_for_business
 from orchestrator.app.schemas.llm_marketing import (
     CopyCandidate,
@@ -90,16 +93,23 @@ def generate_copy_candidates_v2_actual(
     max_candidates: int = 3,
 ) -> tuple[CopyGenerationV2Output, dict[str, Any]]:
     fallback = lambda: build_deterministic_copy_output_v2(state, max_candidates=max_candidates)
+    context = _context_from_state(state)
+    strategy = build_message_strategy(context)
+    visual_intent = resolve_copy_visual_intent(context, selected_reference_template=(state.get("selected_reference_template") if isinstance(state, dict) else None))
+    state["copy_visual_intent"] = visual_intent.model_dump()
+    grounded_prompt = build_copy_generation_v2_prompt(context=context, strategy=strategy, visual_intent=visual_intent)
+    if prompt:
+        grounded_prompt = f"{grounded_prompt}\n\nAdditional runner instruction:\n{prompt}"
     output, metadata = run_structured_node_fn(
         state,
         node_name="copy_generation_v2_actual",
         output_schema=CopyCandidateListOutput,
-        prompt=prompt,
+        prompt=grounded_prompt,
         fallback_fn=fallback,
         risk_level="medium",
         confidence=0.6,
         latency_budget="standard",
-        metadata={"schema_version": "copy_generation_v2_actual"},
+        metadata={"schema_version": "copy_generation_v2_actual", "copy_visual_intent": visual_intent.model_dump()},
     )
     if isinstance(output, CopyGenerationV2Output):
         output = CopyCandidateListOutput(candidates=output.candidates, recommended_candidate_id=output.recommended_candidate_id, metadata=output.metadata)
@@ -117,7 +127,7 @@ def generate_copy_candidates_v2_actual(
         candidates=ranked.candidates,
         ranking=ranking,
         recommended_candidate_id=ranking.recommended_candidate_id,
-        metadata={**output.metadata, "source": "actual_llm_or_fallback_v2"},
+        metadata={**output.metadata, "source": "actual_llm_or_fallback_v2", "copy_visual_intent": visual_intent.model_dump()},
     )
     return result, metadata
 
@@ -129,11 +139,13 @@ def rank_copy_candidates(
     business_type: str | None = None,
 ) -> CopyCandidateRankingOutput:
     context = _context_from_state(state)
+    if business_type and not context.business_type:
+        context = MarketingContext(business_type=business_type)
     business = business_type or (context.business_type if context else None)
     policy = get_copy_tone_policy(business)
     duplicate_ids = find_near_duplicate_candidate_ids(candidates)
     scorecards = [
-        score_copy_candidate_v2(candidate, policy=policy, duplicate=duplicate_ids.get(candidate.id), state=state)
+        score_copy_candidate_v2(candidate, policy=policy, duplicate=duplicate_ids.get(candidate.id), state=state, context=context)
         for candidate in candidates
     ]
     valid_cards = [card for card in scorecards if not card.hard_blocked]
@@ -228,12 +240,27 @@ def score_copy_candidate_v2(
     policy: dict[str, Any] | None = None,
     duplicate: tuple[str, str] | None = None,
     state: dict[str, Any] | None = None,
+    context: MarketingContext | None = None,
 ) -> CopyCandidateScoreCard:
     policy = policy or get_copy_tone_policy(None)
+    context = context or _context_from_state(state)
+    strategy = build_message_strategy(context)
+    grounding = evaluate_copy_grounding(candidate, context=context, strategy=strategy)
     text = joined_candidate_text(candidate)
     warnings: list[str] = []
     reasons: list[str] = []
     hard_blocked = False
+    grounding_penalty = 0.0
+    if grounding.wrong_domain_terms:
+        hard_blocked = True
+        grounding_penalty = 0.55
+        warnings.extend(f"wrong_domain:{term}" for term in grounding.wrong_domain_terms)
+        reasons.append("Candidate contains terms from a conflicting product domain.")
+    if not grounding.grounded:
+        hard_blocked = True
+        grounding_penalty = max(grounding_penalty, 0.45)
+        warnings.extend(grounding.reasons)
+        reasons.append("Candidate does not mention the current product/service anchor.")
     generic_penalty = 0.0
     if contains_generic_meta_phrase(text):
         generic_penalty = 0.45
@@ -257,12 +284,12 @@ def score_copy_candidate_v2(
     tone_fit = 0.85 if any(term and term in text for term in policy.get("avoid_terms", [])) else 1.0
     if tone_fit < 1.0:
         warnings.append("business_tone_avoid_term_detected")
-    specificity = _specificity_score(candidate)
-    business_fit = _business_fit_score(text, policy)
+    specificity = _specificity_score(candidate, grounding=grounding)
+    business_fit = _business_fit_score(text, policy, grounding=grounding, context=context, candidate=candidate)
     emotional_pull = _emotional_pull_score(text)
     clarity = _clarity_score(candidate)
     cta_relevance = _cta_relevance_score(candidate, policy)
-    visual_fit = _visual_fit_score(candidate)
+    visual_fit = _visual_fit_score(candidate, state=state)
     action_clarity = cta_relevance
     semantic = (
         specificity * 0.18
@@ -272,7 +299,7 @@ def score_copy_candidate_v2(
         + cta_relevance * 0.18
         + visual_fit * 0.12
     )
-    final = semantic - generic_penalty - fact_penalty - length_penalty - diversity_penalty
+    final = semantic - generic_penalty - fact_penalty - length_penalty - diversity_penalty - grounding_penalty
     final = final * tone_fit
     return CopyCandidateScoreCard(
         candidate_id=candidate.id,
@@ -291,7 +318,7 @@ def score_copy_candidate_v2(
         tone_fit_score=tone_fit,
         action_clarity_score=action_clarity,
         warnings=warnings,
-        reasons=reasons,
+        reasons=[*reasons, *grounding.reasons],
     )
 
 
@@ -373,8 +400,13 @@ def _unsupported_claims(text: str, state: dict[str, Any]) -> list[str]:
     return claims
 
 
-def _specificity_score(candidate: CopyCandidate) -> float:
+def _specificity_score(candidate: CopyCandidate, *, grounding=None) -> float:
     text = joined_candidate_text(candidate)
+    if grounding is not None:
+        base = 0.45 + grounding.product_relevance_score * 0.35
+        if grounding.required_terms_found:
+            base += 0.1
+        return max(0.0, min(1.0, round(base, 3)))
     if any(char.isdigit() for char in text):
         return 0.8
     if candidate.headline and len(candidate.headline) >= 6:
@@ -382,7 +414,12 @@ def _specificity_score(candidate: CopyCandidate) -> float:
     return 0.55
 
 
-def _business_fit_score(text: str, policy: dict[str, Any]) -> float:
+def _business_fit_score(text: str, policy: dict[str, Any], *, grounding=None, context: MarketingContext | None = None, candidate: CopyCandidate | None = None) -> float:
+    if grounding is not None:
+        score = 0.35 + grounding.business_relevance_score * 0.35 + grounding.product_relevance_score * 0.25
+        if candidate and context and context.promotion_goal and _cta_relevance_score(candidate, policy) >= 0.8:
+            score += 0.05
+        return max(0.0, min(1.0, round(score, 3)))
     avoid_terms = policy.get("avoid_terms", [])
     if any(term and term in text for term in avoid_terms):
         return 0.55
@@ -413,12 +450,22 @@ def _cta_relevance_score(candidate: CopyCandidate, policy: dict[str, Any]) -> fl
     return 0.65
 
 
-def _visual_fit_score(candidate: CopyCandidate) -> float:
-    if candidate.angle == "emotion_first":
-        return 0.86
-    if candidate.angle == "product_first":
-        return 0.78
-    return 0.8
+def _visual_fit_score(candidate: CopyCandidate, *, state: dict[str, Any] | None = None) -> float:
+    intent_data = (state or {}).get("copy_visual_intent") or ((state or {}).get("copy_visual_intent_spec") or {})
+    hierarchy = intent_data.get("hierarchy") if isinstance(intent_data, dict) else None
+    cta_visibility = intent_data.get("cta_visibility") if isinstance(intent_data, dict) else None
+    score = 0.74
+    if hierarchy in {"editorial_product", "menu_showcase"} and candidate.angle == "product_first":
+        score = 0.9
+    elif hierarchy == "conversion" and candidate.cta:
+        score = 0.86
+    elif candidate.angle == "emotion_first":
+        score = 0.78
+    if cta_visibility == "hidden" and candidate.cta:
+        score -= 0.12
+    if cta_visibility == "required" and not candidate.cta:
+        score -= 0.18
+    return max(0.0, min(1.0, round(score, 3)))
 
 
 def _candidate_angle(candidates: list[CopyCandidate], candidate_id: str) -> str | None:

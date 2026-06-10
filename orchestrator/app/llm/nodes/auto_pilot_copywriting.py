@@ -71,7 +71,17 @@ def apply_auto_pilot_v2_quality(state: MarketingState, output: CopywritingOutput
         metadata={"source": "auto_pilot_llm"},
     )
     ranking = rank_copy_candidates([candidate], state=state)
-    if ranking.scorecards and ranking.scorecards[0].hard_blocked:
+    blocking_warnings = set(ranking.scorecards[0].warnings if ranking.scorecards else [])
+    should_replace = bool(
+        ranking.scorecards
+        and ranking.scorecards[0].hard_blocked
+        and (
+            any(warning.startswith("wrong_domain:") for warning in blocking_warnings)
+            or "generic_or_meta_phrase_detected" in blocking_warnings
+            or "unsupported_fact_detected" in blocking_warnings
+        )
+    )
+    if should_replace:
         fallback = generate_copy_candidates_v2(state)
         selected = select_recommended_copy(fallback.candidates, fallback.ranking)
         if selected is not None:

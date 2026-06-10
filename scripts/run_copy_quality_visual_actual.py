@@ -14,8 +14,12 @@ from typing import Any, Literal
 from PIL import Image, ImageChops
 from pydantic import BaseModel, Field
 
+from orchestrator.app.llm.copy_visual_intent import resolve_copy_visual_intent
+from orchestrator.app.llm.nodes.copy_spec_parser import copy_spec_parser_node
+from orchestrator.app.llm.nodes.text_layout_planner import text_layout_planner_node
 from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
-from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, FontMetric, NormalizedBBox, TextLayoutSpec, TextSlot, TextStyleSpec, TypographyRule
+from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
+from orchestrator.app.schemas.llm_marketing import MarketingCopy, MarketingContext
 from orchestrator.app.t2i.engines.base import T2IGenerationInput, T2IGenerationOutput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from orchestrator.app.t2i.settings import load_t2i_settings
@@ -39,6 +43,13 @@ VISUAL_CASES = {
 }
 
 
+VISUAL_CONTEXTS = {
+    "macaron_collection_001": {"business_type": "macaron", "item_or_service": "마카롱 컬렉션", "promotion_goal": "menu_discovery", "brand_tone": "premium"},
+    "restaurant_bbq_001": {"business_type": "restaurant_bbq", "item_or_service": "숯불구이", "promotion_goal": "reservation_cta", "brand_tone": "premium"},
+    "beauty_nail_001": {"business_type": "beauty_nail", "item_or_service": "네일 디자인", "promotion_goal": "reservation_cta", "brand_tone": "premium"},
+}
+
+
 class CopyActualComparisonResult(BaseModel):
     baseline_copy_score: float
     v2_copy_score: float
@@ -58,6 +69,12 @@ class CopyActualComparisonResult(BaseModel):
     v2_unsupported_claim: bool
     baseline_text_readable: bool
     v2_text_readable: bool
+    copy_matches_product: bool = True
+    wrong_domain_terms: list[str] = Field(default_factory=list)
+    cta_needed: bool = False
+    cta_style_fit: float = 0.0
+    information_hierarchy_fit: float = 0.0
+    reference_style_alignment: float = 0.0
     preferred_version: Literal["baseline", "v2", "tie"]
     improvement_reasons: list[str] = Field(default_factory=list)
     remaining_copy_issues: list[str] = Field(default_factory=list)
@@ -182,14 +199,21 @@ def generate_flux2_background(case_id: str, *, case_dir: Path, seed: int | None)
 
 
 def render_baseline_and_v2_copy(case_id: str, background_path: Path, copy: dict[str, str], output_dir: Path, label: str) -> Path:
+    context = MarketingContext(**VISUAL_CONTEXTS[case_id])
+    intent = resolve_copy_visual_intent(context)
     state = {
         "job_id": f"{case_id}_{label}",
         "thread_id": f"{case_id}_thread",
         "t2i_result": {"image_paths": [str(background_path)]},
-        "copy_spec": build_copy_spec(copy),
-        "text_layout_spec": build_layout_spec(),
-        "text_style_spec": build_style_spec(),
+        "context": context.model_dump(),
+        "marketing_copy": MarketingCopy(headline=copy["headline"], subcopy=copy.get("subcopy"), cta=copy.get("cta")).model_dump(),
+        "copy_visual_intent": intent.model_dump(),
+        "ad_format_spec": {"ad_format": "instagram_feed", "width": 1024, "height": 1024},
+        "current_brief": {},
     }
+    state.update(copy_spec_parser_node(state))
+    state.update(text_style_binder_node(state))
+    state.update(text_layout_planner_node(state))
     result = text_renderer_node(state)
     assert result.get("status") == "overlaying_text", result
     rendered = Path(result["final_image_path"])
@@ -208,7 +232,10 @@ def run_actual_vlm_comparison(case_id: str, baseline_path: Path, v2_path: Path) 
         "baseline_emotional_pull, v2_emotional_pull, baseline_cta_relevance, v2_cta_relevance, "
         "baseline_generic_phrase, v2_generic_phrase, baseline_unsupported_claim, v2_unsupported_claim, "
         "baseline_text_readable, v2_text_readable, preferred_version, improvement_reasons, "
-        "remaining_copy_issues, layout_issues. preferred_version must be baseline, v2, or tie. "
+        "remaining_copy_issues, layout_issues, copy_matches_product, wrong_domain_terms, cta_needed, "
+        "cta_style_fit, information_hierarchy_fit, reference_style_alignment. "
+        "preferred_version must be baseline, v2, or tie. Never prefer v2 when copy_matches_product is false, "
+        "wrong_domain_terms is non-empty, v2_business_fit is below 6, or v2_unsupported_claim is true. "
         f"Case id: {case_id}. First image is baseline. Second image is Copy Quality v2."
     )
     response = _create_openai_vision_response(model=model, prompt=prompt, image_paths=[baseline_path, v2_path])
@@ -240,12 +267,15 @@ def normalize_vlm_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "v2_unsupported_claim",
         "baseline_text_readable",
         "v2_text_readable",
+        "copy_matches_product",
     }
-    list_fields = {"improvement_reasons", "remaining_copy_issues", "layout_issues"}
+    list_fields = {"improvement_reasons", "remaining_copy_issues", "layout_issues", "wrong_domain_terms"}
     for field in score_fields:
         normalized[field] = float(normalized.get(field, 0) or 0)
+    for field in ("cta_style_fit", "information_hierarchy_fit", "reference_style_alignment"):
+        normalized[field] = float(normalized.get(field, 0) or 0)
     for field in bool_fields:
-        value = normalized.get(field, False)
+        value = normalized.get(field, True if field == "copy_matches_product" else False)
         if isinstance(value, bool):
             normalized[field] = value
         elif isinstance(value, (int, float)):
@@ -253,7 +283,7 @@ def normalize_vlm_payload(payload: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(value, str):
             normalized[field] = value.strip().lower() in {"true", "yes", "1", "high", "present", "readable"}
         else:
-            normalized[field] = False
+            normalized[field] = True if field == "copy_matches_product" else False
     for field in list_fields:
         value = normalized.get(field, [])
         if isinstance(value, list):
@@ -263,6 +293,8 @@ def normalize_vlm_payload(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             normalized[field] = []
     preferred = str(normalized.get("preferred_version", "tie")).strip().lower()
+    if not normalized.get("copy_matches_product", True) or normalized.get("wrong_domain_terms") or normalized.get("v2_business_fit", 0) < 6 or normalized.get("v2_unsupported_claim"):
+        preferred = "baseline" if normalized.get("baseline_business_fit", 0) >= normalized.get("v2_business_fit", 0) else "tie"
     normalized["preferred_version"] = preferred if preferred in {"baseline", "v2", "tie"} else "tie"
     return normalized
 
@@ -359,52 +391,6 @@ def assert_actual_vlm_result(result: Any) -> None:
     data = result.model_dump() if hasattr(result, "model_dump") else dict(result)
     if data.get("preferred_version") not in {"baseline", "v2", "tie"}:
         raise AssertionError("VLM structured result is invalid.")
-
-
-def build_copy_spec(copy: dict[str, str]) -> dict[str, Any]:
-    return CopySpec(
-        items=[
-            CopyItem(role="headline", text=copy["headline"], priority=1),
-            CopyItem(role="body", text=copy["subcopy"], priority=2),
-            CopyItem(role="cta", text=copy["cta"], priority=3),
-        ]
-    ).model_dump()
-
-
-def build_layout_spec() -> dict[str, Any]:
-    metric_head = FontMetric(base_size_ratio=0.052, min_size_ratio=0.026, max_size_ratio=0.07, weight=800)
-    metric_body = FontMetric(base_size_ratio=0.032, min_size_ratio=0.02, max_size_ratio=0.046, weight=500)
-    return TextLayoutSpec(
-        template="left_text_right_product",
-        canvas_width=1024,
-        canvas_height=1024,
-        auto_find_empty_space=False,
-        slots=[
-            TextSlot(slot_id="headline", role="headline", bbox=NormalizedBBox(x=0.07, y=0.18, w=0.42, h=0.14), font_metric=metric_head, alignment="left", max_lines=2),
-            TextSlot(slot_id="body", role="body", bbox=NormalizedBBox(x=0.07, y=0.34, w=0.42, h=0.18), font_metric=metric_body, alignment="left", max_lines=3),
-            TextSlot(slot_id="cta", role="cta", bbox=NormalizedBBox(x=0.07, y=0.56, w=0.32, h=0.1), font_metric=metric_body, alignment="left", max_lines=1),
-        ],
-    ).model_dump()
-
-
-def build_style_spec() -> dict[str, Any]:
-    return TextStyleSpec(
-        profile="premium",
-        typography=TypographyRule(
-            headline_font="Pretendard",
-            body_font="Pretendard",
-            headline_weight=800,
-            body_weight=500,
-            headline_size_ratio=0.052,
-            body_size_ratio=0.032,
-            primary_color="#FFFFFF",
-            accent_color="#F5D38A",
-            text_color_on_light="#241B16",
-            text_color_on_dark="#FFFFFF",
-            default_overlay="drop_shadow",
-            use_text_plate=True,
-        ),
-    ).model_dump()
 
 
 def build_comparison_sheet(left: Path, right: Path, output_path: Path) -> Path:

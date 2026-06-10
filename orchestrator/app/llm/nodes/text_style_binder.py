@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState, context_to_model
-from orchestrator.app.schemas.text_layout import StyleProfile, TextStyleSpec, TypographyRule
+from orchestrator.app.llm.copy_visual_intent import resolve_copy_visual_intent
+from orchestrator.app.schemas.llm_marketing import MarketingContext
+from orchestrator.app.schemas.text_layout import CopyVisualIntent, StyleProfile, TextStyleSpec, TypographyRule
 
 
 TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
@@ -105,15 +106,53 @@ TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
 }
 
 
-def text_style_binder_node(state: MarketingState) -> dict[str, Any]:
-    context = context_to_model(state.get("context"))
-    profile = infer_style_profile(context.brand_tone, context.promotion_goal)
-    spec = TextStyleSpec(profile=profile, typography=TYPOGRAPHY_BY_PROFILE[profile])
+def text_style_binder_node(state: dict[str, Any]) -> dict[str, Any]:
+    context = _context_to_model(state.get("context"))
+    intent = CopyVisualIntent(**(state.get("copy_visual_intent") or resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template")).model_dump()))
+    profile = profile_for_intent(intent, infer_style_profile(context.brand_tone, context.promotion_goal))
+    typography = TYPOGRAPHY_BY_PROFILE[profile].model_copy(deep=True)
+    if intent.plate_policy == "none":
+        typography.use_text_plate = False
+        typography.default_overlay = "plain"
+    elif intent.plate_policy == "cta_only":
+        typography.use_text_plate = False
+        typography.default_overlay = "drop_shadow"
+    if intent.typography_mood in {"premium_serif", "editorial_mixed"}:
+        typography.headline_font = "RIDIBatang"
+        typography.body_font = "MaruBuri"
+    spec = TextStyleSpec(
+        profile=profile,
+        typography=typography,
+        role_styles={
+            "cta": {"visibility": intent.cta_visibility, "style": intent.cta_style, "plate_policy": intent.plate_policy},
+            "reference_layout_hint": intent.reference_layout_hint,
+            "reference_typography_hint": intent.reference_typography_hint,
+        },
+    )
     return {
         "text_style_spec": spec.model_dump(),
+        "copy_visual_intent": intent.model_dump(),
         "current_brief": {**state.get("current_brief", {}), "text_style_ready": True},
         "status": "planning_format",
     }
+
+
+def _context_to_model(context: dict[str, Any] | MarketingContext | None) -> MarketingContext:
+    if isinstance(context, MarketingContext):
+        return context
+    if isinstance(context, dict):
+        return MarketingContext(**context)
+    return MarketingContext()
+
+
+def profile_for_intent(intent: CopyVisualIntent, fallback: StyleProfile) -> StyleProfile:
+    if intent.typography_mood in {"premium_serif", "editorial_mixed"}:
+        return "premium"
+    if intent.typography_mood == "rounded_friendly":
+        return "cute"
+    if intent.typography_mood == "bold_promo":
+        return "event"
+    return fallback if fallback in {"clean", "premium", "cute", "event", "trendy", "emotional"} else "clean"
 
 
 def infer_style_profile(brand_tone: str | None, promotion_goal: str | None) -> StyleProfile:

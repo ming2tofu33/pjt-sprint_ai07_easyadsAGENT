@@ -34,6 +34,9 @@ LayoutTemplate = Literal[
     "centered_hero",
     "no_text",
 ]
+IntentHierarchy = Literal["editorial_product", "conversion", "menu_showcase", "minimal_premium", "cute_promo", "information_first"]
+CtaVisibility = Literal["required", "optional", "hidden"]
+CtaStyle = Literal["none", "text_link", "small_label", "pill_button", "solid_button"]
 WcagGrade = Literal["AAA", "AA", "AA_LARGE", "FAIL"]
 SuggestedAction = Literal["none", "swap_color", "add_overlay", "regenerate", "shrink"]
 RuleCheck = Literal["not_run", "pass", "fail"]
@@ -173,6 +176,22 @@ class TextStyleSpec(BaseModel):
     typography: TypographyRule
     brand_color_override: str | None = None
     brand_font_override: str | None = None
+    role_styles: dict[str, Any] = Field(default_factory=dict)
+
+
+class CopyVisualIntent(BaseModel):
+    hierarchy: IntentHierarchy
+    headline_emphasis: Literal["large_elegant", "large_bold", "medium_balanced", "minimal"]
+    body_density: Literal["none", "low", "medium", "high"]
+    cta_visibility: CtaVisibility
+    cta_style: CtaStyle
+    preferred_alignment: Literal["left", "center", "right", "adaptive"]
+    typography_mood: Literal["premium_serif", "clean_sans", "rounded_friendly", "bold_promo", "editorial_mixed"]
+    plate_policy: Literal["none", "subtle", "cta_only", "content_fit", "strong_panel"]
+    product_text_relationship: Literal["side_by_side", "text_over_negative_space", "top_bottom", "centered_minimal"]
+    reference_layout_hint: str | None = None
+    reference_typography_hint: str | None = None
+    reasoning_summary: str | None = None
 
 
 class ImagePromptSpec(BaseModel):

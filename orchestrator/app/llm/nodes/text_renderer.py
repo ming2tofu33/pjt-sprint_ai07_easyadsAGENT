@@ -244,7 +244,7 @@ def wrap_text(text: str, max_chars: int, max_lines: int) -> list[str]:
 
 def draw_overlay(draw: ImageDraw.ImageDraw, slot: TextSlot, x: int, y: int, w: int, h: int, style: TextStyleSpec) -> None:
     treatment = slot.overlay_treatment
-    if slot.role == "cta" and treatment in {"plain", "drop_shadow", "stroke"}:
+    if slot.role == "cta" and treatment in {"drop_shadow", "stroke"} and slot.overlay_opacity > 0:
         treatment = "solid_panel"
     if slot.role in {"promotion", "badge"} and treatment == "plain":
         treatment = "sticker_badge"
