@@ -83,6 +83,7 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
             if slot.alignment == "auto":
                 slot.alignment = "right" if slot.bbox.x > 0.5 else "left"
                 
+            apply_script_font_policy(slot, copy_item.text, style)
             x, y, w, h = slot.bbox.to_pixels(image.width, image.height)
             max_size = max(1, int(min(image.width, image.height) * slot.font_metric.max_size_ratio))
             min_size = max(1, int(min(image.width, image.height) * slot.font_metric.min_size_ratio))
@@ -259,6 +260,34 @@ def estimate_font_size(slot: TextSlot, canvas_w: int, canvas_h: int) -> int:
     minimum = int(min(canvas_w, canvas_h) * slot.font_metric.min_size_ratio)
     maximum = int(min(canvas_w, canvas_h) * slot.font_metric.max_size_ratio)
     return max(18, min(maximum, max(minimum, base)))
+
+
+def apply_script_font_policy(slot: TextSlot, text: str, style: TextStyleSpec) -> None:
+    direction = style.typography_art_direction or {}
+    if _contains_hanja(text):
+        slot.font_metric.font_family = direction.get("hanja_fallback_family_id") or "noto_serif_cjk_kr"
+        slot.font_metric.weight = 600 if slot.role == "headline" else 400
+        return
+    if slot.role == "headline" and _is_latin_only(text) and direction.get("latin_display_family_id"):
+        slot.font_metric.font_family = str(direction["latin_display_family_id"])
+        slot.font_metric.weight = int(direction.get("headline_weight") or slot.font_metric.weight)
+        return
+    if _contains_hangul(text) and slot.font_metric.font_family == "cormorant_garamond":
+        slot.font_metric.font_family = direction.get("korean_fallback_family_id") or "ridi_batang"
+        slot.font_metric.weight = 400
+
+
+def _contains_hangul(text: str) -> bool:
+    return any("\uac00" <= char <= "\ud7a3" for char in str(text or ""))
+
+
+def _contains_hanja(text: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in str(text or ""))
+
+
+def _is_latin_only(text: str) -> bool:
+    meaningful = [char for char in str(text or "") if char.isalpha()]
+    return bool(meaningful) and all(("A" <= char <= "Z") or ("a" <= char <= "z") for char in meaningful)
 
 
 def load_font(slot: TextSlot, size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, ResolvedFont, str | None]:

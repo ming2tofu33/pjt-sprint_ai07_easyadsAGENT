@@ -13,7 +13,9 @@ PairingPresetId = Literal[
     "clean_modern",
     "rounded_friendly",
     "bold_event",
-    "trustworthy",
+    "english_editorial",
+    "bilingual_editorial",
+    "hanja_safe_serif",
     "fallback",
 ]
 
@@ -28,6 +30,7 @@ class FontPairingPreset(BaseModel):
     headline: RoleFontChoice
     body: RoleFontChoice
     cta: RoleFontChoice
+    korean_fallback: RoleFontChoice | None = None
     moods: list[str]
     recommended_for: list[str]
 
@@ -56,8 +59,8 @@ PRESETS: dict[str, FontPairingPreset] = {
     "clean_modern": FontPairingPreset(
         preset_id="clean_modern",
         headline=RoleFontChoice(family_id="gmarket_sans", weight=700),
-        body=RoleFontChoice(family_id="pretendard", weight=400),
-        cta=RoleFontChoice(family_id="pretendard", weight=500),
+        body=RoleFontChoice(family_id="suit", weight=400),
+        cta=RoleFontChoice(family_id="suit", weight=500),
         moods=["clean", "modern"],
         recommended_for=["generic", "service", "modern_brand"],
     ),
@@ -77,19 +80,36 @@ PRESETS: dict[str, FontPairingPreset] = {
         moods=["bold", "event"],
         recommended_for=["discount_event", "promotion", "flyer"],
     ),
-    "trustworthy": FontPairingPreset(
-        preset_id="trustworthy",
-        headline=RoleFontChoice(family_id="sc_dream", weight=700),
-        body=RoleFontChoice(family_id="sc_dream", weight=400),
-        cta=RoleFontChoice(family_id="sc_dream", weight=500),
-        moods=["trustworthy", "clear"],
-        recommended_for=["clinic", "education", "reservation"],
+    "english_editorial": FontPairingPreset(
+        preset_id="english_editorial",
+        headline=RoleFontChoice(family_id="cormorant_garamond", weight=500),
+        body=RoleFontChoice(family_id="pretendard", weight=400),
+        cta=RoleFontChoice(family_id="pretendard", weight=500),
+        moods=["luxury", "editorial", "latin_display"],
+        recommended_for=["dessert", "fashion", "beauty", "english_headline"],
+    ),
+    "bilingual_editorial": FontPairingPreset(
+        preset_id="bilingual_editorial",
+        headline=RoleFontChoice(family_id="cormorant_garamond", weight=500),
+        body=RoleFontChoice(family_id="pretendard", weight=400),
+        cta=RoleFontChoice(family_id="pretendard", weight=500),
+        korean_fallback=RoleFontChoice(family_id="ridi_batang", weight=400),
+        moods=["luxury", "editorial", "bilingual"],
+        recommended_for=["macaron", "dessert", "premium_menu", "minimal_premium"],
+    ),
+    "hanja_safe_serif": FontPairingPreset(
+        preset_id="hanja_safe_serif",
+        headline=RoleFontChoice(family_id="noto_serif_cjk_kr", weight=600),
+        body=RoleFontChoice(family_id="noto_sans_cjk_kr", weight=400),
+        cta=RoleFontChoice(family_id="noto_sans_cjk_kr", weight=700),
+        moods=["traditional", "premium", "hanja_safe"],
+        recommended_for=["hanja", "traditional", "premium_hanja"],
     ),
     "fallback": FontPairingPreset(
         preset_id="fallback",
-        headline=RoleFontChoice(family_id="noto_sans_kr", weight=700),
-        body=RoleFontChoice(family_id="noto_sans_kr", weight=400),
-        cta=RoleFontChoice(family_id="noto_sans_kr", weight=500),
+        headline=RoleFontChoice(family_id="noto_sans_cjk_kr", weight=700),
+        body=RoleFontChoice(family_id="noto_sans_cjk_kr", weight=400),
+        cta=RoleFontChoice(family_id="noto_sans_cjk_kr", weight=700),
         moods=["neutral"],
         recommended_for=["fallback"],
     ),

@@ -279,6 +279,19 @@ class TypographyRenderTrace(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class TypographyLanguagePolicy(BaseModel):
+    primary_locale: Literal["ko-KR", "en-US", "mixed"] = "ko-KR"
+    headline_language_mode: Literal["korean", "english", "bilingual", "auto"] = "auto"
+    body_language_mode: Literal["korean", "english", "bilingual", "auto"] = "korean"
+    cta_language_mode: Literal["korean", "english", "bilingual", "auto"] = "auto"
+    allow_english_display_headline: bool = True
+    allow_english_brand_label: bool = True
+    allow_hanja: bool = False
+    english_allowed_roles: list[str] = Field(default_factory=lambda: ["brand_label", "eyebrow", "headline", "cta"])
+    korean_required_roles: list[str] = Field(default_factory=lambda: ["body"])
+    mixed_script_policy: Literal["allow_when_natural", "prefer_korean", "prefer_english", "forbid_mixed"] = "allow_when_natural"
+
+
 class TextStyleSpec(BaseModel):
     schema_version: Literal["1.0"] = "1.0"
     profile: StyleProfile

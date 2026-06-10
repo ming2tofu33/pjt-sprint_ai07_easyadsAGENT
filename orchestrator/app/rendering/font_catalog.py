@@ -1,4 +1,4 @@
-"""Bundled Korean font catalog for deterministic rendering."""
+"""Core bundled font catalog for typography renderer v2."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 
 FontCategory = Literal["serif", "sans", "rounded", "display"]
-FontScript = Literal["hangul", "latin", "digits", "punctuation"]
+FontScript = Literal["hangul", "latin", "hanja", "digits", "punctuation"]
 
 
 class FontFaceSpec(BaseModel):
@@ -20,7 +20,7 @@ class FontFaceSpec(BaseModel):
     relative_path: str
     weight: int
     style: Literal["normal"] = "normal"
-    scripts: list[FontScript] = ["hangul", "latin", "digits", "punctuation"]
+    scripts: list[FontScript]
     category: FontCategory
     moods: list[str]
     bundled: bool = True
@@ -29,27 +29,86 @@ class FontFaceSpec(BaseModel):
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 FONT_DIR = PROJECT_ROOT / "assets" / "fonts"
+CORE_FONT_FILE_NAMES = {
+    "RIDIBatang.otf",
+    "MaruBuri-Regular.ttf",
+    "MaruBuri-Bold.ttf",
+    "Pretendard-Regular.otf",
+    "Pretendard-Medium.otf",
+    "Pretendard-Bold.otf",
+    "SUIT-Regular.ttf",
+    "SUIT-Medium.ttf",
+    "SUIT-Bold.ttf",
+    "Hahmlet-Medium.ttf",
+    "Hahmlet-SemiBold.ttf",
+    "Hahmlet-Bold.ttf",
+    "NotoSansCJKkr-Regular.otf",
+    "NotoSansCJKkr-Bold.otf",
+    "NotoSerifCJKkr-Regular.otf",
+    "NotoSerifCJKkr-SemiBold.otf",
+    "CormorantGaramond-Regular.otf",
+    "CormorantGaramond-Medium.otf",
+    "CormorantGaramond-SemiBold.otf",
+    "GmarketSansTTFMedium.ttf",
+    "GmarketSansTTFBold.ttf",
+    "BMJUA_ttf.ttf",
+    "BMDOHYEON_ttf.ttf",
+}
+
+CORE_FONT_FAMILIES = {
+    "ridi_batang": {"roles": ["korean_headline", "brand_label"], "scripts": ["hangul", "latin", "digits", "punctuation"], "moods": ["premium", "editorial", "warm"]},
+    "maru_buri": {"roles": ["korean_headline", "korean_body"], "scripts": ["hangul", "latin", "digits", "punctuation"], "moods": ["soft", "beauty", "premium", "editorial"]},
+    "pretendard": {"roles": ["body", "cta", "label", "price"], "scripts": ["hangul", "latin", "digits", "punctuation"], "moods": ["modern", "legible", "neutral"]},
+    "suit": {"roles": ["body", "cta", "price", "label"], "scripts": ["hangul", "latin", "digits", "punctuation"], "moods": ["modern", "clean", "ui"]},
+    "hahmlet": {"roles": ["korean_display_headline"], "scripts": ["hangul", "latin", "digits", "punctuation"], "moods": ["editorial", "expressive", "classic"]},
+    "noto_sans_cjk_kr": {"roles": ["hanja_fallback", "body_fallback", "disclaimer"], "scripts": ["hangul", "latin", "hanja", "digits", "punctuation"], "moods": ["neutral", "legible", "fallback"]},
+    "noto_serif_cjk_kr": {"roles": ["hanja_fallback", "premium_hanja", "serif_fallback"], "scripts": ["hangul", "latin", "hanja", "digits", "punctuation"], "moods": ["premium", "traditional", "editorial"]},
+    "cormorant_garamond": {"roles": ["english_display_headline", "english_brand_label"], "scripts": ["latin", "digits", "punctuation"], "moods": ["luxury", "editorial", "fashion", "dessert"]},
+    "gmarket_sans": {"roles": ["modern_headline", "event_headline"], "scripts": ["hangul", "latin", "digits", "punctuation"], "moods": ["clean", "modern", "bold"]},
+    "bm_jua": {"roles": ["friendly_headline", "casual_cta"], "scripts": ["hangul", "latin", "digits", "punctuation"], "moods": ["friendly", "cute", "casual"]},
+    "bm_dohyeon": {"roles": ["event_headline", "impact_badge"], "scripts": ["hangul", "latin", "digits", "punctuation"], "moods": ["bold", "event", "impact"]},
+}
+
+
+def _face(font_id: str, family_id: str, name: str, file_name: str, weight: int, category: FontCategory) -> FontFaceSpec:
+    meta = CORE_FONT_FAMILIES[family_id]
+    return FontFaceSpec(
+        font_id=font_id,
+        family_id=family_id,
+        display_name=name,
+        relative_path=f"assets/fonts/{file_name}",
+        weight=weight,
+        category=category,
+        scripts=list(meta["scripts"]),
+        moods=list(meta["moods"]),
+        recommended_roles=list(meta["roles"]),
+    )
 
 
 _FACES: tuple[FontFaceSpec, ...] = (
-    FontFaceSpec(font_id="bm_dohyeon_regular", family_id="bm_dohyeon", display_name="BM DoHyeon", relative_path="assets/fonts/BMDOHYEON_ttf.ttf", weight=700, category="display", moods=["bold", "event", "impact"], recommended_roles=["headline", "badge"]),
-    FontFaceSpec(font_id="bm_jua_regular", family_id="bm_jua", display_name="BM Jua", relative_path="assets/fonts/BMJUA_ttf.ttf", weight=700, category="rounded", moods=["friendly", "cute", "casual"], recommended_roles=["headline", "cta"]),
-    FontFaceSpec(font_id="gmarket_sans_light", family_id="gmarket_sans", display_name="Gmarket Sans Light", relative_path="assets/fonts/GmarketSansTTFLight.ttf", weight=300, category="sans", moods=["clean", "modern"], recommended_roles=["body", "disclaimer"]),
-    FontFaceSpec(font_id="gmarket_sans_medium", family_id="gmarket_sans", display_name="Gmarket Sans Medium", relative_path="assets/fonts/GmarketSansTTFMedium.ttf", weight=500, category="sans", moods=["clean", "modern"], recommended_roles=["headline", "body", "cta"]),
-    FontFaceSpec(font_id="gmarket_sans_bold", family_id="gmarket_sans", display_name="Gmarket Sans Bold", relative_path="assets/fonts/GmarketSansTTFBold.ttf", weight=700, category="sans", moods=["clean", "bold", "event"], recommended_roles=["headline"]),
-    FontFaceSpec(font_id="maru_buri_light", family_id="maru_buri", display_name="Maru Buri Light", relative_path="assets/fonts/MaruBuri-Light.ttf", weight=300, category="serif", moods=["premium", "soft", "editorial"], recommended_roles=["body"]),
-    FontFaceSpec(font_id="maru_buri_regular", family_id="maru_buri", display_name="Maru Buri Regular", relative_path="assets/fonts/MaruBuri-Regular.ttf", weight=400, category="serif", moods=["premium", "soft", "editorial"], recommended_roles=["body"]),
-    FontFaceSpec(font_id="maru_buri_bold", family_id="maru_buri", display_name="Maru Buri Bold", relative_path="assets/fonts/MaruBuri-Bold.ttf", weight=700, category="serif", moods=["premium", "beauty", "editorial"], recommended_roles=["headline"]),
-    FontFaceSpec(font_id="noto_sans_kr_regular", family_id="noto_sans_kr", display_name="Noto Sans KR Regular", relative_path="assets/fonts/NotoSansKR-Regular.ttf", weight=400, category="sans", moods=["neutral", "legible"], recommended_roles=["body", "disclaimer"]),
-    FontFaceSpec(font_id="noto_sans_kr_medium", family_id="noto_sans_kr", display_name="Noto Sans KR Medium", relative_path="assets/fonts/NotoSansKR-Medium.ttf", weight=500, category="sans", moods=["neutral", "legible"], recommended_roles=["body", "cta"]),
-    FontFaceSpec(font_id="noto_sans_kr_bold", family_id="noto_sans_kr", display_name="Noto Sans KR Bold", relative_path="assets/fonts/NotoSansKR-Bold.ttf", weight=700, category="sans", moods=["neutral", "bold"], recommended_roles=["headline"]),
-    FontFaceSpec(font_id="pretendard_regular", family_id="pretendard", display_name="Pretendard Regular", relative_path="assets/fonts/Pretendard-Regular.otf", weight=400, category="sans", moods=["modern", "legible", "premium"], recommended_roles=["body", "disclaimer"]),
-    FontFaceSpec(font_id="pretendard_medium", family_id="pretendard", display_name="Pretendard Medium", relative_path="assets/fonts/Pretendard-Medium.otf", weight=500, category="sans", moods=["modern", "legible", "premium"], recommended_roles=["body", "cta"]),
-    FontFaceSpec(font_id="pretendard_bold", family_id="pretendard", display_name="Pretendard Bold", relative_path="assets/fonts/Pretendard-Bold.otf", weight=700, category="sans", moods=["modern", "bold"], recommended_roles=["headline"]),
-    FontFaceSpec(font_id="ridi_batang_regular", family_id="ridi_batang", display_name="RIDI Batang", relative_path="assets/fonts/RIDIBatang.otf", weight=400, category="serif", moods=["premium", "editorial", "warm"], recommended_roles=["headline", "brand_label"]),
-    FontFaceSpec(font_id="sc_dream_regular", family_id="sc_dream", display_name="S-Core Dream Regular", relative_path="assets/fonts/SCDream_Regular.otf", weight=400, category="sans", moods=["trustworthy", "clean"], recommended_roles=["body"]),
-    FontFaceSpec(font_id="sc_dream_medium", family_id="sc_dream", display_name="S-Core Dream Medium", relative_path="assets/fonts/SCDream_Medium.otf", weight=500, category="sans", moods=["trustworthy", "clean"], recommended_roles=["body", "cta"]),
-    FontFaceSpec(font_id="sc_dream_bold", family_id="sc_dream", display_name="S-Core Dream Bold", relative_path="assets/fonts/SCDream_Bold.otf", weight=700, category="sans", moods=["trustworthy", "bold"], recommended_roles=["headline"]),
+    _face("ridi_batang_regular", "ridi_batang", "RIDI Batang", "RIDIBatang.otf", 400, "serif"),
+    _face("maru_buri_regular", "maru_buri", "Maru Buri Regular", "MaruBuri-Regular.ttf", 400, "serif"),
+    _face("maru_buri_bold", "maru_buri", "Maru Buri Bold", "MaruBuri-Bold.ttf", 700, "serif"),
+    _face("pretendard_regular", "pretendard", "Pretendard Regular", "Pretendard-Regular.otf", 400, "sans"),
+    _face("pretendard_medium", "pretendard", "Pretendard Medium", "Pretendard-Medium.otf", 500, "sans"),
+    _face("pretendard_bold", "pretendard", "Pretendard Bold", "Pretendard-Bold.otf", 700, "sans"),
+    _face("suit_regular", "suit", "SUIT Regular", "SUIT-Regular.ttf", 400, "sans"),
+    _face("suit_medium", "suit", "SUIT Medium", "SUIT-Medium.ttf", 500, "sans"),
+    _face("suit_bold", "suit", "SUIT Bold", "SUIT-Bold.ttf", 700, "sans"),
+    _face("hahmlet_medium", "hahmlet", "Hahmlet Medium", "Hahmlet-Medium.ttf", 500, "serif"),
+    _face("hahmlet_semibold", "hahmlet", "Hahmlet SemiBold", "Hahmlet-SemiBold.ttf", 600, "serif"),
+    _face("hahmlet_bold", "hahmlet", "Hahmlet Bold", "Hahmlet-Bold.ttf", 700, "serif"),
+    _face("noto_sans_cjk_kr_regular", "noto_sans_cjk_kr", "Noto Sans CJK KR Regular", "NotoSansCJKkr-Regular.otf", 400, "sans"),
+    _face("noto_sans_cjk_kr_bold", "noto_sans_cjk_kr", "Noto Sans CJK KR Bold", "NotoSansCJKkr-Bold.otf", 700, "sans"),
+    _face("noto_serif_cjk_kr_regular", "noto_serif_cjk_kr", "Noto Serif CJK KR Regular", "NotoSerifCJKkr-Regular.otf", 400, "serif"),
+    _face("noto_serif_cjk_kr_semibold", "noto_serif_cjk_kr", "Noto Serif CJK KR SemiBold", "NotoSerifCJKkr-SemiBold.otf", 600, "serif"),
+    _face("cormorant_garamond_regular", "cormorant_garamond", "Cormorant Garamond Regular", "CormorantGaramond-Regular.otf", 400, "serif"),
+    _face("cormorant_garamond_medium", "cormorant_garamond", "Cormorant Garamond Medium", "CormorantGaramond-Medium.otf", 500, "serif"),
+    _face("cormorant_garamond_semibold", "cormorant_garamond", "Cormorant Garamond SemiBold", "CormorantGaramond-SemiBold.otf", 600, "serif"),
+    _face("gmarket_sans_medium", "gmarket_sans", "Gmarket Sans Medium", "GmarketSansTTFMedium.ttf", 500, "sans"),
+    _face("gmarket_sans_bold", "gmarket_sans", "Gmarket Sans Bold", "GmarketSansTTFBold.ttf", 700, "sans"),
+    _face("bm_jua_regular", "bm_jua", "BM Jua", "BMJUA_ttf.ttf", 700, "rounded"),
+    _face("bm_dohyeon_regular", "bm_dohyeon", "BM DoHyeon", "BMDOHYEON_ttf.ttf", 700, "display"),
 )
 
 _ALIASES = {
@@ -57,10 +116,12 @@ _ALIASES = {
     "RIDI Batang": "ridi_batang",
     "MaruBuri": "maru_buri",
     "Pretendard": "pretendard",
-    "NotoSansKR": "noto_sans_kr",
-    "Noto Sans KR": "noto_sans_kr",
+    "SUIT": "suit",
+    "Hahmlet": "hahmlet",
+    "NotoSansCJKkr": "noto_sans_cjk_kr",
+    "Noto Serif CJK KR": "noto_serif_cjk_kr",
+    "Cormorant Garamond": "cormorant_garamond",
     "GmarketSans": "gmarket_sans",
-    "SCDream": "sc_dream",
     "BMDOHYEON": "bm_dohyeon",
     "BMJUA": "bm_jua",
 }
@@ -77,6 +138,21 @@ def list_font_faces() -> list[FontFaceSpec]:
 
 def list_font_families() -> list[str]:
     return sorted({face.family_id for face in _FACES})
+
+
+def list_extra_font_files() -> list[str]:
+    if not FONT_DIR.exists():
+        return []
+    return sorted(path.name for path in FONT_DIR.iterdir() if path.is_file() and path.name not in CORE_FONT_FILE_NAMES)
+
+
+def catalog_policy_summary() -> dict[str, object]:
+    return {
+        "active_core_font_count": len(_FACES),
+        "active_core_file_count": len(CORE_FONT_FILE_NAMES),
+        "extra_font_files_detected": len(list_extra_font_files()),
+        "extra_font_policy": "ignored_by_catalog",
+    }
 
 
 @lru_cache(maxsize=64)
@@ -119,10 +195,10 @@ def font_catalog_for_llm() -> list[dict[str, object]]:
             {
                 "family_id": family_id,
                 "category": faces[0].category,
-                "font_ids": [face.font_id for face in faces],
+                "scripts": sorted({script for face in faces for script in face.scripts}),
                 "supported_weights": [face.weight for face in faces],
                 "moods": sorted({mood for face in faces for mood in face.moods}),
-                "recommended_roles": sorted({role for face in faces for role in face.recommended_roles}),
+                "roles": sorted({role for face in faces for role in face.recommended_roles}),
             }
         )
     return families

@@ -3,17 +3,20 @@ import pytest
 from orchestrator.app.llm.nodes.typography_art_director import TypographyArtDirection, select_typography_art_direction
 
 
-def test_macaron_uses_editorial_serif_sans_and_no_button():
+def test_macaron_uses_bilingual_editorial_and_no_button():
     direction = select_typography_art_direction(
         {
             "context": {"business_type": "macaron", "promotion_goal": "menu_discovery"},
             "copy_visual_intent": {"typography_mood": "premium_serif", "hierarchy": "editorial_product", "cta_visibility": "optional"},
         }
     )
-    assert direction.preset_id == "editorial_serif_sans"
-    assert direction.headline_family_id == "ridi_batang"
+    assert direction.preset_id == "bilingual_editorial"
+    assert direction.headline_family_id == "cormorant_garamond"
     assert direction.body_family_id == "pretendard"
     assert direction.cta_treatment == "editorial_underline"
+    assert direction.language_policy.primary_locale == "mixed"
+    assert direction.language_policy.body_language_mode == "korean"
+    assert direction.headline_script == "latin"
     assert len({direction.headline_family_id, direction.body_family_id, direction.cta_family_id}) <= 2
 
 
@@ -54,3 +57,24 @@ def test_editorial_button_corrected():
         cta_treatment="button",
     )
     assert direction.cta_treatment == "editorial_underline"
+
+
+def test_hangul_headline_cormorant_falls_back_to_korean_family():
+    direction = TypographyArtDirection(
+        preset_id="bilingual_editorial",
+        headline_family_id="cormorant_garamond",
+        body_family_id="pretendard",
+        cta_family_id="pretendard",
+        headline_weight=500,
+        body_weight=400,
+        cta_weight=500,
+        headline_scale="display_large",
+        body_scale="body_small",
+        headline_tracking="tight",
+        body_tracking="normal",
+        headline_leading="compact",
+        body_leading="relaxed",
+        headline_script="hangul",
+        korean_fallback_family_id="ridi_batang",
+    )
+    assert direction.headline_family_id == "ridi_batang"

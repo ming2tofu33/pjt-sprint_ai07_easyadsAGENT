@@ -8,7 +8,23 @@ def test_typography_runner_creates_font_catalog_artifacts(tmp_path, monkeypatch)
     monkeypatch.setattr("sys.argv", ["run_typography_renderer_actual.py", "--output-dir", str(out)])
     assert runner.main() == 0
     summary = json.loads((out / "typography_actual_summary.json").read_text(encoding="utf-8"))
-    assert summary["actual_generation_performed"] is False
+    assert summary["actual_generation_performed"] is True
     assert (out / "font_catalog_preview.png").exists()
     assert (out / "font_catalog_result.json").exists()
-    assert summary["font_catalog"]["font_count"] >= 18
+    assert summary["font_catalog"]["active_core_font_count"] == 23
+    case_dir = out / "macaron_collection_001"
+    assert (case_dir / "comparison_sheet_3way.png").exists()
+    result = json.loads((case_dir / "result.json").read_text(encoding="utf-8"))
+    assert result["status"] == "completed"
+    assert result["selected_preset"] == "bilingual_editorial"
+    assert result["language_policy"]["body_language_mode"] == "korean"
+    assert result["font_path_null"] == 0
+    assert result["fallback_font_count"] == 0
+
+
+def test_typography_actual_runner_does_not_complete_unknown_cases(tmp_path, monkeypatch):
+    out = tmp_path / "typography"
+    monkeypatch.setattr("sys.argv", ["run_typography_renderer_actual.py", "--cases", "unknown_case", "--output-dir", str(out)])
+    assert runner.main() == 0
+    summary = json.loads((out / "typography_actual_summary.json").read_text(encoding="utf-8"))
+    assert summary["runs"][0]["status"] == "skipped"
