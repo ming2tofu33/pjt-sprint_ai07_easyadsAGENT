@@ -18,7 +18,10 @@ import {
   startChatGeneration,
   startPhotoGeneration,
   updateBrandKit,
-  uploadPhotoAsset
+  uploadPhotoAsset,
+  uploadReferenceImageToR2,
+  createAdminReferenceTemplate,
+  listAdminReferenceTemplates
 } from "./api-client";
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
@@ -657,6 +660,116 @@ describe("api-client backend contract routes", () => {
     expect(detailed.storageProvider).toBe("r2");
     expect(detailed.width).toBe(1200);
     expect(deleted.item.adId).toBe("archive_1");
+  });
+
+
+  it("uploads reference images through presign, R2 PUT, and complete", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/assets/uploads/presign")) {
+        return jsonResponse({
+          asset: { asset_id: "asset_abc", kind: "reference", status: "pending" },
+          upload: { method: "PUT", url: "https://r2.example.com/upload", headers: { "Content-Type": "image/png" } }
+        });
+      }
+      if (url === "https://r2.example.com/upload") {
+        return new Response(null, { status: 200 });
+      }
+      return jsonResponse({
+        success: true,
+        asset: {
+          assetId: "asset_abc",
+          kind: "reference",
+          status: "ready",
+          imageUrl: "https://cdn.example.com/reference.png",
+          mimeType: "image/png",
+          sizeBytes: 3,
+          width: 1200,
+          height: 900,
+          storageProvider: "r2"
+        }
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "reference.png", { type: "image/png" });
+    const result = await uploadReferenceImageToR2(file);
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/assets/uploads/presign");
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(expect.objectContaining({ authorization: "Bearer access_token_1" }));
+    expect(fetchMock.mock.calls[1]).toEqual([
+      "https://r2.example.com/upload",
+      expect.objectContaining({ method: "PUT", body: file })
+    ]);
+    expect(fetchMock.mock.calls[2][0]).toBe("http://127.0.0.1:4000/api/assets/uploads/asset_abc/complete");
+    expect(result.status).toBe("ready");
+    expect(result.width).toBe(1200);
+  });
+
+  it("lists and creates admin reference templates with auth", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return jsonResponse({
+          template: {
+            template_id: "ref_cafe_admin",
+            title: "관리자 카페 샘플",
+            category: "cafe",
+            tags: ["음료"],
+            business_types: ["cafe"],
+            ad_formats: ["instagram_feed"],
+            platforms: ["instagram"],
+            thumbnail_url: "https://cdn.example.com/ref.png",
+            preview_url: "https://cdn.example.com/ref.png",
+            style_keywords: ["clean"],
+            color_palette: ["#FFFFFF"],
+            popularity_score: 0,
+            status: "draft"
+          }
+        });
+      }
+      return jsonResponse({
+        success: true,
+        items: [
+          {
+            template_id: "ref_cafe_admin",
+            title: "관리자 카페 샘플",
+            category: "cafe",
+            tags: ["음료"],
+            business_types: ["cafe"],
+            ad_formats: ["instagram_feed"],
+            platforms: ["instagram"],
+            style_keywords: ["clean"],
+            color_palette: ["#FFFFFF"],
+            popularity_score: 0,
+            status: "draft"
+          }
+        ]
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const listed = await listAdminReferenceTemplates();
+    const created = await createAdminReferenceTemplate({ assetId: "asset_abc", title: "관리자 카페 샘플", category: "cafe" });
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/admin/references");
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(expect.objectContaining({ authorization: "Bearer access_token_1" }));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ assetId: "asset_abc", title: "관리자 카페 샘플" });
+    expect(listed[0].status).toBe("draft");
+    expect(created.templateId).toBe("ref_cafe_admin");
   });
 
   it("archives chat threads through the BFF", async () => {

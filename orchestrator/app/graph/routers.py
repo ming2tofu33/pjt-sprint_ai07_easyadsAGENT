@@ -1,4 +1,4 @@
-﻿"""Conditional routers for the LLM/LangGraph intake mini graph."""
+"""Conditional routers for the LLM/LangGraph intake mini graph."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ def route_by_entry_mode(state: MarketingState) -> str:
 
 
 def route_after_input_assets(state: MarketingState) -> str:
-    if state.get("source_image_path"):
+    if state.get("source_asset_id") or state.get("source_image_path"):
         return "product_preprocess"
-    if state.get("reference_image_path"):
+    if state.get("reference_asset_id") or state.get("reference_image_path"):
         return "reference_preprocess"
     return "validator"
 
@@ -31,7 +31,7 @@ def route_after_reference_template_resolve(state: MarketingState) -> str:
 
 
 def route_after_product_preprocess(state: MarketingState) -> str:
-    if state.get("reference_image_path") and not state.get("reference_style_profile"):
+    if (state.get("reference_asset_id") or state.get("reference_image_path")) and not state.get("reference_style_profile"):
         return "reference_preprocess"
     return "validator"
 

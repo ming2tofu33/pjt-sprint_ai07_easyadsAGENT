@@ -12,13 +12,16 @@ from orchestrator.app.chat_threads.errors import (
     ChatThreadServiceError,
 )
 from orchestrator.app.generation_jobs.service import reset_generation_job_store_for_tests
+from orchestrator.app.chat_threads.service import reset_chat_thread_store_for_tests
 
 
 @pytest.fixture(autouse=True)
 def reset_store():
     reset_generation_job_store_for_tests()
+    reset_chat_thread_store_for_tests()
     yield
     reset_generation_job_store_for_tests()
+    reset_chat_thread_store_for_tests()
 
 
 @pytest.fixture()

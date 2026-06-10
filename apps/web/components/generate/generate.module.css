@@ -730,6 +730,12 @@
   margin-top: 8px;
 }
 
+.smartChatInput {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .briefRefinementArea {
   margin-top: 16px;
 }
@@ -814,6 +820,39 @@
   resize: none;
   overflow-y: auto;
   overflow-wrap: anywhere;
+}
+
+.smartChatTextarea {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 42px;
+  padding: 10px 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  color: var(--color-text);
+  background: transparent;
+  font: inherit;
+  line-height: 1.45;
+  overflow-y: hidden;
+  overflow-wrap: anywhere;
+}
+
+.smartChatTextarea::placeholder {
+  color: var(--color-text-muted);
+}
+
+.smartChatTextarea:disabled {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.smartChatLeftControl,
+.smartChatRightControl {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sendButton {

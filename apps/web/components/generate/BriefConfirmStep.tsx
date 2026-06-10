@@ -4,10 +4,10 @@ import { Gift, Heart, Megaphone, Package, Send, Sparkles, Star } from "lucide-re
 import { useState } from "react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
-import { AutosizeTextarea } from "./AutosizeTextarea";
 import { BriefRow } from "./BriefRow";
 import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
+import { SmartChatInput } from "./SmartChatInput";
 import styles from "./generate.module.css";
 
 type BriefConfirmStepProps = {
@@ -80,26 +80,26 @@ export function BriefConfirmCard({ state, onGenerate, onRefineBrief }: BriefConf
 
       <section className={styles.briefRefinementArea} aria-label="브리프 추가 요청">
         <h3 className={styles.briefRefinementTitle}>더 반영할 내용이 있나요?</h3>
-        <label className={`${styles.inputCard} ${styles.briefRefinementInputCard}`}>
-          <AutosizeTextarea
-            className={`${styles.input} ${styles.promptTextarea}`}
-            value={refinementText}
-            aria-label="브리프 추가 요청 입력"
-            placeholder="예: 네일아트 사진을 더 크게 보여줘"
-            disabled={state.isLoading}
-            onChange={(event) => setRefinementText(event.target.value)}
-            onSubmit={submitRefinement}
-          />
-          <button
-            className={styles.sendButton}
-            type="button"
-            aria-label="브리프 추가 요청 보내기"
-            disabled={state.isLoading || refinementText.trim().length === 0}
-            onClick={submitRefinement}
-          >
-            <Send size={18} aria-hidden="true" />
-          </button>
-        </label>
+        <SmartChatInput
+          className={styles.briefRefinementInputCard}
+          value={refinementText}
+          ariaLabel="브리프 추가 요청 입력"
+          placeholder="예: 네일아트 사진을 더 크게 보여줘"
+          disabled={state.isLoading}
+          onChange={setRefinementText}
+          onSubmit={submitRefinement}
+          rightControl={
+            <button
+              className={styles.sendButton}
+              type="button"
+              aria-label="브리프 추가 요청 보내기"
+              disabled={state.isLoading || refinementText.trim().length === 0}
+              onClick={submitRefinement}
+            >
+              <Send size={18} aria-hidden="true" />
+            </button>
+          }
+        />
         {state.errorMessage ? <p className={styles.helperText}>{state.errorMessage}</p> : null}
       </section>
 

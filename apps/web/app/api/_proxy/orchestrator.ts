@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 type ProxyMethod = "GET" | "POST" | "PATCH";
 type ProxyOptions = {
   injectVerifiedUserId?: boolean;
+  injectVerifiedUserIdHeader?: boolean;
 };
 type ProxyError = Error & {
   statusCode?: number;
@@ -80,13 +81,20 @@ export async function proxyOrchestratorJson(
   bodyTransform?: (body: unknown) => unknown,
   options: ProxyOptions = {}
 ) {
+  const headers: Record<string, string> = { "content-type": "application/json" };
   const init: RequestInit = {
     method,
-    headers: { "content-type": "application/json" },
+    headers,
     cache: "no-store"
   };
 
   try {
+    if (options.injectVerifiedUserIdHeader) {
+      const userId = await resolveSupabaseUserId(request);
+      if (userId) {
+        headers["X-EasyAds-User-Id"] = userId;
+      }
+    }
     if (method !== "GET") {
       const body = await request.text();
       if (body) {

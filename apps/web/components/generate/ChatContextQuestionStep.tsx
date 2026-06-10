@@ -3,9 +3,9 @@
 import { Send } from "lucide-react";
 import { useState } from "react";
 import type { ChatFlowState, OptionItem } from "@/types/marketing";
-import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { MascotImage } from "./MascotImage";
+import { SmartChatInput } from "./SmartChatInput";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -107,20 +107,20 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
       </div>
 
       {effectiveShowCustomInput ? (
-        <label className={`${styles.inputCard} ${styles.contextAnswerInputCard}`}>
-          <AutosizeTextarea
-            className={`${styles.input} ${styles.promptTextarea}`}
-            value={customText}
-            aria-label="직접 답변 입력"
-            placeholder="직접 입력"
-            disabled={state.isLoading}
-            onChange={(event) => setCustomText(event.target.value)}
-            onSubmit={submitCustomAnswer}
-          />
-          <button className={styles.sendButton} type="button" aria-label="직접 답변 보내기" disabled={state.isLoading} onClick={submitCustomAnswer}>
-            <Send size={18} aria-hidden="true" />
-          </button>
-        </label>
+        <SmartChatInput
+          className={styles.contextAnswerInputCard}
+          value={customText}
+          ariaLabel="직접 답변 입력"
+          placeholder="직접 입력"
+          disabled={state.isLoading}
+          onChange={setCustomText}
+          onSubmit={submitCustomAnswer}
+          rightControl={
+            <button className={styles.sendButton} type="button" aria-label="직접 답변 보내기" disabled={state.isLoading} onClick={submitCustomAnswer}>
+              <Send size={18} aria-hidden="true" />
+            </button>
+          }
+        />
       ) : selectedOption ? (
         <button className={styles.primaryButton} type="button" disabled={state.isLoading} onClick={submitSelectedOption}>
           선택 완료

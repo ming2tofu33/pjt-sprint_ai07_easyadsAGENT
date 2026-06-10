@@ -19,7 +19,11 @@ from orchestrator.app.db.repositories import chat_messages as chat_message_repo
 from orchestrator.app.db.repositories import chat_threads as chat_thread_repo
 from orchestrator.app.db.repositories import workspaces as workspace_repo
 from orchestrator.app.db.session import db_transaction
-from orchestrator.app.chat_threads.errors import ChatThreadArchivedError, ChatThreadHasActiveJobError
+from orchestrator.app.chat_threads.errors import (
+    ChatThreadArchivedError,
+    ChatThreadHasActiveJobError,
+    ChatThreadLimitReachedError,
+)
 from orchestrator.app.chat_threads.sanitization import sanitize_chat_payload
 
 # ---------------------------------------------------------------------------
@@ -291,6 +295,17 @@ def clear_thread_active_job(
 
 def _create_chat_thread_memory(request: ChatThreadCreateRequest) -> ChatThreadResponse:
     with _STORE_LOCK:
+        # Mirror the postgres per-workspace guard: cap non-archived threads per owner.
+        max_threads = db_settings.get_max_threads_per_workspace()
+        existing = sum(
+            1
+            for t in _CHAT_THREADS.values()
+            if _owner_matches(t, request.user_id) and not t.get("archived_at")
+        )
+        if existing >= max_threads:
+            raise ChatThreadLimitReachedError(
+                f"Workspace already has the maximum of {max_threads} active chat threads."
+            )
         now = _now_iso()
         tid = f"thread_{uuid4().hex}"
         thread = ChatThreadResponse(

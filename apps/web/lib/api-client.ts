@@ -125,6 +125,51 @@ export type ReferenceImageUploadResponse = {
   sizeBytes: number;
 };
 
+export type AssetUploadResponse = {
+  assetId: string;
+  kind: "upload" | "source" | "reference" | string;
+  status: "pending" | "ready" | "failed" | string;
+  imageUrl?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number | null;
+  width?: number | null;
+  height?: number | null;
+  storageProvider?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type AdminReferenceTemplate = ReferenceTemplateCard & {
+  width?: number | null;
+  height?: number | null;
+  status?: "active" | "inactive" | "draft" | string;
+  source?: string | null;
+  licenseNote?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type AdminReferenceTemplateCreateInput = {
+  assetId: string;
+  title: string;
+  description?: string | null;
+  category: string;
+  subCategory?: string | null;
+  tags?: string[];
+  businessTypes?: string[];
+  adFormats?: string[];
+  platforms?: string[];
+  aspectRatio?: string | null;
+  styleKeywords?: string[];
+  colorPalette?: string[];
+  layoutHint?: string | null;
+  typographyHint?: string | null;
+  backgroundStyle?: string | null;
+  popularityScore?: number;
+  status?: "active" | "inactive" | "draft";
+  licenseNote?: string | null;
+  copyrightStatus?: string;
+  metadata?: Record<string, unknown>;
+};
+
 export type ReferenceQueryParams = Record<string, string | number | boolean | string[] | undefined | null>;
 export type BrandKitPayload = Record<string, unknown>;
 export interface GenerationJobCreateInput {
@@ -433,7 +478,7 @@ function apiErrorFrom(response: Response, payload: { message?: string; error?: s
 
 function normalizeApiErrorMessage(message: string, errorCode?: string): string {
   if (errorCode === "thread_limit_reached") {
-    return "채팅 스레드 개수가 한도에 도달했어요. 기존 스레드를 보관함으로 정리한 뒤 새로 시작해주세요.";
+    return "작업은 최대 3개까지만 만들 수 있어요. 새 작업을 시작하려면 기존 작업 하나를 삭제해주세요.";
   }
   if (message.includes("OPENAI_API_KEY missing")) {
     return "이미지 생성 API 키가 설정되지 않았어요. OPENAI_API_KEY를 확인해주세요.";
@@ -512,6 +557,42 @@ export async function uploadReferenceAsset(file: File): Promise<ReferenceImageUp
   };
 }
 
+function mapAssetResponse(item: RawAssetResponse): AssetUploadResponse {
+  return {
+    assetId: item.assetId ?? item.asset_id ?? "",
+    kind: item.kind ?? "reference",
+    status: item.status ?? "pending",
+    imageUrl: item.imageUrl ?? item.image_url,
+    mimeType: item.mimeType ?? item.mime_type,
+    sizeBytes: item.sizeBytes ?? item.size_bytes,
+    width: item.width,
+    height: item.height,
+    storageProvider: item.storageProvider ?? item.storage_provider,
+    metadata: item.metadata
+  };
+}
+
+export async function uploadReferenceImageToR2(file: File): Promise<AssetUploadResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  const presign = await postJson<RawAssetPresignResponse>("/api/assets/uploads/presign", {
+    kind: "reference",
+    filename: file.name,
+    mimeType: file.type || "image/png",
+    sizeBytes: file.size
+  }, authHeaders);
+  const asset = mapAssetResponse(presign.asset);
+  const uploadResponse = await fetch(presign.upload.url, {
+    method: presign.upload.method,
+    headers: presign.upload.headers ?? { "Content-Type": file.type || "image/png" },
+    body: file
+  });
+  if (!uploadResponse.ok) {
+    throw new ApiError("레퍼런스 이미지를 스토리지에 업로드하지 못했어요.", { status: uploadResponse.status });
+  }
+  const complete = await postJson<RawAssetCompleteResponse>(`/api/assets/uploads/${encodeURIComponent(asset.assetId)}/complete`, {}, authHeaders);
+  return mapAssetResponse(complete.asset);
+}
+
 export function startPhotoGeneration(input: {
   userInput: string;
   sourceImagePath: string;
@@ -535,6 +616,58 @@ export function startPhotoGeneration(input: {
     referenceImagePath: input.referenceImagePath ?? undefined
   });
 }
+
+type RawAssetResponse = {
+  assetId?: string;
+  asset_id?: string;
+  kind?: string;
+  status?: string;
+  imageUrl?: string | null;
+  image_url?: string | null;
+  mimeType?: string | null;
+  mime_type?: string | null;
+  sizeBytes?: number | null;
+  size_bytes?: number | null;
+  width?: number | null;
+  height?: number | null;
+  storageProvider?: string | null;
+  storage_provider?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+type RawAssetPresignResponse = {
+  asset: RawAssetResponse;
+  upload: {
+    method: "PUT";
+    url: string;
+    headers?: Record<string, string>;
+    expires_at?: string;
+    expiresAt?: string;
+  };
+};
+
+type RawAssetCompleteResponse = {
+  success?: boolean;
+  asset: RawAssetResponse;
+};
+
+type RawAdminReferenceTemplate = RawReferenceTemplateCard & {
+  width?: number | null;
+  height?: number | null;
+  status?: string;
+  source?: string | null;
+  license_note?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+type RawAdminReferenceListResponse = {
+  success?: boolean;
+  items?: RawAdminReferenceTemplate[];
+};
+
+type RawAdminReferenceItemResponse = {
+  template: RawAdminReferenceTemplate;
+};
 
 type RawReferenceTemplateCard = {
   template_id: string;
@@ -663,6 +796,41 @@ export function fetchSimilarReferences(templateId: string, params?: ReferenceQue
   }));
 }
 
+
+function mapAdminReferenceTemplate(item: RawAdminReferenceTemplate): AdminReferenceTemplate {
+  return {
+    ...mapReferenceTemplateCard(item),
+    width: item.width,
+    height: item.height,
+    status: item.status,
+    source: item.source,
+    licenseNote: item.license_note,
+    metadata: item.metadata ?? {}
+  };
+}
+
+export async function listAdminReferenceTemplates(params: { activeOnly?: boolean } = {}): Promise<AdminReferenceTemplate[]> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return getJson<RawAdminReferenceListResponse>("/api/admin/references", {
+    active_only: params.activeOnly
+  }, authHeaders).then((payload) => (payload.items ?? []).map(mapAdminReferenceTemplate));
+}
+
+export async function createAdminReferenceTemplate(input: AdminReferenceTemplateCreateInput): Promise<AdminReferenceTemplate> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return postJson<RawAdminReferenceItemResponse>("/api/admin/references", input, authHeaders).then((payload) => mapAdminReferenceTemplate(payload.template));
+}
+
+export async function publishAdminReferenceTemplate(templateId: string): Promise<AdminReferenceTemplate> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return postJson<RawAdminReferenceItemResponse>(`/api/admin/references/${encodeURIComponent(templateId)}/publish`, {}, authHeaders).then((payload) => mapAdminReferenceTemplate(payload.template));
+}
+
+export async function unpublishAdminReferenceTemplate(templateId: string): Promise<AdminReferenceTemplate> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return postJson<RawAdminReferenceItemResponse>(`/api/admin/references/${encodeURIComponent(templateId)}/unpublish`, {}, authHeaders).then((payload) => mapAdminReferenceTemplate(payload.template));
+}
+
 export function getCurrentBrandKit(params?: { userId?: string }): Promise<unknown> {
   return getJson("/api/brand-kits/current", params?.userId ? { user_id: params.userId } : undefined);
 }
@@ -684,8 +852,9 @@ export async function createGenerationJob(payload: GenerationJobCreateInput): Pr
   return postJson<GenerationJobResponse>("/api/generation-jobs", payload, authHeaders);
 }
 
-export function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
-  return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`);
+export async function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`, undefined, authHeaders);
 }
 
 export async function answerGenerationJob(jobId: string, payload: GenerationJobAnswerPayload): Promise<GenerationJobResponse> {
