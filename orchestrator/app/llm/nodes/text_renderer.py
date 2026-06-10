@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 
-from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, load_font as load_resolved_font, resolve_font_path
-from orchestrator.app.rendering.text_metrics import fit_text_block_to_bbox
-from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, RenderResult, TextLayoutSpec, TextSlot, TextStyleSpec
+from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, ResolvedFont, load_font as load_resolved_font, resolve_font, resolve_font_path
+from orchestrator.app.rendering.text_metrics import draw_text_with_tracking, fit_text_block_to_bbox, measure_text_with_tracking
+from orchestrator.app.rendering.typography_color import choose_text_color
+from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, RenderResult, TextLayoutSpec, TextSlot, TextStyleSpec, TypographyRenderTrace
 
 if TYPE_CHECKING:
     from orchestrator.app.graph.state import MarketingState
@@ -44,6 +45,7 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
 
     warnings: list[str] = []
     overflow_errors: list[str] = []
+    render_traces: list[dict[str, Any]] = []
     rendered_count = 0
     skipped_count = 0
     with Image.open(background_path).convert("RGB") as image:
@@ -94,11 +96,15 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
                 max_size=max(max_size, estimated_size),
                 min_size=min(min_size, estimated_size),
                 line_height_ratio=slot.font_metric.line_height_em,
+                letter_spacing_em=slot.font_metric.letter_spacing_em,
             )
             font_size = int(fit["font_size"])
-            font, font_warning = load_font(slot, font_size)
+            font, resolved_font, font_warning = load_font(slot, font_size)
             if font_warning:
                 warnings.append(font_warning)
+            if resolved_font.fallback_used:
+                overflow_errors.append(f"slot {slot.slot_id} font fallback used: {resolved_font.source}")
+                continue
             lines = list(fit["lines"])
             if not fit["fits"]:
                 overflow_errors.append(f"slot {slot.slot_id} overflow: text does not fit within {slot.max_lines} lines")
@@ -107,9 +113,33 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
             line_height = int(getattr(font, "size", 18) * slot.font_metric.line_height_em)
             actual_h = line_height * len(lines)
             actual_y = y + max(0, (h - actual_h) // 2)
-            
+            color_result = choose_text_color(image, (x, y, w, h), role=slot.role, preferred=slot.text_color)
+            slot.text_color = color_result["text_color"]
             draw_overlay(draw, slot, x, actual_y, w, actual_h, style, lines=lines, font=font)
-            draw_wrapped_text(draw, lines, slot, font, x, y, w, h)
+            rendered_bbox = draw_wrapped_text(draw, lines, slot, font, x, y, w, h)
+            slot.rendered_lines = lines
+            slot.effective_font_size_px = font_size
+            slot.effective_weight = resolved_font.resolved_weight
+            trace = TypographyRenderTrace(
+                role=slot.role,
+                font_id=resolved_font.font_id,
+                family_id=resolved_font.family_id,
+                resolved_weight=resolved_font.resolved_weight,
+                source=resolved_font.source,
+                effective_font_size_px=font_size,
+                rendered_lines=lines,
+                rendered_bbox_px=rendered_bbox,
+                letter_spacing_px=round(float(fit.get("tracking_px") or font_size * slot.font_metric.letter_spacing_em), 2),
+                line_height_px=line_height,
+                text_color=slot.text_color,
+                contrast_ratio_min=float(color_result["contrast_ratio"]),
+                contrast_ratio_average=float(color_result["contrast_ratio"]),
+                overlay_treatment=slot.overlay_treatment,
+                overlay_bbox_px=None,
+                fallback_used=resolved_font.fallback_used,
+                warnings=[],
+            )
+            render_traces.append(trace.model_dump())
             rendered_count += 1
         image.save(preview_path if overflow_errors else final_path)
 
@@ -119,7 +149,7 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         rendered_slot_count=rendered_count,
         skipped_slot_count=skipped_count,
         warnings=warnings + overflow_errors,
-        metadata={"source_node": "text_renderer", "has_text_overlay": rendered_count > 0, "overflow_detected": bool(overflow_errors)},
+        metadata={"source_node": "text_renderer", "has_text_overlay": rendered_count > 0, "overflow_detected": bool(overflow_errors), "typography_render_traces": render_traces},
     )
     artifacts = list(state.get("artifact_refs") or [])
     if overflow_errors:
@@ -231,18 +261,17 @@ def estimate_font_size(slot: TextSlot, canvas_w: int, canvas_h: int) -> int:
     return max(18, min(maximum, max(minimum, base)))
 
 
-def load_font(slot: TextSlot, size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, str | None]:
-    weight = "bold" if slot.font_metric.weight >= 700 else None
+def load_font(slot: TextSlot, size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, ResolvedFont, str | None]:
     preferred = slot.font_metric.font_family
-    font = load_resolved_font(
-    size=size,
-    weight=weight,
-    preferred=preferred,)
-    if preferred and font and hasattr(font, "path"):
-        return font, None
-    if not resolve_font_path(preferred):
-        return font, f"slot {slot.slot_id} used default PIL font fallback"
-    return font, None
+    try:
+        font, resolved = resolve_font(family_id=preferred, weight=slot.font_metric.weight, size_px=size)
+        warning = f"slot {slot.slot_id} used {resolved.source} font fallback" if resolved.fallback_used else None
+        return font, resolved, warning
+    except Exception:
+        weight = "bold" if slot.font_metric.weight >= 700 else None
+        font = load_resolved_font(size=size, weight=weight, preferred=preferred)
+        resolved = ResolvedFont(font_id="unknown", family_id=str(preferred or "unknown"), requested_weight=slot.font_metric.weight, resolved_weight=slot.font_metric.weight, source="pil_default", fallback_used=True)
+        return font, resolved, f"slot {slot.slot_id} used default PIL font fallback"
 
 
 def wrap_text(text: str, max_chars: int, max_lines: int) -> list[str]:
@@ -309,14 +338,18 @@ def draw_overlay(
     draw.rounded_rectangle((box_x - pad, box_y - pad, box_x + box_w + pad, box_y + box_h + pad), radius=radius, fill=(r, g, b, alpha))
 
 
-def draw_wrapped_text(draw: ImageDraw.ImageDraw, lines: list[str], slot: TextSlot, font: ImageFont.ImageFont, x: int, y: int, w: int, h: int) -> None:
+def draw_wrapped_text(draw: ImageDraw.ImageDraw, lines: list[str], slot: TextSlot, font: ImageFont.ImageFont, x: int, y: int, w: int, h: int) -> tuple[int, int, int, int]:
     fill = hex_to_rgb(slot.text_color) + (255,)
     line_height = int(getattr(font, "size", 18) * slot.font_metric.line_height_em)
     total_h = line_height * len(lines)
     cursor_y = y + max(0, (h - total_h) // 2)
+    tracking_px = max(-2.0, min(8.0, getattr(font, "size", 18) * slot.font_metric.letter_spacing_em))
+    min_x = x + w
+    min_y = cursor_y
+    max_x = x
+    max_y = cursor_y
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        text_w = bbox[2] - bbox[0]
+        text_w = int(measure_text_with_tracking(draw, line, font=font, tracking_px=tracking_px))
         if slot.alignment == "left":
             cursor_x = x
         elif slot.alignment == "right":
@@ -324,9 +357,13 @@ def draw_wrapped_text(draw: ImageDraw.ImageDraw, lines: list[str], slot: TextSlo
         else:
             cursor_x = x + max(0, (w - text_w) // 2)
         if slot.overlay_treatment in {"drop_shadow", "stroke"}:
-            draw.text((cursor_x + 2, cursor_y + 2), line, font=font, fill=(0, 0, 0, 150))
-        draw.text((cursor_x, cursor_y), line, font=font, fill=fill)
+            draw_text_with_tracking(draw, (cursor_x + 2, cursor_y + 2), line, font=font, fill=(0, 0, 0, 150), tracking_px=tracking_px)
+        draw_text_with_tracking(draw, (cursor_x, cursor_y), line, font=font, fill=fill, tracking_px=tracking_px)
+        min_x = min(min_x, cursor_x)
+        max_x = max(max_x, cursor_x + text_w)
+        max_y = max(max_y, cursor_y + line_height)
         cursor_y += line_height
+    return (int(min_x), int(min_y), int(max_x), int(max_y))
 
 
 def hex_to_rgb(value: str) -> tuple[int, int, int]:

@@ -69,6 +69,14 @@ def test_text_renderer_renders_korean_roles_with_distinct_styles(tmp_path):
     assert Path(output["final_image_path"]).exists()
     assert output["render_result"]["rendered_slot_count"] == 2
     assert output["text_overlay_pending"] is False
+    traces = output["render_result"]["metadata"]["typography_render_traces"]
+    assert len(traces) == 2
+    assert all(trace["font_id"] for trace in traces)
+    assert all(trace["effective_font_size_px"] for trace in traces)
+    assert all(trace["rendered_lines"] for trace in traces)
+    assert all(trace["rendered_bbox_px"] for trace in traces)
+    assert all(trace["source"] == "bundled" for trace in traces)
+    assert all(trace["fallback_used"] is False for trace in traces)
 
 
 def test_text_renderer_overflow_returns_validation_preview_not_final_image(tmp_path):
