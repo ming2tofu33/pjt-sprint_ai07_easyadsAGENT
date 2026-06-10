@@ -93,13 +93,13 @@ def _result_state(copy_compliance_status="pass", gate=None, publication_ready=Tr
 def test_result_payload_has_copy_compliance_key():
     s = _result_state()
     update = result_node(s)
-    assert "copyCompliance" in update["result_payload"]["metadata"]
+    assert update["result_payload"]["compliance"] is not None
 
 
 def test_result_payload_copy_compliance_pass():
     s = _result_state(copy_compliance_status="pass", publication_ready=True)
     update = result_node(s)
-    cc = update["result_payload"]["metadata"]["copyCompliance"]
+    cc = update["result_payload"]["compliance"]
     assert cc["status"] == "pass"
     assert cc["publicationReady"] is True
     assert cc["findingCount"] == 0
@@ -130,7 +130,7 @@ def test_result_payload_copy_compliance_manual_review():
         publication_ready=False,
     )
     update = result_node(s)
-    cc = update["result_payload"]["metadata"]["copyCompliance"]
+    cc = update["result_payload"]["compliance"]
     assert cc["publicationReady"] is False
     assert cc["userAcknowledgedRisk"] is True
     assert cc["findingCount"] == 1
@@ -140,7 +140,7 @@ def test_result_payload_copy_compliance_manual_review():
 def test_result_payload_copy_compliance_warn():
     s = _result_state(copy_compliance_status="warn", publication_ready=True)
     update = result_node(s)
-    cc = update["result_payload"]["metadata"]["copyCompliance"]
+    cc = update["result_payload"]["compliance"]
     assert cc["status"] == "warn"
     assert cc["publicationReady"] is True
 
@@ -171,7 +171,7 @@ def test_result_payload_copy_compliance_findings_serialized():
     }
     s = _result_state(copy_compliance_status="evidence_required", gate=gate, publication_ready=False)
     update = result_node(s)
-    cc = update["result_payload"]["metadata"]["copyCompliance"]
+    cc = update["result_payload"]["compliance"]
     assert len(cc["findings"]) == 1
     finding = cc["findings"][0]
     assert finding["matchedText"] == "1위"

@@ -63,6 +63,7 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             "final": state.get("final_validation_report"),
         },
         artifact_refs=artifacts,
+        compliance=_build_copy_compliance_payload(state),
         metadata={
             "source_node": "result",
             "render_text_in_image": False,
@@ -72,7 +73,6 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             "requiresManualReview": requires_manual_review,
             "qualityRejected": quality_rejected,
             "qualityDecision": ocr_decision,
-            "copyCompliance": _build_copy_compliance_payload(state),
         },
     )
     payload_dict = payload.model_dump()

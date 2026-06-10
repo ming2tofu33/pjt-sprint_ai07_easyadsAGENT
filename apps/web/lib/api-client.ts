@@ -156,6 +156,7 @@ export type GenerationJobAnswerPayload = {
   selectedCopyId?: string;
   userCustomHeadline?: string;
   userCustomSubcopy?: string;
+  action?: string;
   payload?: Record<string, unknown>;
 };
 

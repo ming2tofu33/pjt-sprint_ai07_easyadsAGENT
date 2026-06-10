@@ -9,6 +9,7 @@ import {
   HelpCircle,
   Home,
   Image,
+  Layers,
   LogIn,
   LogOut,
   Mail,
@@ -91,6 +92,15 @@ export function AppSettingsStep() {
             </button>
           );
         })}
+      </section>
+
+      <section className={styles.settingsListGroup}>
+        <h2>요금제</h2>
+        <button type="button" onClick={() => router.push(buildMyHref("plan-info"))}>
+          <Layers size={18} aria-hidden="true" />
+          <strong>요금제 자세히 보기</strong>
+          <ChevronRight size={16} aria-hidden="true" />
+        </button>
       </section>
 
       <section className={styles.settingsListGroup}>

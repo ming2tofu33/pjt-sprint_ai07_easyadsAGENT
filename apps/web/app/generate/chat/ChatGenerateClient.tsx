@@ -1858,6 +1858,44 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
   }
 
+  async function handleComplianceAction(action: { id: string; label: string; available: boolean }) {
+    const jobId = state.generationJob?.job_id;
+    if (!jobId) {
+      return;
+    }
+
+    if (action.id === "cancel") {
+      setGenerationStage("brief");
+      dispatch({ type: "back" });
+      return;
+    }
+
+    dispatch({ type: "submitGenerationJobAnswer", label: action.label });
+
+    try {
+      const shouldShowFinalGenerationProgress = isClientFinalImageGenerationJob(state.generationJob);
+      const response = await answerGenerationJob(jobId, {
+        action: action.id,
+        displayText: action.label
+      });
+      if (shouldShowFinalGenerationProgress) {
+        setGenerationStage("generating");
+        lastPrimedStageRef.current = "generating";
+        await pollGenerationJobUntilDoneOrQuestion(response.job);
+        return;
+      }
+      setGenerationStage("jobQuestion");
+      lastPrimedStageRef.current = "start";
+      await pollGenerationJobUntilDoneOrQuestion(response.job, createInitialChatIntakeFromState());
+    } catch (error) {
+      dispatch({
+        type: "generationJobFailed",
+        message: error instanceof Error ? error.message : "선택을 보내지 못했어요. 잠시 후 다시 시도해주세요."
+      });
+      setGenerationStage("jobQuestion");
+    }
+  }
+
   async function handleOpenGeneratedResult() {
     const engine = state.selectedImageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
     const engineOption = getGenerationEngineOption(engine);
@@ -2261,6 +2299,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
           onSelectCopyCandidate={handleSelectGenerationJobCopyCandidate}
           onSubmitCustomCopy={handleSubmitGenerationJobCustomCopy}
+          onComplianceAction={handleComplianceAction}
         />
       ) : null}
 
