@@ -164,6 +164,11 @@ def options_node(state: MarketingState) -> dict[str, Any]:
         "user_selection": resume_payload,
         "option_question": question.model_dump(),
         "status": "updating_state",
+        # Surface the option_suggester (#6-P7) subcall records so eval can price it,
+        # and persist the per-field option cache. Overwrite semantics (mirrors validator).
+        "model_selections": state.get("model_selections", []),
+        "llm_call_results": state.get("llm_call_results", []),
+        "current_brief": state.get("current_brief", {}),
     }
 
 
