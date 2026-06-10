@@ -173,19 +173,51 @@ def _generate_actual_copy(case_id: str, args: argparse.Namespace) -> tuple[dict[
     if args.max_copy_calls < 1:
         raise RuntimeError("copy_actual_budget_missing")
     context = CASE_CONTEXTS[case_id]
-    state = create_state(case_id, context)
-    generated, metadata = run_actual_copy_generation(state)
-    selected = selected_copy_payload(generated)
-    grounding = selected_copy_grounding(generated, context)
-    token_usage = extract_token_usage(state) or extract_token_usage_from_metadata(metadata)
-    model_name = extract_model_name(metadata)
+    failures: list[dict[str, Any]] = []
+    for attempt in range(1, args.max_copy_calls + 1):
+        state = create_state(case_id, context)
+        generated, metadata = run_actual_copy_generation(state)
+        selected = selected_copy_payload(generated)
+        grounding = selected_copy_grounding(generated, context)
+        token_usage = extract_token_usage(state) or extract_token_usage_from_metadata(metadata)
+        model_name = extract_model_name(metadata)
+        selected_copy = {key: str((selected or {}).get(key) or "") for key in ("headline", "subcopy", "cta")}
+        failure = _copy_contract_failure(generated, metadata, selected, selected_copy, token_usage, model_name, grounding)
+        if failure is None:
+            return selected_copy, {
+                "provider": "openai",
+                "fallback_used": False,
+                "candidate_count": len(generated.candidates),
+                "wrong_domain_terms": grounding.get("wrong_domain_terms", []),
+                "product_drift_terms": grounding.get("product_drift_terms", []),
+                "internal_terms": grounding.get("internal_terms", []),
+                "cta_goal_mismatch_terms": grounding.get("cta_goal_mismatch_terms", []),
+                "model_name": model_name,
+                "token_usage_present": bool(token_usage),
+                "attempt": attempt,
+            }
+        failures.append(failure)
+    raise RuntimeError(f"openai_copy_actual_contract_failed:{failures[-1] if failures else 'unknown'}")
+
+
+def _copy_contract_failure(generated: Any, metadata: dict[str, Any], selected: dict[str, Any] | None, selected_copy: dict[str, str], token_usage: dict[str, Any] | None, model_name: str | None, grounding: dict[str, Any]) -> dict[str, Any] | None:
     if not actual_run_is_complete(bool(metadata.get("llm_attempted")), metadata, generated, selected, token_usage, model_name, grounding):
-        raise RuntimeError("openai_copy_actual_contract_failed")
-    selected_copy = {key: str((selected or {}).get(key) or "") for key in ("headline", "subcopy", "cta")}
+        return {
+            "reason": "base_actual_contract",
+            "llm_attempted": bool(metadata.get("llm_attempted")),
+            "fallback_used": bool(metadata.get("fallback_used")),
+            "candidate_count": len(getattr(generated, "candidates", []) or []),
+            "selected_copy": selected_copy,
+            "grounding": grounding,
+            "token_usage_present": bool(token_usage),
+            "model_name": model_name,
+        }
+    if grounding.get("product_drift_terms") or grounding.get("internal_terms") or grounding.get("cta_goal_mismatch_terms"):
+        return {"reason": "grounding_contract", "selected_copy": selected_copy, "grounding": grounding}
     for value in selected_copy.values():
-        if "..." in value or any(term in value for term in ("beauty_nail", "restaurant_bbq", "copy_")):
-            raise RuntimeError("copy_contains_internal_or_truncated_text")
-    return selected_copy, {"provider": "openai", "fallback_used": False, "candidate_count": len(generated.candidates), "wrong_domain_terms": grounding.get("wrong_domain_terms", []), "model_name": model_name, "token_usage_present": bool(token_usage)}
+        if "..." in value or any(term in value for term in ("beauty_nail", "restaurant_bbq", "copy_", "menu_discovery")):
+            return {"reason": "internal_or_truncated_text", "selected_copy": selected_copy}
+    return None
 
 
 def _build_render_state(case_id: str, background_path: Path, copy: dict[str, str], *, use_image_aware: bool) -> dict[str, Any]:

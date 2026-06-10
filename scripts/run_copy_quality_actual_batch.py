@@ -152,6 +152,9 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 "selected_grounding": selected_grounding,
                 "grounded": bool(selected_grounding.get("grounded")),
                 "wrong_domain_terms": selected_grounding.get("wrong_domain_terms", []),
+                "product_drift_terms": selected_grounding.get("product_drift_terms", []),
+                "internal_terms": selected_grounding.get("internal_terms", []),
+                "cta_goal_mismatch_terms": selected_grounding.get("cta_goal_mismatch_terms", []),
                 "provider": model_selection.get("provider"),
                 "selected_model_class": model_selection.get("selected_model_class"),
                 "fallback_used": bool(llm_metadata.get("fallback_used")),
@@ -306,6 +309,9 @@ def actual_run_is_complete(
         and model_name
         and selected_grounding.get("grounded")
         and not selected_grounding.get("wrong_domain_terms")
+        and not selected_grounding.get("product_drift_terms")
+        and not selected_grounding.get("internal_terms")
+        and not selected_grounding.get("cta_goal_mismatch_terms")
     )
 
 

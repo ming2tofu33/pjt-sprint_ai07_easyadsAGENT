@@ -17,6 +17,9 @@ class CopyGroundingResult(BaseModel):
     domain_terms_found: list[str] = Field(default_factory=list)
     wrong_domain_terms: list[str] = Field(default_factory=list)
     weak_wrong_domain_terms: list[str] = Field(default_factory=list)
+    product_drift_terms: list[str] = Field(default_factory=list)
+    internal_terms: list[str] = Field(default_factory=list)
+    cta_goal_mismatch_terms: list[str] = Field(default_factory=list)
     unsupported_entities: list[str] = Field(default_factory=list)
     product_relevance_score: float = Field(default=0.0, ge=0.0, le=1.0)
     business_relevance_score: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -55,6 +58,54 @@ BUSINESS_DOMAIN: dict[str, str] = {
     "flower": "flower",
 }
 
+INTERNAL_TERMS = (
+    "menu_discovery",
+    "reservation_cta",
+    "visit_or_interest",
+    "benefit_action_first",
+    "product_first",
+    "emotion_first",
+    "beauty_nail",
+    "restaurant_bbq",
+)
+
+GENERIC_STRATEGY_TERMS = (
+    "가능한",
+    "서비스",
+    "상담",
+    "문의",
+    "필요한",
+    "선택",
+    "방문",
+    "예약",
+    "available",
+    "service",
+    "consultation",
+    "?곷떞",
+    "臾몄쓽",
+    "?덉빟",
+    "?쒕퉬??",
+    "媛?ν븳",
+)
+
+PRODUCT_SYNONYMS: dict[str, list[str]] = {
+    "macaron": ["마카롱", "마카롱 컬렉션", "프렌치 마카롱", "留덉뭅濡?", "留덉뭅濡?而щ젆??", "?붿???"],
+    "beauty_nail": ["네일", "네일 디자인", "?ㅼ씪", "?붿옄??", "?먮걹"],
+}
+
+PRODUCT_DRIFT_TERMS: dict[str, list[str]] = {
+    "macaron": ["고기", "숯불", "구이", "회식", "식사 메뉴", "식사", "음료", "怨좉린", "??텋", "援ъ씠", "?뚯떇", "?앹궗 硫붾돱", "?뚮즺"],
+}
+
+CTA_POLICY: dict[str, dict[str, list[str]]] = {
+    "menu_discovery": {
+        "allowed": ["메뉴 보기", "컬렉션 보기", "오늘의 맛 보기", "라인업 보기", "", "硫붾돱 蹂닿린", "而щ젆?? 蹂닿린", "?쇱씤?? 蹂닿린"],
+        "blocked": ["상담", "문의", "예약", "신청", "?곷떞", "臾몄쓽", "?덉빟", "?좎껌"],
+    },
+    "reservation_cta": {"allowed": ["예약하기", "방문 예약", "일정 확인", "?덉빟"], "blocked": []},
+    "consultation": {"allowed": ["상담 신청", "문의하기", "?곷떞", "臾몄쓽"], "blocked": []},
+}
+
 GENERIC_ABSTRACT_TERMS = ["소중한 시간", "감동", "일상", "꿈", "미래", "특별한 경험"]
 
 
@@ -74,12 +125,15 @@ def evaluate_copy_grounding(
     required_found = sorted(set(product_found + domain_found))
     anchor_text = _normalize(" ".join(all_anchors))
     wrong_terms = [term for term in find_wrong_domain_terms(text, context.business_type) if _normalize(term) not in anchor_text]
+    product_drift = find_product_drift_terms(text, context.business_type)
+    internal_terms = find_internal_terms(text)
+    cta_mismatch = find_cta_goal_mismatch_terms(candidate.cta or "", context.promotion_goal)
     weak_wrong_terms = [term for term in find_weak_wrong_domain_terms(text, context.business_type) if _normalize(term) not in anchor_text]
     if weak_wrong_terms and (len(weak_wrong_terms) >= 2 or not product_found):
         wrong_terms = sorted(set(wrong_terms + weak_wrong_terms))
     unsupported = [term for term in GENERIC_ABSTRACT_TERMS if term in text and not product_found]
     product_score = 1.0 if product_found else 0.45 if domain_found else 0.0
-    business_score = 1.0 if not wrong_terms else 0.0
+    business_score = 1.0 if not (wrong_terms or product_drift or internal_terms or cta_mismatch) else 0.0
     reasons: list[str] = []
     if not product_found:
         reasons.append("missing_product_or_service_anchor")
@@ -87,10 +141,16 @@ def evaluate_copy_grounding(
         reasons.append("domain_anchor_only")
     if wrong_terms:
         reasons.append("wrong_domain_terms_detected")
+    if product_drift:
+        reasons.append("product_drift_terms_detected")
+    if internal_terms:
+        reasons.append("internal_terms_detected")
+    if cta_mismatch:
+        reasons.append("cta_goal_mismatch")
     if unsupported:
         reasons.append("generic_unsupported_entities")
-    grounded = bool(product_found) and not wrong_terms
-    grounding_level = "grounded" if grounded else "partial" if domain_found and not wrong_terms else "missing"
+    grounded = bool(product_found) and not (wrong_terms or product_drift or internal_terms or cta_mismatch)
+    grounding_level = "grounded" if grounded else "partial" if domain_found and not (wrong_terms or product_drift or internal_terms) else "missing"
     return CopyGroundingResult(
         grounded=grounded,
         required_terms_found=required_found,
@@ -98,6 +158,9 @@ def evaluate_copy_grounding(
         domain_terms_found=domain_found,
         wrong_domain_terms=wrong_terms,
         weak_wrong_domain_terms=weak_wrong_terms,
+        product_drift_terms=product_drift,
+        internal_terms=internal_terms,
+        cta_goal_mismatch_terms=cta_mismatch,
         unsupported_entities=unsupported,
         product_relevance_score=round(product_score, 3),
         business_relevance_score=business_score,
@@ -120,23 +183,52 @@ def build_product_anchors(context: MarketingContext, strategy: CopyMessageStrate
         *(strategy.supported_facts if strategy else []),
     ]
     anchors: list[str] = []
+    business = str(context.business_type or "").lower()
+    anchors.extend(PRODUCT_SYNONYMS.get(business, []))
     for item in raw:
         if isinstance(item, list):
             anchors.extend(str(value) for value in item if value)
         elif item:
             anchors.extend(split_anchor_terms(str(item)))
-    return sorted(set(term for term in anchors if len(term) >= 2))
+    return sorted(set(term for term in anchors if len(term) >= 2 and not _is_generic_strategy_term(term)))
 
 
 def build_domain_anchors(context: MarketingContext) -> list[str]:
     anchors: list[str] = []
-    for item in [context.business_type, context.promotion_goal]:
+    for item in [context.business_type]:
         if item:
             anchors.extend(split_anchor_terms(str(item)))
     domain = BUSINESS_DOMAIN.get(str(context.business_type or "").lower())
     if domain:
         anchors.extend(DOMAIN_TERMS.get(domain, [])[:6])
     return sorted(set(term for term in anchors if len(term) >= 2))
+
+
+def find_internal_terms(text: str) -> list[str]:
+    found = [term for term in INTERNAL_TERMS if _contains_term(text, term)]
+    found.extend(re.findall(r"\b[a-z]+(?:_[a-z0-9]+)+\b", text))
+    return sorted(set(found))
+
+
+def find_product_drift_terms(text: str, business_type: str | None) -> list[str]:
+    terms = PRODUCT_DRIFT_TERMS.get(str(business_type or "").lower(), [])
+    return sorted(set(term for term in terms if _contains_term(text, term)))
+
+
+def find_cta_goal_mismatch_terms(cta: str, promotion_goal: str | None) -> list[str]:
+    policy = CTA_POLICY.get(str(promotion_goal or ""))
+    if not policy or not cta:
+        return []
+    normalized = _normalize(cta)
+    blocked = [term for term in policy.get("blocked", []) if _contains_term(normalized, term)]
+    if blocked:
+        return sorted(set(blocked))
+    if promotion_goal != "menu_discovery":
+        return []
+    allowed = policy.get("allowed", [])
+    if allowed and not any(_normalize(item) == normalized or (_normalize(item) and _normalize(item) in normalized) for item in allowed):
+        return [cta]
+    return []
 
 
 def find_wrong_domain_terms(text: str, business_type: str | None) -> list[str]:
@@ -146,6 +238,8 @@ def find_wrong_domain_terms(text: str, business_type: str | None) -> list[str]:
         if domain == expected:
             continue
         for term in terms:
+            if _is_generic_strategy_term(term):
+                continue
             if _contains_term(text, term):
                 wrong.append(term)
     return sorted(set(wrong))
@@ -166,6 +260,11 @@ def find_weak_wrong_domain_terms(text: str, business_type: str | None) -> list[s
 def split_anchor_terms(value: str) -> list[str]:
     parts = re.split(r"[\s,/\-|·]+", value)
     return [part.strip() for part in parts if len(part.strip()) >= 2]
+
+
+def _is_generic_strategy_term(term: str) -> bool:
+    normalized = _normalize(term)
+    return any(_normalize(item) == normalized or (_normalize(item) and _normalize(item) in normalized) for item in GENERIC_STRATEGY_TERMS)
 
 
 def _normalize(value: str) -> str:

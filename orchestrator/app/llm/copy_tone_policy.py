@@ -31,6 +31,18 @@ POLICIES: dict[str, dict[str, Any]] = {
         "promotion_style": "reservation_visit",
         "visual_fit_notes": ["warm grill mood", "food hero", "clear reservation CTA"],
     },
+    "macaron": {
+        "policy_id": "macaron_v1",
+        "business_type": "macaron",
+        "headline_max_chars": 20,
+        "subcopy_max_chars": 42,
+        "cta_max_chars": 8,
+        "preferred_tone": ["editorial", "delicate", "dessert", "premium"],
+        "avoid_terms": ["\uc0c1\ub2f4", "\ubb38\uc758", "\uc608\uc57d", "\uc2e0\uccad", "\uace0\uae30", "\uc22f\ubd88", "\ud68c\uc2dd"],
+        "cta_candidates": ["\uceec\ub809\uc158 \ubcf4\uae30", "\uba54\ub274 \ubcf4\uae30", "\uc624\ub298\uc758 \ub9db \ubcf4\uae30", "\ub77c\uc778\uc5c5 \ubcf4\uae30", ""],
+        "promotion_style": "menu_discovery",
+        "visual_fit_notes": ["editorial dessert product", "low body density", "CTA optional"],
+    },
     "beauty_skincare": {
         "policy_id": "beauty_skincare_v1",
         "business_type": "beauty_skincare",
@@ -106,6 +118,8 @@ ALIASES = {
     "nail": "beauty_nail",
     "spa": "beauty_spa",
     "dessert": "cafe",
+    "dessert_macaron": "macaron",
+    "macaron": "macaron",
     "bakery": "cafe",
 }
 
