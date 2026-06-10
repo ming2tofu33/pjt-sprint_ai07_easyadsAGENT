@@ -46,6 +46,11 @@ class ComplianceService:
             publication_ready=(status in _PUBLICATION_READY_STATUSES),
         )
 
+    def get_rules_for_domains(self, domains: list[str]) -> list:
+        """도메인에 적용 가능한 규칙 목록을 반환한다."""
+        checker_rules = getattr(self._checker, "rules", [])
+        return [r for r in checker_rules if r.domain in domains]
+
     def _build_suggested_copy(
         self,
         copy: dict[str, Any],
