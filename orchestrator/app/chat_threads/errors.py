@@ -28,3 +28,8 @@ class ChatThreadHasActiveJobError(ChatThreadServiceError):
 class InvalidChatThreadRequestError(ChatThreadServiceError):
     def __init__(self, message: str = "Invalid chat thread request.") -> None:
         super().__init__("invalid_chat_thread_request", message)
+
+
+class ChatThreadLimitReachedError(ChatThreadServiceError):
+    def __init__(self, message: str = "Chat thread limit reached for this workspace.") -> None:
+        super().__init__("thread_limit_reached", message)

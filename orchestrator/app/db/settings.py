@@ -42,3 +42,16 @@ def get_demo_user_id() -> str | None:
 def allow_demo_workspace_fallback() -> bool:
     value = str(_get_env("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false") or "false").strip().lower()
     return value in {"1", "true", "yes", "on"}
+
+
+def get_max_threads_per_workspace() -> int:
+    """Maximum number of (non-archived) chat threads allowed per workspace.
+
+    Defaults to 3. Falls back to 3 for missing/invalid/non-positive values.
+    """
+    raw = _get_env("EASYADS_MAX_THREADS_PER_WORKSPACE", "3") or "3"
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return 3
+    return value if value > 0 else 3

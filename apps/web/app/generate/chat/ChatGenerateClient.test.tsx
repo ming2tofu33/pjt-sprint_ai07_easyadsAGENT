@@ -582,6 +582,25 @@ vi.mock("@/lib/api-client", () => ({
     items: [],
     pagination: { limit: 50, offset: 0, total: 0, hasMore: false }
   })),
+  getArchiveItem: vi.fn(async (archiveItemId: string) => ({
+    adId: archiveItemId,
+    jobId: "job_db_detail",
+    outputId: "output_db_detail",
+    title: "DB 상세 광고",
+    imageUrl: null,
+    thumbnailUrl: null,
+    downloadUrl: "https://cdn.example.com/archive-db-detail.png",
+    status: "saved",
+    adFormat: "1:1",
+    platform: "인스타 피드",
+    source: "generated",
+    storageProvider: "r2",
+    mimeType: "image/png",
+    width: 1200,
+    height: 1200,
+    savedAt: "2026-06-05T00:00:00+00:00",
+    metadata: { fileName: "archive-db-detail.png", fileType: "PNG", tags: ["카페"] }
+  })),
   listChatThreads: vi.fn(async () => ({
     success: true,
     threads: [],
@@ -2800,6 +2819,21 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "보관함 검색어 지우기" }));
     expect(screen.getByText("최근 생성 광고")).toBeTruthy();
+  });
+
+  it("renders a persisted archive detail through the direct archive API", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.getArchiveItem).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { AdSaveFlowStep } = await import("@/components/generate/AdSaveFlowStep");
+
+    render(<AdSaveFlowStep creativeId="archive_db_detail" step="detail" />);
+
+    await waitFor(() => expect(api.getArchiveItem).toHaveBeenCalledWith("archive_db_detail"));
+    await waitFor(() => expect(screen.getByText("DB 상세 광고")).toBeTruthy());
+    expect(screen.getByText("생성 이미지 보기")).toBeTruthy();
+    expect(document.querySelector('img[src*="archive-db-detail.png"]')).toBeTruthy();
+    expect(screen.queryByText("보관함에서 이 항목을 찾지 못했어요")).toBeNull();
   });
 
   it("renders the selected generated archive detail from session storage", async () => {
