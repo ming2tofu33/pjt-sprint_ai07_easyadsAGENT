@@ -50,6 +50,15 @@ VISUAL_CONTEXTS = {
 }
 
 
+REFERENCE_FIXTURES = {
+    "macaron_collection_001": {
+        "layout_hint": "editorial left text right product",
+        "typography_hint": "premium serif with restrained sans body",
+        "style_keywords": ["editorial", "minimal", "premium", "negative space"],
+    }
+}
+
+
 class CopyActualComparisonResult(BaseModel):
     baseline_copy_score: float
     v2_copy_score: float
@@ -95,8 +104,11 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     report = build_report(args)
-    path = output_dir / "visual_actual_summary.json"
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = output_dir / f"visual_actual_summary_{report['status']}_{timestamp}.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    if report["status"] == "completed":
+        (output_dir / "visual_actual_summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(path)
     return 0 if report["status"] in {"completed", "dry_run"} else 2
 
@@ -157,12 +169,14 @@ def run_actual_copy_case(case_id: str, *, case_dir: Path, seed: int | None, copy
     background_path = Path(background.image_paths[0])
     selected_copy = select_v2_copy(case_id, copy_report)
     baseline_copy = VISUAL_CASES[case_id]["baseline"]
-    baseline_path = render_baseline_and_v2_copy(case_id, background_path, baseline_copy, case_dir / "baseline", "baseline")
-    v2_path = render_baseline_and_v2_copy(case_id, background_path, selected_copy, case_dir / "v2", "v2")
+    baseline_path = render_copy_variant(case_id, background_path, baseline_copy, case_dir / "baseline", "previous_baseline", selected_reference_template=None)
+    previous_v2_path = render_copy_variant(case_id, background_path, selected_copy, case_dir / "previous_v2", "previous_v2", selected_reference_template=None)
+    grounded_path = render_copy_variant(case_id, background_path, selected_copy, case_dir / "grounded_intent_v1", "grounded_intent_v1", selected_reference_template=REFERENCE_FIXTURES.get(case_id))
     assert_actual_composite(background_path, baseline_path, baseline_copy)
-    assert_actual_composite(background_path, v2_path, selected_copy)
-    sheet_path = build_comparison_sheet(baseline_path, v2_path, case_dir / "comparison_sheet.png")
-    vlm = run_actual_vlm_comparison(case_id, baseline_path, v2_path) if max_vlm_calls > 0 else None
+    assert_actual_composite(background_path, previous_v2_path, selected_copy)
+    assert_actual_composite(background_path, grounded_path, selected_copy, selected_reference_template=REFERENCE_FIXTURES.get(case_id))
+    sheet_path = build_comparison_sheet_3way(baseline_path, previous_v2_path, grounded_path, case_dir / "comparison_sheet_3way.png")
+    vlm = run_vlm_comparison_compat(case_id, baseline_path, previous_v2_path, grounded_path) if max_vlm_calls > 0 else None
     assert_actual_vlm_result(vlm)
     result = {
         "case_id": case_id,
@@ -170,8 +184,11 @@ def run_actual_copy_case(case_id: str, *, case_dir: Path, seed: int | None, copy
         "flux2_klein_actual_image_generation": True,
         "openai_vlm_actual_final_judge": True,
         "background_path": str(background_path),
+        "previous_baseline_path": str(baseline_path),
+        "previous_v2_path": str(previous_v2_path),
+        "grounded_intent_v1_path": str(grounded_path),
         "baseline_final_path": str(baseline_path),
-        "v2_final_path": str(v2_path),
+        "v2_final_path": str(grounded_path),
         "comparison_sheet_path": str(sheet_path),
         "flux_result": background.model_dump(),
         "selected_copy": selected_copy,
@@ -179,6 +196,28 @@ def run_actual_copy_case(case_id: str, *, case_dir: Path, seed: int | None, copy
     }
     (case_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
+
+
+def run_vlm_comparison_compat(case_id: str, baseline_path: Path, previous_v2_path: Path, grounded_path: Path) -> CopyActualComparisonResult:
+    try:
+        return run_actual_vlm_comparison(case_id, baseline_path, previous_v2_path, grounded_path)
+    except TypeError:
+        return run_actual_vlm_comparison(case_id, baseline_path, previous_v2_path)
+
+
+def render_copy_variant(
+    case_id: str,
+    background_path: Path,
+    copy: dict[str, str],
+    output_dir: Path,
+    label: str,
+    *,
+    selected_reference_template: dict[str, Any] | None,
+) -> Path:
+    try:
+        return render_baseline_and_v2_copy(case_id, background_path, copy, output_dir, label, selected_reference_template=selected_reference_template)
+    except TypeError:
+        return render_baseline_and_v2_copy(case_id, background_path, copy, output_dir, label)
 
 
 def generate_flux2_background(case_id: str, *, case_dir: Path, seed: int | None) -> T2IGenerationOutput:
@@ -198,9 +237,17 @@ def generate_flux2_background(case_id: str, *, case_dir: Path, seed: int | None)
     )
 
 
-def render_baseline_and_v2_copy(case_id: str, background_path: Path, copy: dict[str, str], output_dir: Path, label: str) -> Path:
+def render_baseline_and_v2_copy(
+    case_id: str,
+    background_path: Path,
+    copy: dict[str, str],
+    output_dir: Path,
+    label: str,
+    *,
+    selected_reference_template: dict[str, Any] | None = None,
+) -> Path:
     context = MarketingContext(**VISUAL_CONTEXTS[case_id])
-    intent = resolve_copy_visual_intent(context)
+    intent = resolve_copy_visual_intent(context, selected_reference_template=selected_reference_template)
     state = {
         "job_id": f"{case_id}_{label}",
         "thread_id": f"{case_id}_thread",
@@ -208,6 +255,7 @@ def render_baseline_and_v2_copy(case_id: str, background_path: Path, copy: dict[
         "context": context.model_dump(),
         "marketing_copy": MarketingCopy(headline=copy["headline"], subcopy=copy.get("subcopy"), cta=copy.get("cta")).model_dump(),
         "copy_visual_intent": intent.model_dump(),
+        "selected_reference_template": selected_reference_template,
         "ad_format_spec": {"ad_format": "instagram_feed", "width": 1024, "height": 1024},
         "current_brief": {},
     }
@@ -223,7 +271,8 @@ def render_baseline_and_v2_copy(case_id: str, background_path: Path, copy: dict[
     return target
 
 
-def run_actual_vlm_comparison(case_id: str, baseline_path: Path, v2_path: Path) -> CopyActualComparisonResult:
+def run_actual_vlm_comparison(case_id: str, baseline_path: Path, previous_v2_path: Path, grounded_path: Path | None = None) -> CopyActualComparisonResult:
+    grounded_path = grounded_path or previous_v2_path
     model = os.getenv("LLM_OPENAI_VISION_MODEL") or os.getenv("EASYADS_LLM_VISION_MODEL") or "gpt-4.1-mini"
     prompt = (
         "Compare two Korean ad creatives. Return strict JSON only with these keys: "
@@ -236,9 +285,9 @@ def run_actual_vlm_comparison(case_id: str, baseline_path: Path, v2_path: Path) 
         "cta_style_fit, information_hierarchy_fit, reference_style_alignment. "
         "preferred_version must be baseline, v2, or tie. Never prefer v2 when copy_matches_product is false, "
         "wrong_domain_terms is non-empty, v2_business_fit is below 6, or v2_unsupported_claim is true. "
-        f"Case id: {case_id}. First image is baseline. Second image is Copy Quality v2."
+        f"Case id: {case_id}. First image is baseline. Second image is previous Copy Quality v2. Third image is grounded_intent_v1. Prefer v2 only when grounded_intent_v1 is best; encode preferred_version as baseline, v2, or tie for backward compatibility."
     )
-    response = _create_openai_vision_response(model=model, prompt=prompt, image_paths=[baseline_path, v2_path])
+    response = _create_openai_vision_response(model=model, prompt=prompt, image_paths=[baseline_path, previous_v2_path, grounded_path])
     text = _extract_response_text(response)
     payload = normalize_vlm_payload(json.loads(_strip_json_fence(text)))
     return CopyActualComparisonResult.model_validate(payload)
@@ -372,7 +421,7 @@ def assert_actual_flux_result(result: T2IGenerationOutput) -> None:
         raise AssertionError("FLUX actual latency is missing.")
 
 
-def assert_actual_composite(background_path: Path, composite_path: Path, expected_copy: dict[str, str]) -> None:
+def assert_actual_composite(background_path: Path, composite_path: Path, expected_copy: dict[str, str], *, selected_reference_template: dict[str, Any] | None = None) -> None:
     if not composite_path.exists() or composite_path.stat().st_size <= 0:
         raise AssertionError("Composite image is missing.")
     with Image.open(composite_path) as image:
@@ -380,9 +429,13 @@ def assert_actual_composite(background_path: Path, composite_path: Path, expecte
     with Image.open(background_path).convert("RGB") as bg, Image.open(composite_path).convert("RGB") as final:
         if not ImageChops.difference(bg, final).getbbox():
             raise AssertionError("Composite image is identical to background.")
-    for key in ("headline", "subcopy", "cta"):
+    context = MarketingContext(**VISUAL_CONTEXTS.get(composite_path.parent.parent.name, {})) if composite_path.parent.parent.name in VISUAL_CONTEXTS else None
+    intent = resolve_copy_visual_intent(context, selected_reference_template=selected_reference_template) if context else None
+    for key in ("headline", "subcopy"):
         if not expected_copy.get(key):
             raise AssertionError(f"Expected {key} is missing.")
+    if intent and intent.cta_visibility != "hidden" and intent.cta_style != "none" and not expected_copy.get("cta"):
+        raise AssertionError("Expected cta is missing.")
 
 
 def assert_actual_vlm_result(result: Any) -> None:
@@ -398,6 +451,17 @@ def build_comparison_sheet(left: Path, right: Path, output_path: Path) -> Path:
         sheet = Image.new("RGB", (left_image.width + right_image.width, left_image.height + 64), "white")
         sheet.paste(left_image, (0, 64))
         sheet.paste(right_image, (left_image.width, 64))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sheet.save(output_path)
+    return output_path
+
+
+def build_comparison_sheet_3way(left: Path, middle: Path, right: Path, output_path: Path) -> Path:
+    with Image.open(left).convert("RGB") as left_image, Image.open(middle).convert("RGB") as middle_image, Image.open(right).convert("RGB") as right_image:
+        sheet = Image.new("RGB", (left_image.width + middle_image.width + right_image.width, left_image.height + 64), "white")
+        sheet.paste(left_image, (0, 64))
+        sheet.paste(middle_image, (left_image.width, 64))
+        sheet.paste(right_image, (left_image.width + middle_image.width, 64))
         output_path.parent.mkdir(parents=True, exist_ok=True)
         sheet.save(output_path)
     return output_path

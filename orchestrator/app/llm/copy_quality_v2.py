@@ -61,6 +61,8 @@ HIGH_RISK_CLAIM_TERMS = (
     "완성",
 )
 
+BENIGN_COPY_TERMS = {"맞춤", "완성"}
+
 
 def build_deterministic_copy_output_v2(state: dict[str, Any] | Any, max_candidates: int = 3) -> CopyGenerationV2Output:
     context = _context_from_state(state)
@@ -256,11 +258,15 @@ def score_copy_candidate_v2(
         grounding_penalty = 0.55
         warnings.extend(f"wrong_domain:{term}" for term in grounding.wrong_domain_terms)
         reasons.append("Candidate contains terms from a conflicting product domain.")
-    if not grounding.grounded:
+    product_anchor_required = bool(context.item_or_service or context.usp or context.brand_name)
+    if not grounding.grounded and (product_anchor_required or grounding.grounding_level == "missing"):
         hard_blocked = True
         grounding_penalty = max(grounding_penalty, 0.45)
         warnings.extend(grounding.reasons)
         reasons.append("Candidate does not mention the current product/service anchor.")
+    elif not grounding.grounded:
+        grounding_penalty = max(grounding_penalty, 0.15)
+        warnings.extend(grounding.reasons)
     generic_penalty = 0.0
     if contains_generic_meta_phrase(text):
         generic_penalty = 0.45
@@ -395,6 +401,8 @@ def _unsupported_claims(text: str, state: dict[str, Any]) -> list[str]:
     )
     claims: list[str] = []
     for term in HIGH_RISK_CLAIM_TERMS:
+        if term in BENIGN_COPY_TERMS:
+            continue
         if term in text and term not in supported:
             claims.append(term)
     return claims

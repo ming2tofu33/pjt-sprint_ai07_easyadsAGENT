@@ -34,6 +34,14 @@ def text_layout_planner_node(state: dict[str, object]) -> dict[str, object]:
 def template_for_ad_format(ad_format: str, copy_mode: str, intent: CopyVisualIntent | None = None) -> str:
     if copy_mode == "no_copy":
         return "no_text"
+    if intent and intent.reference_layout_hint:
+        hinted = template_from_reference_hint(intent.reference_layout_hint)
+        if hinted:
+            return hinted
+    if intent and intent.product_text_relationship == "centered_minimal":
+        return "centered_hero"
+    if intent and intent.product_text_relationship == "top_bottom":
+        return "top_headline_center_product_bottom_cta"
     if intent and intent.hierarchy in {"editorial_product", "menu_showcase", "minimal_premium"}:
         return "left_text_right_product"
     if intent and intent.hierarchy == "conversion":
@@ -66,8 +74,8 @@ def build_text_layout_spec(copy_spec: CopySpec, template: str, width: int, heigh
                 bound_copy_id=f"{copy_spec.spec_id}:{role}",
                 rendered_text=item.text,
                 font_metric=font_metric,
-                alignment="auto" if template == "dynamic_side_split" else "left" if template == "left_text_right_product" else "right" if template == "right_text_left_product" else "center",
-                anchor=anchor_for_role(role),
+                alignment=alignment_for_role(role, template, intent),
+                anchor=anchor_for_role(role, intent),
                 text_color=style_spec.typography.text_color_on_dark,
                 overlay_treatment=overlay_for_role(role, style_spec, intent),
                 overlay_color=overlay_color_for_role(role, style_spec, intent),
@@ -92,6 +100,31 @@ def overlay_for_role(role: str, style_spec: TextStyleSpec, intent: CopyVisualInt
         if intent.cta_style in {"small_label", "pill_button", "solid_button"}:
             return "solid_panel"
     return style_spec.typography.default_overlay
+
+
+def template_from_reference_hint(hint: str) -> str | None:
+    normalized = hint.lower()
+    if "left text" in normalized and "right product" in normalized:
+        return "left_text_right_product"
+    if "right text" in normalized and "left product" in normalized:
+        return "right_text_left_product"
+    if "bottom" in normalized and "overlay" in normalized:
+        return "bottom_overlay_panel"
+    if "center" in normalized and "minimal" in normalized:
+        return "centered_hero"
+    return None
+
+
+def alignment_for_role(role: str, template: str, intent: CopyVisualIntent | None) -> str:
+    if template == "dynamic_side_split":
+        return "auto"
+    if intent and intent.preferred_alignment in {"left", "center", "right"}:
+        return intent.preferred_alignment
+    if template == "left_text_right_product":
+        return "left"
+    if template == "right_text_left_product":
+        return "right"
+    return "center"
 
 
 def overlay_color_for_role(role: str, style_spec: TextStyleSpec, intent: CopyVisualIntent | None) -> str | None:
@@ -160,7 +193,11 @@ def boxes_for_template(template: str) -> tuple[dict[str, NormalizedBBox], Normal
     )
 
 
-def anchor_for_role(role: str) -> str:
+def anchor_for_role(role: str, intent: CopyVisualIntent | None = None) -> str:
+    if intent and intent.preferred_alignment == "left":
+        return "bottom_left" if role == "cta" else "top_left"
+    if intent and intent.preferred_alignment == "right":
+        return "bottom_right" if role == "cta" else "top_right"
     if role == "cta":
         return "bottom_center"
     if role in {"headline", "subheadline"}:

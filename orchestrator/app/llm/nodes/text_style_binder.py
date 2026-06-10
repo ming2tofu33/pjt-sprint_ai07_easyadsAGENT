@@ -120,6 +120,7 @@ def text_style_binder_node(state: dict[str, Any]) -> dict[str, Any]:
     if intent.typography_mood in {"premium_serif", "editorial_mixed"}:
         typography.headline_font = "RIDIBatang"
         typography.body_font = "MaruBuri"
+    typography = apply_intent_typography(typography, intent)
     spec = TextStyleSpec(
         profile=profile,
         typography=typography,
@@ -153,6 +154,32 @@ def profile_for_intent(intent: CopyVisualIntent, fallback: StyleProfile) -> Styl
     if intent.typography_mood == "bold_promo":
         return "event"
     return fallback if fallback in {"clean", "premium", "cute", "event", "trendy", "emotional"} else "clean"
+
+
+def apply_intent_typography(typography: TypographyRule, intent: CopyVisualIntent) -> TypographyRule:
+    hint = (intent.reference_typography_hint or "").lower()
+    if "serif" in hint:
+        typography.headline_font = "RIDIBatang"
+        typography.body_font = "MaruBuri"
+    elif "rounded" in hint:
+        typography.headline_font = "BMJUA"
+        typography.body_font = "Pretendard"
+    elif "bold" in hint:
+        typography.headline_weight = max(typography.headline_weight, 850)
+    elif "sans" in hint:
+        typography.headline_font = "Pretendard"
+        typography.body_font = "Pretendard"
+
+    if intent.headline_emphasis == "large_elegant":
+        typography.headline_size_ratio = max(typography.headline_size_ratio, 0.064)
+        typography.headline_weight = min(max(typography.headline_weight, 600), 760)
+    elif intent.headline_emphasis == "large_bold":
+        typography.headline_size_ratio = max(typography.headline_size_ratio, 0.074)
+        typography.headline_weight = max(typography.headline_weight, 850)
+    elif intent.headline_emphasis == "minimal":
+        typography.headline_size_ratio = min(typography.headline_size_ratio, 0.052)
+        typography.headline_weight = min(typography.headline_weight, 650)
+    return typography
 
 
 def infer_style_profile(brand_tone: str | None, promotion_goal: str | None) -> StyleProfile:

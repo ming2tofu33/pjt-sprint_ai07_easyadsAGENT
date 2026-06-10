@@ -44,6 +44,27 @@ def test_grounded_macaron_copy_can_pass():
     assert ranking.recommended_candidate_id == "copy_1"
 
 
+def test_domain_anchor_only_is_not_grounded():
+    context = MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery")
+    candidate = CopyCandidate(id="copy_1", headline="오늘의 달콤한 시간", subcopy="맛있는 디저트를 만나보세요", cta="")
+
+    grounding = evaluate_copy_grounding(candidate, context=context)
+
+    assert grounding.grounded is False
+    assert grounding.grounding_level == "partial"
+    assert "domain_anchor_only" in grounding.reasons
+
+
+def test_single_weak_electronics_term_does_not_hard_block_product_anchor():
+    context = MarketingContext(business_type="photo_studio", item_or_service="프로필 촬영", promotion_goal="reservation_cta")
+    candidate = CopyCandidate(id="copy_1", headline="프로필 촬영", subcopy="카메라 앞 자연스러운 표정을 남겨요", cta="예약 문의")
+
+    grounding = evaluate_copy_grounding(candidate, context=context)
+
+    assert grounding.grounded is True
+    assert grounding.wrong_domain_terms == []
+
+
 def test_actual_prompt_contains_context_strategy_and_wrong_domain_examples():
     context = MarketingContext(business_type="restaurant_bbq", item_or_service="숯불구이", promotion_goal="reservation_cta")
     intent = resolve_copy_visual_intent(context)
@@ -80,6 +101,25 @@ def test_copy_visual_intent_controls_cta_and_plate_policy():
     assert not any(item["role"] == "cta" for item in state["copy_spec"]["items"])
     assert not any(slot["role"] == "cta" for slot in state["text_layout_spec"]["slots"])
     assert state["text_style_spec"]["typography"]["use_text_plate"] is False
+
+
+def test_copy_visual_intent_reference_hints_affect_style_and_layout():
+    context = MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery", brand_tone="premium")
+    reference = {"layout_hint": "editorial left text right product", "typography_hint": "premium serif with restrained sans body"}
+    request = InitialMarketingRequest(user_input="macaron", user_plan="premium", context=context)
+    state = create_initial_marketing_state(request)
+    state["selected_reference_template"] = reference
+    state["marketing_copy"] = MarketingCopy(headline="마카롱 컬렉션", subcopy="오늘의 달콤한 선택", cta="").model_dump()
+    state["copy_visual_intent"] = resolve_copy_visual_intent(context, selected_reference_template=reference).model_dump()
+    state["ad_format_spec"] = {"ad_format": "instagram_feed", "width": 1024, "height": 1024}
+
+    state.update(copy_spec_parser_node(state))
+    state.update(text_style_binder_node(state))
+    state.update(text_layout_planner_node(state))
+
+    assert state["text_style_spec"]["typography"]["headline_font"] == "RIDIBatang"
+    assert state["text_layout_spec"]["template"] == "left_text_right_product"
+    assert {slot["alignment"] for slot in state["text_layout_spec"]["slots"]} == {"left"}
 
 
 def test_vlm_hard_gate_prevents_wrong_domain_v2_preference():

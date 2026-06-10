@@ -90,7 +90,7 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
             actual_h = line_height * len(lines)
             actual_y = y + max(0, (h - actual_h) // 2)
             
-            draw_overlay(draw, slot, x, actual_y, w, actual_h, style)
+            draw_overlay(draw, slot, x, actual_y, w, actual_h, style, lines=lines, font=font)
             draw_wrapped_text(draw, lines, slot, font, x, y, w, h)
             rendered_count += 1
         image.save(final_path)
@@ -242,8 +242,22 @@ def wrap_text(text: str, max_chars: int, max_lines: int) -> list[str]:
     return lines or [text[:max_chars]]
 
 
-def draw_overlay(draw: ImageDraw.ImageDraw, slot: TextSlot, x: int, y: int, w: int, h: int, style: TextStyleSpec) -> None:
+def draw_overlay(
+    draw: ImageDraw.ImageDraw,
+    slot: TextSlot,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    style: TextStyleSpec,
+    *,
+    lines: list[str] | None = None,
+    font: ImageFont.ImageFont | None = None,
+) -> None:
     treatment = slot.overlay_treatment
+    cta_style = ((style.role_styles or {}).get("cta") or {}).get("style") if slot.role == "cta" else None
+    if slot.role == "cta" and cta_style in {"none", "text_link"}:
+        return
     if slot.role == "cta" and treatment in {"drop_shadow", "stroke"} and slot.overlay_opacity > 0:
         treatment = "solid_panel"
     if slot.role in {"promotion", "badge"} and treatment == "plain":
@@ -256,8 +270,17 @@ def draw_overlay(draw: ImageDraw.ImageDraw, slot: TextSlot, x: int, y: int, w: i
     r, g, b = hex_to_rgb(color)
     alpha = int(255 * max(slot.overlay_opacity, 0.72))
     pad = max(10, int(min(w, h) * max(slot.inner_padding_ratio, 0.08 if slot.role == "cta" else 0.05)))
-    radius = max(10, pad * (2 if slot.role == "cta" else 1))
-    draw.rounded_rectangle((x - pad, y - pad, x + w + pad, y + h + pad), radius=radius, fill=(r, g, b, alpha))
+    box_x, box_y, box_w, box_h = x, y, w, h
+    if slot.role == "cta" and cta_style in {"small_label", "pill_button"} and lines and font:
+        text_w = max((draw.textbbox((0, 0), line, font=font)[2] - draw.textbbox((0, 0), line, font=font)[0]) for line in lines)
+        box_w = min(w, text_w)
+        if slot.alignment == "center":
+            box_x = x + max(0, (w - box_w) // 2)
+        elif slot.alignment == "right":
+            box_x = x + max(0, w - box_w)
+        pad = max(8, int(getattr(font, "size", 18) * (0.22 if cta_style == "small_label" else 0.45)))
+    radius = max(6, pad * (3 if slot.role == "cta" and cta_style == "pill_button" else 1))
+    draw.rounded_rectangle((box_x - pad, box_y - pad, box_x + box_w + pad, box_y + box_h + pad), radius=radius, fill=(r, g, b, alpha))
 
 
 def draw_wrapped_text(draw: ImageDraw.ImageDraw, lines: list[str], slot: TextSlot, font: ImageFont.ImageFont, x: int, y: int, w: int, h: int) -> None:
