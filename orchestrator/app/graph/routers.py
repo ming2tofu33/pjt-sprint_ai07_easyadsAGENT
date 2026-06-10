@@ -73,6 +73,19 @@ def route_by_copy_presence(state: MarketingState) -> str:
     return "text_renderer"
 
 
+def route_after_layout_refiner(state: MarketingState) -> str:
+    refinement = state.get("layout_refinement_result") or {}
+    action = refinement.get("action") if isinstance(refinement, dict) else None
+    attempts = int(state.get("layout_revision_attempts") or 0)
+    if action in {"render", "reduce_information", None}:
+        return "safe_area_gate"
+    if action == "regenerate_background" and attempts <= 1:
+        return "image_prompt_planner"
+    if action in {"rewrite_copy", "manual_review"}:
+        return "result"
+    return "result"
+
+
 def route_after_t2i_generation(state: MarketingState) -> str:
     status = state.get("status")
     if status in {"modal_running", "failed"}:

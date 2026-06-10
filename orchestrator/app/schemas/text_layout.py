@@ -37,6 +37,9 @@ LayoutTemplate = Literal[
 IntentHierarchy = Literal["editorial_product", "conversion", "menu_showcase", "minimal_premium", "cute_promo", "information_first"]
 CtaVisibility = Literal["required", "optional", "hidden"]
 CtaStyle = Literal["none", "text_link", "small_label", "pill_button", "solid_button"]
+ExclusionZoneType = Literal["product", "face", "hand", "person", "ocr_artifact", "high_saliency"]
+DominantSubjectSide = Literal["left", "right", "center", "distributed", "unknown"]
+LayoutRefinementAction = Literal["render", "reduce_information", "rewrite_copy", "regenerate_background", "manual_review"]
 WcagGrade = Literal["AAA", "AA", "AA_LARGE", "FAIL"]
 SuggestedAction = Literal["none", "swap_color", "add_overlay", "regenerate", "shrink"]
 RuleCheck = Literal["not_run", "pass", "fail"]
@@ -150,6 +153,66 @@ class TextLayoutSpec(BaseModel):
 
     def get_slot_by_role(self, role: CopyRole) -> TextSlot | None:
         return next((slot for slot in self.slots if slot.role == role), None)
+
+
+class ExclusionZone(BaseModel):
+    zone_id: str
+    zone_type: ExclusionZoneType
+    bbox: NormalizedBBox
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    hard_exclusion: bool = False
+    source: str
+
+
+class ImageLayoutAnalysis(BaseModel):
+    canvas_width: int = Field(..., ge=1)
+    canvas_height: int = Field(..., ge=1)
+    exclusion_zones: list[ExclusionZone] = Field(default_factory=list)
+    suggested_negative_space_regions: list[NormalizedBBox] = Field(default_factory=list)
+    dominant_subject_side: DominantSubjectSide = "unknown"
+    edge_density_summary: dict[str, float] = Field(default_factory=dict)
+    local_variance_summary: dict[str, float] = Field(default_factory=dict)
+    saliency_summary: dict[str, float] = Field(default_factory=dict)
+    luminance_summary: dict[str, float] = Field(default_factory=dict)
+    analysis_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class LayoutCandidateScore(BaseModel):
+    candidate_id: str
+    template: str
+    final_score: float
+    product_overlap_ratio: float = Field(..., ge=0.0)
+    face_hand_overlap_ratio: float = Field(..., ge=0.0)
+    saliency_penalty: float = Field(..., ge=0.0)
+    edge_density_penalty: float = Field(..., ge=0.0)
+    contrast_penalty: float = Field(..., ge=0.0)
+    safe_margin_penalty: float = Field(..., ge=0.0)
+    text_area_continuity_score: float = Field(..., ge=0.0, le=1.0)
+    composition_balance_score: float = Field(..., ge=0.0, le=1.0)
+    reference_alignment_score: float = Field(..., ge=0.0, le=1.0)
+    copy_fit_score: float = Field(..., ge=0.0, le=1.0)
+    hard_rejected: bool = False
+    rejection_reasons: list[str] = Field(default_factory=list)
+
+
+class LayoutRefinementResult(BaseModel):
+    selected_candidate_id: str | None = None
+    selected_layout: TextLayoutSpec | None = None
+    candidates: list[LayoutCandidateScore] = Field(default_factory=list)
+    action: LayoutRefinementAction
+    retry_feedback: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class LayoutCopyFitReport(BaseModel):
+    overall_fit: bool
+    role_results: list[dict[str, Any]] = Field(default_factory=list)
+    removed_optional_roles: list[str] = Field(default_factory=list)
+    selected_copy_id: str | None = None
+    rewrite_required: bool = False
+    overflow_ratio: float = Field(default=0.0, ge=0.0)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class TypographyRule(BaseModel):
