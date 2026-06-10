@@ -31,6 +31,7 @@ type BriefConfirmCardProps = Omit<BriefConfirmStepProps, "onBack" | "onDelete">;
 export function BriefConfirmCard({ state, onGenerate, onRefineBrief }: BriefConfirmCardProps) {
   const [refinementText, setRefinementText] = useState("");
   const brief = buildBrief(state);
+  const usesDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
 
   async function submitRefinement() {
     if (state.isLoading) {
@@ -64,7 +65,11 @@ export function BriefConfirmCard({ state, onGenerate, onRefineBrief }: BriefConf
         </div>
         <BriefRow icon={Megaphone} label="광고 목적" value={brief.purpose} />
         <BriefRow icon={Gift} label="상품/서비스" value={brief.item} />
-        <BriefRow icon={Heart} label="선택한 문구" value={brief.copy} />
+        {usesDeferredCopySelection ? (
+          <BriefRow icon={Heart} label="문구 선택" value="다음 단계에서 선택" />
+        ) : (
+          <BriefRow icon={Heart} label="선택한 문구" value={brief.copy} />
+        )}
         <BriefRow icon={Star} label="분위기" value={brief.tone} />
         <BriefRow icon={Package} label="사용 채널" value={brief.channel} />
         <div className={styles.imageGuide}>
