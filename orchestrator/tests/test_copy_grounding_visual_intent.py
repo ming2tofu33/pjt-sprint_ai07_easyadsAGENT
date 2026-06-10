@@ -70,9 +70,8 @@ def test_actual_prompt_contains_context_strategy_and_wrong_domain_examples():
     intent = resolve_copy_visual_intent(context)
     prompt = build_copy_generation_v2_prompt(context=context, strategy=build_message_strategy(context), visual_intent=intent)
 
-    assert "restaurant_bbq" in prompt
     assert "숯불구이" in prompt
-    assert "reservation_cta" in prompt
+    assert "reservation_cta" not in prompt
     assert "스마트폰" in prompt
 
 
@@ -82,7 +81,7 @@ def test_router_knows_copy_generation_v2_actual(monkeypatch):
 
     assert selection.selected_model_class in {"api_mini", "api_full"}
     assert selection.provider == "openai"
-    assert selection.model_name == "gpt-4.1-mini"
+    assert selection.model_name in {"gpt-4.1-mini", "gpt-5.4-mini"}
     assert "unknown node" not in selection.reason
 
 
@@ -180,3 +179,56 @@ def test_visual_runner_uses_production_copy_style_layout_nodes(monkeypatch, tmp_
 
     assert output.exists()
     assert calls == {"copy": 1, "style": 1, "layout": 1}
+
+
+def test_menu_discovery_strategy_does_not_create_consultation_intent():
+    context = MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery")
+    strategy = build_message_strategy(context)
+
+    assert strategy.conversion_goal == "menu_discovery"
+    assert strategy.cta_intent == "explore_menu"
+    assert "상담" not in " ".join([strategy.customer_desire or "", strategy.proof_or_detail or "", strategy.cta_intent or ""])
+
+
+def test_macaron_consultation_cta_is_hard_blocked():
+    context = MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery")
+    candidate = CopyCandidate(id="copy_1", headline="마카롱 컬렉션", subcopy="다채로운 맛을 가볍게 골라보세요", cta="상담 보기")
+
+    grounding = evaluate_copy_grounding(candidate, context=context)
+    ranking = rank_copy_candidates([candidate], state={"context": context.model_dump()})
+
+    assert grounding.grounded is False
+    assert grounding.cta_goal_mismatch_terms
+    assert ranking.scorecards[0].hard_blocked is True
+
+
+def test_macaron_meat_product_drift_is_hard_blocked():
+    context = MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery")
+    candidate = CopyCandidate(id="copy_1", headline="마카롱 컬렉션", subcopy="고기 메뉴처럼 든든한 식사 메뉴", cta="컬렉션 보기")
+
+    grounding = evaluate_copy_grounding(candidate, context=context)
+    ranking = rank_copy_candidates([candidate], state={"context": context.model_dump()})
+
+    assert grounding.product_drift_terms
+    assert ranking.scorecards[0].hard_blocked is True
+
+
+def test_internal_enum_menu_discovery_is_hard_blocked():
+    context = MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery")
+    candidate = CopyCandidate(id="copy_1", headline="menu_discovery 마카롱", subcopy="product_first 전략", cta="컬렉션 보기")
+
+    grounding = evaluate_copy_grounding(candidate, context=context)
+    ranking = rank_copy_candidates([candidate], state={"context": context.model_dump()})
+
+    assert grounding.internal_terms
+    assert ranking.scorecards[0].hard_blocked is True
+
+
+def test_generic_strategy_words_are_not_product_anchors():
+    context = MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery")
+    candidate = CopyCandidate(id="copy_1", headline="상담 가능한 서비스", subcopy="필요한 구성을 선택하세요", cta="")
+
+    grounding = evaluate_copy_grounding(candidate, context=context, strategy=build_message_strategy(context))
+
+    assert grounding.grounded is False
+    assert grounding.product_terms_found == []

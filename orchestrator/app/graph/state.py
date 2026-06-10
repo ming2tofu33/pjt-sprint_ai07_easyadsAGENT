@@ -136,6 +136,11 @@ class MarketingState(TypedDict, total=False):
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
     text_style_spec: dict[str, Any] | TextStyleSpec | None
     copy_visual_intent: dict[str, Any] | None
+    image_layout_analysis: dict[str, Any] | None
+    layout_candidate_scores: list[dict[str, Any]]
+    layout_refinement_result: dict[str, Any] | None
+    layout_copy_fit_report: dict[str, Any] | None
+    layout_revision_attempts: int
     image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
     image_prompt: dict[str, Any] | ImagePrompt | None
     prompt_optimization_output: dict[str, Any] | PromptOptimizationOutput | None
@@ -308,6 +313,11 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "text_layout_spec": None,
         "text_style_spec": None,
         "copy_visual_intent": None,
+        "image_layout_analysis": None,
+        "layout_candidate_scores": [],
+        "layout_refinement_result": None,
+        "layout_copy_fit_report": None,
+        "layout_revision_attempts": 0,
         "image_prompt_spec": None,
         "image_prompt": None,
         "prompt_optimization_output": None,

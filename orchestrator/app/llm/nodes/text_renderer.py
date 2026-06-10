@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, load_font as load_resolved_font, resolve_font_path
+from orchestrator.app.rendering.text_metrics import fit_text_block_to_bbox
 from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, RenderResult, TextLayoutSpec, TextSlot, TextStyleSpec
 
 if TYPE_CHECKING:
@@ -39,8 +40,10 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
     output_dir = Path("data") / "outputs" / str(state.get("job_id") or "unknown-job")
     output_dir.mkdir(parents=True, exist_ok=True)
     final_path = output_dir / "final_composite.png"
+    preview_path = output_dir / "failed_composite_preview.png"
 
     warnings: list[str] = []
+    overflow_errors: list[str] = []
     rendered_count = 0
     skipped_count = 0
     with Image.open(background_path).convert("RGB") as image:
@@ -54,7 +57,8 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         layout_is_right = avg_x > 0.5
         
         # 텍스트가 가야할 빈 공간(empty_half)과 현재 기획된 텍스트 위치(layout_is_right)가 엇갈릴 경우
-        needs_flip = layout.auto_find_empty_space and ((layout_is_right and empty_half == "left") or (not layout_is_right and empty_half == "right"))
+        image_aware_layout_locked = bool(state.get("image_layout_analysis")) and bool((state.get("layout_refinement_result") or {}).get("selected_candidate_id") if isinstance(state.get("layout_refinement_result"), dict) else False)
+        needs_flip = (not image_aware_layout_locked) and layout.auto_find_empty_space and ((layout_is_right and empty_half == "left") or (not layout_is_right and empty_half == "right"))
         if needs_flip:
             warnings.append(f"Auto-flipped layout horizontally to match image negative space ({empty_half})")
 
@@ -78,13 +82,27 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
                 slot.alignment = "right" if slot.bbox.x > 0.5 else "left"
                 
             x, y, w, h = slot.bbox.to_pixels(image.width, image.height)
-            font_size = estimate_font_size(slot, image.width, image.height)
+            max_size = max(1, int(min(image.width, image.height) * slot.font_metric.max_size_ratio))
+            min_size = max(1, int(min(image.width, image.height) * slot.font_metric.min_size_ratio))
+            estimated_size = estimate_font_size(slot, image.width, image.height)
+            fit = fit_text_block_to_bbox(
+                copy_item.text,
+                font_factory=lambda size, current_slot=slot: load_font(current_slot, size)[0],
+                bbox_width=max(1, w),
+                bbox_height=max(1, h),
+                max_lines=slot.max_lines,
+                max_size=max(max_size, estimated_size),
+                min_size=min(min_size, estimated_size),
+                line_height_ratio=slot.font_metric.line_height_em,
+            )
+            font_size = int(fit["font_size"])
             font, font_warning = load_font(slot, font_size)
             if font_warning:
                 warnings.append(font_warning)
-            lines = wrap_text(copy_item.text, max_chars=max(4, int(w / max(font_size * 0.55, 1))), max_lines=slot.max_lines)
-            if len(lines) >= slot.max_lines and len(copy_item.text) > len(" ".join(lines)):
-                warnings.append(f"slot {slot.slot_id} clipping risk: text truncated to {slot.max_lines} lines")
+            lines = list(fit["lines"])
+            if not fit["fits"]:
+                overflow_errors.append(f"slot {slot.slot_id} overflow: text does not fit within {slot.max_lines} lines")
+                continue
             
             line_height = int(getattr(font, "size", 18) * slot.font_metric.line_height_em)
             actual_h = line_height * len(lines)
@@ -93,30 +111,40 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
             draw_overlay(draw, slot, x, actual_y, w, actual_h, style, lines=lines, font=font)
             draw_wrapped_text(draw, lines, slot, font, x, y, w, h)
             rendered_count += 1
-        image.save(final_path)
+        image.save(preview_path if overflow_errors else final_path)
 
     render_result = RenderResult(
         background_image_path=str(background_path),
-        final_image_path=str(final_path),
+            final_image_path=str(final_path if not overflow_errors else preview_path),
         rendered_slot_count=rendered_count,
         skipped_slot_count=skipped_count,
-        warnings=warnings,
-        metadata={"source_node": "text_renderer", "has_text_overlay": rendered_count > 0},
+        warnings=warnings + overflow_errors,
+        metadata={"source_node": "text_renderer", "has_text_overlay": rendered_count > 0, "overflow_detected": bool(overflow_errors)},
     )
     artifacts = list(state.get("artifact_refs") or [])
-    artifacts.append(
-        {
-            "type": "final_image",
-            "path": str(final_path),
-            "metadata": {"source": "text_renderer", "has_text_overlay": rendered_count > 0},
-        }
-    )
+    if overflow_errors:
+        artifacts.append(
+            {
+                "type": "validation_preview",
+                "path": str(preview_path),
+                "metadata": {"source": "text_renderer", "has_text_overlay": rendered_count > 0, "overflow_detected": True},
+            }
+        )
+    else:
+        artifacts.append(
+            {
+                "type": "final_image",
+                "path": str(final_path),
+                "metadata": {"source": "text_renderer", "has_text_overlay": rendered_count > 0},
+            }
+        )
     return {
-        "final_image_path": str(final_path),
+        "final_image_path": None if overflow_errors else str(final_path),
         "render_result": render_result.model_dump(),
         "text_overlay_pending": False,
         "artifact_refs": artifacts,
-        "status": "overlaying_text",
+        "status": "failed" if overflow_errors else "overlaying_text",
+        "error_message": "; ".join(overflow_errors) if overflow_errors else None,
     }
 
 
@@ -237,8 +265,6 @@ def wrap_text(text: str, max_chars: int, max_lines: int) -> list[str]:
         lines.append(current)
     if len(lines) > max_lines:
         lines = lines[:max_lines]
-    if len(lines) == max_lines and len(" ".join(words)) > len(" ".join(lines)):
-        lines[-1] = lines[-1].rstrip(". ") + "..."
     return lines or [text[:max_chars]]
 
 

@@ -258,6 +258,21 @@ def score_copy_candidate_v2(
         grounding_penalty = 0.55
         warnings.extend(f"wrong_domain:{term}" for term in grounding.wrong_domain_terms)
         reasons.append("Candidate contains terms from a conflicting product domain.")
+    if grounding.product_drift_terms:
+        hard_blocked = True
+        grounding_penalty = max(grounding_penalty, 0.55)
+        warnings.extend(f"product_drift:{term}" for term in grounding.product_drift_terms)
+        reasons.append("Candidate drifts into a different product family.")
+    if grounding.internal_terms:
+        hard_blocked = True
+        grounding_penalty = max(grounding_penalty, 0.55)
+        warnings.extend(f"internal_term:{term}" for term in grounding.internal_terms)
+        reasons.append("Candidate exposes internal enum or strategy terms.")
+    if grounding.cta_goal_mismatch_terms:
+        hard_blocked = True
+        grounding_penalty = max(grounding_penalty, 0.45)
+        warnings.extend(f"cta_goal_mismatch:{term}" for term in grounding.cta_goal_mismatch_terms)
+        reasons.append("Candidate CTA does not match the promotion goal.")
     product_anchor_required = bool(context.item_or_service or context.usp or context.brand_name)
     if not grounding.grounded and (product_anchor_required or grounding.grounding_level == "missing"):
         hard_blocked = True
@@ -282,7 +297,10 @@ def score_copy_candidate_v2(
         reasons.append("Copy appears to introduce unsupported facts or high-risk claims.")
         if unsupported_claims:
             warnings.extend(f"unsupported_claim:{claim}" for claim in unsupported_claims)
-    length_penalty = _length_penalty(candidate, policy, warnings)
+    length_penalty, hard_length_overflow = _length_penalty(candidate, policy, warnings)
+    if hard_length_overflow:
+        hard_blocked = True
+        reasons.append("Candidate exceeds hard copy length policy.")
     diversity_penalty = 0.15 if duplicate else 0.0
     if duplicate:
         warnings.append("near_duplicate_candidate")
@@ -353,8 +371,9 @@ def joined_candidate_text(candidate: CopyCandidate) -> str:
     return " ".join(str(value or "") for value in (candidate.headline, candidate.subcopy, candidate.cta))
 
 
-def _length_penalty(candidate: CopyCandidate, policy: dict[str, Any], warnings: list[str]) -> float:
+def _length_penalty(candidate: CopyCandidate, policy: dict[str, Any], warnings: list[str]) -> tuple[float, bool]:
     penalty = 0.0
+    hard_overflow = False
     limits = (
         ("headline", candidate.headline, int(policy.get("headline_max_chars") or 24)),
         ("subcopy", candidate.subcopy or "", int(policy.get("subcopy_max_chars") or 42)),
@@ -363,8 +382,9 @@ def _length_penalty(candidate: CopyCandidate, policy: dict[str, Any], warnings: 
     for field, value, limit in limits:
         if len(value) > limit:
             warnings.append(f"{field}_longer_than_policy")
-            penalty += 0.04
-    return min(0.16, penalty)
+            penalty += 0.18
+            hard_overflow = True
+    return min(0.54, penalty), hard_overflow
 
 
 def _invented_fact_detected(text: str, state: dict[str, Any]) -> bool:
@@ -424,6 +444,8 @@ def _specificity_score(candidate: CopyCandidate, *, grounding=None) -> float:
 
 def _business_fit_score(text: str, policy: dict[str, Any], *, grounding=None, context: MarketingContext | None = None, candidate: CopyCandidate | None = None) -> float:
     if grounding is not None:
+        if grounding.product_drift_terms or grounding.cta_goal_mismatch_terms or grounding.internal_terms:
+            return 0.0
         score = 0.35 + grounding.business_relevance_score * 0.35 + grounding.product_relevance_score * 0.25
         if candidate and context and context.promotion_goal and _cta_relevance_score(candidate, policy) >= 0.8:
             score += 0.05
@@ -453,6 +475,8 @@ def _cta_relevance_score(candidate: CopyCandidate, policy: dict[str, Any]) -> fl
         return 0.45
     if cta in policy.get("cta_candidates", []):
         return 0.92
+    if any(token in cta for token in ("상담", "문의", "예약", "신청")):
+        return 0.35
     if any(token in cta for token in ("예약", "문의", "상담", "보기", "신청")):
         return 0.82
     return 0.65
