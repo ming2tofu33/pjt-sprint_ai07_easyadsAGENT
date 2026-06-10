@@ -136,6 +136,9 @@ class MarketingState(TypedDict, total=False):
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
     text_style_spec: dict[str, Any] | TextStyleSpec | None
     copy_visual_intent: dict[str, Any] | None
+    typography_art_direction: dict[str, Any] | None
+    font_catalog_summary: list[dict[str, Any]]
+    adaptive_typography_report: dict[str, Any] | None
     image_layout_analysis: dict[str, Any] | None
     layout_candidate_scores: list[dict[str, Any]]
     layout_refinement_result: dict[str, Any] | None
