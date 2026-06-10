@@ -1004,7 +1004,18 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           .map(archiveItemToCreative)
           .filter((creative): creative is MockCreative => Boolean(creative));
 
-        setGeneratedCreatives(archivedCreatives.length > 0 ? archivedCreatives : sessionCreatives);
+        // Show both local (this-device) and server-saved results instead of
+        // discarding either; dedupe by id (session ids are `generated-<jobId>`,
+        // archive ids are adIds, so overlap is rare but guarded).
+        const seen = new Set<string>();
+        const merged = [...sessionCreatives, ...archivedCreatives].filter((creative) => {
+          if (seen.has(creative.id)) {
+            return false;
+          }
+          seen.add(creative.id);
+          return true;
+        });
+        setGeneratedCreatives(merged);
       })
       .catch(() => {
         if (isActive) {

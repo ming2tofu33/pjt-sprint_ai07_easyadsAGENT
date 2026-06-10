@@ -717,6 +717,7 @@ describe("ChatGenerateClient", () => {
     navigationMock.replace.mockClear();
     searchParamsMock.value = new URLSearchParams();
     window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
   it("restores waiting graph question from a thread snapshot", async () => {
@@ -2380,7 +2381,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("shows a saved brand kit on the home and my page surfaces", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       BRAND_KIT_STORAGE_KEY,
       JSON.stringify({
         businessName: "연남 테스트 카페",
@@ -2436,7 +2437,7 @@ describe("ChatGenerateClient", () => {
   it("sends saved brand kit context with chat generation requests", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.createGenerationJob).mockClear();
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       BRAND_KIT_STORAGE_KEY,
       JSON.stringify({
         businessName: "연남 테스트 카페",
@@ -2695,7 +2696,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("opens the selected generated archive item instead of the active complete result", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -2745,7 +2746,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("opens archive search from the header icon and filters generated results", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -2802,7 +2803,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("renders the selected generated archive detail from session storage", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -2858,7 +2859,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("shows a mock download action for generated archive items", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -3040,7 +3041,7 @@ describe("ChatGenerateClient", () => {
   });
 
   it("opens archive overflow actions and deletes an archive item", async () => {
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
@@ -3263,7 +3264,7 @@ describe("ChatGenerateClient", () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.uploadPhotoAsset).mockClear();
     vi.mocked(api.startPhotoGeneration).mockClear();
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       BRAND_KIT_STORAGE_KEY,
       JSON.stringify({
         businessName: "연남 테스트 카페",

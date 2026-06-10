@@ -55,7 +55,7 @@ function creativeFromSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative
 
 export function readGeneratedCreatives(): MockCreative[] {
   try {
-    const raw = window.sessionStorage.getItem(GENERATED_CREATIVES_STORAGE_KEY);
+    const raw = window.localStorage.getItem(GENERATED_CREATIVES_STORAGE_KEY);
     return raw ? (JSON.parse(raw) as MockCreative[]) : [];
   } catch {
     return [];
@@ -70,7 +70,7 @@ export function addGeneratedCreativeSnapshot(snapshot: GeneratedCreativeSnapshot
   const existing = readGeneratedCreatives().filter((item) => item.id !== creative.id);
   const nextCreatives = [creative, ...existing].slice(0, 5);
   try {
-    window.sessionStorage.setItem(GENERATED_CREATIVES_STORAGE_KEY, JSON.stringify(nextCreatives));
+    window.localStorage.setItem(GENERATED_CREATIVES_STORAGE_KEY, JSON.stringify(nextCreatives));
   } catch {
     // The generated result still stays available through the active chat snapshot.
   }
@@ -80,9 +80,9 @@ export function addGeneratedCreativeSnapshot(snapshot: GeneratedCreativeSnapshot
 export function removeGeneratedCreative(creativeId: string): MockCreative[] {
   const nextCreatives = readGeneratedCreatives().filter((item) => item.id !== creativeId);
   try {
-    window.sessionStorage.setItem(GENERATED_CREATIVES_STORAGE_KEY, JSON.stringify(nextCreatives));
+    window.localStorage.setItem(GENERATED_CREATIVES_STORAGE_KEY, JSON.stringify(nextCreatives));
   } catch {
-    // Keep the in-memory UI update even if sessionStorage is unavailable.
+    // Keep the in-memory UI update even if localStorage is unavailable.
   }
   return nextCreatives;
 }
