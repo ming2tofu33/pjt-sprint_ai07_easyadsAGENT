@@ -91,9 +91,9 @@ def load_reference_templates(
 
 
 def load_db_reference_templates(active_only: bool = True) -> list[ReferenceTemplate]:
-    if not db_settings.is_postgres_enabled():
-        return []
     try:
+        if not db_settings.is_postgres_enabled():
+            return []
         from orchestrator.app.db.repositories import reference_templates as reference_repo
 
         return [db_reference_template_from_row(row) for row in reference_repo.list_reference_templates(active_only=active_only)]
