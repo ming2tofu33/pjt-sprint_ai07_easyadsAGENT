@@ -107,6 +107,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "background_validation": "mock",
             "final_validation": "mock",
             "revision_intent_classifier": "local_fast",
+            "option_suggester": "local_fast",
         }
     if plan == "economic":
         return {
@@ -125,10 +126,12 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "background_validation": "mock",
             "final_validation": "api_nano",
             "revision_intent_classifier": "api_nano",
+            "option_suggester": "api_nano",
         }
     if plan == "premium":
         return {
             "validator": "api_nano",
+            "option_suggester": "api_nano",
             "copy_mode_inference": "api_mini",
             "tone_binding": "api_nano",
             "copy_candidate_generation": "api_mini",
@@ -147,6 +150,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
     return {
         "validator": "api_full",
         "copy_mode_inference": "api_full",
+        "option_suggester": "api_mini",
         "tone_binding": "api_mini",
         "copy_candidate_generation": "api_full",
         "copy_generation_v2_actual": "api_mini",
