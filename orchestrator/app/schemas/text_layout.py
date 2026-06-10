@@ -430,4 +430,5 @@ class ResultPayload(BaseModel):
     has_text_overlay: bool
     validation_summary: dict[str, Any] = Field(default_factory=dict)
     artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    compliance: dict[str, Any] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

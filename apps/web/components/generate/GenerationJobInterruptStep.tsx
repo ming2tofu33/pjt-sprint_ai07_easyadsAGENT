@@ -2,7 +2,7 @@
 
 import { Check, PenLine, Send } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ParsedGenerationJobInterrupt } from "@/lib/generation-job-interrupt";
+import type { ComplianceAction, ComplianceFindingFE, ParsedGenerationJobInterrupt } from "@/lib/generation-job-interrupt";
 import type { ChatFlowState } from "@/types/marketing";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChatTimelineStep } from "./ChatTimelineStep";
@@ -19,6 +19,7 @@ type GenerationJobInterruptStepProps = {
   onDelete?: () => void;
   onSelectCopyCandidate: (input: { selectedCopyId: string; label: string }) => void;
   onSubmitCustomCopy: (input: { userCustomHeadline: string; userCustomSubcopy?: string; label: string }) => void;
+  onComplianceAction?: (action: ComplianceAction) => void;
 };
 
 const fallbackCustomFields = [
@@ -50,6 +51,49 @@ function copyOriginLabel(origin: string): string {
   return "요청 기반";
 }
 
+function severityLabel(severity: string | null | undefined): string {
+  if (severity === "block") return "게시 차단";
+  if (severity === "evidence_required") return "증거 필요";
+  if (severity === "warn") return "주의";
+  return "확인";
+}
+
+function ComplianceFinding({ finding }: { finding: ComplianceFindingFE }) {
+  const severity = finding.severity ?? "warn";
+  const displayReason = finding.hitl_question ?? finding.reason;
+  return (
+    <div className={styles.complianceFindingCard} data-severity={severity}>
+      <div className={styles.complianceFindingHeader}>
+        <span className={styles.severityBadge} data-severity={severity}>
+          {severityLabel(severity)}
+        </span>
+        {finding.field && <span className={styles.complianceFieldLabel}>{finding.field}</span>}
+      </div>
+      {finding.matched_text && (
+        <p className={styles.complianceMatchedText}>&ldquo;{finding.matched_text}&rdquo;</p>
+      )}
+      {displayReason && <p className={styles.complianceReason}>{displayReason}</p>}
+      {finding.suggested_text && (
+        <div className={styles.complianceSuggestion}>
+          <span className={styles.complianceSuggestionLabel}>제안</span>
+          <span>{finding.suggested_text}</span>
+        </div>
+      )}
+      {finding.legal_basis && finding.legal_basis.length > 0 && (
+        <ul className={styles.complianceLegalBasis}>
+          {finding.legal_basis.map((b, i) => (
+            <li key={i}>
+              {b.law_name}
+              {b.article ? ` ${b.article}` : ""}
+              {b.summary ? ` — ${b.summary}` : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function GenerationJobInterruptStep({
   interrupt,
   state,
@@ -58,7 +102,8 @@ export function GenerationJobInterruptStep({
   onBack,
   onDelete,
   onSelectCopyCandidate,
-  onSubmitCustomCopy
+  onSubmitCustomCopy,
+  onComplianceAction
 }: GenerationJobInterruptStepProps) {
   const [headline, setHeadline] = useState("");
   const [subcopy, setSubcopy] = useState("");
@@ -89,7 +134,9 @@ export function GenerationJobInterruptStep({
             ? "이미지에 반영할 문구를 골라주세요."
             : interrupt.type === "custom_copy_input"
               ? "직접 넣을 문구를 확인하면 같은 생성 요청을 이어갈게요."
-              : "생성을 이어가기 위해 확인이 필요한 정보가 있어요."}
+              : interrupt.type === "copy_compliance_review"
+                ? "광고 문구에서 규제 관련 표현이 발견되었어요. 아래 내용을 확인하고 진행 방법을 선택해주세요."
+                : "생성을 이어가기 위해 확인이 필요한 정보가 있어요."}
         </p>
       </div>
 
@@ -160,6 +207,39 @@ export function GenerationJobInterruptStep({
             <Send size={18} aria-hidden="true" />
             문구로 생성 이어가기
           </button>
+        </>
+      ) : null}
+
+      {interrupt.type === "copy_compliance_review" ? (
+        <>
+          <h2 className={styles.sectionTitle}>광고 규제 검토 결과</h2>
+          <p className={styles.helperText}>{interrupt.summary}</p>
+          {interrupt.findings.length > 0 && (
+            <div className={styles.complianceFindingList}>
+              {interrupt.findings.map((finding, index) => (
+                <ComplianceFinding key={finding.finding_id ?? index} finding={finding} />
+              ))}
+            </div>
+          )}
+          <div className={styles.complianceActionRow}>
+            {interrupt.actions
+              .filter((action) => action.available)
+              .map((action) => (
+                <button
+                  key={action.id}
+                  type="button"
+                  className={action.id === "use_suggestion" ? styles.primaryButton : styles.secondaryButton}
+                  data-danger={action.id === "cancel" ? "true" : undefined}
+                  disabled={
+                    isLoading ||
+                    (action.id === "keep_original_draft" && interrupt.status === "block")
+                  }
+                  onClick={() => onComplianceAction?.(action)}
+                >
+                  {action.label}
+                </button>
+              ))}
+          </div>
         </>
       ) : null}
 

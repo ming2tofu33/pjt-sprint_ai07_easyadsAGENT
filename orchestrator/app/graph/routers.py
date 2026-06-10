@@ -113,4 +113,24 @@ def route_after_ocr_gate(state: MarketingState) -> str:
     return "continue"
 
 
+def route_after_compliance_gate(state: MarketingState) -> str:
+    """pass / warn → copy_spec_parser로 투명 통과.
+    evidence_required / blocked → interrupt 발생."""
+    status = state.get("copy_compliance_status")
+    if status in {None, "pass", "warn", "rewritten_by_user_choice"}:
+        return "copy_spec_parser"
+    return "copy_compliance_interrupt"
+
+
+def route_after_compliance_resolution(state: MarketingState) -> str:
+    """사용자 결정 후 다음 노드 결정."""
+    gate = state.get("copy_compliance_gate") or {}
+    decision = gate.get("user_decision")
+    if decision == "cancel":
+        return END
+    if decision == "edit_manually":
+        return "custom_copy_input"
+    return "copy_spec_parser"
+
+
 route_after_validator = route_after_validator_for_intake

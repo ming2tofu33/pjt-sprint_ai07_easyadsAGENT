@@ -1353,6 +1353,127 @@
   font-size: 11px;
 }
 
+.complianceFindingList {
+  display: grid;
+  gap: 10px;
+}
+
+.complianceFindingCard {
+  border: 1px solid var(--color-border-soft);
+  border-radius: 12px;
+  background: var(--color-bg-card);
+  padding: 13px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.complianceFindingCard[data-severity="block"] {
+  border-color: rgba(239, 81, 61, 0.3);
+  background: #fff8f7;
+}
+
+.complianceFindingCard[data-severity="evidence_required"] {
+  border-color: rgba(255, 160, 30, 0.3);
+  background: #fffcf0;
+}
+
+.complianceFindingHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.severityBadge {
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.severityBadge[data-severity="block"] {
+  background: rgba(239, 81, 61, 0.12);
+  color: #c83520;
+}
+
+.severityBadge[data-severity="evidence_required"] {
+  background: rgba(255, 160, 30, 0.15);
+  color: #9a6200;
+}
+
+.severityBadge[data-severity="warn"] {
+  background: rgba(255, 200, 0, 0.18);
+  color: #7a6000;
+}
+
+.complianceFieldLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.complianceMatchedText {
+  font-size: 14px;
+  font-weight: 850;
+  color: var(--color-text-primary);
+  background: rgba(239, 81, 61, 0.07);
+  border-radius: 6px;
+  padding: 5px 9px;
+}
+
+.complianceReason {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.complianceSuggestion {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 13px;
+  background: var(--color-status-success-soft);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.complianceSuggestionLabel {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--color-status-success);
+  flex-shrink: 0;
+}
+
+.complianceLegalBasis {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.complianceLegalBasis li {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  padding-left: 10px;
+  position: relative;
+}
+
+.complianceLegalBasis li::before {
+  content: "·";
+  position: absolute;
+  left: 0;
+}
+
+.complianceActionRow {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .channelGrid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -7253,6 +7374,155 @@
   --mascot-width: 42px;
   justify-self: end;
   filter: drop-shadow(0 8px 14px rgba(17, 17, 17, 0.07));
+}
+
+/* ── Plan Info ─────────────────────────────────────────────── */
+
+.planInfoContainer {
+  padding: 0 16px 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.planInfoDesc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.planInfoCards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.planInfoCard {
+  border: 1px solid var(--color-border-soft);
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: var(--color-bg-card);
+}
+
+.planInfoCard[data-plan="free"] {
+  border-color: var(--color-border-soft);
+}
+
+.planInfoCard[data-plan="economic"] {
+  border-color: var(--color-brand-mint-border);
+  background: color-mix(in srgb, var(--color-brand-mint) 8%, var(--color-bg-card));
+}
+
+.planInfoCard[data-plan="premium"] {
+  border-color: var(--color-brand-purple-strong);
+  background: var(--color-brand-purple-shell);
+}
+
+.planInfoCardHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.planInfoCardHeader strong {
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.planInfoCard[data-plan="economic"] .planInfoCardHeader strong {
+  color: var(--color-brand-mint);
+}
+
+.planInfoCard[data-plan="premium"] .planInfoCardHeader strong {
+  color: var(--color-brand-purple-strong);
+}
+
+.planInfoCardHeader span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.planInfoCard p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+.planInfoTable {
+  border: 1px solid var(--color-border-soft);
+  border-radius: 14px;
+  background: var(--color-bg-card);
+  overflow: hidden;
+}
+
+.planInfoTable h2 {
+  font-size: 13px;
+  font-weight: 950;
+  margin: 0;
+  padding: 12px 14px 8px;
+}
+
+.planInfoTableHead {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, 72px);
+  padding: 6px 14px;
+  background: var(--color-neutral-chip);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.planInfoTableHead span:first-child {
+  text-align: left;
+}
+
+.planInfoTableRow {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, 72px);
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-border-hairline);
+  font-size: 12px;
+  align-items: center;
+}
+
+.planInfoTableRow span {
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.planInfoTableRow span:first-child {
+  text-align: left;
+  justify-content: flex-start;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.planFeatureCheck {
+  color: var(--color-brand-mint);
+}
+
+.planFeatureX {
+  color: var(--color-text-muted);
+  opacity: 0.4;
+}
+
+.planFeaturePartial {
+  color: var(--color-brand-coral-soft);
+  opacity: 0.8;
+}
+
+.planInfoNote {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  line-height: 1.6;
 }
 
 .onboardingScreen {

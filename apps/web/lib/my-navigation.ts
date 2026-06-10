@@ -1,4 +1,4 @@
-export type MyPageStep = "home" | "account" | "usage" | "settings";
+export type MyPageStep = "home" | "account" | "usage" | "settings" | "plan-info";
 
 export function buildMyHref(step: MyPageStep = "home"): string {
   if (step === "home") {
