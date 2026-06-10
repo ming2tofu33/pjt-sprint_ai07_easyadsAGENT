@@ -26,6 +26,7 @@ TRACEABLE_NODE_ATTRS = {
     "auto_pilot_copywriting": "auto_pilot_copywriting_node",
     "custom_copy_input": "custom_copy_input_interrupt_node",
     "custom_copy_validation": "custom_copy_validation_node",
+    "input_compliance_precheck": "input_compliance_precheck_node",
     "no_copy_bypass": "no_copy_bypass_node",
     "copy_compliance_gate": "copy_compliance_gate_node",
     "copy_compliance_interrupt": "copy_compliance_interrupt_node",
@@ -57,12 +58,13 @@ TRACEABLE_NODE_ATTRS = {
 NODE_UTILIZATION_MATRIX = {
     "missing_context_question": {
         "includes": ["input", "validator", "options", "state_update"],
-        "excludes": ["format_planner", "t2i_generation", "result"],
+        "excludes": ["format_planner", "input_compliance_precheck", "t2i_generation", "result"],
     },
     "auto_pilot_text_overlay": {
         "includes": [
             "input",
             "validator",
+            "input_compliance_precheck",
             "format_planner",
             "tone_binding",
             "auto_pilot_copywriting",
@@ -84,6 +86,7 @@ NODE_UTILIZATION_MATRIX = {
         "includes": [
             "input",
             "product_preprocess",
+            "input_compliance_precheck",
             "copy_candidate_generation",
             "copy_candidate_selection_interrupt",
             "state_update_selected_copy",
@@ -103,23 +106,24 @@ NODE_UTILIZATION_MATRIX = {
         "excludes": ["copy_candidate_generation", "auto_pilot_copywriting", "no_copy_bypass"],
     },
     "no_copy_image_only": {
-        "includes": ["no_copy_bypass", "copy_spec_parser", "typography_art_direction", "image_layout_analyzer", "post_t2i_layout_refiner", "adaptive_typography_refiner", "safe_area_gate", "result"],
+        "includes": ["input_compliance_precheck", "no_copy_bypass", "copy_spec_parser", "typography_art_direction", "image_layout_analyzer", "post_t2i_layout_refiner", "adaptive_typography_refiner", "safe_area_gate", "result"],
         "excludes": ["text_renderer", "final_ocr_gate", "readability_gate", "final_validation"],
     },
     "reference_template": {
-        "includes": ["reference_template_resolve", "image_prompt_planner", "t2i_request_builder", "image_layout_analyzer", "post_t2i_layout_refiner", "adaptive_typography_refiner", "result"],
+        "includes": ["input_compliance_precheck", "reference_template_resolve", "image_prompt_planner", "t2i_request_builder", "image_layout_analyzer", "post_t2i_layout_refiner", "adaptive_typography_refiner", "result"],
         "excludes": ["product_preprocess", "reference_preprocess"],
     },
     "reference_image": {
-        "includes": ["reference_preprocess", "image_prompt_planner", "t2i_request_builder", "image_layout_analyzer", "post_t2i_layout_refiner", "adaptive_typography_refiner", "result"],
+        "includes": ["input_compliance_precheck", "reference_preprocess", "image_prompt_planner", "t2i_request_builder", "image_layout_analyzer", "post_t2i_layout_refiner", "adaptive_typography_refiner", "result"],
         "excludes": ["product_preprocess", "reference_template_resolve"],
     },
     "ocr_revision_loop": {
-        "includes": ["background_ocr_gate", "ocr_image_revision", "final_ocr_gate", "ocr_layout_revision", "copy_compliance_gate", "result"],
+        "includes": ["input_compliance_precheck", "background_ocr_gate", "ocr_image_revision", "final_ocr_gate", "ocr_layout_revision", "copy_compliance_gate", "result"],
         "excludes": ["copy_candidate_generation", "custom_copy_input", "no_copy_bypass"],
     },
     "compliance_blocked_and_resolved": {
         "includes": [
+            "input_compliance_precheck",
             "custom_copy_input",
             "custom_copy_validation",
             "copy_compliance_gate",

@@ -131,7 +131,7 @@ class MarketingState(TypedDict, total=False):
     tone_binding_output: dict[str, Any] | ToneBindingOutput | None
     copy_mode_inference_output: dict[str, Any] | CopyModeInferenceOutput | None
     copy_selection: dict[str, Any] | None
-    input_compliance_risk: str | None
+    input_compliance_risk: dict[str, Any] | None
     copy_compliance: list[dict[str, Any]]
     copy_compliance_status: str | None
     copy_compliance_publication_ready: bool

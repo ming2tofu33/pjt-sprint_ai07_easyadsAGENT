@@ -41,6 +41,7 @@ from orchestrator.app.llm.nodes.copy_compliance import (
     copy_compliance_gate_node,
     copy_compliance_interrupt_node,
     copy_compliance_resolution_node,
+    input_compliance_precheck_node,
 )
 from orchestrator.app.llm.nodes.no_copy import no_copy_bypass_node
 from orchestrator.app.llm.nodes.ocr_gate import background_ocr_gate_node, final_ocr_gate_node, ocr_image_revision_node, ocr_layout_revision_node
@@ -93,6 +94,7 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("auto_pilot_copywriting", auto_pilot_copywriting_node)
     graph.add_node("custom_copy_input", custom_copy_input_interrupt_node)
     graph.add_node("custom_copy_validation", custom_copy_validation_node)
+    graph.add_node("input_compliance_precheck", input_compliance_precheck_node)
     graph.add_node("no_copy_bypass", no_copy_bypass_node)
     graph.add_node("copy_compliance_gate", copy_compliance_gate_node)
     graph.add_node("copy_compliance_interrupt", copy_compliance_interrupt_node)
@@ -144,8 +146,9 @@ def build_marketing_graph(checkpointer=None):
     graph.add_conditional_edges(
         "validator",
         route_after_validator_for_marketing,
-        {"options": "options", "format_planner": "format_planner"},
+        {"options": "options", "format_planner": "input_compliance_precheck"},
     )
+    graph.add_edge("input_compliance_precheck", "format_planner")
     graph.add_edge("options", "state_update")
     graph.add_edge("state_update", "validator")
     graph.add_edge("format_planner", "tone_binding")

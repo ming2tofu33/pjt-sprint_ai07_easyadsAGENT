@@ -98,6 +98,46 @@ def copy_compliance_resolution_node(state: MarketingState) -> dict[str, Any]:
     }
 
 
+def input_compliance_precheck_node(state: MarketingState) -> dict[str, Any]:
+    """사용자 입력에서 위험 intent를 사전 감지한다.
+    흐름을 절대 멈추지 않는다. 힌트만 state에 저장한다."""
+    user_input = state.get("user_input") or ""
+    business_type = context_to_model(state.get("context")).business_type
+    svc = get_compliance_service()
+    result = svc.check_copy({"headline": user_input}, business_type)
+
+    if result.status == "pass":
+        return {"input_compliance_risk": None, "status": "input_compliance_prechecked"}
+
+    risk = {
+        "detected": True,
+        "status": result.status,
+        "domains": list({_domain_from_rule_id(f.rule_id) for f in result.findings if f.rule_id}),
+        "flagged_terms": [f.matched_text for f in result.findings],
+        "safe_direction": _build_safe_direction_hint(result.findings),
+    }
+    return {"input_compliance_risk": risk, "status": "input_compliance_prechecked"}
+
+
+def _build_safe_direction_hint(findings: list) -> str:
+    """findings: ComplianceFinding Pydantic 객체 또는 dict 모두 지원."""
+    domains: set[str] = set()
+    for f in findings:
+        rule_id = f.rule_id if hasattr(f, "rule_id") else (f.get("rule_id") if isinstance(f, dict) else "")
+        if rule_id:
+            domains.add(_domain_from_rule_id(rule_id))
+    if "food" in domains:
+        return "맛·향·분위기·재료·경험 중심으로 생성합니다."
+    if "medical" in domains or "cosmetic" in domains:
+        return "상담·경험·케어 과정 중심으로 생성합니다."
+    return "표현을 완화해 생성합니다."
+
+
+def _domain_from_rule_id(rule_id: str) -> str:
+    parts = rule_id.split("-")
+    return parts[1].lower() if len(parts) >= 2 else "general"
+
+
 def _build_summary(findings: list[dict[str, Any]]) -> str:
     count = len(findings)
     if count == 0:

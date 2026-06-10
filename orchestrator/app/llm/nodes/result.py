@@ -72,6 +72,7 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             "requiresManualReview": requires_manual_review,
             "qualityRejected": quality_rejected,
             "qualityDecision": ocr_decision,
+            "copyCompliance": _build_copy_compliance_payload(state),
         },
     )
     payload_dict = payload.model_dump()
@@ -84,4 +85,54 @@ def result_node(state: MarketingState) -> dict[str, Any]:
         "artifact_refs": artifacts,
         "status": status,
         "error_message": None if output_path else upstream_error,
+    }
+
+
+def _build_copy_compliance_payload(state: MarketingState) -> dict:
+    gate = state.get("copy_compliance_gate") or {}
+    status = state.get("copy_compliance_status") or "pass"
+    publication_ready = state.get("copy_compliance_publication_ready", True)
+
+    findings_raw = gate.get("findings") or []
+    findings = [
+        {
+            "findingId": f.get("finding_id"),
+            "field": f.get("field"),
+            "matchedText": f.get("matched_text"),
+            "severity": f.get("severity"),
+            "detectionMethod": f.get("detection_method", "pattern"),
+            "confidence": f.get("confidence", 1.0),
+            "message": f.get("reason"),
+            "legalBasis": [
+                {
+                    "key": b.get("key"),
+                    "lawName": b.get("law_name"),
+                    "article": b.get("article"),
+                    "summary": b.get("summary"),
+                }
+                for b in (f.get("legal_basis") or [])
+            ],
+            "suggestedText": f.get("suggested_text"),
+            "ragContext": f.get("rag_context"),
+        }
+        for f in findings_raw
+    ]
+
+    if status == "pass":
+        summary = "광고 규제 검토를 통과했습니다."
+    elif status == "warn":
+        summary = f"광고 규제 주의 표현 {len(findings)}개가 발견되었습니다. 게시 가능합니다."
+    elif status == "manual_review_required":
+        summary = "광고 규제 위험 표현이 발견되었습니다. 게시 전 확인이 필요합니다."
+    else:
+        summary = f"광고 규제 위험 표현 {len(findings)}개가 발견되었습니다."
+
+    return {
+        "status": status,
+        "publicationReady": publication_ready,
+        "summary": summary,
+        "findingCount": len(findings),
+        "findings": findings,
+        "userDecision": gate.get("user_decision"),
+        "userAcknowledgedRisk": gate.get("user_acknowledged_risk", False),
     }
