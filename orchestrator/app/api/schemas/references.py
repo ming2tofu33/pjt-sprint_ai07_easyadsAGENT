@@ -73,3 +73,59 @@ class ReferenceTemplateSimilarResponse(BaseModel):
     template_id: str
     items: list[ReferenceTemplateCardResponse]
     meta: ApiMeta = Field(default_factory=ApiMeta)
+
+
+class AdminReferenceTemplateCreateRequest(BaseModel):
+    template_id: str | None = Field(default=None, alias="templateId")
+    asset_id: str = Field(alias="assetId", min_length=1)
+    workspace_id: str | None = Field(default=None, alias="workspaceId")
+    title: str = Field(..., min_length=1)
+    description: str | None = None
+    category: str = Field(..., min_length=1)
+    sub_category: str | None = Field(default=None, alias="subCategory")
+    tags: list[str] = Field(default_factory=list)
+    business_types: list[str] = Field(default_factory=list, alias="businessTypes")
+    ad_formats: list[str] = Field(default_factory=list, alias="adFormats")
+    platforms: list[str] = Field(default_factory=list)
+    aspect_ratio: str | None = Field(default=None, alias="aspectRatio")
+    style_keywords: list[str] = Field(default_factory=list, alias="styleKeywords")
+    color_palette: list[str] = Field(default_factory=list, alias="colorPalette")
+    layout_hint: str | None = Field(default=None, alias="layoutHint")
+    typography_hint: str | None = Field(default=None, alias="typographyHint")
+    background_style: str | None = Field(default=None, alias="backgroundStyle")
+    popularity_score: float = Field(default=0.0, ge=0, alias="popularityScore")
+    status: Literal["active", "inactive", "draft"] = "draft"
+    license_note: str | None = Field(default=None, alias="licenseNote")
+    copyright_status: str = Field(default="owned_or_licensed", alias="copyrightStatus")
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminReferenceTemplateUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    category: str | None = None
+    sub_category: str | None = Field(default=None, alias="subCategory")
+    tags: list[str] | None = None
+    business_types: list[str] | None = Field(default=None, alias="businessTypes")
+    ad_formats: list[str] | None = Field(default=None, alias="adFormats")
+    platforms: list[str] | None = None
+    aspect_ratio: str | None = Field(default=None, alias="aspectRatio")
+    style_keywords: list[str] | None = Field(default=None, alias="styleKeywords")
+    color_palette: list[str] | None = Field(default=None, alias="colorPalette")
+    layout_hint: str | None = Field(default=None, alias="layoutHint")
+    typography_hint: str | None = Field(default=None, alias="typographyHint")
+    background_style: str | None = Field(default=None, alias="backgroundStyle")
+    popularity_score: float | None = Field(default=None, ge=0, alias="popularityScore")
+    status: Literal["active", "inactive", "draft"] | None = None
+    license_note: str | None = Field(default=None, alias="licenseNote")
+    metadata: dict[str, Any] | None = None
+
+
+class AdminReferenceTemplateItemResponse(BaseModel):
+    template: dict[str, Any]
+
+
+class AdminReferenceTemplateListResponse(BaseModel):
+    success: Literal[True] = True
+    items: list[dict[str, Any]]
+    meta: ApiMeta = Field(default_factory=ApiMeta)

@@ -823,6 +823,9 @@ def reset_generation_job_store_for_tests() -> None:
     with _GENERATION_JOB_LOCK:
         _GENERATION_JOBS.clear()
         _GENERATION_JOB_WORKSPACES.clear()
+    # Memory generation jobs create chat threads; clear them too so the
+    # per-workspace thread limit does not leak across tests.
+    chat_thread_service.reset_chat_thread_store_for_tests()
 
 
 def _pending_interrupt_from_state(result_state: dict) -> dict | None:
@@ -1116,6 +1119,33 @@ def _require_workspace_uuid(value: str | None) -> str:
 
 def _use_postgres_backend() -> bool:
     return db_settings.get_db_backend() == "postgres"
+
+
+def resolve_scoped_workspace_id(workspace_id: str | None, user_id: str | None) -> str:
+    """Resolve a concrete workspace id for scoped (public) job access.
+
+    HITL polling/answer only carry the authenticated user (no explicit
+    workspace id). Mirror the create-path resolution so those requests do not
+    fail with "workspaceId is required.".
+    """
+    requested = (workspace_id or "").strip()
+    resolved_user_id = (user_id or "").strip() or None
+    # Explicit workspace always wins (ownership is validated downstream).
+    if requested:
+        return _require_workspace_uuid(requested) if _use_postgres_backend() else requested
+    # No explicit workspace: resolve from the authenticated user. Reject only
+    # when there is no identity at all (preserves missing-scope rejection).
+    if not resolved_user_id and not db_settings.allow_demo_workspace_fallback():
+        raise GenerationJobWorkspaceRequired("workspaceId is required.")
+    if not _use_postgres_backend():
+        return "mem_workspace"
+    if resolved_user_id:
+        with db_transaction() as conn:
+            workspace = workspace_repo.ensure_user_workspace(user_id=resolved_user_id, connection=conn)
+        return str(workspace["id"])
+    with db_transaction() as conn:
+        workspace = workspace_repo.ensure_demo_workspace(user_id=db_settings.get_demo_user_id(), connection=conn)
+    return str(workspace["id"])
 
 
 def _memory_job_workspace_id(job: GenerationJobResponse) -> str | None:

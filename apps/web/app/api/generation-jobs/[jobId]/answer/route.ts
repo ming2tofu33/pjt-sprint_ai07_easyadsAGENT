@@ -10,6 +10,6 @@ export function POST(request: NextRequest, { params }: { params: { jobId: string
     "POST",
     `/api/v1/generation-jobs/${encodeURIComponent(params.jobId)}/answer`,
     undefined,
-    { injectVerifiedUserId: true }
+    { injectVerifiedUserId: true, injectVerifiedUserIdHeader: true }
   );
 }

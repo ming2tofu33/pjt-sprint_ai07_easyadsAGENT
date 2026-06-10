@@ -143,9 +143,62 @@ const archiveItemSchema = z.object({
   metadata: z.record(z.unknown()).optional()
 });
 
+const assetPresignSchema = z.object({
+  kind: z.enum(["upload", "source", "reference"]),
+  filename: z.string().trim().min(1),
+  mimeType: z.enum(supportedPhotoMimeTypes),
+  sizeBytes: z.number().int().positive(),
+  workspaceId: z.string().trim().min(1).optional(),
+  threadId: z.string().trim().min(1).optional()
+});
+
+const adminReferenceSchema = z.object({
+  templateId: z.string().trim().min(1).optional(),
+  assetId: z.string().trim().min(1),
+  workspaceId: z.string().trim().min(1).optional(),
+  title: z.string().trim().min(1),
+  description: z.string().optional().nullable(),
+  category: z.string().trim().min(1),
+  subCategory: z.string().optional().nullable(),
+  tags: z.array(z.string()).optional(),
+  businessTypes: z.array(z.string()).optional(),
+  adFormats: z.array(z.string()).optional(),
+  platforms: z.array(z.string()).optional(),
+  aspectRatio: z.string().optional().nullable(),
+  styleKeywords: z.array(z.string()).optional(),
+  colorPalette: z.array(z.string()).optional(),
+  layoutHint: z.string().optional().nullable(),
+  typographyHint: z.string().optional().nullable(),
+  backgroundStyle: z.string().optional().nullable(),
+  popularityScore: z.number().min(0).optional(),
+  status: z.enum(["active", "inactive", "draft"]).optional(),
+  licenseNote: z.string().optional().nullable(),
+  copyrightStatus: z.string().optional(),
+  metadata: z.record(z.unknown()).optional()
+});
+
+const adminReferenceUpdateSchema = adminReferenceSchema.omit({ assetId: true, workspaceId: true }).partial();
+
 async function proxyJson({ fetchImpl, url, body }) {
   const response = await fetchImpl(url, {
     method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
+    const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
+    error.statusCode = response.status;
+    error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
+    throw error;
+  }
+  return payload;
+}
+
+async function proxyPatchJson({ fetchImpl, url, body }) {
+  const response = await fetchImpl(url, {
+    method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body)
   });
@@ -276,6 +329,14 @@ async function resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabase
   return String(payload.id);
 }
 
+async function requireSupabaseUserId(args) {
+  const userId = await resolveSupabaseUserId(args);
+  if (!userId) {
+    throw createHttpError(401, "admin session required");
+  }
+  return userId;
+}
+
 function extensionForMimeType(mimeType) {
   if (mimeType === "image/jpeg") {
     return ".jpg";
@@ -372,6 +433,92 @@ export function buildApp(options = {}) {
       url: `${orchestratorBaseUrl}/api/v1/references/${encodeURIComponent(request.params.templateId)}`
     })
   );
+
+
+  app.post("/api/assets/uploads/presign", async (request, reply) => {
+    const parsed = assetPresignSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/assets/uploads/presign`, "user_id", userId),
+      body: parsed.data
+    });
+  });
+
+  app.post("/api/assets/uploads/:assetId/complete", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/assets/uploads/${encodeURIComponent(request.params.assetId)}/complete${queryString}`, "user_id", userId),
+      body: {}
+    });
+  });
+
+  app.get("/api/assets/:assetId", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/assets/${encodeURIComponent(request.params.assetId)}${queryString}`, "user_id", userId)
+    });
+  });
+
+  app.get("/api/admin/references", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/admin/references${queryString}`
+    });
+  });
+
+  app.post("/api/admin/references", async (request, reply) => {
+    const parsed = adminReferenceSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+    const userId = await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/admin/references`, "user_id", userId),
+      body: parsed.data
+    });
+  });
+
+  app.patch("/api/admin/references/:templateId", async (request, reply) => {
+    const parsed = adminReferenceUpdateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+    await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyPatchJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/admin/references/${encodeURIComponent(request.params.templateId)}`,
+      body: parsed.data
+    });
+  });
+
+  app.post("/api/admin/references/:templateId/publish", async (request) => {
+    await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/admin/references/${encodeURIComponent(request.params.templateId)}/publish`,
+      body: {}
+    });
+  });
+
+  app.post("/api/admin/references/:templateId/unpublish", async (request) => {
+    await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/admin/references/${encodeURIComponent(request.params.templateId)}/unpublish`,
+      body: {}
+    });
+  });
 
   app.get("/api/chat-threads", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";

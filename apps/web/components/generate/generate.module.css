@@ -730,6 +730,12 @@
   margin-top: 8px;
 }
 
+.smartChatInput {
+  position: relative;
+  display: block;
+  min-height: 68px;
+}
+
 .briefRefinementArea {
   margin-top: 16px;
 }
@@ -814,6 +820,83 @@
   resize: none;
   overflow-y: auto;
   overflow-wrap: anywhere;
+}
+
+.smartChatSurface {
+  --smart-chat-editor-height: 42px;
+  --smart-chat-max-height: 108px;
+  min-height: 42px;
+  max-height: var(--smart-chat-max-height);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.smartChatFloatPush {
+  width: 0;
+  height: max(0px, calc(var(--smart-chat-editor-height) - 42px));
+  pointer-events: none;
+}
+
+.smartChatFloatReserve {
+  height: 42px;
+  pointer-events: none;
+}
+
+.smartChatFloatLeft {
+  float: left;
+}
+
+.smartChatFloatRight {
+  float: right;
+}
+
+.smartChatFloatReserveLeft {
+  width: 44px;
+}
+
+.smartChatFloatReserveRight {
+  width: 54px;
+}
+
+.smartChatEditor {
+  min-height: 42px;
+  padding: 10px 0;
+  border: 0;
+  outline: 0;
+  color: var(--color-text);
+  font: inherit;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.smartChatEditor[aria-disabled="true"] {
+  color: var(--color-text-muted);
+  cursor: default;
+}
+
+.smartChatEditor[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.smartChatLeftControl,
+.smartChatRightControl {
+  position: absolute;
+  bottom: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.smartChatLeftControl {
+  left: 12px;
+}
+
+.smartChatRightControl {
+  right: 12px;
 }
 
 .sendButton {
