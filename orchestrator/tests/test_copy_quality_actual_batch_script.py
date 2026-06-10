@@ -72,6 +72,27 @@ def test_copy_quality_actual_batch_dry_run_does_not_require_openai(monkeypatch, 
     assert all(run["actual_openai_call"] is False for run in report["runs"])
 
 
+def test_copy_quality_actual_batch_supports_explicit_cases(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    args = type(
+        "Args",
+        (),
+        {
+            "actual": False,
+            "cases": ["macaron_collection_001", "car_detailing_001"],
+            "max_cases": 6,
+            "max_openai_calls": 2,
+            "mode": "post",
+            "env_file": None,
+        },
+    )()
+
+    report = batch.build_report(args)
+
+    assert [run["case_id"] for run in report["runs"]] == ["macaron_collection_001", "car_detailing_001"]
+    assert all("selected_grounding" in run for run in report["runs"])
+
+
 def test_copy_quality_actual_batch_blocks_without_guard(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("EASYADS_COPY_QUALITY_ACTUAL", raising=False)
@@ -252,7 +273,10 @@ def test_visual_actual_success_path_uses_flux_renderer_and_vlm(monkeypatch, tmp_
     )
 
     assert run["status"] == "completed"
-    assert calls == {"flux": 1, "render": 2, "vlm": 1}
+    assert calls == {"flux": 1, "render": 3, "vlm": 1}
+    assert run["previous_baseline_path"]
+    assert run["previous_v2_path"]
+    assert run["grounded_intent_v1_path"]
 
 
 def test_vlm_actual_comparison_success_path(monkeypatch, tmp_path):
@@ -299,7 +323,7 @@ def test_vlm_actual_comparison_success_path(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-redacted")
     monkeypatch.setattr(visual, "_create_openai_vision_response", fake_create)
 
-    result = visual.run_actual_vlm_comparison("macaron_collection_001", baseline, v2)
+    result = visual.run_actual_vlm_comparison("macaron_collection_001", baseline, v2, v2)
 
     assert result.preferred_version == "v2"
     assert result.v2_copy_score == 8

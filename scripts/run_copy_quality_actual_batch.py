@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from orchestrator.app.graph.state import create_initial_marketing_state
+from orchestrator.app.llm.copy_fallbacks import build_message_strategy
+from orchestrator.app.llm.copy_grounding import evaluate_copy_grounding
 from orchestrator.app.llm.copy_quality_v2 import build_deterministic_copy_output_v2, generate_copy_candidates_v2_actual
 from orchestrator.app.llm.copy_quality_v2 import select_recommended_copy
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -63,6 +65,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--actual", action="store_true")
     parser.add_argument("--max-cases", type=int, default=10)
+    parser.add_argument("--cases", nargs="*", default=None)
     parser.add_argument("--max-openai-calls", type=int, default=10)
     parser.add_argument("--output-dir", default="data/outputs/copy_quality_actual_v2")
     parser.add_argument("--mode", choices=["baseline", "post"], default="post")
@@ -87,7 +90,7 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     missing = missing_actual_requirements(args)
     budget = ActualCallBudget(max_calls=max(0, args.max_openai_calls))
     runs = []
-    for case_id, context in list(CASES.items())[: max(1, args.max_cases)]:
+    for case_id, context in select_cases(args):
         state = create_state(case_id, context)
         if args.mode == "baseline":
             generated = build_deterministic_copy_output_v2(state)
@@ -100,9 +103,10 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                 generated, llm_metadata = run_actual_copy_generation(state)
                 actual_call = bool(llm_metadata.get("llm_attempted"))
                 selected_copy = selected_copy_payload(generated)
+                selected_grounding = selected_copy_grounding(generated, context)
                 token_usage = extract_token_usage(state) or extract_token_usage_from_metadata(llm_metadata)
                 model_name = extract_model_name(llm_metadata)
-                if actual_run_is_complete(actual_call, llm_metadata, generated, selected_copy, token_usage, model_name):
+                if actual_run_is_complete(actual_call, llm_metadata, generated, selected_copy, token_usage, model_name, selected_grounding):
                     budget.mark_success()
                     status = "completed"
                 else:
@@ -120,8 +124,10 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
             actual_call = False
             status = "blocked" if args.actual and missing else "dry_run"
         selected_copy = selected_copy_payload(generated)
+        selected_grounding = selected_copy_grounding(generated, context)
         token_usage = extract_token_usage(state) or extract_token_usage_from_metadata(llm_metadata)
         model_name = extract_model_name(llm_metadata)
+        model_selection = extract_model_selection(llm_metadata)
         runs.append(
             {
                 "case_id": case_id,
@@ -143,6 +149,12 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
                     for candidate in generated.candidates
                 ],
                 "selected_copy": selected_copy,
+                "selected_grounding": selected_grounding,
+                "grounded": bool(selected_grounding.get("grounded")),
+                "wrong_domain_terms": selected_grounding.get("wrong_domain_terms", []),
+                "provider": model_selection.get("provider"),
+                "selected_model_class": model_selection.get("selected_model_class"),
+                "fallback_used": bool(llm_metadata.get("fallback_used")),
                 "recommended_distribution_key": generated.recommended_candidate_id,
                 "ranking": generated.ranking.model_dump(),
                 "message_strategy": generated.message_strategy.model_dump(),
@@ -169,6 +181,16 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def select_cases(args: argparse.Namespace) -> list[tuple[str, MarketingContext]]:
+    requested = getattr(args, "cases", None) or list(CASES)
+    selected: list[tuple[str, MarketingContext]] = []
+    for case_id in requested:
+        if case_id not in CASES:
+            raise ValueError(f"unknown_case:{case_id}")
+        selected.append((case_id, CASES[case_id]))
+    return selected[: max(1, args.max_cases)]
+
+
 def run_actual_copy_generation(state: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     prompt = (
         "Create Copy Quality Core v2 Korean ad copy. Return JSON matching this shape exactly: "
@@ -185,6 +207,13 @@ def selected_copy_payload(generated: Any) -> dict[str, str | None] | None:
     if selected is None:
         return None
     return {"headline": selected.headline, "subcopy": selected.subcopy, "cta": selected.cta}
+
+
+def selected_copy_grounding(generated: Any, context: MarketingContext) -> dict[str, Any]:
+    selected = select_recommended_copy(generated.candidates, generated.ranking)
+    if selected is None:
+        return {"grounded": False, "wrong_domain_terms": ["no_selected_copy"], "grounding_level": "missing"}
+    return evaluate_copy_grounding(selected, context=context, strategy=build_message_strategy(context)).model_dump()
 
 
 def create_state(case_id: str, context: MarketingContext) -> dict[str, Any]:
@@ -250,7 +279,24 @@ def extract_model_name(metadata: dict[str, Any]) -> str | None:
     )
 
 
-def actual_run_is_complete(actual_call: bool, metadata: dict[str, Any], generated: Any, selected_copy: dict[str, str | None] | None, token_usage: dict[str, Any] | None, model_name: str | None) -> bool:
+def extract_model_selection(metadata: dict[str, Any]) -> dict[str, Any]:
+    selection = dict(metadata.get("model_selection") or {})
+    call = dict(metadata.get("llm_call_result") or {})
+    return {
+        "provider": metadata.get("provider") or call.get("provider") or selection.get("provider"),
+        "selected_model_class": metadata.get("selected_model_class") or call.get("selected_model_class") or selection.get("selected_model_class"),
+    }
+
+
+def actual_run_is_complete(
+    actual_call: bool,
+    metadata: dict[str, Any],
+    generated: Any,
+    selected_copy: dict[str, str | None] | None,
+    token_usage: dict[str, Any] | None,
+    model_name: str | None,
+    selected_grounding: dict[str, Any],
+) -> bool:
     return bool(
         actual_call
         and not metadata.get("fallback_used")
@@ -258,6 +304,8 @@ def actual_run_is_complete(actual_call: bool, metadata: dict[str, Any], generate
         and selected_copy
         and token_usage
         and model_name
+        and selected_grounding.get("grounded")
+        and not selected_grounding.get("wrong_domain_terms")
     )
 
 

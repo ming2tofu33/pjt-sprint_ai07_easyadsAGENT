@@ -6,10 +6,13 @@ from typing import Any
 
 from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.copy_quality_v2 import generate_copy_candidates_v2, rank_copy_candidates, select_recommended_copy
+from orchestrator.app.llm.copy_fallbacks import build_message_strategy
+from orchestrator.app.llm.copy_prompts import build_copy_generation_v2_prompt
+from orchestrator.app.llm.copy_visual_intent import resolve_copy_visual_intent
 from orchestrator.app.llm.metadata_builders import build_copy_generation_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.nodes.copywriting import copywriting_node
-from orchestrator.app.schemas.llm_marketing import CopyCandidate, CopyGenerationV2Output, CopywritingOutput, MarketingCopy
+from orchestrator.app.schemas.llm_marketing import CopyCandidate, CopyGenerationV2Output, CopywritingOutput, MarketingContext, MarketingCopy
 
 
 def auto_pilot_copywriting_node(state: MarketingState) -> dict[str, Any]:
@@ -71,7 +74,17 @@ def apply_auto_pilot_v2_quality(state: MarketingState, output: CopywritingOutput
         metadata={"source": "auto_pilot_llm"},
     )
     ranking = rank_copy_candidates([candidate], state=state)
-    if ranking.scorecards and ranking.scorecards[0].hard_blocked:
+    blocking_warnings = set(ranking.scorecards[0].warnings if ranking.scorecards else [])
+    should_replace = bool(
+        ranking.scorecards
+        and ranking.scorecards[0].hard_blocked
+        and (
+            any(warning.startswith("wrong_domain:") for warning in blocking_warnings)
+            or "generic_or_meta_phrase_detected" in blocking_warnings
+            or "unsupported_fact_detected" in blocking_warnings
+        )
+    )
+    if should_replace:
         fallback = generate_copy_candidates_v2(state)
         selected = select_recommended_copy(fallback.candidates, fallback.ranking)
         if selected is not None:
@@ -129,18 +142,31 @@ def select_auto_pilot_v2_output(state: MarketingState, output: CopyGenerationV2O
 
 
 def build_auto_pilot_prompt(state: MarketingState, metadata_contract: dict[str, Any] | None = None) -> str:
-    context = state.get("context") or {}
-    tone = state.get("tone_binding_output") or {}
+    context = _context_to_model(state.get("context"))
+    strategy = build_message_strategy(context)
+    intent = resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template"))
     metadata_contract = metadata_contract or build_copy_generation_metadata(
         state,
         node_name="auto_pilot_copywriting",
         output_schema=CopywritingOutput,
     )
-    return (
-        "Create a Copy Quality Core v2 strategy and exactly three Korean advertising copy candidates. "
-        f"context={context}, tone_binding={tone}. "
-        "First define message strategy, then produce three distinct candidates: product_first, emotion_first, benefit_action_first. "
-        "Separate headline and subcopy. Avoid generic placeholder phrases, unsupported claims, phone numbers, addresses, prices, discounts, or event periods unless provided. "
-        "Set CTA intent clearly and return CopyGenerationV2Output JSON. "
-        f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}."
+    grounded_prompt = build_copy_generation_v2_prompt(
+        context=context,
+        strategy=strategy,
+        visual_intent=intent,
     )
+    return "\n".join(
+        [
+            grounded_prompt,
+            "Return CopyGenerationV2Output JSON. Do not use fallback or placeholder text.",
+            f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}.",
+        ]
+    )
+
+
+def _context_to_model(context: dict[str, Any] | MarketingContext | None) -> MarketingContext:
+    if isinstance(context, MarketingContext):
+        return context
+    if isinstance(context, dict):
+        return MarketingContext(**context)
+    return MarketingContext()

@@ -14,8 +14,12 @@ from typing import Any, Literal
 from PIL import Image, ImageChops
 from pydantic import BaseModel, Field
 
+from orchestrator.app.llm.copy_visual_intent import resolve_copy_visual_intent
+from orchestrator.app.llm.nodes.copy_spec_parser import copy_spec_parser_node
+from orchestrator.app.llm.nodes.text_layout_planner import text_layout_planner_node
 from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
-from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, FontMetric, NormalizedBBox, TextLayoutSpec, TextSlot, TextStyleSpec, TypographyRule
+from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
+from orchestrator.app.schemas.llm_marketing import MarketingCopy, MarketingContext
 from orchestrator.app.t2i.engines.base import T2IGenerationInput, T2IGenerationOutput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from orchestrator.app.t2i.settings import load_t2i_settings
@@ -39,6 +43,22 @@ VISUAL_CASES = {
 }
 
 
+VISUAL_CONTEXTS = {
+    "macaron_collection_001": {"business_type": "macaron", "item_or_service": "마카롱 컬렉션", "promotion_goal": "menu_discovery", "brand_tone": "premium"},
+    "restaurant_bbq_001": {"business_type": "restaurant_bbq", "item_or_service": "숯불구이", "promotion_goal": "reservation_cta", "brand_tone": "premium"},
+    "beauty_nail_001": {"business_type": "beauty_nail", "item_or_service": "네일 디자인", "promotion_goal": "reservation_cta", "brand_tone": "premium"},
+}
+
+
+REFERENCE_FIXTURES = {
+    "macaron_collection_001": {
+        "layout_hint": "editorial left text right product",
+        "typography_hint": "premium serif with restrained sans body",
+        "style_keywords": ["editorial", "minimal", "premium", "negative space"],
+    }
+}
+
+
 class CopyActualComparisonResult(BaseModel):
     baseline_copy_score: float
     v2_copy_score: float
@@ -58,6 +78,12 @@ class CopyActualComparisonResult(BaseModel):
     v2_unsupported_claim: bool
     baseline_text_readable: bool
     v2_text_readable: bool
+    copy_matches_product: bool = True
+    wrong_domain_terms: list[str] = Field(default_factory=list)
+    cta_needed: bool = False
+    cta_style_fit: float = 0.0
+    information_hierarchy_fit: float = 0.0
+    reference_style_alignment: float = 0.0
     preferred_version: Literal["baseline", "v2", "tie"]
     improvement_reasons: list[str] = Field(default_factory=list)
     remaining_copy_issues: list[str] = Field(default_factory=list)
@@ -78,8 +104,11 @@ def main() -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     report = build_report(args)
-    path = output_dir / "visual_actual_summary.json"
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = output_dir / f"visual_actual_summary_{report['status']}_{timestamp}.json"
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    if report["status"] == "completed":
+        (output_dir / "visual_actual_summary.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(path)
     return 0 if report["status"] in {"completed", "dry_run"} else 2
 
@@ -140,12 +169,14 @@ def run_actual_copy_case(case_id: str, *, case_dir: Path, seed: int | None, copy
     background_path = Path(background.image_paths[0])
     selected_copy = select_v2_copy(case_id, copy_report)
     baseline_copy = VISUAL_CASES[case_id]["baseline"]
-    baseline_path = render_baseline_and_v2_copy(case_id, background_path, baseline_copy, case_dir / "baseline", "baseline")
-    v2_path = render_baseline_and_v2_copy(case_id, background_path, selected_copy, case_dir / "v2", "v2")
+    baseline_path = render_copy_variant(case_id, background_path, baseline_copy, case_dir / "baseline", "previous_baseline", selected_reference_template=None)
+    previous_v2_path = render_copy_variant(case_id, background_path, selected_copy, case_dir / "previous_v2", "previous_v2", selected_reference_template=None)
+    grounded_path = render_copy_variant(case_id, background_path, selected_copy, case_dir / "grounded_intent_v1", "grounded_intent_v1", selected_reference_template=REFERENCE_FIXTURES.get(case_id))
     assert_actual_composite(background_path, baseline_path, baseline_copy)
-    assert_actual_composite(background_path, v2_path, selected_copy)
-    sheet_path = build_comparison_sheet(baseline_path, v2_path, case_dir / "comparison_sheet.png")
-    vlm = run_actual_vlm_comparison(case_id, baseline_path, v2_path) if max_vlm_calls > 0 else None
+    assert_actual_composite(background_path, previous_v2_path, selected_copy)
+    assert_actual_composite(background_path, grounded_path, selected_copy, selected_reference_template=REFERENCE_FIXTURES.get(case_id))
+    sheet_path = build_comparison_sheet_3way(baseline_path, previous_v2_path, grounded_path, case_dir / "comparison_sheet_3way.png")
+    vlm = run_vlm_comparison_compat(case_id, baseline_path, previous_v2_path, grounded_path) if max_vlm_calls > 0 else None
     assert_actual_vlm_result(vlm)
     result = {
         "case_id": case_id,
@@ -153,8 +184,11 @@ def run_actual_copy_case(case_id: str, *, case_dir: Path, seed: int | None, copy
         "flux2_klein_actual_image_generation": True,
         "openai_vlm_actual_final_judge": True,
         "background_path": str(background_path),
+        "previous_baseline_path": str(baseline_path),
+        "previous_v2_path": str(previous_v2_path),
+        "grounded_intent_v1_path": str(grounded_path),
         "baseline_final_path": str(baseline_path),
-        "v2_final_path": str(v2_path),
+        "v2_final_path": str(grounded_path),
         "comparison_sheet_path": str(sheet_path),
         "flux_result": background.model_dump(),
         "selected_copy": selected_copy,
@@ -162,6 +196,28 @@ def run_actual_copy_case(case_id: str, *, case_dir: Path, seed: int | None, copy
     }
     (case_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
+
+
+def run_vlm_comparison_compat(case_id: str, baseline_path: Path, previous_v2_path: Path, grounded_path: Path) -> CopyActualComparisonResult:
+    try:
+        return run_actual_vlm_comparison(case_id, baseline_path, previous_v2_path, grounded_path)
+    except TypeError:
+        return run_actual_vlm_comparison(case_id, baseline_path, previous_v2_path)
+
+
+def render_copy_variant(
+    case_id: str,
+    background_path: Path,
+    copy: dict[str, str],
+    output_dir: Path,
+    label: str,
+    *,
+    selected_reference_template: dict[str, Any] | None,
+) -> Path:
+    try:
+        return render_baseline_and_v2_copy(case_id, background_path, copy, output_dir, label, selected_reference_template=selected_reference_template)
+    except TypeError:
+        return render_baseline_and_v2_copy(case_id, background_path, copy, output_dir, label)
 
 
 def generate_flux2_background(case_id: str, *, case_dir: Path, seed: int | None) -> T2IGenerationOutput:
@@ -181,15 +237,31 @@ def generate_flux2_background(case_id: str, *, case_dir: Path, seed: int | None)
     )
 
 
-def render_baseline_and_v2_copy(case_id: str, background_path: Path, copy: dict[str, str], output_dir: Path, label: str) -> Path:
+def render_baseline_and_v2_copy(
+    case_id: str,
+    background_path: Path,
+    copy: dict[str, str],
+    output_dir: Path,
+    label: str,
+    *,
+    selected_reference_template: dict[str, Any] | None = None,
+) -> Path:
+    context = MarketingContext(**VISUAL_CONTEXTS[case_id])
+    intent = resolve_copy_visual_intent(context, selected_reference_template=selected_reference_template)
     state = {
         "job_id": f"{case_id}_{label}",
         "thread_id": f"{case_id}_thread",
         "t2i_result": {"image_paths": [str(background_path)]},
-        "copy_spec": build_copy_spec(copy),
-        "text_layout_spec": build_layout_spec(),
-        "text_style_spec": build_style_spec(),
+        "context": context.model_dump(),
+        "marketing_copy": MarketingCopy(headline=copy["headline"], subcopy=copy.get("subcopy"), cta=copy.get("cta")).model_dump(),
+        "copy_visual_intent": intent.model_dump(),
+        "selected_reference_template": selected_reference_template,
+        "ad_format_spec": {"ad_format": "instagram_feed", "width": 1024, "height": 1024},
+        "current_brief": {},
     }
+    state.update(copy_spec_parser_node(state))
+    state.update(text_style_binder_node(state))
+    state.update(text_layout_planner_node(state))
     result = text_renderer_node(state)
     assert result.get("status") == "overlaying_text", result
     rendered = Path(result["final_image_path"])
@@ -199,7 +271,8 @@ def render_baseline_and_v2_copy(case_id: str, background_path: Path, copy: dict[
     return target
 
 
-def run_actual_vlm_comparison(case_id: str, baseline_path: Path, v2_path: Path) -> CopyActualComparisonResult:
+def run_actual_vlm_comparison(case_id: str, baseline_path: Path, previous_v2_path: Path, grounded_path: Path | None = None) -> CopyActualComparisonResult:
+    grounded_path = grounded_path or previous_v2_path
     model = os.getenv("LLM_OPENAI_VISION_MODEL") or os.getenv("EASYADS_LLM_VISION_MODEL") or "gpt-4.1-mini"
     prompt = (
         "Compare two Korean ad creatives. Return strict JSON only with these keys: "
@@ -208,10 +281,13 @@ def run_actual_vlm_comparison(case_id: str, baseline_path: Path, v2_path: Path) 
         "baseline_emotional_pull, v2_emotional_pull, baseline_cta_relevance, v2_cta_relevance, "
         "baseline_generic_phrase, v2_generic_phrase, baseline_unsupported_claim, v2_unsupported_claim, "
         "baseline_text_readable, v2_text_readable, preferred_version, improvement_reasons, "
-        "remaining_copy_issues, layout_issues. preferred_version must be baseline, v2, or tie. "
-        f"Case id: {case_id}. First image is baseline. Second image is Copy Quality v2."
+        "remaining_copy_issues, layout_issues, copy_matches_product, wrong_domain_terms, cta_needed, "
+        "cta_style_fit, information_hierarchy_fit, reference_style_alignment. "
+        "preferred_version must be baseline, v2, or tie. Never prefer v2 when copy_matches_product is false, "
+        "wrong_domain_terms is non-empty, v2_business_fit is below 6, or v2_unsupported_claim is true. "
+        f"Case id: {case_id}. First image is baseline. Second image is previous Copy Quality v2. Third image is grounded_intent_v1. Prefer v2 only when grounded_intent_v1 is best; encode preferred_version as baseline, v2, or tie for backward compatibility."
     )
-    response = _create_openai_vision_response(model=model, prompt=prompt, image_paths=[baseline_path, v2_path])
+    response = _create_openai_vision_response(model=model, prompt=prompt, image_paths=[baseline_path, previous_v2_path, grounded_path])
     text = _extract_response_text(response)
     payload = normalize_vlm_payload(json.loads(_strip_json_fence(text)))
     return CopyActualComparisonResult.model_validate(payload)
@@ -240,12 +316,15 @@ def normalize_vlm_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "v2_unsupported_claim",
         "baseline_text_readable",
         "v2_text_readable",
+        "copy_matches_product",
     }
-    list_fields = {"improvement_reasons", "remaining_copy_issues", "layout_issues"}
+    list_fields = {"improvement_reasons", "remaining_copy_issues", "layout_issues", "wrong_domain_terms"}
     for field in score_fields:
         normalized[field] = float(normalized.get(field, 0) or 0)
+    for field in ("cta_style_fit", "information_hierarchy_fit", "reference_style_alignment"):
+        normalized[field] = float(normalized.get(field, 0) or 0)
     for field in bool_fields:
-        value = normalized.get(field, False)
+        value = normalized.get(field, True if field == "copy_matches_product" else False)
         if isinstance(value, bool):
             normalized[field] = value
         elif isinstance(value, (int, float)):
@@ -253,7 +332,7 @@ def normalize_vlm_payload(payload: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(value, str):
             normalized[field] = value.strip().lower() in {"true", "yes", "1", "high", "present", "readable"}
         else:
-            normalized[field] = False
+            normalized[field] = True if field == "copy_matches_product" else False
     for field in list_fields:
         value = normalized.get(field, [])
         if isinstance(value, list):
@@ -263,6 +342,8 @@ def normalize_vlm_payload(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             normalized[field] = []
     preferred = str(normalized.get("preferred_version", "tie")).strip().lower()
+    if not normalized.get("copy_matches_product", True) or normalized.get("wrong_domain_terms") or normalized.get("v2_business_fit", 0) < 6 or normalized.get("v2_unsupported_claim"):
+        preferred = "baseline" if normalized.get("baseline_business_fit", 0) >= normalized.get("v2_business_fit", 0) else "tie"
     normalized["preferred_version"] = preferred if preferred in {"baseline", "v2", "tie"} else "tie"
     return normalized
 
@@ -340,7 +421,7 @@ def assert_actual_flux_result(result: T2IGenerationOutput) -> None:
         raise AssertionError("FLUX actual latency is missing.")
 
 
-def assert_actual_composite(background_path: Path, composite_path: Path, expected_copy: dict[str, str]) -> None:
+def assert_actual_composite(background_path: Path, composite_path: Path, expected_copy: dict[str, str], *, selected_reference_template: dict[str, Any] | None = None) -> None:
     if not composite_path.exists() or composite_path.stat().st_size <= 0:
         raise AssertionError("Composite image is missing.")
     with Image.open(composite_path) as image:
@@ -348,9 +429,13 @@ def assert_actual_composite(background_path: Path, composite_path: Path, expecte
     with Image.open(background_path).convert("RGB") as bg, Image.open(composite_path).convert("RGB") as final:
         if not ImageChops.difference(bg, final).getbbox():
             raise AssertionError("Composite image is identical to background.")
-    for key in ("headline", "subcopy", "cta"):
+    context = MarketingContext(**VISUAL_CONTEXTS.get(composite_path.parent.parent.name, {})) if composite_path.parent.parent.name in VISUAL_CONTEXTS else None
+    intent = resolve_copy_visual_intent(context, selected_reference_template=selected_reference_template) if context else None
+    for key in ("headline", "subcopy"):
         if not expected_copy.get(key):
             raise AssertionError(f"Expected {key} is missing.")
+    if intent and intent.cta_visibility != "hidden" and intent.cta_style != "none" and not expected_copy.get("cta"):
+        raise AssertionError("Expected cta is missing.")
 
 
 def assert_actual_vlm_result(result: Any) -> None:
@@ -361,57 +446,22 @@ def assert_actual_vlm_result(result: Any) -> None:
         raise AssertionError("VLM structured result is invalid.")
 
 
-def build_copy_spec(copy: dict[str, str]) -> dict[str, Any]:
-    return CopySpec(
-        items=[
-            CopyItem(role="headline", text=copy["headline"], priority=1),
-            CopyItem(role="body", text=copy["subcopy"], priority=2),
-            CopyItem(role="cta", text=copy["cta"], priority=3),
-        ]
-    ).model_dump()
-
-
-def build_layout_spec() -> dict[str, Any]:
-    metric_head = FontMetric(base_size_ratio=0.052, min_size_ratio=0.026, max_size_ratio=0.07, weight=800)
-    metric_body = FontMetric(base_size_ratio=0.032, min_size_ratio=0.02, max_size_ratio=0.046, weight=500)
-    return TextLayoutSpec(
-        template="left_text_right_product",
-        canvas_width=1024,
-        canvas_height=1024,
-        auto_find_empty_space=False,
-        slots=[
-            TextSlot(slot_id="headline", role="headline", bbox=NormalizedBBox(x=0.07, y=0.18, w=0.42, h=0.14), font_metric=metric_head, alignment="left", max_lines=2),
-            TextSlot(slot_id="body", role="body", bbox=NormalizedBBox(x=0.07, y=0.34, w=0.42, h=0.18), font_metric=metric_body, alignment="left", max_lines=3),
-            TextSlot(slot_id="cta", role="cta", bbox=NormalizedBBox(x=0.07, y=0.56, w=0.32, h=0.1), font_metric=metric_body, alignment="left", max_lines=1),
-        ],
-    ).model_dump()
-
-
-def build_style_spec() -> dict[str, Any]:
-    return TextStyleSpec(
-        profile="premium",
-        typography=TypographyRule(
-            headline_font="Pretendard",
-            body_font="Pretendard",
-            headline_weight=800,
-            body_weight=500,
-            headline_size_ratio=0.052,
-            body_size_ratio=0.032,
-            primary_color="#FFFFFF",
-            accent_color="#F5D38A",
-            text_color_on_light="#241B16",
-            text_color_on_dark="#FFFFFF",
-            default_overlay="drop_shadow",
-            use_text_plate=True,
-        ),
-    ).model_dump()
-
-
 def build_comparison_sheet(left: Path, right: Path, output_path: Path) -> Path:
     with Image.open(left).convert("RGB") as left_image, Image.open(right).convert("RGB") as right_image:
         sheet = Image.new("RGB", (left_image.width + right_image.width, left_image.height + 64), "white")
         sheet.paste(left_image, (0, 64))
         sheet.paste(right_image, (left_image.width, 64))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        sheet.save(output_path)
+    return output_path
+
+
+def build_comparison_sheet_3way(left: Path, middle: Path, right: Path, output_path: Path) -> Path:
+    with Image.open(left).convert("RGB") as left_image, Image.open(middle).convert("RGB") as middle_image, Image.open(right).convert("RGB") as right_image:
+        sheet = Image.new("RGB", (left_image.width + middle_image.width + right_image.width, left_image.height + 64), "white")
+        sheet.paste(left_image, (0, 64))
+        sheet.paste(middle_image, (left_image.width, 64))
+        sheet.paste(right_image, (left_image.width + middle_image.width, 64))
         output_path.parent.mkdir(parents=True, exist_ok=True)
         sheet.save(output_path)
     return output_path
