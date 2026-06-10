@@ -135,6 +135,7 @@ class MarketingState(TypedDict, total=False):
     copy_spec: dict[str, Any] | CopySpec | None
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
     text_style_spec: dict[str, Any] | TextStyleSpec | None
+    copy_visual_intent: dict[str, Any] | None
     image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
     image_prompt: dict[str, Any] | ImagePrompt | None
     prompt_optimization_output: dict[str, Any] | PromptOptimizationOutput | None
@@ -306,6 +307,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "copy_spec": None,
         "text_layout_spec": None,
         "text_style_spec": None,
+        "copy_visual_intent": None,
         "image_prompt_spec": None,
         "image_prompt": None,
         "prompt_optimization_output": None,
