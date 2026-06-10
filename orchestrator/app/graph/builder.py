@@ -22,6 +22,8 @@ from orchestrator.app.graph.routers import (
     route_after_validator_for_intake,
     route_after_validator_for_marketing,
     route_by_copy_presence,
+    route_after_compliance_gate,
+    route_after_compliance_resolution,
 )
 from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.nodes.auto_pilot_copywriting import auto_pilot_copywriting_node
@@ -35,6 +37,11 @@ from orchestrator.app.llm.nodes.format_planner import format_planner_node
 from orchestrator.app.llm.nodes.adaptive_typography_refiner import adaptive_typography_refiner_node
 from orchestrator.app.llm.nodes.image_prompt_planner import image_prompt_planner_node
 from orchestrator.app.llm.nodes.image_layout_analyzer import image_layout_analyzer_node
+from orchestrator.app.llm.nodes.copy_compliance import (
+    copy_compliance_gate_node,
+    copy_compliance_interrupt_node,
+    copy_compliance_resolution_node,
+)
 from orchestrator.app.llm.nodes.no_copy import no_copy_bypass_node
 from orchestrator.app.llm.nodes.ocr_gate import background_ocr_gate_node, final_ocr_gate_node, ocr_image_revision_node, ocr_layout_revision_node
 from orchestrator.app.llm.nodes.prompt_renderer import prompt_renderer_node
@@ -87,6 +94,9 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("custom_copy_input", custom_copy_input_interrupt_node)
     graph.add_node("custom_copy_validation", custom_copy_validation_node)
     graph.add_node("no_copy_bypass", no_copy_bypass_node)
+    graph.add_node("copy_compliance_gate", copy_compliance_gate_node)
+    graph.add_node("copy_compliance_interrupt", copy_compliance_interrupt_node)
+    graph.add_node("copy_compliance_resolution", copy_compliance_resolution_node)
     graph.add_node("copy_spec_parser", copy_spec_parser_node)
     graph.add_node("typography_art_direction", typography_art_direction_node)
     graph.add_node("text_style_binder", text_style_binder_node)
@@ -152,11 +162,29 @@ def build_marketing_graph(checkpointer=None):
     )
     graph.add_edge("copy_candidate_generation", "copy_candidate_selection_interrupt")
     graph.add_edge("copy_candidate_selection_interrupt", "state_update_selected_copy")
-    graph.add_edge("state_update_selected_copy", "copy_spec_parser")
-    graph.add_edge("auto_pilot_copywriting", "copy_spec_parser")
+    graph.add_edge("state_update_selected_copy", "copy_compliance_gate")
+    graph.add_edge("auto_pilot_copywriting", "copy_compliance_gate")
     graph.add_edge("custom_copy_input", "custom_copy_validation")
-    graph.add_edge("custom_copy_validation", "copy_spec_parser")
+    graph.add_edge("custom_copy_validation", "copy_compliance_gate")
     graph.add_edge("no_copy_bypass", "copy_spec_parser")
+    graph.add_conditional_edges(
+        "copy_compliance_gate",
+        route_after_compliance_gate,
+        {
+            "copy_spec_parser": "copy_spec_parser",
+            "copy_compliance_interrupt": "copy_compliance_interrupt",
+        },
+    )
+    graph.add_edge("copy_compliance_interrupt", "copy_compliance_resolution")
+    graph.add_conditional_edges(
+        "copy_compliance_resolution",
+        route_after_compliance_resolution,
+        {
+            "copy_spec_parser": "copy_spec_parser",
+            "custom_copy_input": "custom_copy_input",
+            END: END,
+        },
+    )
     graph.add_edge("copy_spec_parser", "typography_art_direction")
     graph.add_edge("typography_art_direction", "text_style_binder")
     graph.add_edge("text_style_binder", "text_layout_planner")
