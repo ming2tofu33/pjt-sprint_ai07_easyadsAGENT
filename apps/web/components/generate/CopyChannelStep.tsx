@@ -76,59 +76,66 @@ export function CopyChannelCard({
   onContinue
 }: CopyChannelCardProps) {
   const hasBackendSession = Boolean(state.jobId && state.threadId);
+  const usesDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
   const hasBackendCopyCandidates = state.copyCandidateSource === "backend" && state.copyCandidates.length > 0;
   const originLabel = copyCandidateOriginLabel(state.copyCandidateOrigin);
   const originNote = copyCandidateOriginNote(state.copyCandidateOrigin);
-  const cannotContinue = state.isLoading || !hasBackendSession || !hasBackendCopyCandidates;
+  const cannotContinue = state.isLoading || !hasBackendSession || (!usesDeferredCopySelection && !hasBackendCopyCandidates);
 
   return (
     <>
-      <h2 className={styles.timelineSectionTitle}>문구와 채널을 골라주세요</h2>
+      <h2 className={styles.timelineSectionTitle}>{usesDeferredCopySelection ? "채널과 방향을 골라주세요" : "문구와 채널을 골라주세요"}</h2>
 
       <div className={styles.assistantBubble}>
         <span className={styles.assistantAvatar}>AI</span>
-        <p className={styles.bubble}>분위기까지 좋습니다! 이제 어울리는 문구와 사용할 채널을 선택해볼까요?</p>
+        <p className={styles.bubble}>
+          {usesDeferredCopySelection
+            ? "분위기까지 좋습니다! 사용할 채널과 이미지 방향을 정리해볼까요?"
+            : "분위기까지 좋습니다! 이제 어울리는 문구와 사용할 채널을 선택해볼까요?"}
+        </p>
       </div>
 
-      <div className={styles.copySectionHeader}>
-        <h2 className={styles.sectionTitle}>추천 문구</h2>
-        {hasBackendCopyCandidates ? <span>{originLabel}</span> : null}
-      </div>
-      <p className={styles.copySourceNote}>
-        {hasBackendCopyCandidates
-          ? originNote
-          : "아직 이번 요청에 맞는 문구 후보를 받지 못했어요."}
-      </p>
-      {hasBackendCopyCandidates ? (
-        <div className={styles.selectList}>
-          {state.copyCandidates.map((copy, index) => {
-            const selected = state.selectedCopyId === copy.id;
-            const copyDetail = [copy.subcopy, copy.cta].filter(Boolean).join(" · ");
-            return (
-              <button
-                key={copy.id}
-                type="button"
-                className={clsx(styles.copyCard, selected && styles.copyCardSelected)}
-                aria-pressed={selected}
-                onClick={() => onSelectCopy(copy.id)}
-              >
-                <span className={styles.copyNumber}>{index + 1}</span>
-                <span className={styles.copyContent}>
-                  <span>{copy.headline}</span>
-                  {copyDetail ? <small>{copyDetail}</small> : null}
-                </span>
-                {selected ? <Check size={19} aria-hidden="true" /> : <span />}
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <section className={styles.emptyResultPanel} aria-label="문구 후보 없음">
-          <MascotImage role="copyEmpty" decorative className={styles.emptyMascot} />
-          <strong>문구 후보가 아직 없어요</strong>
-          <p>이번 응답에 문구 후보가 없어서 실제 이미지 생성을 진행하지 않습니다. 요청을 다시 보내주세요.</p>
-        </section>
-      )}
+      {!usesDeferredCopySelection ? (
+        <>
+          <div className={styles.copySectionHeader}>
+            <h2 className={styles.sectionTitle}>추천 문구</h2>
+            {hasBackendCopyCandidates ? <span>{originLabel}</span> : null}
+          </div>
+          <p className={styles.copySourceNote}>
+            {hasBackendCopyCandidates ? originNote : "아직 이번 요청에 맞는 문구 후보를 받지 못했어요."}
+          </p>
+          {hasBackendCopyCandidates ? (
+            <div className={styles.selectList}>
+              {state.copyCandidates.map((copy, index) => {
+                const selected = state.selectedCopyId === copy.id;
+                const copyDetail = [copy.subcopy, copy.cta].filter(Boolean).join(" · ");
+                return (
+                  <button
+                    key={copy.id}
+                    type="button"
+                    className={clsx(styles.copyCard, selected && styles.copyCardSelected)}
+                    aria-pressed={selected}
+                    onClick={() => onSelectCopy(copy.id)}
+                  >
+                    <span className={styles.copyNumber}>{index + 1}</span>
+                    <span className={styles.copyContent}>
+                      <span>{copy.headline}</span>
+                      {copyDetail ? <small>{copyDetail}</small> : null}
+                    </span>
+                    {selected ? <Check size={19} aria-hidden="true" /> : <span />}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <section className={styles.emptyResultPanel} aria-label="문구 후보 없음">
+              <MascotImage role="copyEmpty" decorative className={styles.emptyMascot} />
+              <strong>문구 후보가 아직 없어요</strong>
+              <p>이번 응답에 문구 후보가 없어서 실제 이미지 생성을 진행하지 않습니다. 요청을 다시 보내주세요.</p>
+            </section>
+          )}
+        </>
+      ) : null}
 
       <h2 className={styles.sectionTitle}>어디에 사용할까요?</h2>
       <div className={styles.channelGrid}>
@@ -167,7 +174,7 @@ export function CopyChannelCard({
         {!state.errorMessage && !hasBackendSession ? (
           <p className={styles.helperText}>생성 연결 정보를 먼저 받아야 실제 이미지 생성을 요청할 수 있어요.</p>
         ) : null}
-        {!state.errorMessage && hasBackendSession && !hasBackendCopyCandidates ? (
+        {!state.errorMessage && hasBackendSession && !usesDeferredCopySelection && !hasBackendCopyCandidates ? (
           <p className={styles.helperText}>이번 요청에 맞는 문구 후보를 받은 뒤 브리프를 만들 수 있어요.</p>
         ) : null}
         <div className={styles.progressWrap}>
