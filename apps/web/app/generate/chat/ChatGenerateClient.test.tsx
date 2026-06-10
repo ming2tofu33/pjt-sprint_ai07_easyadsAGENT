@@ -1472,17 +1472,15 @@ describe("ChatGenerateClient", () => {
     });
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
-    await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
-    expect(screen.getByText("네일샵")).toBeTruthy();
-    expect(screen.getByText("시즌 한정 홍보")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "문구 고르기" }));
-
-    expect(screen.getByRole("heading", { name: "추천 문구" })).toBeTruthy();
+    // Copy-selection interrupt must stop for an explicit user choice, not auto-pick the
+    // recommended candidate and advance to the brief review screen.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
     expect(screen.getByText("여름 네일은 지금이 딱 좋아요")).toBeTruthy();
+    expect(screen.queryByText("AI가 이렇게 이해했어요")).toBeNull();
     expect(screen.queryByText("추가 정보가 필요합니다.")).toBeNull();
   });
 
-  it("keeps polled initial copy-candidate interrupts inside the chat intake flow", async () => {
+  it("routes polled initial copy-candidate interrupts into copy selection", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
       success: true,
@@ -1538,13 +1536,11 @@ describe("ChatGenerateClient", () => {
     });
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
-    await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
-    expect(screen.queryByText("생성에 필요한 선택을 마저 해주세요")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "문구 고르기" }));
-
-    expect(screen.getByRole("heading", { name: "추천 문구" })).toBeTruthy();
+    // Polled copy-selection interrupt routes to the same selection screen as the
+    // synchronous path — no auto-pick, no auto-advance to the brief review.
+    await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
     expect(screen.getByText("여름 네일은 지금이 딱 좋아요")).toBeTruthy();
+    expect(screen.queryByText("AI가 이렇게 이해했어요")).toBeNull();
   });
 
   it("skips copy selection when chat generation starts in image-only mode", async () => {
@@ -1752,6 +1748,7 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "어떤 업종인가요?" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "카페" }));
+    fireEvent.click(await screen.findByRole("button", { name: "선택 완료" }));
 
     await waitFor(() =>
       expect(api.answerGenerationJob).toHaveBeenCalledWith("generation_job_waiting", {
@@ -2077,6 +2074,7 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("카페/디저트")).toBeTruthy();
 
     fireEvent.click(screen.getByText("카페/디저트"));
+    fireEvent.click(await screen.findByRole("button", { name: "선택 완료" }));
 
     await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
     expect(screen.getByText("요청 분석")).toBeTruthy();
@@ -2105,12 +2103,14 @@ describe("ChatGenerateClient", () => {
 
     const cafeButton = await screen.findByRole("button", { name: "카페/디저트" });
     fireEvent.click(cafeButton);
+    const confirmButton = await screen.findByRole("button", { name: "선택 완료" });
+    fireEvent.click(confirmButton);
 
     await waitFor(() => expect(cafeButton.hasAttribute("disabled")).toBe(true));
     fireEvent.click(cafeButton);
 
     expect(api.answerGenerationJob).toHaveBeenCalledTimes(1);
-    expect(screen.getByLabelText("직접 답변 입력").hasAttribute("disabled")).toBe(true);
+    expect(confirmButton.hasAttribute("disabled")).toBe(true);
   });
 
   it("shows an empty copy state and blocks brief creation when backend candidates are missing", async () => {

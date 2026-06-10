@@ -321,6 +321,10 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
                 source_image_path=request.source_image_path,
                 reference_image_path=request.reference_image_path,
                 selected_reference_template_id=request.selected_reference_template_id,
+                # #7 dedup: FE가 보낸 ad_format(기본 instagram_feed)을 시드 → ad_format이
+                # missing_fields에 안 들어가 intake에서 중복 질문 안 함. 최종 사이즈는 브리프의
+                # CopyChannelStep(selectedChannelId)가 소유(final gen이 channel로 adFormat 전송).
+                requested_ad_format=request.ad_format,
             )
         )
         initial_state.update(restore_persistent_state(input_snapshot.state_payload))

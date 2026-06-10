@@ -17,6 +17,7 @@ from orchestrator.app.graph.routers import (
     route_after_reference_template_resolve,
     route_after_ocr_gate,
     route_after_t2i_generation,
+    route_after_layout_refiner,
     route_after_tone_binding,
     route_after_validator_for_intake,
     route_after_validator_for_marketing,
@@ -32,9 +33,11 @@ from orchestrator.app.llm.nodes.custom_copy import custom_copy_input_interrupt_n
 from orchestrator.app.llm.nodes.final_validation import final_validation_node
 from orchestrator.app.llm.nodes.format_planner import format_planner_node
 from orchestrator.app.llm.nodes.image_prompt_planner import image_prompt_planner_node
+from orchestrator.app.llm.nodes.image_layout_analyzer import image_layout_analyzer_node
 from orchestrator.app.llm.nodes.no_copy import no_copy_bypass_node
 from orchestrator.app.llm.nodes.ocr_gate import background_ocr_gate_node, final_ocr_gate_node, ocr_image_revision_node, ocr_layout_revision_node
 from orchestrator.app.llm.nodes.prompt_renderer import prompt_renderer_node
+from orchestrator.app.llm.nodes.post_t2i_layout_refiner import post_t2i_layout_refiner_node
 from orchestrator.app.llm.nodes.readability_gate import readability_gate_node
 from orchestrator.app.llm.nodes.result import result_node
 from orchestrator.app.llm.nodes.safe_area_gate import safe_area_gate_node
@@ -92,6 +95,8 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("background_ocr_gate", background_ocr_gate_node)
     graph.add_node("ocr_image_revision", ocr_image_revision_node)
     graph.add_node("background_validation", background_validation_node)
+    graph.add_node("image_layout_analyzer", image_layout_analyzer_node)
+    graph.add_node("post_t2i_layout_refiner", post_t2i_layout_refiner_node)
     graph.add_node("safe_area_gate", safe_area_gate_node)
     graph.add_node("text_renderer", text_renderer_node)
     graph.add_node("final_ocr_gate", final_ocr_gate_node)
@@ -171,7 +176,13 @@ def build_marketing_graph(checkpointer=None):
         },
     )
     graph.add_edge("ocr_image_revision", "t2i_generation")
-    graph.add_edge("background_validation", "safe_area_gate")
+    graph.add_edge("background_validation", "image_layout_analyzer")
+    graph.add_edge("image_layout_analyzer", "post_t2i_layout_refiner")
+    graph.add_conditional_edges(
+        "post_t2i_layout_refiner",
+        route_after_layout_refiner,
+        {"safe_area_gate": "safe_area_gate", "image_prompt_planner": "image_prompt_planner", "result": "result"},
+    )
     graph.add_conditional_edges("safe_area_gate", route_by_copy_presence, {"result": "result", "text_renderer": "text_renderer"})
     graph.add_edge("text_renderer", "final_ocr_gate")
     graph.add_conditional_edges(

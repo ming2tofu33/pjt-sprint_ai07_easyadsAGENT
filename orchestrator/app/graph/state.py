@@ -135,6 +135,12 @@ class MarketingState(TypedDict, total=False):
     copy_spec: dict[str, Any] | CopySpec | None
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
     text_style_spec: dict[str, Any] | TextStyleSpec | None
+    copy_visual_intent: dict[str, Any] | None
+    image_layout_analysis: dict[str, Any] | None
+    layout_candidate_scores: list[dict[str, Any]]
+    layout_refinement_result: dict[str, Any] | None
+    layout_copy_fit_report: dict[str, Any] | None
+    layout_revision_attempts: int
     image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
     image_prompt: dict[str, Any] | ImagePrompt | None
     prompt_optimization_output: dict[str, Any] | PromptOptimizationOutput | None
@@ -222,6 +228,10 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "requested_ad_format": request.requested_ad_format,
         "requested_platform": request.requested_platform,
         "copy_generation_mode": request.copy_generation_mode,
+        # Confirmed only when the user explicitly supplied a mode up front. Heuristic/LLM
+        # inference in the validator must NOT flip this true; otherwise the 4-mode question
+        # is never asked.
+        "copy_generation_mode_confirmed": request.copy_generation_mode is not None,
         "user_custom_headline": request.user_custom_headline,
         "user_custom_subcopy": request.user_custom_subcopy,
         "source_asset_id": request.source_asset_id if hasattr(request, "source_asset_id") else None,
@@ -302,6 +312,12 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "copy_spec": None,
         "text_layout_spec": None,
         "text_style_spec": None,
+        "copy_visual_intent": None,
+        "image_layout_analysis": None,
+        "layout_candidate_scores": [],
+        "layout_refinement_result": None,
+        "layout_copy_fit_report": None,
+        "layout_revision_attempts": 0,
         "image_prompt_spec": None,
         "image_prompt": None,
         "prompt_optimization_output": None,

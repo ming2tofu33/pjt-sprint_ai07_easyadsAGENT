@@ -175,10 +175,21 @@ def route_provider_for_model_class(model_class: ModelClass, user_plan: UserPlan)
     if model_class in {"api_nano", "api_mini", "api_full"}:
         if user_plan == "free":
             return "mock", {"fallback_used": True, "fallback_reason": "free_plan_api_disabled"}
+        model_name = model_name_for_api_class(settings, model_class)
         if settings.default_provider in {"openai", "openai_compatible"}:
-            return settings.default_provider, {"provider_profile": settings.default_provider}
-        return "openai", {"provider_profile": "openai"}
+            return settings.default_provider, {"provider_profile": settings.default_provider, "model_name": model_name}
+        return "openai", {"provider_profile": "openai", "model_name": model_name}
     return provider_for_model_class(model_class), {}
+
+
+def model_name_for_api_class(settings, model_class: ModelClass) -> str | None:
+    if model_class == "api_nano":
+        return settings.openai_text_model_nano or settings.llm_model
+    if model_class == "api_mini":
+        return settings.openai_text_model_mini or settings.llm_model
+    if model_class == "api_full":
+        return settings.openai_text_model_full or settings.llm_model
+    return settings.llm_model
 
 
 def cost_tier_for_model_class(model_class: ModelClass) -> str:

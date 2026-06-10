@@ -1048,10 +1048,26 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           clearGenerationFailureSnapshot();
           setShowHistory(false);
 
-          if (job.status === "waiting_user_input" && restoreState?.currentQuestion) {
-            setGenerationStage("jobQuestion");
-            lastPrimedStageRef.current = isRouteFinalImageGeneration ? "generating" : "start";
-            return;
+          if (job.status === "waiting_user_input") {
+            const restoreIntake: InitialChatIntakeContext | undefined = restoreState
+              ? {
+                  prompt: restoreState.prompt,
+                  copyGenerationMode: restoreState.copyGenerationMode,
+                  imageGenerationEngine: restoreState.selectedImageGenerationEngine,
+                  sourceImagePath: restoreState.sourceImagePath,
+                  referenceImagePath: restoreState.referenceImagePath,
+                  selectedReferenceTemplateId: restoreState.selectedReferenceTemplateId,
+                  selectedReferenceTemplateTitle: restoreState.selectedReferenceTemplateTitle,
+                  userCustomHeadline: restoreState.userCustomHeadline,
+                  userCustomSubcopy: restoreState.userCustomSubcopy
+                }
+              : undefined;
+            // 라이브 job의 pending_interrupt로 stage 결정 — 스냅샷 currentQuestion 의존 제거.
+            // option_question / copy_candidate_selection / custom_copy_input 모두 단일 디사이더로 처리.
+            if (stopForGenerationJobInterrupt(job, restoreIntake)) {
+              lastPrimedStageRef.current = isRouteFinalImageGeneration ? "generating" : "start";
+              return;
+            }
           }
 
           if (isTerminalGenerationJobStatus(job.status)) {
@@ -1113,6 +1129,29 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
         });
         setShowHistory(false);
+        const restoreIntake: InitialChatIntakeContext = {
+          prompt: restoreState.prompt,
+          copyGenerationMode: restoreState.copyGenerationMode,
+          imageGenerationEngine: restoreState.selectedImageGenerationEngine,
+          sourceImagePath: restoreState.sourceImagePath,
+          referenceImagePath: restoreState.referenceImagePath,
+          selectedReferenceTemplateId: restoreState.selectedReferenceTemplateId,
+          selectedReferenceTemplateTitle: restoreState.selectedReferenceTemplateTitle,
+          userCustomHeadline: restoreState.userCustomHeadline,
+          userCustomSubcopy: restoreState.userCustomSubcopy
+        };
+        // interrupt(라이브 상태)가 스냅샷보다 우선. waiting이면 단일 디사이더로 stage 결정.
+        if (
+          restoreState.generationJob.status === "waiting_user_input" &&
+          stopForGenerationJobInterrupt(restoreState.generationJob, restoreIntake)
+        ) {
+          return;
+        }
+        if (isTerminalGenerationJobStatus(restoreState.generationJob.status)) {
+          setGenerationStage("complete");
+          lastPrimedStageRef.current = "complete";
+          return;
+        }
         setGenerationStage(restoreState.currentQuestion ? "jobQuestion" : "brief");
         lastPrimedStageRef.current = restoreState.currentQuestion ? "generating" : "brief";
       }).catch(() => {
@@ -1300,6 +1339,36 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         });
         setOptimisticSurface("chat");
         await pollGenerationJobUntilDoneOrQuestion(response.job, {
+          prompt,
+          copyGenerationMode: options.copyGenerationMode,
+          imageGenerationEngine,
+          sourceImagePath: null,
+          referenceImagePath: referenceImagePath ?? null,
+          selectedReferenceTemplateId: selectedReferenceTemplateId ?? null,
+          selectedReferenceTemplateTitle: requestContext?.selectedReferenceTemplateTitle ?? null,
+          userCustomHeadline: options.userCustomHeadline ?? null,
+          userCustomSubcopy: options.userCustomSubcopy ?? null
+        });
+        return;
+      }
+
+      const pendingInterrupt = getPendingGenerationJobParsedInterrupt(response.job);
+      if (
+        response.job.status === "waiting_user_input" &&
+        pendingInterrupt &&
+        pendingInterrupt.type !== "option_question"
+      ) {
+        // Copy-selection / custom-copy interrupts must stop for an explicit user choice,
+        // not auto-pick the recommended candidate. Route through the same interrupt handler
+        // as the polled path so both entry paths behave identically. option_question keeps
+        // its existing intake-step rendering below.
+        writeChatTurnSnapshot({
+          ...turnSnapshotBase,
+          generationJob: response.job,
+          response: null
+        });
+        setOptimisticSurface("chat");
+        stopForGenerationJobInterrupt(response.job, {
           prompt,
           copyGenerationMode: options.copyGenerationMode,
           imageGenerationEngine,
@@ -1538,35 +1607,25 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return false;
     }
 
-    if (initialChatIntake && interrupt.type === "copy_candidate_selection") {
-      const turnResponse = generationJobToChatTurnResponse(job, initialChatIntake.copyGenerationMode);
-      applyTurnResponse(
-        initialChatIntake.prompt,
-        turnResponse,
-        initialChatIntake.imageGenerationEngine,
-        initialChatIntake.sourceImagePath ?? null,
-        initialChatIntake.referenceImagePath ?? null,
-        initialChatIntake.userCustomHeadline ?? null,
-        initialChatIntake.userCustomSubcopy ?? null
-      );
-      setGenerationStage("brief");
-      lastPrimedStageRef.current = "start";
-      setOptimisticSurface("chat");
-      router.replace(buildChatStageHrefWithJob("start", { threadId: job.thread_id }));
-      return true;
-    }
-
     if (interrupt.type === "option_question") {
-      const turnResponse = generationJobToChatTurnResponse(job, initialChatIntake?.copyGenerationMode ?? state.copyGenerationMode);
-      const context = isQuestionResponse(turnResponse) ? turnResponse.context : {};
-      dispatch({
-        type: "generationJobQuestionReceived",
-        generationJob: job,
-        question: interrupt.optionQuestion,
-        context,
-        sourceImagePath: initialChatIntake?.sourceImagePath ?? null,
-        referenceImagePath: initialChatIntake?.referenceImagePath ?? null
-      });
+      const incoming = interrupt.optionQuestion;
+      // 동일 질문 재-dispatch 스킵 — 폴링/리마운트 churn(깜빡임) 방지.
+      const isSameQuestion =
+        !!state.currentQuestion &&
+        state.currentQuestion.field === incoming.field &&
+        state.currentQuestion.question === incoming.question;
+      if (!isSameQuestion) {
+        const turnResponse = generationJobToChatTurnResponse(job, initialChatIntake?.copyGenerationMode ?? state.copyGenerationMode);
+        const context = isQuestionResponse(turnResponse) ? turnResponse.context : {};
+        dispatch({
+          type: "generationJobQuestionReceived",
+          generationJob: job,
+          question: incoming,
+          context,
+          sourceImagePath: initialChatIntake?.sourceImagePath ?? null,
+          referenceImagePath: initialChatIntake?.referenceImagePath ?? null
+        });
+      }
     } else {
       dispatch({ type: "generationJobInterruptReceived", generationJob: job });
     }
