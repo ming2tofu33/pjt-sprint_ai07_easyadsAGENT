@@ -42,23 +42,38 @@ router = APIRouter()
 class RequestPrincipal:
     user_id: str | None
     workspace_id: str | None
+    account_type: str | None
 
 
 def _request_principal(
     x_easyads_user_id: str | None = Header(default=None, alias="X-EasyAds-User-Id"),
     x_easyads_workspace_id: str | None = Header(default=None, alias="X-EasyAds-Workspace-Id"),
+    x_easyads_account_type: str | None = Header(default=None, alias="X-EasyAds-Account-Type"),
 ) -> RequestPrincipal:
-    return RequestPrincipal(user_id=x_easyads_user_id, workspace_id=x_easyads_workspace_id)
+    account_type = x_easyads_account_type if x_easyads_account_type in {"user", "guest"} else None
+    return RequestPrincipal(user_id=x_easyads_user_id, workspace_id=x_easyads_workspace_id, account_type=account_type)
 
 
 def _scoped_create_request(request: GenerationJobCreateRequest, principal: RequestPrincipal) -> GenerationJobCreateRequest:
     if db_settings.get_db_backend() != "postgres":
-        return request
+        return request.model_copy(
+            update={
+                "user_id": principal.user_id or request.user_id,
+                "account_type": principal.account_type or request.account_type,
+                "workspace_id": request.workspace_id or principal.workspace_id,
+            }
+        )
     if db_settings.allow_demo_workspace_fallback() and not principal.user_id:
-        return request
+        return request.model_copy(
+            update={
+                "account_type": principal.account_type or request.account_type,
+                "workspace_id": request.workspace_id or principal.workspace_id,
+            }
+        )
     return request.model_copy(
         update={
             "user_id": principal.user_id,
+            "account_type": principal.account_type or request.account_type,
             "workspace_id": request.workspace_id or principal.workspace_id,
         }
     )
@@ -154,7 +169,11 @@ def get_generation_job_route(
         resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
         if not resolved_workspace_id and not resolved_user_id:
             resolved_workspace_id, resolved_user_id = resolve_generation_job_scope_from_existing_job(job_id)
-        resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
+        resolved_workspace_id = resolve_scoped_workspace_id(
+            resolved_workspace_id,
+            resolved_user_id,
+            account_type=principal.account_type,
+        )
         job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     except GenerationJobError as exc:
         raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)
@@ -179,7 +198,11 @@ def answer_generation_job_route(
         resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
         if not resolved_workspace_id and not resolved_user_id:
             resolved_workspace_id, resolved_user_id = resolve_generation_job_scope_from_existing_job(job_id)
-        resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
+        resolved_workspace_id = resolve_scoped_workspace_id(
+            resolved_workspace_id,
+            resolved_user_id,
+            account_type=principal.account_type,
+        )
         job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     except GenerationJobError as exc:
         raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)

@@ -125,7 +125,7 @@ export function OnboardingFlowStep() {
                 type="button"
                 onClick={() => {
                   if (isActive) {
-                    router.push(href);
+                    completeOnboarding(href);
                   }
                 }}
               >

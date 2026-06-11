@@ -11,6 +11,7 @@ import type {
   ReferenceImageFields,
   ReferenceTemplateFields
 } from "@/types/marketing";
+import { getSupabaseAuthorizationHeader, type RequestHeaders } from "@/lib/supabase/session";
 
 const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "http://127.0.0.1:4000");
 
@@ -371,28 +372,6 @@ type RawArchiveListResponse = {
 type RawArchiveMutationResponse = {
   item: RawArchiveItem;
 };
-
-type RequestHeaders = Record<string, string>;
-
-async function getSupabaseAuthorizationHeader(): Promise<RequestHeaders> {
-  if (typeof window === "undefined") {
-    return {};
-  }
-
-  try {
-    const { createSupabaseBrowserClient } = await import("./supabase/browser");
-    const supabase = createSupabaseBrowserClient();
-    if (!supabase) {
-      return {};
-    }
-    const {
-      data: { session }
-    } = await supabase.auth.getSession();
-    return session?.access_token ? { authorization: `Bearer ${session.access_token}` } : {};
-  } catch {
-    return {};
-  }
-}
 
 async function postJson<TResponse>(path: string, body: unknown, headers: RequestHeaders = {}): Promise<TResponse> {
   const response = await fetch(buildBffUrl(path), {
@@ -820,24 +799,24 @@ function mapAdminReferenceTemplate(item: RawAdminReferenceTemplate): AdminRefere
 }
 
 export async function listAdminReferenceTemplates(params: { activeOnly?: boolean } = {}): Promise<AdminReferenceTemplate[]> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+  const authHeaders = await getSupabaseAuthorizationHeader({ allowAnonymous: false });
   return getJson<RawAdminReferenceListResponse>("/api/admin/references", {
     active_only: params.activeOnly
   }, authHeaders).then((payload) => (payload.items ?? []).map(mapAdminReferenceTemplate));
 }
 
 export async function createAdminReferenceTemplate(input: AdminReferenceTemplateCreateInput): Promise<AdminReferenceTemplate> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+  const authHeaders = await getSupabaseAuthorizationHeader({ allowAnonymous: false });
   return postJson<RawAdminReferenceItemResponse>("/api/admin/references", input, authHeaders).then((payload) => mapAdminReferenceTemplate(payload.template));
 }
 
 export async function publishAdminReferenceTemplate(templateId: string): Promise<AdminReferenceTemplate> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+  const authHeaders = await getSupabaseAuthorizationHeader({ allowAnonymous: false });
   return postJson<RawAdminReferenceItemResponse>(`/api/admin/references/${encodeURIComponent(templateId)}/publish`, {}, authHeaders).then((payload) => mapAdminReferenceTemplate(payload.template));
 }
 
 export async function unpublishAdminReferenceTemplate(templateId: string): Promise<AdminReferenceTemplate> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+  const authHeaders = await getSupabaseAuthorizationHeader({ allowAnonymous: false });
   return postJson<RawAdminReferenceItemResponse>(`/api/admin/references/${encodeURIComponent(templateId)}/unpublish`, {}, authHeaders).then((payload) => mapAdminReferenceTemplate(payload.template));
 }
 
@@ -897,12 +876,14 @@ export async function listArchiveItems(params: {
   workspaceId?: string;
   limit?: number;
   offset?: number;
+  includeTotal?: boolean;
 } = {}): Promise<ArchiveListResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   return getJson<RawArchiveListResponse>("/api/archive/items", {
     workspace_id: params.workspaceId,
     limit: params.limit,
-    offset: params.offset
+    offset: params.offset,
+    include_total: params.includeTotal === false ? false : undefined
   }, authHeaders).then((payload) => ({
     items: (payload.items ?? []).map(mapArchiveItem),
     pagination: {

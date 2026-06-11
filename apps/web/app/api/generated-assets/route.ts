@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 
     return new NextResponse(new Uint8Array(file), {
       headers: {
-        "cache-control": "no-store",
+        "cache-control": "public, max-age=31536000, immutable",
         "content-length": String(file.length),
         "content-type": contentType
       }

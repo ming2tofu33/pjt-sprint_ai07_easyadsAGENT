@@ -24,6 +24,7 @@ import { fetchReferenceDetail, type ReferenceTemplateDetailResponse } from "@/li
 import { readSavedBrandKit } from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { clearGenerationDraftPrompt, markFreshGenerationRequest, saveGenerationRequestContext } from "@/lib/generation-request-context";
+import { shouldUseNextImageOptimization } from "@/lib/image-optimization";
 import {
   hasReferenceTemplateImage,
   referenceTemplateImageUrl,
@@ -311,7 +312,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
 
         <section className={styles.selectedStyleCard} aria-label="선택한 스타일">
           <div className={styles.selectedStyleVisual} data-has-image="true">
-            <Image alt="" className={styles.selectedStyleImage} fill sizes="112px" src={imageUrl} unoptimized />
+            <Image alt="" className={styles.selectedStyleImage} fill sizes="112px" src={imageUrl} unoptimized={!shouldUseNextImageOptimization(imageUrl)} />
           </div>
           <div>
             <small>선택한 스타일</small>
@@ -367,7 +368,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
       </div>
 
       <section className={styles.referenceDetailHero} data-has-image="true" aria-label={`${creative.title} 상세 미리보기`} style={referenceDetailImageStyle}>
-        <Image alt="" className={styles.referenceDetailImage} fill sizes="calc(100vw - 48px)" src={imageUrl} unoptimized />
+        <Image alt="" className={styles.referenceDetailImage} fill sizes="calc(100vw - 48px)" src={imageUrl} unoptimized={!shouldUseNextImageOptimization(imageUrl)} />
       </section>
 
       <section className={styles.referenceDetailInfo} aria-label="샘플 정보">
