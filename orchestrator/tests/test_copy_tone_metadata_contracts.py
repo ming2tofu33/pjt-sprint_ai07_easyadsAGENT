@@ -103,19 +103,17 @@ def test_copy_spec_parser_metadata_is_role_mapping_only():
 
 def test_prompt_metadata_contracts_are_json_parseable():
     state = _state("auto_pilot")
+    candidate_prompt = build_candidate_prompt(
+        state,
+        build_copy_generation_metadata(state, node_name="copy_candidate_generation", output_schema=CopyCandidateListOutput),
+    )
     prompt_cases = [
         (build_tone_binding_prompt(state), "tone_binding"),
         (
             build_copy_mode_prompt("ambiguous request", state, build_copy_mode_inference_metadata(state, "ambiguous request")),
             "copy_mode_inference",
         ),
-        (
-            build_candidate_prompt(
-                state,
-                build_copy_generation_metadata(state, node_name="copy_candidate_generation", output_schema=CopyCandidateListOutput),
-            ),
-            "copy_candidate_generation",
-        ),
+        (candidate_prompt, "copy_candidate_generation"),
         (
             build_auto_pilot_prompt(
                 state,
@@ -129,6 +127,10 @@ def test_prompt_metadata_contracts_are_json_parseable():
         metadata = _metadata_contract_from_prompt(prompt)
         assert metadata["trace"]["node_name"] == expected_node
         assert metadata["output_rules"]["no_chain_of_thought"] is True
+
+    assert "internally infer exactly three business-specific copy directions" in candidate_prompt
+    assert "strategy_summary" in candidate_prompt
+    assert "Do not create three minor rewrites of the same message" in candidate_prompt
 
 
 def _state(copy_generation_mode: str | None):

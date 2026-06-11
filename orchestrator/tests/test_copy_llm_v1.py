@@ -84,6 +84,29 @@ def test_copy_candidate_llm_valid_output_converts_to_candidate_shape(monkeypatch
     assert update["copy_candidates"][0]["metadata"]["copy_tone_policy"]["policy_id"] == "cafe_v1"
 
 
+def test_copy_candidate_llm_direction_summary_survives_postprocessing(monkeypatch):
+    llm_output = CopyCandidateListOutput(
+        candidates=[
+            CopyCandidate(
+                id="direction_1",
+                headline="Strawberry cake launch",
+                subcopy="Meet the fresh cafe menu today",
+                cta="View menu",
+                strategy_summary="menu discovery direction",
+                rationale="Fits cafe new menu awareness.",
+            )
+        ],
+        recommended_candidate_id="direction_1",
+    )
+    monkeypatch.setattr("orchestrator.app.llm.nodes.copy_candidates.run_structured_node", lambda *args, **kwargs: (llm_output, {"fallback_used": False}))
+
+    update = copy_candidate_generation_node(_state("premium"))
+
+    assert update["copy_candidate_origin"] == "llm"
+    assert update["copy_candidates"][0]["strategy_summary"] == "menu discovery direction"
+    assert update["copy_candidates"][0]["rationale"] == "Fits cafe new menu awareness."
+
+
 def test_copy_candidate_hallucinated_phone_or_discount_falls_back(monkeypatch):
     unsafe = CopyCandidateListOutput(
         candidates=[CopyCandidate(id="x", headline="딸기 케이크 50% 할인", subcopy="010-1234-5678로 주문", cta="전화하기")],

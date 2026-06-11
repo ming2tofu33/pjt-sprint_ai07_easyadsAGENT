@@ -406,10 +406,21 @@ def build_candidate_prompt(state: MarketingState, metadata_contract: dict[str, A
     )
     return (
         "Generate structured Korean ad copy candidates. "
+        "Before writing candidates, internally infer exactly three business-specific copy directions "
+        "from the context, tone_binding_output, ad format, target persona, promotion goal, and brand tone. "
+        "Do not reveal the internal directions outside JSON. "
+        "Each internal direction must be specific to the business type and differ in message focus, "
+        "emotional tone, headline structure, subcopy focus, and CTA intent. "
+        "Generate exactly three Korean ad copy candidates, one for each internal direction. "
+        "For each candidate, store a short summary of its internal direction in strategy_summary "
+        "and briefly explain why that direction fits in rationale. "
+        "Do not create three minor rewrites of the same message. "
         f"business_type={context.business_type}, item_or_service={context.item_or_service}, "
         f"promotion_goal={context.promotion_goal}, brand_tone={context.brand_tone}, "
         f"forbidden_claims={tone.get('forbidden_claims', [])}. "
-        "Do not invent phone numbers, addresses, prices, discounts, or event periods. "
+        "Use only provided facts. "
+        "Do not invent phone numbers, addresses, prices, discounts, event periods, awards, guarantees, medical effects, or unsupported claims. "
+        "Return only valid JSON matching CopyCandidateListOutput. "
         f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}."
     )
 
