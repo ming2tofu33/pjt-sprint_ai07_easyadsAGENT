@@ -134,6 +134,7 @@ export type ChatFlowState = {
   conversationMessages: ChatTranscriptMessage[];
   isLoading: boolean;
   errorMessage: string | null;
+  errorCode?: string | null;
 };
 
 export type ChatFlowAction =
@@ -177,7 +178,7 @@ export type ChatFlowAction =
       referenceImagePath?: string | null;
     }
   | { type: "submitQuestionAnswer"; label: string }
-  | { type: "backendRequestFailed"; message: string }
+  | { type: "backendRequestFailed"; message: string; errorCode?: string }
   | { type: "beginBriefRequest" }
   | { type: "selectTone"; tone: string }
   | { type: "setCopyGenerationMode"; copyGenerationMode: CopyGenerationMode }

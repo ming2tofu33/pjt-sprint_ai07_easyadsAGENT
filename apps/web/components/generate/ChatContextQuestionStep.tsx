@@ -40,6 +40,13 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
 
   function answerOption(option: OptionItem) {
     if (state.isLoading) return;
+    if (question?.field === "copy_generation_mode" && option.value === "custom_input") {
+      // 개인 문구 직접 입력: 별도 "선택 완료" 없이 즉시 제출 → 백엔드 custom_copy_input interrupt 폼으로 진입
+      setShowCustomInput(false);
+      setSelectedOption(null);
+      onAnswer({ value: option.value, label: option.label });
+      return;
+    }
     if (option.value === "custom") {
       setShowCustomInput(true);
       setSelectedOption(null);
@@ -51,6 +58,8 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
 
   const noChips = question.options.length === 0;
   const effectiveShowCustomInput = showCustomInput || noChips;
+  const chipGridClassName =
+    question.field === "copy_generation_mode" ? `${styles.chipGrid} ${styles.copyModeGrid}` : styles.chipGrid;
 
   return (
     <>
@@ -93,7 +102,7 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
       </section>
 
       <h2 className={styles.sectionTitle}>{question.question}</h2>
-      <div className={styles.chipGrid}>
+      <div className={chipGridClassName}>
         {question.options.map((option) => (
           <ChoiceChip
             key={`${question.field}-${option.id}`}

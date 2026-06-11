@@ -55,7 +55,7 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
   const [fileType, setFileType] = useState<"PNG" | "JPG">("PNG");
   const [storage, setStorage] = useState("archive");
   const [downloadFeedback, setDownloadFeedback] = useState<string | null>(null);
-  const creative = staticCreative ?? sessionCreative;
+  const creative = sessionCreative ?? staticCreative;
 
   useEffect(() => {
     let isActive = true;
