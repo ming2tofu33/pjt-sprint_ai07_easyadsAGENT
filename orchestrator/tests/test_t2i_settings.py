@@ -16,7 +16,7 @@ def test_default_settings_disable_external_t2i(monkeypatch):
         "HF_TOKEN",
         "HUGGINGFACE_TOKEN",
     ]:
-        monkeypatch.delenv(key, raising=False)
+        monkeypatch.setenv(key, "")
 
     settings = load_t2i_settings()
 
@@ -42,7 +42,7 @@ def test_settings_do_not_expose_secret_values(monkeypatch):
 
 
 def test_flux_enabled_only_by_explicit_env(monkeypatch):
-    monkeypatch.delenv("EASYADS_ENABLE_FLUX_LOCAL", raising=False)
+    monkeypatch.setenv("EASYADS_ENABLE_FLUX_LOCAL", "")
     assert is_flux_local_enabled(load_t2i_settings()) is False
 
     monkeypatch.setenv("EASYADS_ENABLE_FLUX_LOCAL", "true")

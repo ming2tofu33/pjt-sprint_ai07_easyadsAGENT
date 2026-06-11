@@ -298,6 +298,7 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
         for k in request.model_fields_set:
             if k in [
                 "ad_format",
+                "renderer_mode",
                 "copy_generation_mode",
                 "selected_reference_template_id",
                 "source_image_path",
@@ -1054,6 +1055,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             "source_asset_id": request.source_asset_id,
             "reference_asset_id": request.reference_asset_id,
             "ad_format": request.ad_format,
+            "renderer_mode": request.renderer_mode,
             "workspace_id": str(workspace["id"]),
             "public_thread_id": thread.get("public_thread_id"),
             "engine_preference": engine_preference,
@@ -1109,6 +1111,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
         for k in request.model_fields_set:
             if k in [
                 "ad_format",
+                "renderer_mode",
                 "copy_generation_mode",
                 "selected_reference_template_id",
                 "source_image_path",

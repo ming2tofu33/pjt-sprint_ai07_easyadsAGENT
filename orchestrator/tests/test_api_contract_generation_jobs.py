@@ -26,6 +26,19 @@ def test_generation_job_create_request_validation():
         raise AssertionError("blank user_input should fail validation")
 
 
+def test_generation_job_create_request_accepts_ad_format_and_renderer_mode_aliases():
+    request = GenerationJobCreateRequest.model_validate(
+        {
+            "userInput": "포스터 만들어줘",
+            "adFormat": "poster",
+            "rendererMode": "simple_text",
+        }
+    )
+
+    assert request.ad_format == "poster"
+    assert request.renderer_mode == "simple_text"
+
+
 def test_generation_job_answer_request_builds_option_resume_payload():
     request = GenerationJobAnswerRequest(
         field="business_type",

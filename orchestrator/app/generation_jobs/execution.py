@@ -319,6 +319,8 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
                 source_image_path=request.source_image_path,
                 reference_image_path=request.reference_image_path,
                 selected_reference_template_id=request.selected_reference_template_id,
+                renderer_mode=request.renderer_mode,
+                requested_ad_format=request.ad_format,
             )
         )
         initial_state.update(restore_persistent_state(input_snapshot.state_payload))

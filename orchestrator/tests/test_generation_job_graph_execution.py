@@ -161,6 +161,71 @@ def test_execute_generation_job_graph_state_restoration(monkeypatch):
     assert received_payload["thread_id"] == job1.thread_id
 
 
+def test_execute_generation_job_graph_preserves_ad_format_as_renderer_mode(monkeypatch):
+    received_payload = {}
+
+    class MockGraph:
+        def invoke(self, payload: dict, config: dict | None = None) -> dict:
+            nonlocal received_payload
+            received_payload = dict(payload)
+            state = dict(payload)
+            state["status"] = "done"
+            state["result_payload"] = {
+                "final_image_path": "/fake/poster-routing.png",
+                "final_brief": {"user_input": state["user_input"]},
+            }
+            state["final_image_path"] = "/fake/poster-routing.png"
+            return state
+
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+
+    request = GenerationJobCreateRequest(
+        user_input="망고 빙수 포스터 만들어줘",
+        run_mode="graph_job",
+        ad_format="poster",
+    )
+    job = create_generation_job(request)
+
+    executed = execute_generation_job_graph(job.job_id, request)
+
+    assert executed.status == "done"
+    assert received_payload["current_brief"]["requested_ad_format"] == "poster"
+    assert received_payload["renderer_mode"] == "poster_components"
+
+
+def test_execute_generation_job_graph_preserves_explicit_renderer_mode(monkeypatch):
+    received_payload = {}
+
+    class MockGraph:
+        def invoke(self, payload: dict, config: dict | None = None) -> dict:
+            nonlocal received_payload
+            received_payload = dict(payload)
+            state = dict(payload)
+            state["status"] = "done"
+            state["result_payload"] = {
+                "final_image_path": "/fake/simple-text.png",
+                "final_brief": {"user_input": state["user_input"]},
+            }
+            state["final_image_path"] = "/fake/simple-text.png"
+            return state
+
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+
+    request = GenerationJobCreateRequest(
+        user_input="망고 빙수 포스터 만들어줘",
+        run_mode="graph_job",
+        ad_format="poster",
+        renderer_mode="simple_text",
+    )
+    job = create_generation_job(request)
+
+    executed = execute_generation_job_graph(job.job_id, request)
+
+    assert executed.status == "done"
+    assert received_payload["current_brief"]["requested_ad_format"] == "poster"
+    assert received_payload["renderer_mode"] == "simple_text"
+
+
 def test_execute_generation_job_graph_receives_selected_engine(monkeypatch):
     received_payload = {}
 

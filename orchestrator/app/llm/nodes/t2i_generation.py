@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.schemas.llm_marketing import ArtifactRef, GeneratedImageCandidate
 from orchestrator.app.t2i.schemas import T2IRequest
 from orchestrator.app.t2i.service import generate_image_v1
@@ -16,7 +15,7 @@ from orchestrator.app.usage import service as usage_service
 logger = logging.getLogger(__name__)
 
 
-def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
+def t2i_generation_node(state: dict) -> dict[str, Any]:
     request = T2IRequest(**(state.get("t2i_request") or {}))
     requested_engine = request.metadata.get("requested_engine") or request.metadata.get("engine") or state.get("engine")
     metadata = {
@@ -78,7 +77,7 @@ def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
     }
 
 
-def _record_t2i_usage(state: MarketingState, result) -> None:
+def _record_t2i_usage(state: dict, result) -> None:
     if result.error or not result.image_paths or result.engine == "mock":
         return
     workspace_id = state.get("workspace_id")

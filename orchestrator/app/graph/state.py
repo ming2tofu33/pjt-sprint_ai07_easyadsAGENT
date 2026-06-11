@@ -103,6 +103,7 @@ class MarketingState(TypedDict, total=False):
     vision_pipeline_results: list[dict[str, Any]]
     image_preprocess_result: dict[str, Any] | None
     image_features: dict[str, Any] | ImageFeatures | None
+    image_analysis: dict[str, Any] | None
     reference_style_profile: dict[str, Any] | None
     product_preserve_spec: dict[str, Any] | None
     reference_style: dict[str, Any] | ReferenceStyleSpec | None
@@ -156,6 +157,12 @@ class MarketingState(TypedDict, total=False):
     created_at: str
     updated_at: str
     latency_ms: int | None
+    rendering_engine: str | None
+    renderer_mode: str | None
+    requested_template_id: str | None
+    requested_asset_id: str | None
+    poster_layout_spec: dict[str, Any] | None
+    render_options: dict[str, Any] | None
     route: NotRequired[GenerationRoute]
 
 
@@ -167,6 +174,84 @@ def model_to_dict(value: Any) -> Any:
     if hasattr(value, "model_dump"):
         return value.model_dump()
     return value
+
+
+POSTER_RENDERER_MODE = "poster_components"
+
+
+def resolve_renderer_mode(
+    state: dict[str, Any] | None = None,
+    *,
+    renderer_mode: str | None = None,
+    requested_ad_format: str | None = None,
+    ad_format: str | None = None,
+    ad_format_spec: dict[str, Any] | AdFormatSpec | None = None,
+    selected_reference_template: dict[str, Any] | None = None,
+) -> str | None:
+    if renderer_mode:
+        return renderer_mode
+
+    state = state or {}
+    state_renderer_mode = state.get("renderer_mode")
+    if state_renderer_mode:
+        return str(state_renderer_mode)
+
+    if _is_poster_ad_format(requested_ad_format) or _is_poster_ad_format(ad_format):
+        return POSTER_RENDERER_MODE
+
+    current_brief = state.get("current_brief") if isinstance(state, dict) else None
+    if isinstance(current_brief, dict):
+        if _is_poster_ad_format(current_brief.get("requested_ad_format")):
+            return POSTER_RENDERER_MODE
+        if _is_poster_ad_format(current_brief.get("ad_format")):
+            return POSTER_RENDERER_MODE
+
+    context = state.get("context") if isinstance(state, dict) else None
+    if isinstance(context, dict):
+        extra = context.get("extra") or {}
+        if isinstance(extra, dict) and _is_poster_ad_format(extra.get("ad_format")):
+            return POSTER_RENDERER_MODE
+    elif isinstance(context, MarketingContext) and _is_poster_ad_format(context.extra.get("ad_format")):
+        return POSTER_RENDERER_MODE
+
+    spec_ad_format = _ad_format_from_spec(ad_format_spec or state.get("ad_format_spec"))
+    if _is_poster_ad_format(spec_ad_format):
+        return POSTER_RENDERER_MODE
+
+    template = selected_reference_template or state.get("selected_reference_template")
+    if reference_template_supports_poster(template):
+        return POSTER_RENDERER_MODE
+
+    return None
+
+
+def reference_template_supports_poster(template: Any) -> bool:
+    if not template:
+        return False
+    if hasattr(template, "model_dump"):
+        template = template.model_dump()
+    if not isinstance(template, dict):
+        return False
+    ad_formats = template.get("ad_formats") or template.get("adFormats") or []
+    if isinstance(ad_formats, str):
+        ad_formats = [ad_formats]
+    return any(_is_poster_ad_format(value) for value in ad_formats)
+
+
+def _ad_format_from_spec(spec: Any) -> str | None:
+    if not spec:
+        return None
+    if hasattr(spec, "ad_format"):
+        return getattr(spec, "ad_format")
+    if hasattr(spec, "model_dump"):
+        spec = spec.model_dump()
+    if isinstance(spec, dict):
+        return spec.get("ad_format") or spec.get("adFormat")
+    return None
+
+
+def _is_poster_ad_format(value: Any) -> bool:
+    return str(value or "").strip().lower() == "poster"
 
 
 def context_to_model(context: dict[str, Any] | MarketingContext | None) -> MarketingContext:
@@ -212,6 +297,9 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "source_image_path": request.source_image_path,
         "reference_image_path": request.reference_image_path,
         "selected_reference_template_id": request.selected_reference_template_id,
+        "renderer_mode": getattr(request, "renderer_mode", None),
+        "requested_template_id": getattr(request, "requested_template_id", None),
+        "requested_asset_id": getattr(request, "requested_asset_id", None),
     }
     copy_required = request.copy_generation_mode != "no_copy"
     text_overlay_pending = request.copy_generation_mode != "no_copy"
@@ -250,6 +338,11 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "reference_image_path": request.reference_image_path,
         "vision_preprocess_mode": request.vision_preprocess_mode,
         "selected_reference_template_id": request.selected_reference_template_id,
+        "renderer_mode": getattr(request, "renderer_mode", None),
+        "requested_template_id": getattr(request, "requested_template_id", None),
+        "requested_asset_id": getattr(request, "requested_asset_id", None),
+        "poster_layout_spec": getattr(request, "poster_layout_spec", None),
+        "render_options": getattr(request, "render_options", None) or {},
         "selected_reference_template": None,
         "reference_template_selection": None,
         "vision_pipeline_results": [],
@@ -309,6 +402,15 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "updated_at": timestamp,
         "latency_ms": None,
     }
+    resolved_renderer_mode = resolve_renderer_mode(
+        state,
+        renderer_mode=getattr(request, "renderer_mode", None),
+        requested_ad_format=request.requested_ad_format,
+    )
+    if resolved_renderer_mode:
+        state["renderer_mode"] = resolved_renderer_mode
+        current_brief["renderer_mode"] = resolved_renderer_mode
+
     append_message(state, "user", request.user_input)
     state["dirty_fields"] = calculate_dirty_fields(state, list(current_brief))
     return state

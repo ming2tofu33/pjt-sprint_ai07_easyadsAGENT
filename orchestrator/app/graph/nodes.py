@@ -348,6 +348,7 @@ def infer_ad_format(text: str) -> str | None:
     rules = [
         (("스토리",), "instagram_story"),
         (("인스타", "피드"), "instagram_feed"),
+        (("포스터",), "poster"),
         (("전단지", "A4", "당근"), "flyer"),
         (("배너", "웹"), "banner"),
         (("상세페이지", "스마트스토어"), "product_detail"),

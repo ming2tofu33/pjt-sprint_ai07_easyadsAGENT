@@ -1,4 +1,4 @@
-﻿"""Conditional routers for the LLM/LangGraph intake mini graph."""
+"""Conditional routers for the LLM/LangGraph intake mini graph."""
 
 from __future__ import annotations
 
@@ -67,6 +67,14 @@ def route_by_copy_presence(state: MarketingState) -> str:
         or copy_spec.get("copy_mode") == "no_copy"
     ):
         return "result"
+        
+    renderer_mode = state.get("renderer_mode", "simple_text")
+    if renderer_mode == "poster_components":
+        return "image_analysis"
+        
+    if state.get("rendering_engine") == "html":
+        return "html_text_renderer"
+        
     return "text_renderer"
 
 

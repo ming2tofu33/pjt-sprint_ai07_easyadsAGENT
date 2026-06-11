@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState, context_to_model
+from orchestrator.app.graph.state import (
+    MarketingState,
+    context_to_model,
+    reference_template_supports_poster,
+    resolve_renderer_mode,
+)
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.schemas.llm_marketing import LayoutSpec, TextZone, Zone
 
@@ -17,19 +22,32 @@ def format_planner_node(state: MarketingState) -> dict[str, Any]:
     ad_format = resolve_ad_format(state)
     ad_format_spec = build_ad_format_spec(ad_format)
     layout_spec = build_layout_spec(ad_format)
-    return {
-        "ad_format_spec": ad_format_spec.model_dump(),
+    ad_format_spec_payload = ad_format_spec.model_dump()
+    current_brief = {
+        **state.get("current_brief", {}),
+        "requested_ad_format": ad_format_spec.ad_format,
+        "planned_platform": ad_format_spec.platform,
+        "ready_for_copywriting": True,
+    }
+    renderer_mode = resolve_renderer_mode(
+        state,
+        requested_ad_format=ad_format_spec.ad_format,
+        ad_format_spec=ad_format_spec_payload,
+    )
+    if renderer_mode:
+        current_brief["renderer_mode"] = renderer_mode
+
+    updates: dict[str, Any] = {
+        "ad_format_spec": ad_format_spec_payload,
         "layout_spec": layout_spec.model_dump(),
-        "current_brief": {
-            **state.get("current_brief", {}),
-            "requested_ad_format": ad_format_spec.ad_format,
-            "planned_platform": ad_format_spec.platform,
-            "ready_for_copywriting": True,
-        },
+        "current_brief": current_brief,
         "status": "planning_format",
         "dirty_fields": [],
         "context": context.model_dump(),
     }
+    if renderer_mode:
+        updates["renderer_mode"] = renderer_mode
+    return updates
 
 
 def resolve_ad_format(state: MarketingState) -> str:
@@ -40,6 +58,7 @@ def resolve_ad_format(state: MarketingState) -> str:
         current_brief.get("requested_ad_format"),
         context.extra.get("ad_format"),
         _extract_validator_ad_format(validator_output),
+        _extract_reference_template_ad_format(state.get("selected_reference_template")),
         current_brief.get("ad_format"),
         "instagram_feed",
     ]
@@ -55,6 +74,12 @@ def _extract_validator_ad_format(validator_output: Any) -> str | None:
     inferred = validator_output.get("inferred_ad_format")
     if isinstance(inferred, dict):
         return inferred.get("ad_format")
+    return None
+
+
+def _extract_reference_template_ad_format(template: Any) -> str | None:
+    if reference_template_supports_poster(template):
+        return "poster"
     return None
 
 

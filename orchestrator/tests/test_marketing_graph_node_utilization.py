@@ -36,6 +36,12 @@ TRACEABLE_NODE_ATTRS = {
     "background_validation": "background_validation_node",
     "safe_area_gate": "safe_area_gate_node",
     "text_renderer": "text_renderer_node",
+    "html_text_renderer": "html_text_renderer_node",
+    "image_analysis": "image_analysis_node",
+    "poster_layout_planner": "poster_layout_planner_node",
+    "poster_renderer": "poster_renderer_node",
+    "image_aware_quality_gate": "image_aware_quality_gate_node",
+    "design_recommendation": "design_recommendation_node",
     "readability_gate": "readability_gate_node",
     "final_validation": "final_validation_node",
     "result": "result_node",
@@ -61,6 +67,40 @@ NODE_UTILIZATION_MATRIX = {
             "result",
         ],
         "excludes": ["copy_candidate_generation", "custom_copy_input", "no_copy_bypass"],
+    },
+    "html_text_overlay": {
+        "includes": [
+            "input",
+            "validator",
+            "format_planner",
+            "tone_binding",
+            "auto_pilot_copywriting",
+            "copy_spec_parser",
+            "html_text_renderer",
+            "readability_gate",
+            "final_validation",
+            "result",
+        ],
+        "excludes": ["text_renderer", "image_analysis", "poster_renderer"],
+    },
+    "poster_components": {
+        "includes": [
+            "input",
+            "validator",
+            "format_planner",
+            "tone_binding",
+            "auto_pilot_copywriting",
+            "copy_spec_parser",
+            "image_analysis",
+            "poster_layout_planner",
+            "poster_renderer",
+            "image_aware_quality_gate",
+            "design_recommendation",
+            "readability_gate",
+            "final_validation",
+            "result",
+        ],
+        "excludes": ["text_renderer", "html_text_renderer"],
     },
     "photo_suggest_candidates": {
         "includes": [
@@ -114,6 +154,19 @@ def _base_request(job_id: str, copy_generation_mode: str = "auto_pilot", **extra
 def _make_image(path: Path, color: tuple[int, int, int] = (230, 90, 130)) -> str:
     Image.new("RGB", (96, 96), color).save(path)
     return str(path)
+
+
+def _state_request(job_id: str, copy_generation_mode: str = "auto_pilot", **extra: Any) -> dict[str, Any]:
+    request = _base_request(job_id, copy_generation_mode=copy_generation_mode, **extra)
+    request.update(
+        {
+            "schema_version": "llm_marketing_v1",
+            "engine": "mock",
+            "copy_required": copy_generation_mode != "no_copy",
+            "text_overlay_pending": copy_generation_mode != "no_copy",
+        }
+    )
+    return request
 
 
 def _config(thread_id: str) -> dict[str, dict[str, str]]:
@@ -203,6 +256,21 @@ def test_marketing_graph_node_utilization_matrix_covers_all_nodes(monkeypatch, t
             graph,
             trace,
             _base_request("node-matrix-auto-pilot", copy_generation_mode="auto_pilot"),
+        ),
+        "html_text_overlay": _run_complete_request(
+            graph,
+            trace,
+            _state_request("node-matrix-html", copy_generation_mode="auto_pilot", rendering_engine="html"),
+        ),
+        "poster_components": _run_complete_request(
+            graph,
+            trace,
+            _base_request(
+                "node-matrix-poster-components",
+                copy_generation_mode="auto_pilot",
+                renderer_mode="poster_components",
+                render_profile="fast",
+            ),
         ),
         "photo_suggest_candidates": _run_photo_suggest_candidates(graph, trace, tmp_path),
         "custom_copy_direct": _run_complete_request(

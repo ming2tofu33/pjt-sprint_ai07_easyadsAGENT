@@ -8,7 +8,7 @@ from typing import Optional
 from openai import OpenAI
 from pydantic import ValidationError
 
-from orchestrator.app.schemas.vision import ReferenceStyleProfile
+from orchestrator.app.schemas.vision import ReferenceStyleProfile, ImageAnalysisProfile
 from orchestrator.app.vision.transforms import image_to_base64_for_vlm
 
 SYSTEM_PROMPT = """너는 광고 이미지의 시각적 요소를 분석하는 10년 차 수석 아트 디렉터다.
@@ -52,4 +52,39 @@ def extract_features_with_vlm(
         
     except (ValidationError, Exception) as e:
         print(f"[VLM Extractor] API call or parsing failed: {e}")
+        return None
+
+def analyze_image_with_vlm(
+    image_path: str,
+    client: OpenAI,
+    model_name: str = "gpt-4o"
+) -> Optional[ImageAnalysisProfile]:
+    base64_image_url = image_to_base64_for_vlm(image_path, add_data_uri=True)
+    
+    system_prompt = """너는 광고 텍스트 배치를 위해 이미지를 분석하는 시각 분석 AI다.
+이미지 내 주요 피사체의 위치, 배경의 복잡성, 그리고 텍스트를 오버레이하기 가장 좋은 안전 구역(safe zone)을 판단해라.
+정확한 판단이 어려우면 confidence를 낮게 설정하라."""
+
+    try:
+        response = client.beta.chat.completions.parse(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "이 이미지의 피사체 위치, 배경 복잡도, 안전 구역, 그리고 분석 신뢰도를 추출해줘."},
+                        {"type": "image_url", "image_url": {"url": base64_image_url, "detail": "low"}}
+                    ]
+                }
+            ],
+            response_format=ImageAnalysisProfile,
+            temperature=0.1,
+        )
+        
+        extracted_profile = response.choices[0].message.parsed
+        return extracted_profile
+        
+    except (ValidationError, Exception) as e:
+        print(f"[VLM Image Analysis] API call or parsing failed: {e}")
         return None

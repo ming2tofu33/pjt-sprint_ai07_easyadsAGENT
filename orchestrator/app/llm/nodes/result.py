@@ -27,6 +27,16 @@ def result_node(state: MarketingState) -> dict[str, Any]:
         has_text_overlay = bool(output_path)
 
     status = "done" if output_path else "failed"
+    render_result = state.get("render_result") or {}
+    render_metadata = dict(render_result.get("metadata") or {})
+    result_metadata = {
+        "source_node": "result",
+        "render_text_in_image": False,
+        "tlfp_enabled": True,
+        "error": None if output_path else upstream_error,
+    }
+    if render_metadata:
+        result_metadata["render_metadata"] = render_metadata
     artifacts = list(state.get("artifact_refs") or [])
     if output_path:
         artifacts.append(
@@ -53,12 +63,7 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             "final": state.get("final_validation_report"),
         },
         artifact_refs=artifacts,
-        metadata={
-            "source_node": "result",
-            "render_text_in_image": False,
-            "tlfp_enabled": True,
-            "error": None if output_path else upstream_error,
-        },
+        metadata=result_metadata,
     )
     return {
         "result_payload": payload.model_dump(),
