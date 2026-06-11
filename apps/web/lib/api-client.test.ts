@@ -34,6 +34,7 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}) {
 
 describe("api-client photo generation", () => {
   afterEach(() => {
+    vi.resetModules();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -393,6 +394,7 @@ describe("api-client photo generation", () => {
 
 describe("api-client backend contract routes", () => {
   afterEach(() => {
+    vi.resetModules();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -859,6 +861,13 @@ describe("api-client backend contract routes", () => {
   });
 
   it("archives chat threads through the BFF", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         success: true,

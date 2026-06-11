@@ -44,7 +44,7 @@ export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptio
   }
 
   if (typeof supabase.auth.signInAnonymously !== "function") {
-    return null;
+    throw new SupabaseGuestSessionError();
   }
 
   const result = await supabase.auth.signInAnonymously({
@@ -57,7 +57,7 @@ export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptio
   });
 
   if (!result) {
-    return null;
+    throw new SupabaseGuestSessionError();
   }
 
   const { data, error } = result;
