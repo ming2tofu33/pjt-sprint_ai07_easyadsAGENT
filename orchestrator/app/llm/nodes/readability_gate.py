@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image
 
-from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.nodes.safe_area_gate import bbox_iou
 from orchestrator.app.llm.nodes.text_renderer import hex_to_rgb
 from orchestrator.app.schemas.text_layout import ReadabilityReport, SlotReadability, TextLayoutSpec
+
+if TYPE_CHECKING:
+    from orchestrator.app.graph.state import MarketingState
 
 
 def relative_luminance(rgb: tuple[int, int, int]) -> float:
@@ -53,7 +55,7 @@ def classify_wcag_grade(ratio: float, is_large_text: bool) -> str:
     return "FAIL"
 
 
-def readability_gate_node(state: MarketingState) -> dict[str, Any]:
+def readability_gate_node(state: "MarketingState") -> dict[str, Any]:
     layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
     result = state.get("t2i_result") or {}
     background_path = (result.get("image_paths") or [None])[0]

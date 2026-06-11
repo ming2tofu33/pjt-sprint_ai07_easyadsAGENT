@@ -40,6 +40,7 @@ from orchestrator.app.quality_gate.final_composite_service import evaluate_final
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from scripts._actual_env import load_env_file
+from scripts._actual_creative_pipeline import ActualCallBudget, ActualCreativeInput, ActualCreativeRuntime, run_actual_creative_case
 
 
 REQUIRED_ACTUAL_ENV = {
@@ -69,6 +70,11 @@ def main() -> int:
     parser.add_argument("--max-composite-attempts", type=int, default=5)
     parser.add_argument("--output-dir", default="data/outputs/final_composite_quality_actual_gpt54")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--canonical-smoke", action="store_true")
+    parser.add_argument("--source-image")
+    parser.add_argument("--reuse-text-only-background-as-source", action="store_true")
+    parser.add_argument("--max-openai-calls", type=int, default=6)
+    parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
 
     env_report = load_env_file(args.env_file)
@@ -87,6 +93,11 @@ def main() -> int:
         _write_summary(output_dir, summary)
         return 0
 
+    if args.canonical_smoke:
+        summary.update(run_canonical_smoke(args=args, output_dir=output_dir))
+        _write_summary(output_dir, summary)
+        return 0
+
     case_dir = output_dir / args.case
     case_dir.mkdir(parents=True, exist_ok=True)
     result = run_actual_case(args=args, output_dir=output_dir, case_dir=case_dir)
@@ -98,7 +109,327 @@ def main() -> int:
     return 0
 
 
+def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
+    runtime = _canonical_runtime(args)
+    cases = [
+        ActualCreativeInput(
+            case_id="cheesecake_text_only",
+            input_mode="text_only",
+            user_text="치즈케이크를 홍보하고 싶어",
+            placement="instagram_feed_static",
+            promotion_goal="brand_awareness",
+            seed=81,
+            output_dir=str(output_dir),
+        )
+    ]
+    runs = [_run_or_resume_canonical_case(cases[0], runtime, resume=bool(args.resume))]
+    source_image = args.source_image
+    if (
+        not source_image
+        and args.reuse_text_only_background_as_source
+        and runs[0].get("status") == "completed"
+        and runs[0].get("background_image_path")
+        and Path(str(runs[0].get("background_image_path"))).exists()
+    ):
+        source_image = runs[0]["background_image_path"]
+    if source_image:
+        cases.extend(
+            [
+                ActualCreativeInput(
+                    case_id="cheesecake_image_only",
+                    input_mode="image_only",
+                    source_image_path=source_image,
+                    source_provenance="actual_generated_reuse" if source_image == runs[0].get("background_image_path") else "user_uploaded",
+                    placement="instagram_feed_static",
+                    promotion_goal="brand_awareness",
+                    seed=82,
+                    output_dir=str(output_dir),
+                ),
+                ActualCreativeInput(
+                    case_id="cheesecake_text_and_image",
+                    input_mode="text_and_image",
+                    user_text="카페 신메뉴 치즈케이크를 인스타 피드로 홍보하고 싶어",
+                    source_image_path=source_image,
+                    source_provenance="actual_generated_reuse" if source_image == runs[0].get("background_image_path") else "user_uploaded",
+                    placement="instagram_feed_static",
+                    promotion_goal="menu_discovery",
+                    seed=83,
+                    output_dir=str(output_dir),
+                ),
+            ]
+        )
+        for case in cases[1:]:
+            runs.append(_run_or_resume_canonical_case(case, runtime, resume=bool(args.resume)))
+
+    comparison_path = _build_canonical_comparison(output_dir, runs)
+    cross = {
+        "schema_version": "canonical_actual_creative_pipeline_comparison_v1",
+        "runs": [
+            {
+                "case_id": run.get("case_id"),
+                "input_mode": run.get("input_mode"),
+                "status": run.get("status"),
+                "source_provenance": (run.get("input_evidence") or {}).get("source_provenance"),
+                "background_sha256": run.get("background_sha256"),
+                "final_composite_sha256": run.get("final_composite_sha256"),
+            }
+            for run in runs
+        ],
+    }
+    (output_dir / "cross_input_comparison.json").write_text(json.dumps(cross, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output_dir / "runtime_metadata.json").write_text(
+        json.dumps(
+            {
+                "copy_model": args.copy_model,
+                "vision_model": args.vlm_model,
+                "t2i_engine": "flux2_klein_4b",
+                "t2i_backend": "local_diffusers",
+                "max_openai_calls": args.max_openai_calls,
+                "max_flux_generations": args.max_flux_generations,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "schema_version": "canonical_actual_creative_pipeline_v1",
+        "status": _canonical_summary_status(runs),
+        "runs": runs,
+        "cross_input_comparison_path": str(output_dir / "cross_input_comparison.json"),
+        "comparison_all_modes_path": str(comparison_path) if comparison_path else None,
+        "actual_api_calls": all(_has_provider_usage(run.get("copy_provider_metadata")) and _has_provider_usage((run.get("vlm_result") or {}).get("provider_metadata") or run.get("vlm_result")) for run in runs),
+        "image_generation_performed": any(bool(run.get("flux_metadata")) for run in runs),
+        "mock_or_fixture_count": sum(int(run.get("mock_or_fixture_count") or 0) for run in runs),
+    }
+
+
+def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
+    from openai import OpenAI  # type: ignore
+    from orchestrator.app.t2i.engines.registry import get_t2i_engine
+
+    client = OpenAI(timeout=90)
+
+    class OpenAIAdapter:
+        def __init__(self, openai_client: Any):
+            self.client = openai_client
+
+        def generate_product_copy(self, *, request: Any, evidence: dict[str, Any], model: str) -> dict[str, Any]:
+            started = time.perf_counter()
+            prompt = (
+                "Return JSON only with product_understanding, product_copy_context, copy_candidates, "
+                "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review, visual_observations, vision_provider_metadata. "
+                "product_understanding must include product_name, broad_category, explicit_product_candidate, normalized_product_candidate, product_identity_confidence. "
+                "product_copy_context must include brand_tone. Generate grounded advertising copy only from supplied evidence. "
+                f"Request: {request.model_dump_json()} Evidence: {json.dumps(evidence, ensure_ascii=False)}"
+            )
+            if getattr(request, "source_image_path", None):
+                encoded = base64.b64encode(Path(request.source_image_path).read_bytes()).decode("ascii")
+                response = self.client.responses.create(
+                    model=model,
+                    input=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "input_text", "text": prompt},
+                                {"type": "input_image", "image_url": f"data:image/png;base64,{encoded}"},
+                            ],
+                        }
+                    ],
+                    temperature=0,
+                )
+            else:
+                response = self.client.responses.create(model=model, input=prompt, temperature=0)
+            payload = json.loads(getattr(response, "output_text", "") or "{}")
+            candidates = payload.get("copy_candidates") or []
+            selected = next((item for item in candidates if item.get("id") == payload.get("recommended_candidate_id")), None) or (candidates[0] if candidates else None)
+            return {
+                "product_understanding": payload.get("product_understanding") or {},
+                "product_copy_context": payload.get("product_copy_context") or {},
+                "copy_candidates": candidates,
+                "recommended_candidate_id": payload.get("recommended_candidate_id"),
+                "selected_copy": selected,
+                "input_conflicts": payload.get("input_conflicts") or [],
+                "requires_manual_review": bool(payload.get("requires_manual_review")),
+                "visual_observations": payload.get("visual_observations") or [],
+                "vision_provider_metadata": payload.get("vision_provider_metadata") or (
+                    {
+                        "provider": "openai",
+                        "model": model,
+                        "fallback_used": False,
+                        "token_usage": _usage_dict(response),
+                        "latency_ms": int((time.perf_counter() - started) * 1000),
+                    }
+                    if request.input_mode in {"image_only", "text_and_image"}
+                    else {}
+                ),
+                "provider_metadata": {
+                    "provider": "openai",
+                    "model": model,
+                    "fallback_used": False,
+                    "token_usage": _usage_dict(response),
+                    "latency_ms": int((time.perf_counter() - started) * 1000),
+                },
+            }
+
+        def analyze_source_image(self, *, request: Any, image_path: str, model: str) -> dict[str, Any]:
+            started = time.perf_counter()
+            encoded = base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
+            response = self.client.responses.create(
+                model=model,
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Analyze visible product, confidence, negative space, clipping, and existing text. Return JSON only."},
+                            {"type": "input_image", "image_url": f"data:image/png;base64,{encoded}"},
+                        ],
+                    }
+                ],
+                temperature=0,
+            )
+            payload = json.loads(getattr(response, "output_text", "") or "{}")
+            return {
+                "visual_observations": payload.get("visual_observations") or [{"kind": "vision_analysis", "value": payload}],
+                "provider_metadata": {
+                    "provider": "openai",
+                    "model": model,
+                    "fallback_used": False,
+                    "token_usage": _usage_dict(response),
+                    "latency_ms": int((time.perf_counter() - started) * 1000),
+                },
+            }
+
+        def evaluate_final_composite(self, *, request: Any, image_path: str, copy: dict[str, Any], model: str) -> dict[str, Any]:
+            started = time.perf_counter()
+            encoded = base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
+            response = self.client.responses.create(
+                model=model,
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "input_text", "text": "Evaluate the final ad composite. Return JSON only with product_match_score, copy_product_grounding_score, copy_readability_score, copy_visual_fit_score, product_obstruction_score, wrong_domain_detected, unsupported_claim_detected, commercial_viability_score, failure_reasons, recommended_action, confidence, and detected_text."},
+                            {"type": "input_image", "image_url": f"data:image/png;base64,{encoded}"},
+                        ],
+                    }
+                ],
+                temperature=0,
+            )
+            payload = json.loads(getattr(response, "output_text", "") or "{}")
+            payload["provider_metadata"] = {
+                "provider": "openai",
+                "model": model,
+                "fallback_used": False,
+                "token_usage": _usage_dict(response),
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+            }
+            return payload
+
+    return ActualCreativeRuntime(
+        copy_model=args.copy_model,
+        vision_model=args.vlm_model,
+        t2i_engine="flux2_klein_4b",
+        t2i_backend="local_diffusers",
+        openai_adapter=OpenAIAdapter(client),
+        vision_adapter=OpenAIAdapter(client),
+        flux_engine=get_t2i_engine("flux2_klein_4b"),
+        call_budget=ActualCallBudget(max_openai_calls=args.max_openai_calls, max_flux_generations=args.max_flux_generations),
+    )
+
+
+def _run_or_resume_canonical_case(request: ActualCreativeInput, runtime: ActualCreativeRuntime, *, resume: bool) -> dict[str, Any]:
+    result_path = Path(request.output_dir) / request.case_id / "result.json"
+    if resume and result_path.exists():
+        try:
+            data = json.loads(result_path.read_text(encoding="utf-8"))
+            if data.get("status") == "completed" and _canonical_artifacts_exist(data):
+                return data
+        except Exception:
+            pass
+    return run_actual_creative_case(request, runtime).model_dump()
+
+
+def _canonical_artifacts_exist(data: dict[str, Any]) -> bool:
+    paths = [data.get("final_composite_path")]
+    if data.get("input_mode") == "text_only":
+        paths.append(data.get("background_image_path"))
+    return all(path and Path(str(path)).exists() for path in paths)
+
+
+def _canonical_summary_status(runs: list[dict[str, Any]]) -> str:
+    statuses = {run.get("status") for run in runs}
+    if statuses == {"completed"}:
+        return "completed"
+    if "completed" in statuses:
+        return "partial"
+    if "manual_review" in statuses:
+        return "manual_review"
+    if "blocked" in statuses:
+        return "blocked"
+    return "failed"
+
+
+def _build_canonical_comparison(output_dir: Path, runs: list[dict[str, Any]]) -> Path | None:
+    paths = [Path(str(run.get("final_composite_path"))) for run in runs if run.get("final_composite_path") and Path(str(run.get("final_composite_path"))).exists()]
+    if not paths:
+        return None
+    thumbs = []
+    for path in paths:
+        with Image.open(path).convert("RGB") as image:
+            image.thumbnail((360, 360))
+            canvas = Image.new("RGB", (360, 400), "#FFFFFF")
+            canvas.paste(image, ((360 - image.width) // 2, 0))
+            ImageDraw.Draw(canvas).text((12, 372), path.parent.name, fill="#111111")
+            thumbs.append(canvas)
+    sheet = Image.new("RGB", (360 * len(thumbs), 400), "#FFFFFF")
+    for index, thumb in enumerate(thumbs):
+        sheet.paste(thumb, (360 * index, 0))
+    output = output_dir / "comparison_all_modes.png"
+    sheet.save(output)
+    return output
+
+
+def _has_provider_usage(metadata: object) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    usage = metadata.get("token_usage")
+    return isinstance(usage, dict) and int(usage.get("input_tokens") or 0) > 0 and int(usage.get("output_tokens") or 0) > 0
+
+
 def run_actual_case(*, args: argparse.Namespace, output_dir: Path, case_dir: Path) -> dict[str, Any]:
+    request = ActualCreativeInput(
+        case_id=args.case,
+        input_mode="text_only",
+        user_text=f"Create a premium advertising creative for {args.case}.",
+        placement="instagram_feed_static",
+        promotion_goal="brand_awareness",
+        seed=args.seed,
+        output_dir=str(output_dir),
+    )
+    result = run_actual_creative_case(request, _canonical_runtime(args)).model_dump()
+    return {
+        **result,
+        "copy_model": args.copy_model,
+        "vlm_model": args.vlm_model,
+        "copy_token_usage": (result.get("copy_provider_metadata") or {}).get("token_usage"),
+        "vlm_token_usage": ((result.get("vlm_result") or {}).get("provider_metadata") or {}).get("token_usage"),
+        "copy_fallback_used": (result.get("copy_provider_metadata") or {}).get("fallback_used"),
+        "vlm_fallback_used": ((result.get("vlm_result") or {}).get("provider_metadata") or {}).get("fallback_used"),
+        "flux_engine": (result.get("flux_metadata") or {}).get("engine"),
+        "flux_backend": (result.get("flux_metadata") or {}).get("backend"),
+        "flux_model": (result.get("flux_metadata") or {}).get("model"),
+        "flux_latency_ms": (result.get("flux_metadata") or {}).get("runtime_ms"),
+        "flux_output_path": (result.get("flux_metadata") or {}).get("output_path"),
+        "background_path": result.get("background_image_path"),
+        "initial_final_composite_path": result.get("final_composite_path"),
+        "repaired_final_composite_path": "pass_without_revision",
+        "background_hash": result.get("background_sha256"),
+        "final_composite_hash": result.get("final_composite_sha256"),
+    }
+
+
+def _legacy_run_actual_case(*, args: argparse.Namespace, output_dir: Path, case_dir: Path) -> dict[str, Any]:
     copy_result = generate_gpt54_copy_candidates(args)
     (output_dir / "copy_candidates_gpt54.json").write_text(json.dumps(copy_result, ensure_ascii=False, indent=2), encoding="utf-8")
     if not _strict_openai_success(copy_result, args.copy_model, prefix="copy"):
@@ -440,7 +771,7 @@ def _missing_actual_requirements(args: argparse.Namespace) -> list[str]:
         missing.append("copy_model_must_be_gpt-5.4")
     if args.vlm_model != "gpt-5.4":
         missing.append("vlm_model_must_be_gpt-5.4")
-    if not args.force_flux_generation:
+    if not args.force_flux_generation and not getattr(args, "canonical_smoke", False):
         missing.append("force_flux_generation_required")
     return missing
 
