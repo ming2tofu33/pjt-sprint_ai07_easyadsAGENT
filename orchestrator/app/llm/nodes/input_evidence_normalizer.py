@@ -139,8 +139,6 @@ def _product_from_state(state: dict[str, Any], *, user_text: str | None) -> str 
         value = metadata.get("product_name")
         if isinstance(value, str) and value.strip():
             return value.strip()
-    if user_text:
-        return user_text.strip()
     return None
 
 

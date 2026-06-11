@@ -102,6 +102,10 @@ class MarketingState(TypedDict, total=False):
     input_normalization_status: str | None
     input_conflicts: list[dict[str, Any]]
     unresolved_questions: list[str]
+    product_understanding: dict[str, Any] | None
+    product_understanding_status: str | None
+    product_understanding_confidence: float | None
+    product_understanding_provider_metadata: dict[str, Any] | None
     vision_preprocess_mode: str | None
     selected_reference_template_id: str | None
     selected_reference_template: dict[str, Any] | None
@@ -301,6 +305,14 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "reference_asset_id": request.reference_asset_id if hasattr(request, "reference_asset_id") else None,
         "source_image_path": request.source_image_path,
         "reference_image_path": request.reference_image_path,
+        "input_evidence_bundle": None,
+        "input_normalization_status": None,
+        "input_conflicts": [],
+        "unresolved_questions": [],
+        "product_understanding": None,
+        "product_understanding_status": None,
+        "product_understanding_confidence": None,
+        "product_understanding_provider_metadata": None,
         "vision_preprocess_mode": request.vision_preprocess_mode,
         "selected_reference_template_id": request.selected_reference_template_id,
         "selected_reference_template": None,

@@ -42,6 +42,9 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     text = " ".join(str(value or "") for value in [state.get("user_input"), state.get("current_brief", {}).get("custom_request")])
     updates = infer_marketing_context(text)
     context_data = context.model_dump()
+    product_understanding = state.get("product_understanding") or {}
+    if isinstance(product_understanding, dict) and product_understanding.get("product_name") and product_understanding.get("product_name") != "unknown product":
+        context_data["item_or_service"] = product_understanding["product_name"]
     extra = dict(context_data.get("extra") or {})
     if updates.pop("ad_format", None):
         extra["ad_format"] = infer_ad_format(text)

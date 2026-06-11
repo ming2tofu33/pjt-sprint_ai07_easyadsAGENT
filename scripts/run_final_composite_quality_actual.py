@@ -40,7 +40,7 @@ from orchestrator.app.quality_gate.final_composite_service import evaluate_final
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from scripts._actual_env import load_env_file
-from scripts._actual_creative_pipeline import ActualCallBudget, ActualCreativeInput, ActualCreativeRuntime, run_actual_creative_case
+from scripts._actual_creative_pipeline import ActualCallBudget, ActualCreativeInput, ActualCreativeRuntime, run_actual_creative_case, run_input_evidence_normalizer, run_product_understanding
 
 
 REQUIRED_ACTUAL_ENV = {
@@ -71,6 +71,9 @@ def main() -> int:
     parser.add_argument("--output-dir", default="data/outputs/final_composite_quality_actual_gpt54")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--canonical-smoke", action="store_true")
+    parser.add_argument("--product-understanding-benchmark", action="store_true")
+    parser.add_argument("--benchmark-manifest")
+    parser.add_argument("--stop-after", choices=["product_understanding"])
     parser.add_argument("--source-image")
     parser.add_argument("--reuse-text-only-background-as-source", action="store_true")
     parser.add_argument("--max-openai-calls", type=int, default=6)
@@ -95,6 +98,11 @@ def main() -> int:
 
     if args.canonical_smoke:
         summary.update(run_canonical_smoke(args=args, output_dir=output_dir))
+        _write_summary(output_dir, summary)
+        return 0
+
+    if args.product_understanding_benchmark:
+        summary.update(run_product_understanding_benchmark(args=args, output_dir=output_dir))
         _write_summary(output_dir, summary)
         return 0
 
@@ -214,6 +222,124 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
     }
 
 
+def run_product_understanding_benchmark(*, args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
+    if not args.benchmark_manifest:
+        return {"status": "blocked", "missing_requirements": ["--benchmark-manifest"], "runs": []}
+    manifest = json.loads(Path(args.benchmark_manifest).read_text(encoding="utf-8"))
+    runtime = _canonical_runtime(args)
+    results: list[dict[str, Any]] = []
+    for case in manifest.get("cases", []):
+        case_dir = output_dir / "cases" / str(case["case_id"])
+        case_dir.mkdir(parents=True, exist_ok=True)
+        source_image_path = case.get("source_image_path")
+        if source_image_path and not Path(source_image_path).exists():
+            source_image_path = _create_benchmark_source_image(case_dir, str(case.get("case_id") or ""))
+        try:
+            request = ActualCreativeInput(
+                case_id=str(case["case_id"]),
+                input_mode=case.get("input_mode") or "text_only",
+                user_text=case.get("user_text"),
+                source_image_path=source_image_path,
+                placement=case.get("placement") or "instagram_feed_static",
+                promotion_goal=case.get("promotion_goal") or "brand_awareness",
+                seed=int(case.get("seed") or args.seed),
+                output_dir=str(output_dir / "cases"),
+                source_provenance="benchmark_manifest",
+            )
+            bundle = run_input_evidence_normalizer(request, runtime=runtime, case_dir=case_dir)
+            evidence = bundle.model_dump()
+            product = run_product_understanding(request, runtime, evidence)
+            result = _product_understanding_case_result(case, evidence, product)
+            result["status"] = "completed" if result["schema_valid"] and result["broad_category_ok"] and result["category_prefix_ok"] and result["evidence_integrity_ok"] else "failed"
+            (case_dir / "input_evidence.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
+            (case_dir / "product_understanding.json").write_text(json.dumps(product, ensure_ascii=False, indent=2), encoding="utf-8")
+            (case_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            results.append(result)
+        except Exception as exc:
+            results.append({"case_id": case.get("case_id"), "status": "failed", "error_message": str(exc)[:500]})
+    (output_dir / "benchmark_results.json").write_text(json.dumps({"cases": results}, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output_dir / "category_consistency_report.json").write_text(
+        json.dumps({"cases": [{"case_id": item.get("case_id"), "broad_category": item.get("broad_category"), "category_path": item.get("category_path"), "status": item.get("status")} for item in results]}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "evidence_integrity_report.json").write_text(
+        json.dumps({"cases": [{"case_id": item.get("case_id"), "evidence_integrity_ok": item.get("evidence_integrity_ok"), "status": item.get("status")} for item in results]}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "unsupported_claim_report.json").write_text(
+        json.dumps({"cases": [{"case_id": item.get("case_id"), "unsupported_claim_categories": item.get("unsupported_claim_categories", []), "status": item.get("status")} for item in results]}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return {
+        "status": "completed" if results and all(item.get("status") == "completed" for item in results) else "partial",
+        "runs": results,
+        "actual_api_calls": any((item.get("provider_metadata") or {}).get("provider") == "openai" for item in results),
+        "image_generation_performed": False,
+        "stop_after": args.stop_after,
+    }
+
+
+def _product_understanding_case_result(case: dict[str, Any], evidence: dict[str, Any], product: dict[str, Any]) -> dict[str, Any]:
+    category_path = product.get("category_path") or []
+    expected_prefix = case.get("expected_category_prefix") or []
+    evidence_ids = {
+        item.get("evidence_id")
+        for group in ("explicit_user_facts", "visual_observations", "asset_metadata_evidence", "brand_profile_evidence", "reference_evidence")
+        for item in evidence.get(group, [])
+    }
+    name_ids = product.get("product_name_evidence_ids") or []
+    return {
+        "case_id": case.get("case_id"),
+        "input_mode": case.get("input_mode"),
+        "product_name": product.get("product_name"),
+        "normalized_product_type": product.get("normalized_product_type"),
+        "broad_category": product.get("broad_category"),
+        "category_path": category_path,
+        "unsupported_claim_categories": product.get("unsupported_claim_categories") or [],
+        "provider_metadata": product.get("provider_metadata") or {},
+        "schema_valid": product.get("schema_version") == "product_understanding_v1",
+        "broad_category_ok": product.get("broad_category") == case.get("expected_broad_category"),
+        "category_prefix_ok": category_path[: len(expected_prefix)] == expected_prefix,
+        "evidence_integrity_ok": all(item in evidence_ids for item in name_ids),
+    }
+
+
+def _create_benchmark_source_image(case_dir: Path, case_id: str) -> str:
+    path = case_dir / "source_image.png"
+    image = Image.new("RGB", (512, 512), "#f5f1ea")
+    draw = ImageDraw.Draw(image)
+    key = case_id.lower()
+    if "perfume" in key:
+        draw.rectangle((215, 150, 297, 210), fill="#c8d7ee", outline="#54637a", width=5)
+        draw.rounded_rectangle((180, 205, 332, 385), radius=28, fill="#e8f0fb", outline="#54637a", width=7)
+        draw.rectangle((238, 120, 274, 150), fill="#54637a")
+    elif "sneaker" in key:
+        draw.polygon([(105, 315), (190, 245), (330, 268), (405, 330), (390, 370), (135, 370)], fill="#f2f2f2", outline="#222222")
+        draw.line((190, 245, 235, 322, 405, 330), fill="#222222", width=7)
+        draw.line((160, 345, 385, 345), fill="#777777", width=5)
+    elif "latte" in key:
+        draw.ellipse((155, 130, 357, 332), fill="#f4b6c5", outline="#8a5a5a", width=8)
+        draw.rectangle((185, 220, 327, 390), fill="#f4b6c5", outline="#8a5a5a", width=8)
+        draw.ellipse((190, 155, 322, 250), fill="#fff3f5")
+    elif "macaron" in key:
+        for y, color in [(190, "#e8a8c8"), (250, "#f7f1dd"), (310, "#e8a8c8")]:
+            draw.rounded_rectangle((130, y, 382, y + 70), radius=35, fill=color, outline="#8f5d75", width=5)
+    elif "meat" in key or "grilled" in key:
+        draw.rectangle((95, 360, 417, 375), fill="#222222")
+        for x in range(125, 400, 45):
+            draw.line((x, 180, x - 35, 390), fill="#333333", width=5)
+        for box in [(120, 190, 240, 285), (250, 210, 385, 300), (170, 300, 320, 380)]:
+            draw.ellipse(box, fill="#9b3f28", outline="#4f1e15", width=6)
+    elif "cheesecake" in key:
+        draw.polygon([(135, 185), (380, 245), (175, 360)], fill="#f1d37a", outline="#8a5a24")
+        draw.polygon([(135, 185), (380, 245), (340, 272), (175, 360)], fill="#f7e1a0", outline="#8a5a24")
+        draw.rectangle((170, 340, 345, 365), fill="#b06b35")
+    else:
+        draw.ellipse((156, 156, 356, 356), fill="#d8a657", outline="#8a5a24", width=8)
+    image.save(path)
+    return str(path)
+
+
 def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
     from openai import OpenAI  # type: ignore
     from orchestrator.app.t2i.engines.registry import get_t2i_engine
@@ -260,22 +386,46 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
             payload["provider_metadata"] = {"vision": metadata} if request.input_mode in {"image_only", "text_and_image"} else {"normalizer": metadata}
             return payload
 
-        def generate_product_copy(self, *, request: Any, evidence: dict[str, Any], model: str) -> dict[str, Any]:
+        def understand_product(self, *, request: Any, evidence: dict[str, Any], model: str) -> dict[str, Any]:
             started = time.perf_counter()
             prompt = (
-                "Return JSON only with product_understanding, product_copy_context, copy_candidates, "
-                "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review. "
-                "product_understanding must include product_name, broad_category, explicit_product_candidate, normalized_product_candidate, product_identity_confidence. "
-                "product_copy_context must include brand_tone. Generate grounded advertising copy only from the supplied InputEvidenceBundle. "
-                "Do not use source image bytes or raw visual assumptions outside the bundle. "
+                "Return JSON only with product_understanding. You receive a canonical InputEvidenceBundle. "
+                "Generate ProductUnderstanding only. Do not generate advertising copy, headline, CTA, slogan, offer, or visual style. "
+                "Keep verified facts separate from visual observations and inferences. Every verified fact must reference an evidence item that already exists in InputEvidenceBundle. "
+                "Do not invent price, discount, ingredients, origin, manufacturing method, certification, efficacy, health effects, beauty effects, numeric claims, scarcity, or social proof. "
+                "category_path is open vocabulary. broad_category must be one of the provided top-level taxonomy values. "
+                "If evidence is insufficient, preserve unknown fields and mark clarification/manual review instead of guessing. "
                 f"Request metadata: {request.model_dump_json()} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
+            )
+            response = self.client.responses.create(model=model, input=prompt, temperature=0)
+            payload = json.loads(getattr(response, "output_text", "") or "{}")
+            return {
+                "product_understanding": payload.get("product_understanding") or payload,
+                "provider_metadata": {
+                    "provider": "openai",
+                    "model": model,
+                    "fallback_used": False,
+                    "task": "product_understanding_v1",
+                    "token_usage": _usage_dict(response),
+                    "latency_ms": int((time.perf_counter() - started) * 1000),
+                },
+            }
+
+        def generate_product_copy(self, *, request: Any, evidence: dict[str, Any], product_understanding: dict[str, Any] | None = None, model: str) -> dict[str, Any]:
+            started = time.perf_counter()
+            prompt = (
+                "Return JSON only with product_copy_context, copy_candidates, "
+                "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review. "
+                "Do not generate or revise ProductUnderstanding. product_copy_context must include brand_tone. Generate grounded advertising copy only from the supplied InputEvidenceBundle and ProductUnderstanding. "
+                "Do not use source image bytes or raw visual assumptions outside the bundle. "
+                f"Request metadata: {request.model_dump_json()} ProductUnderstanding: {json.dumps(product_understanding or {}, ensure_ascii=False)} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
             )
             response = self.client.responses.create(model=model, input=prompt, temperature=0)
             payload = json.loads(getattr(response, "output_text", "") or "{}")
             candidates = payload.get("copy_candidates") or []
             selected = next((item for item in candidates if item.get("id") == payload.get("recommended_candidate_id")), None) or (candidates[0] if candidates else None)
             return {
-                "product_understanding": payload.get("product_understanding") or {},
+                "product_understanding": product_understanding or {},
                 "product_copy_context": payload.get("product_copy_context") or {},
                 "copy_candidates": candidates,
                 "recommended_candidate_id": payload.get("recommended_candidate_id"),
@@ -809,14 +959,18 @@ def build_comparison(case_dir: Path, initial_path: Path, repaired_path: Path | N
 
 
 def _missing_actual_requirements(args: argparse.Namespace) -> list[str]:
-    missing = [name for name, expected in REQUIRED_ACTUAL_ENV.items() if str(os.getenv(name, "")).strip().lower() != expected.lower()]
+    required_env = dict(REQUIRED_ACTUAL_ENV)
+    if getattr(args, "product_understanding_benchmark", False) and getattr(args, "stop_after", None) == "product_understanding":
+        required_env.pop("EASYADS_FLUX2_KLEIN_ACTUAL", None)
+        required_env.pop("EASYADS_ENABLE_FLUX2_KLEIN_LOCAL", None)
+    missing = [name for name, expected in required_env.items() if str(os.getenv(name, "")).strip().lower() != expected.lower()]
     if not os.getenv("OPENAI_API_KEY"):
         missing.append("OPENAI_API_KEY")
     if args.copy_model != "gpt-5.4":
         missing.append("copy_model_must_be_gpt-5.4")
     if args.vlm_model != "gpt-5.4":
         missing.append("vlm_model_must_be_gpt-5.4")
-    if not args.force_flux_generation and not getattr(args, "canonical_smoke", False):
+    if not args.force_flux_generation and not getattr(args, "canonical_smoke", False) and not (getattr(args, "product_understanding_benchmark", False) and getattr(args, "stop_after", None) == "product_understanding"):
         missing.append("force_flux_generation_required")
     return missing
 

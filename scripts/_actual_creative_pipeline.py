@@ -21,8 +21,11 @@ from PIL import Image
 from pydantic import BaseModel, Field, model_validator
 
 from orchestrator.app.llm.nodes.input_evidence_normalizer import build_input_evidence_bundle
+from orchestrator.app.llm.nodes.product_understanding import build_minimal_product_understanding
+from orchestrator.app.llm.product_understanding_policy import normalize_slug, validate_product_understanding
 from orchestrator.app.quality_gate.final_composite_service import evaluate_final_composite
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
+from orchestrator.app.schemas.product_understanding import UNSUPPORTED_CLAIM_CATEGORIES
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 
 
@@ -113,6 +116,11 @@ class ActualProductCopyOutput(BaseModel):
     provider_metadata: dict[str, Any]
 
 
+class ActualProductUnderstandingOutput(BaseModel):
+    product_understanding: dict[str, Any]
+    provider_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class ActualCreativeVLMResult(BaseModel):
     product_match_score: float = Field(ge=0.0, le=1.0)
     copy_product_grounding_score: float = Field(ge=0.0, le=1.0)
@@ -170,8 +178,9 @@ def run_actual_creative_case(request: ActualCreativeInput, runtime: ActualCreati
         bundle = run_input_evidence_normalizer(request, runtime=runtime, case_dir=case_dir)
         evidence = bundle.model_dump()
         _write_json(case_dir / "input_evidence.json", evidence)
-        copy_output = generate_grounded_copy(request, runtime, evidence)
-        _write_json(case_dir / "product_understanding.json", copy_output.get("product_understanding") or {})
+        product_understanding = run_product_understanding(request, runtime, evidence)
+        _write_json(case_dir / "product_understanding.json", product_understanding)
+        copy_output = generate_grounded_copy(request, runtime, evidence, product_understanding)
         _write_json(case_dir / "product_copy_context.json", copy_output.get("product_copy_context") or {})
         _write_json(case_dir / "copy_candidates.json", copy_output.get("copy_candidates") or [])
         if not _strict_provider_metadata(copy_output.get("provider_metadata"), runtime.copy_model):
@@ -523,23 +532,161 @@ def analyze_source_image(request: ActualCreativeInput, runtime: ActualCreativeRu
     return [*analysis.visual_observations, {"kind": "provider_metadata", "value": analysis.provider_metadata}]
 
 
-def generate_grounded_copy(request: ActualCreativeInput, runtime: ActualCreativeRuntime, evidence: dict[str, Any]) -> dict[str, Any]:
+def run_product_understanding(request: ActualCreativeInput, runtime: ActualCreativeRuntime, evidence: dict[str, Any]) -> dict[str, Any]:
+    adapter = runtime.openai_adapter
+    if runtime.call_budget:
+        runtime.call_budget.consume_openai()
+    if adapter and hasattr(adapter, "understand_product"):
+        payload = adapter.understand_product(request=request, evidence=evidence, model=runtime.copy_model)
+        candidate = payload.get("product_understanding") or payload
+        metadata = payload.get("provider_metadata") or candidate.get("provider_metadata") or {}
+    else:
+        candidate = build_minimal_product_understanding(InputEvidenceBundle(**evidence)).model_dump()
+        metadata = candidate.get("provider_metadata") or {}
+    candidate = _coerce_product_understanding_candidate(candidate, evidence)
+    result = validate_product_understanding(candidate, evidence)
+    data = result.model_dump()
+    if metadata:
+        data["provider_metadata"] = metadata
+    return data
+
+
+def _coerce_product_understanding_candidate(candidate: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    data = dict(candidate or {})
+    product_name = _nested_string(data, ("product_name", "product", "primary_product", "product_identity", "name")) or _product_from_evidence(evidence)
+    normalized_type = normalize_slug(_nested_string(data, ("normalized_product_type", "normalized_product_candidate", "product_type", "type")) or product_name)
+    raw_path = data.get("category_path")
+    broad = _normalize_broad_category(" ".join(str(item) for item in [_nested_string(data, ("broad_category", "category", "domain")) or "", product_name or "", raw_path or ""]))
+    category_path = _normalize_category_path(raw_path if isinstance(raw_path, list) else [], broad, normalized_type)
+    evidence_ids = _product_evidence_ids(product_name, evidence)
+    return {
+        **data,
+        "schema_version": "product_understanding_v1",
+        "product_name": product_name or "unknown product",
+        "normalized_product_type": normalized_type,
+        "broad_category": broad,
+        "category_path": category_path,
+        "verified_facts": [item for item in _evidence_items(evidence, ("explicit_user_facts", "asset_metadata_evidence", "brand_profile_evidence", "reference_evidence")) if item.get("evidence_id") in evidence_ids],
+        "visual_observations": [item for item in _evidence_items(evidence, ("visual_observations",)) if item.get("evidence_id") in evidence_ids],
+        "permissible_inferences": [item for item in _evidence_items(evidence, ("creative_inferences",)) if item.get("confidence", 1.0) <= 0.8],
+        "unknown_fields": list(data.get("unknown_fields") or evidence.get("unknown_fields") or []),
+        "unsupported_claim_categories": [normalize_slug(str(item)) for item in (data.get("unsupported_claim_categories") or []) if normalize_slug(str(item)) in UNSUPPORTED_CLAIM_CATEGORIES],
+        "product_name_evidence_ids": evidence_ids,
+        "confidence_by_field": data.get("confidence_by_field") if isinstance(data.get("confidence_by_field"), dict) else {},
+        "confidence": _float_between(data.get("confidence"), 0.75 if evidence_ids else 0.45),
+        "clarification_required": bool(data.get("clarification_required")) or not bool(product_name),
+        "manual_review_required": bool(data.get("manual_review_required")) or bool(evidence.get("manual_review_required")),
+    }
+
+
+def _nested_string(data: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, dict):
+            nested = _nested_string(value, ("value", "name", "product_name", "candidate", "label", "text"))
+            if nested:
+                return nested
+    return None
+
+
+def _normalize_broad_category(value: str) -> str:
+    slug = normalize_slug(value) or ""
+    allowed = {
+        "food_and_beverage",
+        "beauty_and_personal_care",
+        "fashion_and_lifestyle",
+        "home_and_living",
+        "technology",
+        "local_service",
+        "hospitality",
+        "health_and_wellness",
+        "education",
+        "entertainment_and_media",
+        "automotive",
+        "other",
+    }
+    if slug in allowed:
+        return slug
+    if any(token in slug for token in ("food", "beverage", "dessert", "drink", "meal", "restaurant", "cafe", "latte", "cake", "jjigae")) or any(token in value for token in ("라떼", "케이크", "찌개", "고기", "구이", "디저트")):
+        return "food_and_beverage"
+    if any(token in slug for token in ("beauty", "personal_care", "skincare", "cosmetic", "fragrance", "serum", "perfume")) or any(token in value for token in ("세럼", "향수", "화장품")):
+        return "beauty_and_personal_care"
+    if any(token in slug for token in ("fashion", "lifestyle", "footwear", "apparel", "shoe")) or any(token in value for token in ("신발", "러닝화", "운동화")):
+        return "fashion_and_lifestyle"
+    if any(token in slug for token in ("home", "living", "furniture", "decor", "lighting")):
+        return "home_and_living"
+    if any(token in slug for token in ("tech", "software", "computer", "electronics")):
+        return "technology"
+    if "service" in slug:
+        return "local_service"
+    if "education" in slug or "course" in slug:
+        return "education"
+    return "other"
+
+
+def _normalize_category_path(raw_path: list[Any], broad: str, normalized_type: str | None) -> list[str]:
+    path = [broad]
+    for item in raw_path:
+        slug = normalize_slug(str(item))
+        if slug and slug != broad and slug not in path and len(path) < 6:
+            path.append(slug)
+    if normalized_type and normalized_type not in path and len(path) < 6:
+        path.append(normalized_type)
+    return path
+
+
+def _product_evidence_ids(product_name: str | None, evidence: dict[str, Any]) -> list[str]:
+    if not product_name:
+        return []
+    product_norm = "".join(ch.lower() for ch in product_name if ch.isalnum())
+    ids: list[str] = []
+    for item in _evidence_items(evidence, ("explicit_user_facts", "asset_metadata_evidence", "brand_profile_evidence", "reference_evidence", "visual_observations")):
+        value_norm = "".join(ch.lower() for ch in str(item.get("normalized_value") or item.get("value") or "") if ch.isalnum())
+        if value_norm and (product_norm in value_norm or value_norm in product_norm):
+            ids.append(str(item.get("evidence_id")))
+    if not ids:
+        for item in _evidence_items(evidence, ("explicit_user_facts", "visual_observations")):
+            if item.get("evidence_id"):
+                ids.append(str(item["evidence_id"]))
+                break
+    return ids
+
+
+def _evidence_items(evidence: dict[str, Any], groups: tuple[str, ...]) -> list[dict[str, Any]]:
+    return [item for group in groups for item in evidence.get(group, []) if isinstance(item, dict)]
+
+
+def _float_between(value: Any, default: float) -> float:
+    try:
+        numeric = float(value)
+    except Exception:
+        return default
+    return max(0.0, min(1.0, numeric))
+
+
+def generate_grounded_copy(request: ActualCreativeInput, runtime: ActualCreativeRuntime, evidence: dict[str, Any], product_understanding: dict[str, Any] | None = None) -> dict[str, Any]:
     adapter = runtime.openai_adapter
     if runtime.call_budget:
         runtime.call_budget.consume_openai()
     if adapter and hasattr(adapter, "generate_product_copy"):
-        return _validated_copy_output(_hydrate_copy_payload(adapter.generate_product_copy(request=request, evidence=evidence, model=runtime.copy_model), evidence), runtime.copy_model)
+        try:
+            payload = adapter.generate_product_copy(request=request, evidence=evidence, product_understanding=product_understanding or {}, model=runtime.copy_model)
+        except TypeError:
+            payload = adapter.generate_product_copy(request=request, evidence=evidence, model=runtime.copy_model)
+        return _validated_copy_output(_hydrate_copy_payload(payload, evidence, product_understanding), runtime.copy_model)
     prompt = (
         "Return JSON only with product_understanding, product_copy_context, copy_candidates, "
         "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review. Generate grounded ad copy only from the supplied InputEvidenceBundle. "
         "Do not infer unknown fields and do not use raw source image content outside the bundle. "
-        f"Request metadata: {request.model_dump_json()} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
+        f"Request metadata: {request.model_dump_json()} ProductUnderstanding: {json.dumps(product_understanding or {}, ensure_ascii=False)} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
     )
     payload, metadata = _openai_text_json(prompt=prompt, model=runtime.copy_model)
     candidates = payload.get("copy_candidates") or []
     selected = _select_copy(candidates, payload.get("recommended_candidate_id"))
     return _validated_copy_output(_hydrate_copy_payload({
-        "product_understanding": payload.get("product_understanding") or {},
+        "product_understanding": product_understanding or payload.get("product_understanding") or {},
         "product_copy_context": payload.get("product_copy_context") or {},
         "copy_candidates": candidates,
         "recommended_candidate_id": payload.get("recommended_candidate_id"),
@@ -547,12 +694,12 @@ def generate_grounded_copy(request: ActualCreativeInput, runtime: ActualCreative
         "input_conflicts": payload.get("input_conflicts") or [],
         "requires_manual_review": bool(payload.get("requires_manual_review")),
         "provider_metadata": metadata,
-    }, evidence), runtime.copy_model)
+    }, evidence, product_understanding), runtime.copy_model)
 
 
-def _hydrate_copy_payload(payload: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+def _hydrate_copy_payload(payload: dict[str, Any], evidence: dict[str, Any], product_understanding: dict[str, Any] | None = None) -> dict[str, Any]:
     data = dict(payload or {})
-    understanding = dict(data.get("product_understanding") or {})
+    understanding = dict(product_understanding or data.get("product_understanding") or {})
     context = dict(data.get("product_copy_context") or {})
     evidence_product = _product_from_evidence(evidence)
     product = evidence_product or understanding.get("product_name") or understanding.get("normalized_product_candidate")
