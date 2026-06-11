@@ -178,7 +178,7 @@ export type ChatFlowAction =
       referenceImagePath?: string | null;
     }
   | { type: "submitQuestionAnswer"; label: string }
-  | { type: "backendRequestFailed"; message: string; errorCode?: string }
+  | { type: "backendRequestFailed"; message: string; errorCode?: string; recoverToStart?: boolean }
   | { type: "beginBriefRequest" }
   | { type: "selectTone"; tone: string }
   | { type: "setCopyGenerationMode"; copyGenerationMode: CopyGenerationMode }

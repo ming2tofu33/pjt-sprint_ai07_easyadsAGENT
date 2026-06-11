@@ -59,7 +59,8 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
 
   useEffect(() => {
     let isActive = true;
-    const generatedCreative = readGeneratedCreatives().find((item) => item.id === creativeId) ?? null;
+    const generatedCreative =
+      readGeneratedCreatives().find((item) => item.id === creativeId || item.id === `generated-${creativeId}`) ?? null;
     setSessionCreative(generatedCreative);
 
     if (staticCreative || generatedCreative) {
