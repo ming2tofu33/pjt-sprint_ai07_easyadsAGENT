@@ -12,7 +12,6 @@ OPTION_FIELD_PRIORITY: dict[str, int] = {
     "item_or_service": 0,
     "promotion_goal": 0,
     "ad_format": 0,
-    "copy_generation_mode": 0,
     "target_persona": 1,
     "region_type": 1,
     "brand_tone": 1,
@@ -22,6 +21,10 @@ OPTION_FIELD_PRIORITY: dict[str, int] = {
     "brand_name": 2,
     "contact_or_order_method": 2,
     "custom_request": 3,
+    # B2: copy mode asked LAST in HITL — only after LLM has the full context schema
+    # (business/item/goal/format + persona/region/tone + usp/price/brand/contact).
+    # Heuristic/LLM inference seeds the recommended default; user confirms at the end.
+    "copy_generation_mode": 4,
 }
 
 

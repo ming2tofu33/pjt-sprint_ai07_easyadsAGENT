@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from orchestrator.app.api.app import create_app
 from orchestrator.app.reference_catalog.service import load_reference_templates
+import orchestrator.app.reference_catalog.service as reference_service
 
 
 LOCAL_PATH_PATTERNS = [
@@ -251,3 +252,52 @@ def test_permanent_reference_assets_use_r2_public_urls(monkeypatch, tmp_path):
     detail = client().get("/api/v1/references/ref_test_cafe_owned_001")
     assert detail.status_code == 200
     assert_no_local_paths(detail.json())
+
+
+def test_permanent_reference_assets_use_signed_r2_urls_when_public_base_is_missing(monkeypatch, tmp_path):
+    manifest_path = tmp_path / "permanent-catalog.json"
+    object_key = "reference-templates/v1/ref_test_signed_001/source.png"
+    manifest = {
+        "items": [
+            {
+                "template_id": "ref_test_signed_001",
+                "title": "서명 URL 샘플 테스트",
+                "category": "cafe",
+                "tags": ["음료"],
+                "business_types": ["cafe"],
+                "ad_formats": ["instagram_feed"],
+                "platforms": ["instagram"],
+                "assets": {
+                    "thumbnail_path": f"r2://{object_key}",
+                    "preview_path": f"r2://{object_key}",
+                },
+                "style_keywords": ["clean"],
+                "popularity_score": 0.5,
+                "metadata": {"r2_object_key": object_key},
+            }
+        ]
+    }
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("EASYADS_PERMANENT_REFERENCE_MANIFEST", str(manifest_path))
+    monkeypatch.delenv("EASYADS_R2_PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setenv("EASYADS_ENABLE_R2_UPLOAD", "true")
+    monkeypatch.setenv("EASYADS_R2_URL_MODE", "signed")
+    monkeypatch.setenv("EASYADS_R2_BUCKET", "easyads-assets")
+    monkeypatch.setenv("EASYADS_R2_ENDPOINT_URL", "https://r2.example.com")
+    monkeypatch.setenv("EASYADS_R2_ACCESS_KEY_ID", "key")
+    monkeypatch.setenv("EASYADS_R2_SECRET_ACCESS_KEY", "secret")
+    monkeypatch.setattr(reference_service, "create_r2_client", lambda: object())
+    monkeypatch.setattr(
+        reference_service,
+        "generate_signed_get_url",
+        lambda *, client, bucket, object_key, expires_in: f"https://signed.example.com/{object_key}?ttl={expires_in}",
+    )
+
+    response = client().get("/api/v1/references", params={"keyword": "서명 URL"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["items"][0]["template_id"] == "ref_test_signed_001"
+    assert payload["items"][0]["thumbnail_url"].startswith("https://signed.example.com/reference-templates/v1/ref_test_signed_001/source.png")
+    assert payload["items"][0]["preview_url"].startswith("https://signed.example.com/reference-templates/v1/ref_test_signed_001/source.png")
+    assert_no_local_paths(payload)

@@ -1155,6 +1155,21 @@
 
 .chatTimelineCards .stepFooter {
   margin-top: 4px;
+  /* B4: full-bleed the sticky footer so its opaque surface covers everything below
+     the "문구 고르기" button — the side gutters and the .body bottom padding where
+     scrolled content used to peek through. Mirrors the .bottomTabs bleed pattern. */
+  margin-left: calc(var(--screen-padding-x) * -1);
+  margin-right: calc(var(--screen-padding-x) * -1);
+  margin-bottom: calc(var(--screen-padding-bottom) * -1);
+  padding-left: var(--screen-padding-x);
+  padding-right: var(--screen-padding-x);
+  padding-bottom: var(--screen-padding-bottom);
+  bottom: calc(var(--screen-padding-bottom) * -1);
+}
+
+.chatTimelineCards .stepFooter:has(+ .bottomTabs) {
+  margin-bottom: 18px;
+  bottom: 42px;
 }
 
 .chatTranscript .assistantBubble {

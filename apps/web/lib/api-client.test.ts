@@ -17,6 +17,7 @@ import {
   saveArchiveItem,
   startChatGeneration,
   startPhotoGeneration,
+  updateArchiveItem,
   updateBrandKit,
   uploadPhotoAsset,
   uploadReferenceImageToR2,
@@ -569,6 +570,17 @@ describe("api-client backend contract routes", () => {
           }
         });
       }
+      if (init?.method === "PATCH") {
+        return jsonResponse({
+          success: true,
+          item: {
+            ad_id: "archive_1",
+            title: "봄을 닮은 한 잔",
+            status: "favorite",
+            source: "generated"
+          }
+        });
+      }
       if (init?.method === "DELETE") {
         return jsonResponse({
           success: true,
@@ -627,6 +639,7 @@ describe("api-client backend contract routes", () => {
     });
     const listed = await listArchiveItems({ limit: 20 });
     const detailed = await getArchiveItem("archive_1");
+    const updated = await updateArchiveItem("archive_1", { status: "favorite" });
     const deleted = await deleteArchiveItem("archive_1");
 
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items");
@@ -640,6 +653,9 @@ describe("api-client backend contract routes", () => {
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
     expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
     expect(String(fetchMock.mock.calls[3][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
+    expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({ method: "PATCH" }));
+    expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({ status: "favorite" });
+    expect(String(fetchMock.mock.calls[4][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
     expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
       expect.objectContaining({ authorization: "Bearer access_token_1" })
     );
@@ -652,6 +668,9 @@ describe("api-client backend contract routes", () => {
     expect(fetchMock.mock.calls[3][1]?.headers).toEqual(
       expect.objectContaining({ authorization: "Bearer access_token_1" })
     );
+    expect(fetchMock.mock.calls[4][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
     expect(saved.item.adId).toBe("archive_1");
     expect(saved.item.savedAt).toBe("2026-06-04T00:00:00+00:00");
     expect(listed.items[0].jobId).toBe("job_1");
@@ -659,6 +678,7 @@ describe("api-client backend contract routes", () => {
     expect(detailed.downloadUrl).toBe("https://cdn.example.com/archive_1.png");
     expect(detailed.storageProvider).toBe("r2");
     expect(detailed.width).toBe(1200);
+    expect(updated.item.status).toBe("favorite");
     expect(deleted.item.adId).toBe("archive_1");
   });
 

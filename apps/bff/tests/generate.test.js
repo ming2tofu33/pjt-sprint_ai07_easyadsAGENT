@@ -240,11 +240,13 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
-  it("proxies archive list and delete requests", async () => {
+  it("proxies archive list, detail, update, and delete requests", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ success: true, items: [], pagination: { limit: 20, offset: 0, total: 0, has_more: false } }));
     const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
 
     await app.inject({ method: "GET", url: "/api/archive/items?limit=20" });
+    await app.inject({ method: "GET", url: "/api/archive/items/archive_1" });
+    await app.inject({ method: "PATCH", url: "/api/archive/items/archive_1", payload: { status: "favorite" } });
     await app.inject({ method: "DELETE", url: "/api/archive/items/archive_1" });
 
     expect(fetchImpl).toHaveBeenNthCalledWith(
@@ -254,6 +256,16 @@ describe("generate chat routes", () => {
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
+      "http://orchestrator/api/v1/archive/items/archive_1",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      3,
+      "http://orchestrator/api/v1/archive/items/archive_1",
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "favorite" }) })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      4,
       "http://orchestrator/api/v1/archive/items/archive_1",
       expect.objectContaining({ method: "DELETE" })
     );
@@ -332,8 +344,21 @@ describe("generate chat routes", () => {
         userId: "spoofed_user"
       }
     });
+    const detailResponse = await app.inject({
+      method: "GET",
+      url: "/api/archive/items/archive_1",
+      headers: { authorization: "Bearer access_token_1" }
+    });
+    const patchResponse = await app.inject({
+      method: "PATCH",
+      url: "/api/archive/items/archive_1",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: { status: "favorite" }
+    });
 
     expect(response.statusCode).toBe(201);
+    expect(detailResponse.statusCode).toBe(200);
+    expect(patchResponse.statusCode).toBe(200);
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
       "https://supabase.example.com/auth/v1/user",
@@ -356,6 +381,19 @@ describe("generate chat routes", () => {
           status: "saved",
           user_id: "user_uuid_1"
         })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      4,
+      "http://orchestrator/api/v1/archive/items/archive_1?user_id=user_uuid_1",
+      expect.objectContaining({ method: "GET" })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      6,
+      "http://orchestrator/api/v1/archive/items/archive_1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ status: "favorite", user_id: "user_uuid_1" })
       })
     );
     await app.close();
@@ -511,11 +549,51 @@ describe("generate chat routes", () => {
       "http://orchestrator/api/v1/generation-jobs",
       expect.objectContaining({
         method: "POST",
+        headers: expect.objectContaining({ "X-EasyAds-User-Id": "user_uuid_1" }),
         body: JSON.stringify({
           userInput: "로그인 사용자 작업방 생성",
           runMode: "queued_only",
           userId: "user_uuid_1"
         })
+      })
+    );
+    await app.close();
+  });
+
+  it("verifies Supabase sessions before forwarding generation job reads", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1", email: "owner@example.com" });
+      }
+      return jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "queued",
+          progress: { progress_percent: 0, current_stage: "queued", stage_order: [] }
+        }
+      });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/generation-jobs/job_1",
+      headers: { authorization: "Bearer access_token_1" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/generation-jobs/job_1",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ "X-EasyAds-User-Id": "user_uuid_1" })
       })
     );
     await app.close();
@@ -599,6 +677,7 @@ describe("generate chat routes", () => {
       "http://orchestrator/api/v1/generation-jobs/job_1/answer",
       expect.objectContaining({
         method: "POST",
+        headers: expect.objectContaining({ "X-EasyAds-User-Id": "user_uuid_1" }),
         body: JSON.stringify({ field: "business_type", value: "restaurant", userId: "user_uuid_1" })
       })
     );
