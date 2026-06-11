@@ -202,7 +202,10 @@ def _expected_copy(state: dict[str, Any]) -> list[str]:
 def _detected_copy(state: dict[str, Any]) -> list[str]:
     final_ocr = state.get("final_ocr_gate") if isinstance(state.get("final_ocr_gate"), dict) else {}
     ocr = final_ocr.get("ocr") if isinstance(final_ocr.get("ocr"), dict) else {}
-    return [str(item) for item in ocr.get("detected_text") or final_ocr.get("detected_text") or []]
+    detected = ocr.get("detected_text") or final_ocr.get("detected_text") or []
+    if isinstance(detected, dict):
+        return [str(item) for item in detected.values() if item]
+    return [str(item) for item in detected or []]
 
 
 def _typography_traces(state: dict[str, Any]) -> list[dict[str, Any]]:
@@ -271,7 +274,8 @@ def _vlm_score(state: dict[str, Any], key: str) -> float | None:
     if key not in vlm:
         return None
     try:
-        return float(vlm[key])
+        score = float(vlm[key])
+        return score / 10.0 if score > 1.0 else score
     except Exception:
         return None
 

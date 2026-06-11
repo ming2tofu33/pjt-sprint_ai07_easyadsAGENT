@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
 import os
+from typing import Any
 
-from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.metadata_builders import build_final_validation_metadata
 from orchestrator.app.quality_gate.final_composite_service import evaluate_final_composite
 from orchestrator.app.schemas.text_layout import FinalValidationReport
 
 
-def final_validation_node(state: MarketingState) -> dict[str, Any]:
+def final_validation_node(state: dict[str, Any]) -> dict[str, Any]:
     vlm_metadata_contract = build_final_validation_metadata(state)
     background = state.get("background_validation_report") or {}
     safe_area = state.get("safe_area_report") or {}

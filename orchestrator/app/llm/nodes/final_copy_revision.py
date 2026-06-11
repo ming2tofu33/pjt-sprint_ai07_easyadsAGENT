@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState
-
 
 GENERIC_PHRASES = {"best quality", "limited time", "special offer", "amazing", "premium experience"}
 
 
-def final_copy_revision_node(state: MarketingState) -> dict[str, Any]:
+def final_copy_revision_node(state: dict[str, Any]) -> dict[str, Any]:
     plan = state.get("final_composite_revision_plan") or {}
     action = str(plan.get("action") or state.get("final_composite_rerun_action") or "shorten_copy")
     marketing_copy = dict(state.get("marketing_copy") or {})

@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from typing import Any
-
-from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.quality_gate.final_composite_schemas import CompositeRevisionPlan
 
 
@@ -49,7 +47,7 @@ PRESERVED_BY_ACTION = {
 }
 
 
-def final_composite_revision_node(state: MarketingState) -> dict[str, Any]:
+def final_composite_revision_node(state: dict[str, Any]) -> dict[str, Any]:
     report = state.get("final_composite_quality_report") or {}
     action = str(report.get("primary_action") or "manual_review")
     attempt = int(state.get("final_composite_attempts") or 0) + 1
@@ -110,7 +108,7 @@ def _patch_for_action(action: str, report: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def _budget_snapshot(state: MarketingState) -> dict[str, int]:
+def _budget_snapshot(state: dict[str, Any]) -> dict[str, int]:
     return {
         "final_composite_attempts": int(state.get("final_composite_attempts") or 0),
         "final_copy_revision_attempts": int(state.get("final_copy_revision_attempts") or 0),
