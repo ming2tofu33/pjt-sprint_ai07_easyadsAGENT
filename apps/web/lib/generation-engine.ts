@@ -1,8 +1,8 @@
-export type ImageGenerationEngine = "gpt_image_2" | "flux_schnell" | "sd35_large";
+export type ImageGenerationEngine = "gpt_image_1" | "gpt_image_2" | "flux2_klein_4b" | "sd35_large";
 
 export type GenerationRunMode = "graph_job";
-export type DirectGenerationRunMode = "gpt_image_2_actual" | "flux_schnell_real" | "sd35_large_real";
-export type BackendImageEngine = "gpt_image_2" | "flux" | "sd35_large";
+export type DirectGenerationRunMode = "gpt_image_1_actual" | "gpt_image_2_actual" | "flux2_klein_4b" | "sd35_large_real";
+export type BackendImageEngine = "gpt_image_1" | "gpt_image_2" | "flux2_klein_4b" | "sd35_large";
 
 export type GenerationEngineOption = {
   id: ImageGenerationEngine;
@@ -13,24 +13,24 @@ export type GenerationEngineOption = {
   directRunMode: DirectGenerationRunMode;
 };
 
-export const DEFAULT_IMAGE_GENERATION_ENGINE: ImageGenerationEngine = "gpt_image_2";
+export const DEFAULT_IMAGE_GENERATION_ENGINE: ImageGenerationEngine = "gpt_image_1";
 
-export const generationEngineOptions: GenerationEngineOption[] = [
+const stableGenerationEngineOptions: GenerationEngineOption[] = [
   {
-    id: "gpt_image_2",
-    label: "고품질 이미지",
-    modelName: "GPT-image-2",
-    description: "완성도 높은 광고 시안에 적합해요.",
-    backendEngine: "gpt_image_2",
-    directRunMode: "gpt_image_2_actual"
+    id: "gpt_image_1",
+    label: "표준 OpenAI",
+    modelName: "GPT-image-1",
+    description: "예산을 지키면서 실제 광고 시안을 만들 때 적합해요.",
+    backendEngine: "gpt_image_1",
+    directRunMode: "gpt_image_1_actual"
   },
   {
-    id: "flux_schnell",
-    label: "빠른 생성",
-    modelName: "FLUX.1-schnell",
-    description: "빠르게 여러 방향을 확인할 때 좋아요.",
-    backendEngine: "flux",
-    directRunMode: "flux_schnell_real"
+    id: "flux2_klein_4b",
+    label: "오픈 모델",
+    modelName: "FLUX.2 Klein 4B",
+    description: "Modal에서 실행하는 FLUX.2 모델로 광고 시안을 만들어요.",
+    backendEngine: "flux2_klein_4b",
+    directRunMode: "flux2_klein_4b"
   },
   {
     id: "sd35_large",
@@ -42,8 +42,27 @@ export const generationEngineOptions: GenerationEngineOption[] = [
   }
 ];
 
+const experimentalGenerationEngineOptions: GenerationEngineOption[] = [
+  {
+    id: "gpt_image_2",
+    label: "실험 고품질",
+    modelName: "GPT-image-2",
+    description: "제한된 예산으로 품질 비교가 필요할 때만 사용해요.",
+    backendEngine: "gpt_image_2",
+    directRunMode: "gpt_image_2_actual"
+  }
+];
+
+export const allGenerationEngineOptions: GenerationEngineOption[] = [
+  stableGenerationEngineOptions[0],
+  ...experimentalGenerationEngineOptions,
+  ...stableGenerationEngineOptions.slice(1)
+];
+
+export const generationEngineOptions: GenerationEngineOption[] = allGenerationEngineOptions;
+
 export function getGenerationEngineOption(engine: ImageGenerationEngine | null | undefined): GenerationEngineOption {
-  return generationEngineOptions.find((option) => option.id === engine) ?? generationEngineOptions[0];
+  return allGenerationEngineOptions.find((option) => option.id === engine) ?? generationEngineOptions[0];
 }
 
 export function resolveGenerationRunMode(_engine: ImageGenerationEngine | null | undefined): GenerationRunMode {

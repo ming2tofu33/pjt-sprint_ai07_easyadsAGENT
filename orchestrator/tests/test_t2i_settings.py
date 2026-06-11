@@ -1,5 +1,6 @@
 from orchestrator.app.t2i.settings import (
     is_flux_local_enabled,
+    is_gpt_image_1_enabled,
     is_gpt_image_2_enabled,
     is_sd35_local_enabled,
     load_t2i_settings,
@@ -9,6 +10,7 @@ from orchestrator.app.t2i.settings import (
 def test_default_settings_disable_external_t2i(monkeypatch):
     for key in [
         "EASYADS_ENABLE_EXTERNAL_T2I",
+        "EASYADS_ENABLE_GPT_IMAGE_1",
         "EASYADS_ENABLE_GPT_IMAGE_2",
         "EASYADS_ENABLE_SD35_LOCAL",
         "EASYADS_ENABLE_FLUX_LOCAL",
@@ -21,9 +23,11 @@ def test_default_settings_disable_external_t2i(monkeypatch):
     settings = load_t2i_settings()
 
     assert settings.enable_external_t2i is False
+    assert settings.enable_gpt_image_1 is False
     assert settings.enable_gpt_image_2 is False
     assert settings.enable_sd35_local is False
     assert settings.enable_flux_local is False
+    assert is_gpt_image_1_enabled(settings) is False
     assert is_gpt_image_2_enabled(settings) is False
     assert is_sd35_local_enabled(settings) is False
     assert is_flux_local_enabled(settings) is False
@@ -39,6 +43,19 @@ def test_settings_do_not_expose_secret_values(monkeypatch):
     assert dumped["hf_token_present"] is True
     assert "sk-secret-value" not in str(dumped)
     assert "hf-secret-value" not in str(dumped)
+
+
+def test_gpt_image_1_accepts_legacy_enable_flag(monkeypatch):
+    monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "true")
+    monkeypatch.delenv("EASYADS_ENABLE_GPT_IMAGE_1", raising=False)
+    monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "true")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-secret-value")
+
+    settings = load_t2i_settings()
+
+    assert settings.enable_gpt_image_1 is True
+    assert is_gpt_image_1_enabled(settings) is True
+    assert settings.gpt_image_1_model == "gpt-image-1"
 
 
 def test_flux_enabled_only_by_explicit_env(monkeypatch):
@@ -59,4 +76,3 @@ def test_flux_max_sequence_length_is_clamped(monkeypatch):
 
     monkeypatch.setenv("EASYADS_FLUX_MAX_SEQUENCE_LENGTH", "8")
     assert load_t2i_settings().flux_max_sequence_length == 64
-

@@ -14,6 +14,7 @@ Or via: make eval-human EVAL_ID=<id> JOB_ID=<id>
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from typing import Any, Generator
@@ -21,8 +22,52 @@ from typing import Any, Generator
 from orchestrator.eval.config import OPS_DB_PATH, EVAL_DB_PATH
 from orchestrator.eval.eval_db import EvalDBWriter
 
+# 컨테이너(/app/records)에서 도는 human-eval이 인쇄하는 경로를 호스트(/home/records) 네임스페이스로 환산.
+# 사람이 호스트/브라우저에서 직접 열 수 있도록.
+_CONTAINER_RECORDS = "/app/records"
+_HOST_RECORDS = os.environ.get("EVAL_HOST_RECORDS", "/home/records")
+
+
+def _host_path(p: str | None) -> str | None:
+    if p and p.startswith(_CONTAINER_RECORDS):
+        return _HOST_RECORDS + p[len(_CONTAINER_RECORDS):]
+    return p
+
+
+def _write_image_preview(job_id: str, final_img: str | None, bg_img: str | None) -> str | None:
+    """job별 이미지 1-큐: 최종+배경을 한 HTML로 묶어 이미지 폴더에 기록. 호스트 경로 반환.
+    이미지는 basename(상대경로)로 참조 → 폴더 어디서 열어도 동작. 토큰/서버 불필요."""
+    target_dir = next((os.path.dirname(p) for p in (final_img, bg_img) if p), None)
+    if not target_dir:
+        return None
+    rows: list[tuple[str, str]] = []
+    if final_img:
+        rows.append(("최종 광고 (PIL 합성) — III-6 시각브랜드톤 / IV-8 가독성 / IV-9 상용화", os.path.basename(final_img)))
+    if bg_img:
+        rows.append(("배경 (T2I, 텍스트-프리) — IV-6 텍스트환각 / IV-7 구도·왜곡", os.path.basename(bg_img)))
+    if not rows:
+        return None
+    html = [
+        "<!doctype html><meta charset='utf-8'>",
+        f"<title>eval preview {job_id}</title>",
+        "<body style='font-family:sans-serif;background:#111;color:#eee;margin:24px'>",
+        f"<h2>{job_id}</h2>",
+    ]
+    for label, name in rows:
+        html.append(f"<h3>{label}</h3><img src='{name}' style='max-width:90vw;border:1px solid #444'>")
+    html.append("</body>")
+    out = os.path.join(target_dir, "_eval_view.html")
+    try:
+        with open(out, "w", encoding="utf-8") as f:
+            f.write("\n".join(html))
+    except Exception:
+        return None
+    return _host_path(out)
+
 # Ordered item list for the CLI walk-through
-# Image items (IV-8, IV-9) require viewing the final ad image shown in the context section above
+# Image items require viewing the image paths shown in the context section above:
+#   III-6/IV-8/IV-9 = 최종 광고(PIL 합성) | IV-6/IV-7 = 배경(T2I 텍스트-프리)
+# III-6/IV-6/IV-7 was VLM-only → human anchor added for calibration (eval-calibrate). fix.md #21
 _ITEMS: list[tuple[str, str]] = [
     ("II-1",  "컨텍스트 이해 정확도: 추출된 업종/상품/타겟/목표가 올바른가?"),
     ("II-2",  "누락 필드 탐지: 실제로 없는 정보만 missing으로 분류했는가?"),
@@ -30,9 +75,12 @@ _ITEMS: list[tuple[str, str]] = [
     ("III-3", "카피 어조 적합성: 요청 어조와 타겟에 맞는 어조인가?"),
     ("III-4", "CTA 명확성: 행동 유도 문구가 구체적이고 명확한가?"),
     ("III-5", "브랜드 톤 일관성: 브랜드 정체성과 카피가 일치하는가?"),
+    ("III-6", "[최종 광고 이미지 확인] 시각 브랜드 톤 일치: 최종 이미지의 색감/무드/스타일이 브랜드 톤과 맞는가? (VLM 보정용 human anchor)"),
     ("IV-3",  "레이아웃 슬롯 수 적합성: 광고 포맷에 맞는 텍스트 슬롯 수인가?"),
     ("IV-4",  "타이포 계층 일관성: 폰트 크기/굵기가 헤드라인>서브>본문 순서인가?"),
     ("IV-5",  "카피 배치 적합성: 텍스트 슬롯 위치가 광고 포맷에 자연스러운가?"),
+    ("IV-6",  "[배경 이미지 (T2I) 확인] 텍스트 환각/OCR: 텍스트-프리 배경에 글자/숫자/로고가 새어나오지 않았는가? (TLFP 핵심 불변식 — VLM false-negative 잡는 ground-truth)"),
+    ("IV-7",  "[배경 이미지 (T2I) 확인] 구도·왜곡 품질: 배경 구도가 자연스럽고 오브젝트 왜곡/아티팩트가 없는가?"),
     ("IV-8",  "[최종 광고 이미지 확인] 가독성 및 침범 (Readability): PIL 합성 텍스트가 핵심 오브젝트를 가리지 않고 배경색에 묻히지 않는가?"),
     ("IV-9",  "[최종 광고 이미지 확인] 상용화 완성도 (Commercial Viability): 최종 광고가 인스타그램/배너 등 실제 마케팅 채널에 즉시 집행 가능한 수준인가?"),
     ("V-3",   "비용 효율: plan 대비 LLM 사용량이 적절한가?"),
@@ -123,12 +171,14 @@ def _display_context(job_id: str, conn: sqlite3.Connection) -> None:
             bg_img = rp.get("background_image_path")
             final_img = rp.get("output_path") or rp.get("final_image_path")
             if bg_img:
-                print(f"\n[배경 이미지 (T2I)] {bg_img}")
+                print(f"\n[배경 이미지 (T2I)] {_host_path(bg_img)}")
             if final_img:
-                print(f"[최종 광고 (PIL 합성)] {final_img}")
-                print("  ← 위 경로를 직접 열어 최종 광고 품질 확인 후 IV-8/IV-9 채점")
-            elif bg_img:
-                print("  ← 배경 이미지를 직접 열어 시각적 품질 확인")
+                print(f"[최종 광고 (PIL 합성)] {_host_path(final_img)}")
+            # 이미지 1-큐: 최종+배경을 묶은 미리보기 HTML 생성 → 브라우저로 한 번에 확인.
+            preview = _write_image_preview(job_id, final_img, bg_img)
+            if preview:
+                print(f"\n🖼  이미지 미리보기 (브라우저로 열기, 한 파일에 전체): {preview}")
+                print("   최종=III-6·IV-8·IV-9 / 배경=IV-6·IV-7 채점 전 확인")
 
     # Cost / reliability
     cost = conn.execute(

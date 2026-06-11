@@ -23,7 +23,7 @@ import { useRouter } from "next/navigation";
 import { fetchReferenceDetail, type ReferenceTemplateDetailResponse } from "@/lib/api-client";
 import { readSavedBrandKit } from "@/lib/brand-kit-storage";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
-import { clearGenerationDraftPrompt, saveGenerationRequestContext } from "@/lib/generation-request-context";
+import { clearGenerationDraftPrompt, markFreshGenerationRequest, saveGenerationRequestContext } from "@/lib/generation-request-context";
 import {
   hasReferenceTemplateImage,
   referenceTemplateImageUrl,
@@ -149,6 +149,7 @@ export function ReferenceStyleFlowStep({ creativeId, step }: ReferenceStyleFlowS
 
   function startBlankChatFlow() {
     clearGenerationDraftPrompt();
+    markFreshGenerationRequest();
     router.push(buildDashboardHref("chat"));
   }
 

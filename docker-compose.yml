@@ -2,8 +2,10 @@ services:
   orchestrator:
     build:
       context: .
-      dockerfile: Dockerfile
-    
+      # 기본 Dockerfile(경량). SD3.5 로컬 렌더 지속하려면 ORCH_DOCKERFILE=Dockerfile.gpu
+      # (torch/diffusers 베이크 → 재생성 후에도 balanced 동작). make orchestrator-gpu 참고.
+      dockerfile: ${ORCH_DOCKERFILE:-Dockerfile}
+
     # [포트 자동화] 랜덤 두 자리를 외부 포트로 지정
     ports:
       - "1${HOST_UID}:8000"
@@ -17,8 +19,12 @@ services:
     
     env_file:
       - .env
+    # 호스트에서 도는 Ollama(로컬 Gemma, free 플랜)에 컨테이너가 접속하도록 게이트웨이 매핑.
+    # EASYADS_LOCAL_LLM_BASE_URL=http://host.docker.internal:11434/v1 와 함께 사용.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
-    
+
     # [GPU 통로 개척] 서버 본체의 NVIDIA L4 GPU를 컨테이너 상자 내부로 통과시키는 명세
     deploy:
       resources:
@@ -27,3 +33,23 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+  # [eval DB 뷰어] JupyterLab + polars. GPU 불필요 → 경량 Dockerfile.eval 사용.
+  # profiles로 게이트 → 기본 `docker compose up`엔 안 뜨고, --profile eval(=make eval-notebook)일 때만 기동.
+  # records를 컨테이너 root로 마운트 → 읽기 뷰어 + 필요시 쓰기까지 동일 컨테이너에서.
+  eval:
+    build:
+      context: .
+      dockerfile: Dockerfile.eval
+    profiles: ["eval"]
+    working_dir: /app
+    ports:
+      # 공유 서버 포트 충돌 방지: EVAL_NOTEBOOK_PORT로 덮어쓰기(기본 8888).
+      - "${EVAL_NOTEBOOK_PORT:-8888}:8888"
+    volumes:
+      - .:/app                                          # 소스 + 노트북 실시간 매핑
+      - /home/records:/app/records                      # 공용 실험기록 DB(읽기+쓰기)
+      - /home/DBs:/app/DBs                              # 공용 DB 저장소
+    env_file:
+      - .env
+    restart: unless-stopped

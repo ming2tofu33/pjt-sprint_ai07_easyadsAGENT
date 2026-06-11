@@ -33,7 +33,7 @@ describe("chat flow state", () => {
     });
     expect(next.contextSource).toBe("empty");
     expect(next.copyCandidateSource).toBe("empty");
-    expect(next.selectedImageGenerationEngine).toBe("gpt_image_2");
+    expect(next.selectedImageGenerationEngine).toBe("gpt_image_1");
   });
 
   it("appends new user prompts and can update the current turn without duplicating it", () => {
@@ -71,12 +71,157 @@ describe("chat flow state", () => {
     ]);
   });
 
+  it("does not duplicate the same backend question in the transcript", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "고기집 원육 세일 피드 스타일로 음식점 광고를 만들어줘"
+    });
+    const question = {
+      field: "item_or_service",
+      question: "홍보할 상품이나 서비스는 무엇인가요?",
+      options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+    };
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {
+        businessType: "음식점/식당",
+        promotionGoal: "할인 이벤트"
+      },
+      question
+    });
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {
+        businessType: "음식점/식당",
+        promotionGoal: "할인 이벤트"
+      },
+      question
+    });
+
+    expect(state.conversationMessages).toEqual([
+      { role: "user", text: "고기집 원육 세일 피드 스타일로 음식점 광고를 만들어줘" },
+      { role: "assistant", text: "홍보할 상품이나 서비스는 무엇인가요?" }
+    ]);
+  });
+
+  it("does not duplicate the same generation job question in the transcript", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "고기집 원육 세일 피드 스타일로 음식점 광고를 만들어줘"
+    });
+    const question = {
+      field: "item_or_service",
+      question: "홍보할 상품이나 서비스는 무엇인가요?",
+      options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+    };
+    state = chatFlowReducer(state, {
+      type: "generationJobQuestionReceived",
+      generationJob: {
+        job_id: "job_1",
+        status: "waiting_user_input",
+        progress: { progress_percent: 50, current_stage: "waiting_user_input" }
+      },
+      question
+    });
+    state = chatFlowReducer(state, {
+      type: "generationJobQuestionReceived",
+      generationJob: {
+        job_id: "job_1",
+        status: "waiting_user_input",
+        progress: { progress_percent: 50, current_stage: "waiting_user_input" }
+      },
+      question
+    });
+
+    expect(state.conversationMessages).toEqual([
+      { role: "user", text: "고기집 원육 세일 피드 스타일로 음식점 광고를 만들어줘" },
+      { role: "assistant", text: "홍보할 상품이나 서비스는 무엇인가요?" }
+    ]);
+  });
+
+  it("merges context from a generation job question into the review card", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "고기집 원육 세일 피드 스타일로 고기99 광고를 만들어줘"
+    });
+
+    state = chatFlowReducer(state, {
+      type: "generationJobQuestionReceived",
+      generationJob: {
+        job_id: "job_1",
+        status: "waiting_user_input",
+        progress: { progress_percent: 50, current_stage: "waiting_user_input" }
+      },
+      context: {
+        businessType: "음식점/식당",
+        itemOrService: "원육"
+      },
+      question: {
+        field: "promotion_goal",
+        question: "어떤 목적의 광고를 만들까요?",
+        options: [{ id: 1, label: "할인 이벤트", value: "discount_event" }]
+      }
+    });
+
+    expect(state.inferredContext).toEqual({
+      businessType: "음식점/식당",
+      itemOrService: "원육",
+      promotionGoal: ""
+    });
+    expect(state.contextSource).toBe("backend");
+    expect(state.currentQuestion?.field).toBe("promotion_goal");
+  });
+
+  it("keeps loading after a generation job answer while the graph continues running", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "광고 만들어줘"
+    });
+    state = chatFlowReducer(state, {
+      type: "generationJobQuestionReceived",
+      generationJob: {
+        job_id: "job_1",
+        status: "waiting_user_input",
+        progress: { progress_percent: 50, current_stage: "waiting_user_input" }
+      },
+      question: {
+        field: "business_type",
+        question: "어떤 업종의 광고인가요?",
+        options: [{ id: 1, label: "카페/디저트", value: "cafe" }]
+      }
+    });
+    state = chatFlowReducer(state, {
+      type: "submitGenerationJobAnswer",
+      label: "카페/디저트"
+    });
+    state = chatFlowReducer(state, {
+      type: "generationJobUpdated",
+      generationJob: {
+        job_id: "job_1",
+        status: "running",
+        progress: { progress_percent: 60, current_stage: "brief_interpretation" }
+      }
+    });
+
+    expect(state.currentQuestion).toBeNull();
+    expect(state.isLoading).toBe(true);
+    expect(state.conversationMessages.at(-1)).toEqual({ role: "user", text: "카페/디저트" });
+  });
+
   it("keeps the selected image generation engine through backend responses", () => {
     let state = createInitialChatFlowState();
     state = chatFlowReducer(state, {
       type: "submitPrompt",
       prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘",
-      imageGenerationEngine: "flux_schnell"
+      imageGenerationEngine: "flux2_klein_4b"
     });
     state = chatFlowReducer(state, {
       type: "backendStartSucceeded",
@@ -92,7 +237,7 @@ describe("chat flow state", () => {
       recommendedCopyId: "copy_backend"
     });
 
-    expect(state.selectedImageGenerationEngine).toBe("flux_schnell");
+    expect(state.selectedImageGenerationEngine).toBe("flux2_klein_4b");
   });
 
   it("marks copy candidates as backend-generated when the backend returns candidates", () => {
@@ -112,10 +257,12 @@ describe("chat flow state", () => {
         promotionGoal: "신메뉴 출시"
       },
       copyCandidates: [{ id: "copy_backend", headline: "백엔드가 만든 딸기라떼 문구" }],
-      recommendedCopyId: "copy_backend"
+      recommendedCopyId: "copy_backend",
+      copyCandidateOrigin: "rule_based"
     });
 
     expect(state.copyCandidateSource).toBe("backend");
+    expect(state.copyCandidateOrigin).toBe("rule_based");
     expect(state.contextSource).toBe("backend");
     expect(state.copyCandidates[0].headline).toBe("백엔드가 만든 딸기라떼 문구");
     expect(state.selectedCopyId).toBe("copy_backend");
@@ -142,6 +289,7 @@ describe("chat flow state", () => {
     });
 
     expect(state.copyCandidateSource).toBe("empty");
+    expect(state.copyCandidateOrigin).toBe("unknown");
     expect(state.contextSource).toBe("backend");
     expect(state.copyCandidates).toEqual([]);
     expect(state.selectedCopyId).toBe("");
@@ -232,6 +380,36 @@ describe("chat flow state", () => {
     expect(answered.conversationMessages.at(-1)?.text).toBe("카페");
   });
 
+  it("keeps brief refinement requests in the chat transcript", () => {
+    const initial = createInitialChatFlowState();
+    const refining = chatFlowReducer(initial, {
+      type: "submitBriefRefinement",
+      message: "상품 사진을 더 크게 보여줘",
+      customDirection: "상품 사진을 더 크게 보여줘"
+    });
+    const refined = chatFlowReducer(refining, {
+      type: "briefRefinementSucceeded",
+      brief: {
+        purpose: "신메뉴 출시",
+        item: "딸기라떼",
+        copy: "봄을 닮은 한 잔",
+        tone: "상큼한 분위기",
+        channel: "인스타 피드 (1:1)",
+        imageDirection: "상품 사진을 더 크게 보여주는 구성"
+      }
+    });
+
+    expect(refining.isLoading).toBe(true);
+    expect(refining.customDirection).toBe("상품 사진을 더 크게 보여줘");
+    expect(refining.conversationMessages.at(-1)).toEqual({ role: "user", text: "상품 사진을 더 크게 보여줘" });
+    expect(refined.isLoading).toBe(false);
+    expect(refined.brief?.imageDirection).toBe("상품 사진을 더 크게 보여주는 구성");
+    expect(refined.conversationMessages.at(-1)).toEqual({
+      role: "assistant",
+      text: "좋아요. 요청을 반영해서 브리프를 다시 정리했어요."
+    });
+  });
+
   it("restores a persisted thread snapshot without losing user context", () => {
     const state = chatFlowReducer(createInitialChatFlowState(), {
       type: "restoreThreadSnapshot",
@@ -244,9 +422,12 @@ describe("chat flow state", () => {
         promotionGoal: "할인 이벤트"
       },
       copyGenerationMode: "custom_input",
+      copyCandidates: [],
+      copyCandidateOrigin: "unknown",
+      selectedCopyId: "",
       selectedChannelId: "instagram-feed",
       selectedTone: "상큼한",
-      selectedImageGenerationEngine: "gpt_image_2",
+      selectedImageGenerationEngine: "gpt_image_1",
       customDirection: "딸기라떼가 크게 보이게",
       userCustomHeadline: "오늘만 딸기라떼 반값",
       userCustomSubcopy: "오후 2시부터 5시까지",
@@ -278,5 +459,36 @@ describe("chat flow state", () => {
     expect(state.copyGenerationMode).toBe("custom_input");
     expect(state.currentQuestion?.field).toBe("item_or_service");
     expect(state.conversationMessages.at(0)?.text).toBe("오늘 저녁 카페 딸기라떼 할인 광고");
+  });
+
+  it("restores copy candidates and selected copy from thread snapshots", () => {
+    const state = chatFlowReducer(createInitialChatFlowState(), {
+      type: "restoreThreadSnapshot",
+      prompt: "원육 광고 만들어줘",
+      jobId: "job_done",
+      threadId: "thread_done",
+      context: { businessType: "음식점/식당", itemOrService: "원육", promotionGoal: "리뷰 이벤트" },
+      copyGenerationMode: "suggest_candidates",
+      copyCandidates: [{ id: "copy_1", headline: "오늘 저녁 원육 한 판" }],
+      copyCandidateOrigin: "llm",
+      selectedCopyId: "copy_1",
+      selectedChannelId: "instagram-feed",
+      selectedTone: "bold",
+      selectedImageGenerationEngine: "gpt_image_1",
+      customDirection: "",
+      userCustomHeadline: "",
+      userCustomSubcopy: "",
+      sourceImagePath: null,
+      referenceImagePath: null,
+      selectedReferenceTemplateId: null,
+      selectedReferenceTemplateTitle: null,
+      generationJob: { job_id: "job_done", thread_id: "thread_done", status: "done" },
+      currentQuestion: null,
+      conversationMessages: [{ role: "user", text: "원육 광고 만들어줘" }]
+    });
+
+    expect(state.copyCandidates).toEqual([{ id: "copy_1", headline: "오늘 저녁 원육 한 판" }]);
+    expect(state.copyCandidateOrigin).toBe("llm");
+    expect(state.selectedCopyId).toBe("copy_1");
   });
 });

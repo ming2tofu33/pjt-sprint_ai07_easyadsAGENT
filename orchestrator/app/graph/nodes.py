@@ -77,9 +77,13 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
             reasoning_summary="Copy mode inferred by guarded brief interpreter.",
             metadata={"source": "brief_interpreter_llm", "source_detail": "copy_generation_mode inferred by guarded brief interpreter"},
         )
-    if copy_mode is None and "copy_generation_mode" not in missing_fields:
+    # copy_generation_mode is the 4-mode HITL choice (AI 추천 / AI 알아서 / 직접 입력 / 카피 없음).
+    # Heuristic/LLM inference only seeds the recommended default and must not satisfy the field;
+    # the question is surfaced until the user confirms (or supplied a mode up front).
+    copy_mode_confirmed = bool(state.get("current_brief", {}).get("copy_generation_mode_confirmed"))
+    if not copy_mode_confirmed and "copy_generation_mode" not in missing_fields:
         missing_fields.append("copy_generation_mode")
-    if copy_mode and "copy_generation_mode" in missing_fields:
+    if copy_mode_confirmed and "copy_generation_mode" in missing_fields:
         missing_fields.remove("copy_generation_mode")
     progress_state = build_progress_state(missing_fields)
     inferred_ad_format = build_ad_format_spec(requested_ad_format) if requested_ad_format else None
@@ -129,7 +133,26 @@ def options_node(state: MarketingState) -> dict[str, Any]:
     field = get_next_missing_field(state.get("missing_fields", []))
     if field is None:
         return {"status": state.get("status", "validating_context"), "option_question": None}
-    question = get_option_question(field).model_copy(update={"progress_state": build_progress_state(state.get("missing_fields", []) )})
+    question = get_option_question(field)
+    
+    from orchestrator.app.schemas.option_suggestion import is_field_eligible
+    
+    if is_field_eligible(field):
+        cached = state.get("current_brief", {}).get("cached_options", {}).get(field)
+        if cached is not None:
+            from orchestrator.app.schemas.llm_marketing import OptionItem
+            augmented_options = [OptionItem(**o) for o in cached]
+        else:
+            augmented_options = _augment_options(state, field, question)
+            update_current_brief(state, {
+                "cached_options": {
+                    **state.get("current_brief", {}).get("cached_options", {}),
+                    field: [o.model_dump() for o in augmented_options],
+                }
+            })
+        question = question.model_copy(update={"options": augmented_options})
+        
+    question = question.model_copy(update={"progress_state": build_progress_state(state.get("missing_fields", []) )})
     payload = {
         "type": "option_question",
         "job_id": state["job_id"],
@@ -141,7 +164,23 @@ def options_node(state: MarketingState) -> dict[str, Any]:
         "user_selection": resume_payload,
         "option_question": question.model_dump(),
         "status": "updating_state",
+        # Surface the option_suggester (#6-P7) subcall records so eval can price it,
+        # and persist the per-field option cache. Overwrite semantics (mirrors validator).
+        "model_selections": state.get("model_selections", []),
+        "llm_call_results": state.get("llm_call_results", []),
+        "current_brief": state.get("current_brief", {}),
     }
+
+
+def _augment_options(state: MarketingState, field: str, question: OptionQuestion):
+    from orchestrator.app.llm.nodes.option_suggester import suggest_options
+    from orchestrator.app.schemas.option_suggestion import (
+        merge_options, passes_confidence_threshold,
+    )
+    output, _meta = suggest_options(state, field, question)
+    if output is not None and passes_confidence_threshold(output):
+        return merge_options(question.options, output.options)
+    return list(question.options)
 
 
 def state_update_node(state: MarketingState) -> dict[str, Any]:
@@ -170,11 +209,20 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
     extra_return: dict[str, Any] = {}
     original_value = value
     value = display_value_for_selection(field, value)
+    
+    # P7: Check cached dynamic options for label resolution
+    if value == original_value and field in DISPLAY_LABEL_CONTEXT_FIELDS:
+        from orchestrator.app.schemas.option_suggestion import label_for_dynamic_value
+        cached_options = state.get("current_brief", {}).get("cached_options")
+        dyn_label = label_for_dynamic_value(field, original_value, cached_options)
+        if dyn_label is not None:
+            value = dyn_label
+
     if value != original_value and field in DISPLAY_LABEL_CONTEXT_FIELDS:
         extra[f"{field}_option_value"] = original_value
         context_data["extra"] = extra
     if field == "copy_generation_mode":
-        update_current_brief(state, {"copy_generation_mode": value})
+        update_current_brief(state, {"copy_generation_mode": value, "copy_generation_mode_confirmed": True})
         extra_return.update(
             {
                 "copy_generation_mode": value,
@@ -311,6 +359,7 @@ def infer_business_type(text: str) -> str | None:
 def infer_item_or_service(text: str) -> str | None:
     rules = [
         ("한우 선물세트", "한우 선물세트"),
+        ("원육", "원육"),
         ("네일 아트", "네일 아트"),
         ("네일아트", "네일 아트"),
         ("젤네일", "젤네일"),

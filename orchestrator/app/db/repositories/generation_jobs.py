@@ -36,6 +36,10 @@ def create_generation_job_row(
     brand_kit_snapshot: dict | None = None,
     params: dict | None = None,
     request_payload: dict | None = None,
+    parent_job_id: str | None = None,
+    previous_output_id: str | None = None,
+    regeneration_depth: int = 0,
+    regeneration_idempotency_key: str | None = None,
     connection: object | None = None,
 ) -> dict:
     with db_transaction(connection) as conn:
@@ -46,11 +50,13 @@ def create_generation_job_row(
                   public_job_id, workspace_id, thread_id, requested_by, status, current_stage,
                   progress_percent, selected_reference_template_id, input_asset_id, reference_asset_id, output_path, result_payload, error, metadata,
                   run_mode, engine, model_provider, model_name, model_version, prompt_text, prompt_hash,
-                  prompt_preview, brief, brand_kit_snapshot, params, request_payload, queued_at
+                  prompt_preview, brief, brand_kit_snapshot, params, request_payload,
+                  parent_job_id, previous_output_id, regeneration_depth, regeneration_idempotency_key, queued_at
                 )
                 values (
                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb,
-                  %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, now()
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
+                  %s, %s, %s, %s, now()
                 )
                 returning *
                 """,
@@ -81,12 +87,36 @@ def create_generation_job_row(
                     jsonb_param(brand_kit_snapshot or {}),
                     jsonb_param(params or {}),
                     jsonb_param(request_payload or {}),
+                    parent_job_id,
+                    previous_output_id,
+                    regeneration_depth,
+                    regeneration_idempotency_key,
                 ),
             )
             return cur.fetchone()
 
 
-def get_generation_job_row(job_id: str, connection: object | None = None) -> dict | None:
+def get_generation_job_by_regeneration_idempotency_key(
+    *,
+    workspace_id: str,
+    idempotency_key: str,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select gj.*, ct.public_thread_id as public_thread_id
+                from generation_jobs gj
+                left join chat_threads ct on ct.id = gj.thread_id
+                where gj.workspace_id = %s and gj.regeneration_idempotency_key = %s
+                """,
+                (workspace_id, idempotency_key),
+            )
+            return cur.fetchone()
+
+
+def get_generation_job_internal_by_public_id(job_id: str, connection: object | None = None) -> dict | None:
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -99,6 +129,48 @@ def get_generation_job_row(job_id: str, connection: object | None = None) -> dic
                 (job_id,),
             )
             return cur.fetchone()
+
+
+def get_generation_job_row(job_id: str, connection: object | None = None) -> dict | None:
+    return get_generation_job_internal_by_public_id(job_id, connection=connection)
+
+
+def get_generation_job_by_public_id(
+    public_job_id: str,
+    *,
+    workspace_id: str,
+    connection: object | None = None,
+    for_update: bool = False,
+) -> dict | None:
+    lock_clause = " for update of gj" if for_update else ""
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                select gj.*, ct.public_thread_id as public_thread_id
+                from generation_jobs gj
+                left join chat_threads ct on ct.id = gj.thread_id
+                where gj.public_job_id = %s and gj.workspace_id = %s::uuid
+                {lock_clause}
+                """,
+                (public_job_id, workspace_id),
+            )
+            return cur.fetchone()
+
+
+def get_generation_job_scoped_by_public_id(
+    public_job_id: str,
+    *,
+    workspace_id: str,
+    connection: object | None = None,
+    for_update: bool = False,
+) -> dict | None:
+    return get_generation_job_by_public_id(
+        public_job_id,
+        workspace_id=workspace_id,
+        connection=connection,
+        for_update=for_update,
+    )
 
 
 def get_generation_job_db_by_id(job_id: str, *, workspace_id: str, connection: object | None = None) -> dict | None:
@@ -132,7 +204,7 @@ def get_generation_job_db(public_job_id: str, *, workspace_id: str, connection: 
             return cur.fetchone()
 
 
-def update_generation_job_row(job_id: str, connection: object | None = None, **fields) -> dict | None:
+def update_generation_job_row(job_id: str, connection: object | None = None, workspace_id: str | None = None, **fields) -> dict | None:
     allowed = {
         "status",
         "current_stage",
@@ -162,11 +234,15 @@ def update_generation_job_row(job_id: str, connection: object | None = None, **f
     values.append(job_id)
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
+            where = "public_job_id = %s"
+            if workspace_id:
+                where += " and workspace_id = %s::uuid"
+                values.append(workspace_id)
             cur.execute(
                 f"""
                 update generation_jobs
                 set {', '.join(assignments)}, updated_at = now()
-                where public_job_id = %s
+                where {where}
                 returning *
                 """,
                 tuple(values),
@@ -174,7 +250,15 @@ def update_generation_job_row(job_id: str, connection: object | None = None, **f
             return cur.fetchone()
 
 
-def mark_generation_job_running_row(job_id: str, current_stage: str | None = None, connection: object | None = None) -> dict | None:
+def update_generation_job_scoped(public_job_id: str, *, workspace_id: str, connection: object | None = None, **fields) -> dict | None:
+    return update_generation_job_row(public_job_id, connection=connection, workspace_id=workspace_id, **fields)
+
+
+def update_generation_job_internal(public_job_id: str, connection: object | None = None, **fields) -> dict | None:
+    return update_generation_job_row(public_job_id, connection=connection, **fields)
+
+
+def mark_generation_job_running_row(job_id: str, current_stage: str | None = None, connection: object | None = None, workspace_id: str | None = None) -> dict | None:
     return update_generation_job_row(
         job_id,
         status="running",
@@ -182,6 +266,7 @@ def mark_generation_job_running_row(job_id: str, current_stage: str | None = Non
         progress_percent=50,
         started_at="__now_if_null__",
         connection=connection,
+        workspace_id=workspace_id,
     )
 
 
@@ -191,6 +276,7 @@ def mark_generation_job_done_row(
     output_path: str | None = None,
     metadata: dict | None = None,
     connection: object | None = None,
+    workspace_id: str | None = None,
 ) -> dict | None:
     fields = {
         "status": "done",
@@ -204,7 +290,7 @@ def mark_generation_job_done_row(
         fields["output_path"] = output_path
     if metadata is not None:
         fields["metadata"] = metadata
-    return update_generation_job_row(job_id, connection=connection, **fields)
+    return update_generation_job_row(job_id, connection=connection, workspace_id=workspace_id, **fields)
 
 
 def mark_generation_job_failed_row(
@@ -212,11 +298,12 @@ def mark_generation_job_failed_row(
     error: dict,
     metadata: dict | None = None,
     connection: object | None = None,
+    workspace_id: str | None = None,
 ) -> dict | None:
     fields = {"status": "failed", "current_stage": "failed", "error": error, "finished_at": "__now__"}
     if metadata is not None:
         fields["metadata"] = metadata
-    return update_generation_job_row(job_id, connection=connection, **fields)
+    return update_generation_job_row(job_id, connection=connection, workspace_id=workspace_id, **fields)
 
 
 def attach_modal_call_id(

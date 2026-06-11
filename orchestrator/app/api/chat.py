@@ -108,6 +108,7 @@ class ChatStartResponse(CamelModel):
     copy_candidates: list[CopyCandidate] = Field(alias="copyCandidates")
     recommended_copy_id: str | None = Field(default=None, alias="recommendedCopyId")
     copy_generation_mode: CopyGenerationMode | None = Field(default=None, alias="copyGenerationMode")
+    copy_candidate_origin: Literal["llm", "rule_based", "fallback", "unknown"] = Field(default="unknown", alias="copyCandidateOrigin")
 
 
 class ChatBriefRequest(CamelModel):
@@ -253,9 +254,11 @@ def _copy_candidates_response(
 ) -> ChatStartResponse:
     candidates = result.get("copy_candidates") or []
     recommended_copy_id = None
+    copy_candidate_origin = str(result.get("copy_candidate_origin") or "unknown")
     if interrupt and interrupt.get("type") == "copy_candidate_selection":
         candidates = interrupt.get("candidates") or candidates
         recommended_copy_id = interrupt.get("recommended_candidate_id")
+        copy_candidate_origin = str(interrupt.get("copy_candidate_origin") or copy_candidate_origin)
 
     if not candidates:
         raise HTTPException(status_code=422, detail={"message": "copy candidates were not generated", "state": result.get("status")})
@@ -268,6 +271,7 @@ def _copy_candidates_response(
         copyCandidates=[_candidate_from_raw(candidate) for candidate in candidates],
         recommendedCopyId=recommended_copy_id or candidates[0].get("id"),
         copyGenerationMode=result.get("copy_generation_mode"),
+        copyCandidateOrigin=copy_candidate_origin if copy_candidate_origin in {"llm", "rule_based", "fallback"} else "unknown",
     )
 
 

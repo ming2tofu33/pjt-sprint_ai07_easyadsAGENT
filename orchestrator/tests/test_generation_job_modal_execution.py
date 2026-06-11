@@ -21,7 +21,7 @@ def _job(status="queued") -> GenerationJobResponse:
         error=None,
         created_at=now,
         updated_at=now,
-        metadata={"requested_run_mode": "flux_local", "effective_run_mode": "flux_local"},
+        metadata={"requested_run_mode": "flux2_klein_4b", "effective_run_mode": "flux2_klein_4b"},
     )
 
 
@@ -31,15 +31,15 @@ def _row():
         "public_job_id": "job_modal",
         "workspace_id": "workspace_uuid",
         "thread_id": "thread_uuid",
-        "run_mode": "flux_local",
-        "engine": "flux",
+        "run_mode": "flux2_klein_4b",
+        "engine": "flux2_klein_4b",
         "prompt_preview": "Create an ad",
         "metadata": {"public_thread_id": "thread_modal"},
     }
 
 
 def test_modal_router_policy_only_applies_to_modal_backend(monkeypatch):
-    request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux_local")
+    request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux2_klein_4b")
 
     monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "local")
     assert service.should_route_generation_job_to_modal(request) is False
@@ -50,7 +50,7 @@ def test_modal_router_policy_only_applies_to_modal_backend(monkeypatch):
     gpt_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="gpt_image_2_actual")
     assert service.should_route_generation_job_to_modal(gpt_request) is False
 
-    real_flux_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux_schnell_real")
+    real_flux_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux2_klein_4b")
     assert service.should_route_generation_job_to_modal(real_flux_request) is True
 
     real_sd35_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="sd35_large_real")
@@ -72,7 +72,7 @@ def test_modal_disabled_marks_job_failed_without_local_model_execution(monkeypat
 
     result = service.maybe_submit_generation_job_to_modal(
         _job(),
-        GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux_local"),
+        GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux2_klein_4b"),
     )
 
     assert result.status == "failed"
@@ -96,21 +96,21 @@ def test_modal_enabled_submits_and_returns_latest_job(monkeypatch):
 
     result = service.maybe_submit_generation_job_to_modal(
         _job(),
-        GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux_local"),
+        GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux2_klein_4b"),
     )
 
     assert result.status == "running"
-    assert captured["modal_request"].engine == "flux"
+    assert captured["modal_request"].engine == "flux2_klein_4b"
     assert captured["modal_request"].job_id == "job_modal"
 
 
 def test_modal_backend_records_model_provider_as_modal(monkeypatch):
     monkeypatch.setenv("EASYADS_T2I_EXECUTION_BACKEND", "modal")
 
-    request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux_local")
+    request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="flux2_klein_4b")
 
     assert service._model_provider_for_request(request) == "modal"
-    assert service._model_name_for_run_mode(request.run_mode) == "flux"
+    assert service._model_name_for_run_mode(request.run_mode) == "flux2_klein_4b"
 
     sd35_request = GenerationJobCreateRequest(user_input="Create an ad", run_mode="sd35_large_real")
     assert service._model_provider_for_request(sd35_request) == "modal"
@@ -145,7 +145,7 @@ def test_modal_poll_adapter_unavailable_does_not_fail_job(monkeypatch):
 def test_graph_modal_pending_polls_through_graph_completion_path(monkeypatch):
     captured = {}
 
-    def fake_graph_poll(job_id):
+    def fake_graph_poll(job_id, **kwargs):
         captured["job_id"] = job_id
         return _job(status="done")
 

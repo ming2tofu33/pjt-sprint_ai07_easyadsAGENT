@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, status
+from dataclasses import dataclass
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, status
 
 from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.api.schemas.generation_jobs import (
@@ -20,15 +22,53 @@ from orchestrator.app.generation_jobs.execution import (
 from orchestrator.app.generation_jobs.service import (
     create_generation_job,
     get_generation_job,
+    get_generation_job_scoped,
     mark_generation_job_running,
+    maybe_mark_stale_generation_job_failed,
     maybe_poll_generation_job_from_modal,
     maybe_submit_generation_job_to_modal,
+    resolve_scoped_workspace_id,
     should_route_generation_job_to_modal,
 )
+from orchestrator.app.db import settings as db_settings
 from orchestrator.app.chat_threads.errors import ChatThreadServiceError
 from orchestrator.app.reference_catalog.service import get_reference_template
 
 router = APIRouter()
+
+
+@dataclass(frozen=True)
+class RequestPrincipal:
+    user_id: str | None
+    workspace_id: str | None
+
+
+def _request_principal(
+    x_easyads_user_id: str | None = Header(default=None, alias="X-EasyAds-User-Id"),
+    x_easyads_workspace_id: str | None = Header(default=None, alias="X-EasyAds-Workspace-Id"),
+) -> RequestPrincipal:
+    return RequestPrincipal(user_id=x_easyads_user_id, workspace_id=x_easyads_workspace_id)
+
+
+def _scoped_create_request(request: GenerationJobCreateRequest, principal: RequestPrincipal) -> GenerationJobCreateRequest:
+    if db_settings.get_db_backend() != "postgres":
+        return request
+    if db_settings.allow_demo_workspace_fallback() and not principal.user_id:
+        return request
+    return request.model_copy(
+        update={
+            "user_id": principal.user_id,
+            "workspace_id": request.workspace_id or principal.workspace_id,
+        }
+    )
+
+
+def _route_scope(workspace_id: str | None, principal: RequestPrincipal) -> tuple[str | None, str | None]:
+    if db_settings.get_db_backend() != "postgres":
+        return workspace_id or principal.workspace_id, principal.user_id
+    if db_settings.allow_demo_workspace_fallback() and not principal.user_id:
+        return workspace_id or principal.workspace_id, None
+    return workspace_id or principal.workspace_id, principal.user_id
 
 
 def _generation_job_not_found(job_id: str) -> None:
@@ -52,7 +92,7 @@ def _reference_template_not_found(template_id: str) -> None:
 def _chat_thread_error(exc: ChatThreadServiceError) -> None:
     if exc.error_code == "chat_thread_not_found":
         status_code = 404
-    elif exc.error_code in {"chat_thread_archived", "chat_thread_has_active_job"}:
+    elif exc.error_code in {"chat_thread_archived", "chat_thread_has_active_job", "thread_limit_reached"}:
         status_code = 409
     else:
         status_code = 400
@@ -67,7 +107,9 @@ def _chat_thread_error(exc: ChatThreadServiceError) -> None:
 def create_generation_job_route(
     request: GenerationJobCreateRequest,
     background_tasks: BackgroundTasks,
+    principal: RequestPrincipal = Depends(_request_principal),
 ) -> GenerationJobCreateResponse:
+    request = _scoped_create_request(request, principal)
     if request.selected_reference_template_id and not get_reference_template(request.selected_reference_template_id):
         _reference_template_not_found(request.selected_reference_template_id)
     from orchestrator.app.generation_jobs.errors import GenerationJobError
@@ -87,21 +129,37 @@ def create_generation_job_route(
         job = execute_generation_job_immediate(job.job_id, request)
     elif request.run_mode == "graph_job":
         background_tasks.add_task(execute_generation_job_graph, job.job_id, request)
+    elif request.run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke"}:
+        job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_1")
     elif request.run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
         job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_2")
     elif request.run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
         job = execute_generation_job_t2i(job.job_id, request, engine_name="sd35_large")
+    elif request.run_mode == "flux2_klein_4b":
+        job = execute_generation_job_t2i(job.job_id, request, engine_name="flux2_klein_4b")
     elif request.run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
-        job = execute_generation_job_t2i(job.job_id, request, engine_name="flux")
+        job = execute_generation_job_t2i(job.job_id, request, engine_name="flux2_klein_4b")
     return GenerationJobCreateResponse(job=job)
 
 
 @router.get("/generation-jobs/{job_id}", response_model=GenerationJobGetResponse)
-def get_generation_job_route(job_id: str) -> GenerationJobGetResponse:
-    job = get_generation_job(job_id)
+def get_generation_job_route(
+    job_id: str,
+    workspace_id: str | None = None,
+    principal: RequestPrincipal = Depends(_request_principal),
+) -> GenerationJobGetResponse:
+    from orchestrator.app.generation_jobs.errors import GenerationJobError
+    try:
+        resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
+        resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
+        job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
+    except GenerationJobError as exc:
+        raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)
     if not job:
         _generation_job_not_found(job_id)
-    job = maybe_poll_generation_job_from_modal(job)
+    job = maybe_mark_stale_generation_job_failed(job, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
+    if job.status != "failed":
+        job = maybe_poll_generation_job_from_modal(job, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     return GenerationJobGetResponse(job=job)
 
 
@@ -110,8 +168,16 @@ def answer_generation_job_route(
     job_id: str,
     request: GenerationJobAnswerRequest,
     background_tasks: BackgroundTasks,
+    workspace_id: str | None = None,
+    principal: RequestPrincipal = Depends(_request_principal),
 ) -> GenerationJobGetResponse:
-    job = get_generation_job(job_id)
+    from orchestrator.app.generation_jobs.errors import GenerationJobError
+    try:
+        resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
+        resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
+        job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
+    except GenerationJobError as exc:
+        raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)
     if not job:
         _generation_job_not_found(job_id)
     if job.status != "waiting_user_input":
@@ -129,8 +195,15 @@ def answer_generation_job_route(
             detail="generation job has no thread_id",
         )
     try:
-        running = mark_generation_job_running(job_id, stage="planning")
-        background_tasks.add_task(resume_generation_job_graph, job_id, request, allow_running=True)
+        running = mark_generation_job_running(job_id, stage="planning", workspace_id=resolved_workspace_id, user_id=resolved_user_id)
+        background_tasks.add_task(
+            resume_generation_job_graph,
+            job_id,
+            request,
+            allow_running=True,
+            workspace_id=resolved_workspace_id,
+            user_id=resolved_user_id,
+        )
     except ValueError as exc:
         raise_api_error(
             status_code=409,

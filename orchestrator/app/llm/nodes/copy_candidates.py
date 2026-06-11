@@ -9,6 +9,7 @@ from langgraph.types import interrupt
 from orchestrator.app.graph.state import MarketingState, context_to_model
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
+from orchestrator.app.llm.copy_quality_v2 import annotate_and_rank_candidate_output, generate_copy_candidates_v2
 from orchestrator.app.llm.copy_tone_policy import normalize_copy_for_business
 from orchestrator.app.llm.metadata_builders import build_copy_generation_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -45,16 +46,27 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
     if not isinstance(output, CopyCandidateListOutput) or not output.candidates:
         output = build_rule_based_candidate_output(state)
         llm_metadata = {**llm_metadata, "fallback_used": True, "fallback_reason": "invalid_candidate_output"}
-    output, llm_metadata = validate_or_fallback_candidate_output(state, output, llm_metadata)
     max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
+    output, llm_metadata = validate_or_fallback_candidate_output(state, output, llm_metadata)
+    output = annotate_and_rank_candidate_output(output, state=state, max_candidates=max_candidates)
     candidates = [apply_candidate_quality_policy(candidate) for candidate in normalize_candidate_ids(output.candidates[: max(1, max_candidates)])]
+    recommended_candidate_id = output.recommended_candidate_id or candidates[0].id
     output = CopyCandidateListOutput(
         candidates=candidates,
-        recommended_candidate_id=output.recommended_candidate_id or candidates[0].id,
+        recommended_candidate_id=recommended_candidate_id,
         metadata={**output.metadata, "source_node": "copy_candidate_generation", "llm_metadata": llm_metadata},
     )
+    candidate_origin = classify_copy_candidate_origin(output.metadata, llm_metadata)
+    serialized = [candidate.model_dump() for candidate in candidates]
+    serialized, compliance_records, compliance_status, compliance_ready = _attach_compliance_badges(
+        serialized, state
+    )
     return {
-        "copy_candidates": [candidate.model_dump() for candidate in candidates],
+        "copy_candidates": serialized,
+        "copy_compliance": compliance_records,
+        "copy_compliance_status": compliance_status,
+        "copy_compliance_publication_ready": compliance_ready,
+        "copy_candidate_origin": candidate_origin,
         "copywriting_output": output.model_dump(),
         "copy_generation_mode": "suggest_candidates",
         "copy_required": True,
@@ -66,17 +78,31 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
 
 
 def build_rule_based_candidate_output(state: MarketingState) -> CopyCandidateListOutput:
-    context = context_to_model(state.get("context"))
-    item = display_item_or_service(context.item_or_service)
-    if is_reservation_service_item(context.item_or_service, item, context.extra):
-        candidates = build_reservation_service_candidates(item)
-    elif context.business_type == "cafe":
-        candidates = build_cafe_candidates(item, context.promotion_goal)
-    elif context.business_type == "restaurant":
-        candidates = build_restaurant_candidates(item)
-    else:
-        candidates = build_generic_candidates(item, context.promotion_goal)
-    return CopyCandidateListOutput(candidates=candidates, recommended_candidate_id="copy_1", metadata={"source_node": "copy_candidate_generation", "fallback": "rule_based"})
+    max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
+    output = generate_copy_candidates_v2(state, max_candidates=max_candidates)
+    return CopyCandidateListOutput(
+        candidates=output.candidates,
+        recommended_candidate_id=output.recommended_candidate_id,
+        metadata={
+            "source_node": "copy_candidate_generation",
+            "fallback": "rule_based_v2",
+            "message_strategy": output.message_strategy.model_dump(),
+            "copy_quality_v2_ranking": output.ranking.model_dump(),
+        },
+    )
+
+
+def classify_copy_candidate_origin(metadata: dict[str, Any], llm_metadata: dict[str, Any]) -> str:
+    if not llm_metadata:
+        return "unknown"
+    if not llm_metadata.get("fallback_used"):
+        return "llm"
+    fallback_reason = llm_metadata.get("fallback_reason")
+    if fallback_reason == "free_plan_deterministic_fallback":
+        return "rule_based"
+    if metadata.get("fallback") == "rule_based" and not fallback_reason:
+        return "rule_based"
+    return "fallback"
 
 
 def validate_or_fallback_candidate_output(
@@ -390,26 +416,34 @@ def build_candidate_prompt(state: MarketingState, metadata_contract: dict[str, A
 
 def copy_candidate_selection_interrupt_node(state: MarketingState) -> dict[str, Any]:
     candidates = list(state.get("copy_candidates", []))
+    output = state.get("copywriting_output") or {}
     payload = {
         "type": "copy_candidate_selection",
         "job_id": state["job_id"],
         "thread_id": state["thread_id"],
         "candidates": candidates,
-        "recommended_candidate_id": "copy_1",
+        "recommended_candidate_id": output.get("recommended_candidate_id") or _recommended_candidate_id_from_candidates(candidates),
+        "copy_candidate_origin": state.get("copy_candidate_origin") or "unknown",
     }
     resume_payload = interrupt(payload)
     return {"copy_selection": resume_payload, "status": "waiting_copy_selection"}
 
 
 def state_update_selected_copy_node(state: MarketingState) -> dict[str, Any]:
-    selection = state.get("copy_selection") or {}
-    selected_id = selection.get("selected_copy_id") or "copy_1"
+    selection = dict(state.get("copy_selection") or {})
+    selection.setdefault("selected_copy_id", state.get("selected_copy_id"))
+    selection.setdefault("selected_channel_id", state.get("selected_channel_id"))
+    selection.setdefault("selected_ad_format", state.get("selected_ad_format"))
+    selection.setdefault("selected_tone", state.get("selected_tone"))
+    selection.setdefault("custom_direction", state.get("custom_direction"))
+    recommended_id = _recommended_candidate_id_from_state(state)
+    selected_id = selection.get("selected_copy_id") or recommended_id
     candidates = list(state.get("copy_candidates", []))
     candidate = next((item for item in candidates if item.get("id") == selected_id), None)
     warnings: list[str] = []
     if candidate is None:
-        candidate = next((item for item in candidates if item.get("id") == "copy_1"), None)
-        selected_id = "copy_1"
+        candidate = next((item for item in candidates if item.get("id") == recommended_id), None)
+        selected_id = recommended_id
         warnings.append("Invalid selected_copy_id; recommended candidate fallback applied.")
     if candidate is None:
         return {"status": "failed", "error_message": "No copy candidate available for selection."}
@@ -429,6 +463,22 @@ def state_update_selected_copy_node(state: MarketingState) -> dict[str, Any]:
         "text_overlay_pending": True,
         "status": "applying_selected_copy",
     }
+
+
+def _recommended_candidate_id_from_state(state: MarketingState) -> str:
+    output = state.get("copywriting_output") or {}
+    return str(output.get("recommended_candidate_id") or _recommended_candidate_id_from_candidates(list(state.get("copy_candidates", []))))
+
+
+def _recommended_candidate_id_from_candidates(candidates: list[dict[str, Any]]) -> str:
+    if not candidates:
+        return "copy_1"
+    for candidate in candidates:
+        metadata = candidate.get("metadata") or {}
+        score = metadata.get("copy_quality_v2_score") or {}
+        if score and not score.get("hard_blocked"):
+            return str(candidate.get("id") or "copy_1")
+    return str(candidates[0].get("id") or "copy_1")
 
 
 def build_frontend_selection_state_update(state: MarketingState, selection: dict[str, Any]) -> dict[str, Any]:
@@ -478,3 +528,56 @@ def clean_optional_text(value: Any) -> str | None:
         return None
     stripped = str(value).strip()
     return stripped or None
+
+
+_COMPLIANCE_STATUS_RANK: dict[str, int] = {
+    "pass": 0,
+    "warn": 1,
+    "evidence_required": 2,
+    "blocked": 3,
+}
+
+
+def _attach_compliance_badges(
+    candidates: list[dict[str, Any]],
+    state: MarketingState,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, bool]:
+    """각 후보 dict에 metadata.compliance 배지를 삽입하고 집계 상태를 반환한다.
+
+    Returns:
+        (updated_candidates, compliance_records, worst_status, all_publication_ready)
+    """
+    from orchestrator.app.compliance.service import get_compliance_service
+
+    context = context_to_model(state.get("context"))
+    svc = get_compliance_service()
+
+    compliance_records: list[dict[str, Any]] = []
+    worst_status = "pass"
+    all_publication_ready = True
+
+    for candidate in candidates:
+        copy_dict: dict[str, Any] = {
+            "headline": candidate.get("headline") or "",
+            "subcopy": candidate.get("subcopy") or "",
+            "cta": candidate.get("cta") or "",
+        }
+        result = svc.check_copy(copy_dict, context.business_type)
+        candidate.setdefault("metadata", {})["compliance"] = {
+            "status": result.status,
+            "finding_count": len(result.findings),
+            "disabled": not result.publication_ready,
+        }
+        compliance_records.append({
+            "candidate_id": candidate.get("id"),
+            "status": result.status,
+            "finding_count": len(result.findings),
+            "publication_ready": result.publication_ready,
+            "findings": [f.model_dump() for f in result.findings],
+        })
+        if _COMPLIANCE_STATUS_RANK.get(result.status, 0) > _COMPLIANCE_STATUS_RANK.get(worst_status, 0):
+            worst_status = result.status
+        if not result.publication_ready:
+            all_publication_ready = False
+
+    return candidates, compliance_records, worst_status, all_publication_ready

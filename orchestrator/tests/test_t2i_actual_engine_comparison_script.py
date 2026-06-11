@@ -66,13 +66,13 @@ def test_free_plan_resolves_only_sd35_large_and_flux(tmp_path):
         output_json=tmp_path / "report.json",
     )
 
-    assert report["resolved_engines"] == ["sd35_large", "flux"]
+    assert report["resolved_engines"] == ["sd35_large", "flux2_klein_4b"]
 
 
-def test_economic_plan_allows_gpt_image_2(tmp_path):
+def test_economic_plan_allows_gpt_image_1(tmp_path):
     report = runner.run_comparison(
         plan="economic",
-        requested_engines=["gpt_image_2"],
+        requested_engines=["gpt_image_1"],
         case_ids=["cafe_dessert_001"],
         max_cases=1,
         dry_run=True,
@@ -83,7 +83,7 @@ def test_economic_plan_allows_gpt_image_2(tmp_path):
         output_json=tmp_path / "report.json",
     )
 
-    assert report["resolved_engines"] == ["gpt_image_2"]
+    assert report["resolved_engines"] == ["gpt_image_1"]
 
 
 def test_premium_include_comparison_resolves_all_engines(tmp_path):
@@ -100,7 +100,7 @@ def test_premium_include_comparison_resolves_all_engines(tmp_path):
         output_json=tmp_path / "report.json",
     )
 
-    assert report["resolved_engines"] == ["gpt_image_2", "sd35_large", "flux"]
+    assert report["resolved_engines"] == ["gpt_image_1", "gpt_image_2", "sd35_large", "flux2_klein_4b"]
 
 
 def test_report_redacts_secret_env_values(monkeypatch, tmp_path):
@@ -162,12 +162,12 @@ def test_unknown_engine_is_ignored_without_crash(tmp_path):
         output_json=tmp_path / "report.json",
     )
 
-    assert report["resolved_engines"] == ["flux"]
+    assert report["resolved_engines"] == ["flux2_klein_4b"]
 
 
 @pytest.mark.parametrize(
     ("engine", "expected_run_mode"),
-    [("sd35_large", "sd35_local"), ("flux", "flux_local")],
+    [("sd35_large", "sd35_local"), ("flux", "flux2_klein_4b")],
 )
 def test_engine_maps_to_actual_run_mode(engine, expected_run_mode, tmp_path):
     report = runner.run_comparison(
@@ -196,7 +196,7 @@ def test_auto_execution_backend_uses_modal_readiness_for_flux(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
 
     readiness = runner._engine_readiness(
-        "flux",
+        "flux2_klein_4b",
         execution_backend="auto",
         require_db_r2=False,
     )
@@ -258,7 +258,7 @@ def test_main_prints_safe_run_summary(monkeypatch, tmp_path, capsys):
     assert exit_code == 0
     assert printed["status"] == "dry_run"
     assert printed["report_path"] == path.as_posix()
-    assert printed["runs"][0]["engine"] == "flux"
+    assert printed["runs"][0]["engine"] == "flux2_klein_4b"
     assert "prompt_preview" not in printed["runs"][0]
 
 

@@ -80,7 +80,7 @@ class PromptQualityPolicy(BaseModel):
 
 
 class EnginePromptAdapterOutput(BaseModel):
-    engine: Literal["gpt_image_2", "sd35_large", "flux"]
+    engine: Literal["gpt_image_1", "gpt_image_2", "sd35_large", "flux", "flux2_klein_4b"]
     prompt: str
     negative_prompt: str | None = None
     engine_fit_score: float = 1.0

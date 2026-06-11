@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.ocr_gate.persistence import build_ocr_gate_payload
 from orchestrator.app.schemas.text_layout import ResultPayload
 
 
@@ -47,6 +48,15 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             }
         )
 
+    ocr_gate_payload = build_ocr_gate_payload(
+        background=state.get("background_ocr_gate"),
+        final=state.get("final_ocr_gate"),
+    )
+    ocr_decision = ocr_gate_payload.get("decision")
+    requires_manual_review = ocr_decision in {"manual_review", "unavailable"} or (
+        ocr_decision in {"retry_image", "retry_layout"} and bool(state.get("ocr_revision_attempts"))
+    )
+    quality_rejected = ocr_decision == "reject"
     payload = ResultPayload(
         job_id=str(state.get("job_id") or ""),
         thread_id=str(state.get("thread_id") or ""),
@@ -63,11 +73,73 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             "final": state.get("final_validation_report"),
         },
         artifact_refs=artifacts,
-        metadata=result_metadata,
+        compliance=_build_copy_compliance_payload(state),
+        metadata={
+            **result_metadata,
+            "ocr_gate": ocr_gate_payload,
+            "requiresManualReview": requires_manual_review,
+            "qualityRejected": quality_rejected,
+            "qualityDecision": ocr_decision,
+        },
     )
+    payload_dict = payload.model_dump()
+    payload_dict["ocr_gate"] = ocr_gate_payload
+    payload_dict["qualityDecision"] = ocr_decision
+    payload_dict["requiresManualReview"] = requires_manual_review
+    payload_dict["qualityRejected"] = quality_rejected
     return {
-        "result_payload": payload.model_dump(),
+        "result_payload": payload_dict,
         "artifact_refs": artifacts,
         "status": status,
         "error_message": None if output_path else upstream_error,
+    }
+
+
+def _build_copy_compliance_payload(state: MarketingState) -> dict:
+    gate = state.get("copy_compliance_gate") or {}
+    status = state.get("copy_compliance_status") or "pass"
+    publication_ready = state.get("copy_compliance_publication_ready", True)
+
+    findings_raw = gate.get("findings") or []
+    findings = [
+        {
+            "findingId": f.get("finding_id"),
+            "field": f.get("field"),
+            "matchedText": f.get("matched_text"),
+            "severity": f.get("severity"),
+            "detectionMethod": f.get("detection_method", "pattern"),
+            "confidence": f.get("confidence", 1.0),
+            "message": f.get("reason"),
+            "legalBasis": [
+                {
+                    "key": b.get("key"),
+                    "lawName": b.get("law_name"),
+                    "article": b.get("article"),
+                    "summary": b.get("summary"),
+                }
+                for b in (f.get("legal_basis") or [])
+            ],
+            "suggestedText": f.get("suggested_text"),
+            "ragContext": f.get("rag_context"),
+        }
+        for f in findings_raw
+    ]
+
+    if status == "pass":
+        summary = "광고 규제 검토를 통과했습니다."
+    elif status == "warn":
+        summary = f"광고 규제 주의 표현 {len(findings)}개가 발견되었습니다. 게시 가능합니다."
+    elif status == "manual_review_required":
+        summary = "광고 규제 위험 표현이 발견되었습니다. 게시 전 확인이 필요합니다."
+    else:
+        summary = f"광고 규제 위험 표현 {len(findings)}개가 발견되었습니다."
+
+    return {
+        "status": status,
+        "publicationReady": publication_ready,
+        "summary": summary,
+        "findingCount": len(findings),
+        "findings": findings,
+        "userDecision": gate.get("user_decision"),
+        "userAcknowledgedRisk": gate.get("user_acknowledged_risk", False),
     }

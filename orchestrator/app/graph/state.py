@@ -68,6 +68,8 @@ class MarketingState(TypedDict, total=False):
     schema_version: str
     job_id: str
     thread_id: str
+    usage_job_db_id: str | None
+    usage_thread_db_id: str | None
     workspace_id: str | None
     project_id: str | None
     user_id: str | None
@@ -117,6 +119,7 @@ class MarketingState(TypedDict, total=False):
     copywriting_output: dict[str, Any] | CopywritingOutput | None
     copy_generation_mode: CopyGenerationMode | None
     copy_candidates: list[dict[str, Any] | CopyCandidate]
+    copy_candidate_origin: str | None
     selected_copy_id: str | None
     selected_channel_id: str | None
     selected_ad_format: str | None
@@ -129,10 +132,25 @@ class MarketingState(TypedDict, total=False):
     tone_binding_output: dict[str, Any] | ToneBindingOutput | None
     copy_mode_inference_output: dict[str, Any] | CopyModeInferenceOutput | None
     copy_selection: dict[str, Any] | None
+    input_compliance_risk: dict[str, Any] | None
+    copy_compliance: list[dict[str, Any]]
+    copy_compliance_status: str | None
+    copy_compliance_publication_ready: bool
+    copy_compliance_gate: dict[str, Any] | None
+    copy_compliance_resolution: dict[str, Any] | None
     custom_copy_input: dict[str, Any] | None
     copy_spec: dict[str, Any] | CopySpec | None
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
     text_style_spec: dict[str, Any] | TextStyleSpec | None
+    copy_visual_intent: dict[str, Any] | None
+    typography_art_direction: dict[str, Any] | None
+    font_catalog_summary: list[dict[str, Any]]
+    adaptive_typography_report: dict[str, Any] | None
+    image_layout_analysis: dict[str, Any] | None
+    layout_candidate_scores: list[dict[str, Any]]
+    layout_refinement_result: dict[str, Any] | None
+    layout_copy_fit_report: dict[str, Any] | None
+    layout_revision_attempts: int
     image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
     image_prompt: dict[str, Any] | ImagePrompt | None
     prompt_optimization_output: dict[str, Any] | PromptOptimizationOutput | None
@@ -140,6 +158,20 @@ class MarketingState(TypedDict, total=False):
     prompt_render_output: dict[str, Any] | PromptRenderOutput | None
     t2i_request: dict[str, Any] | T2IRequest | None
     t2i_result: dict[str, Any] | T2IResult | None
+    background_quality_gate: dict[str, Any] | None
+    final_quality_gate: dict[str, Any] | None
+    quality_gate_attempts: int
+    quality_gate_decision: str | None
+    quality_gate_status: str | None
+    quality_gate_retry_feedback: list[str]
+    background_ocr_gate: dict[str, Any] | None
+    final_ocr_gate: dict[str, Any] | None
+    ocr_gate_decision: str | None
+    ocr_gate_status: str | None
+    ocr_gate_retry_feedback: list[str]
+    ocr_revision_action: str | None
+    ocr_revision_attempts: int
+    regeneration_patch: dict[str, Any] | None
     candidates: list[dict[str, Any] | GeneratedImageCandidate]
     selected_candidate_id: str | None
     background_validation_report: dict[str, Any] | BackgroundValidationReport | None
@@ -272,9 +304,9 @@ def engine_for_render_profile(render_profile: RenderProfile) -> GenerationEngine
     if render_profile == "fast":
         return "mock"
     if render_profile == "premium_local":
-        return "flux"
+        return "flux2_klein_4b"
     if render_profile == "premium_api":
-        return "gpt_image_2"
+        return "gpt_image_1"
     return "sd35_large"
 
 
@@ -290,6 +322,10 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "requested_ad_format": request.requested_ad_format,
         "requested_platform": request.requested_platform,
         "copy_generation_mode": request.copy_generation_mode,
+        # Confirmed only when the user explicitly supplied a mode up front. Heuristic/LLM
+        # inference in the validator must NOT flip this true; otherwise the 4-mode question
+        # is never asked.
+        "copy_generation_mode_confirmed": request.copy_generation_mode is not None,
         "user_custom_headline": request.user_custom_headline,
         "user_custom_subcopy": request.user_custom_subcopy,
         "source_asset_id": request.source_asset_id if hasattr(request, "source_asset_id") else None,
@@ -361,6 +397,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "copywriting_output": None,
         "copy_generation_mode": request.copy_generation_mode,
         "copy_candidates": [],
+        "copy_candidate_origin": None,
         "selected_copy_id": None,
         "selected_channel_id": None,
         "selected_ad_format": None,
@@ -373,10 +410,22 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "tone_binding_output": None,
         "copy_mode_inference_output": None,
         "copy_selection": None,
+        "input_compliance_risk": None,
+        "copy_compliance": [],
+        "copy_compliance_status": None,
+        "copy_compliance_publication_ready": True,
+        "copy_compliance_gate": None,
+        "copy_compliance_resolution": None,
         "custom_copy_input": None,
         "copy_spec": None,
         "text_layout_spec": None,
         "text_style_spec": None,
+        "copy_visual_intent": None,
+        "image_layout_analysis": None,
+        "layout_candidate_scores": [],
+        "layout_refinement_result": None,
+        "layout_copy_fit_report": None,
+        "layout_revision_attempts": 0,
         "image_prompt_spec": None,
         "image_prompt": None,
         "prompt_optimization_output": None,
@@ -384,6 +433,19 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "prompt_render_output": None,
         "t2i_request": None,
         "t2i_result": None,
+        "background_quality_gate": None,
+        "final_quality_gate": None,
+        "quality_gate_attempts": 0,
+        "quality_gate_decision": None,
+        "quality_gate_status": None,
+        "quality_gate_retry_feedback": [],
+        "background_ocr_gate": None,
+        "final_ocr_gate": None,
+        "ocr_gate_decision": None,
+        "ocr_gate_status": None,
+        "ocr_gate_retry_feedback": [],
+        "ocr_revision_action": None,
+        "ocr_revision_attempts": 0,
         "candidates": [],
         "selected_candidate_id": None,
         "background_validation_report": None,

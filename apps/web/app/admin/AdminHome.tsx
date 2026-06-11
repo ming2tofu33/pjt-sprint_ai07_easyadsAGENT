@@ -1,4 +1,5 @@
 import { Database, Images, Settings, UploadCloud } from "lucide-react";
+import Link from "next/link";
 import type { AdminRole } from "@/lib/admin-auth";
 import styles from "./admin.module.css";
 import { AdminSignOutButton } from "./AdminSignOutButton";
@@ -32,15 +33,15 @@ export function AdminHome({ userEmail, role }: AdminHomeProps) {
           </section>
 
           <section className={styles.cardGrid} aria-label="관리자 기능">
-            <button className={styles.adminCard} type="button" data-disabled="true" disabled>
+            <Link className={styles.adminCard} href="/admin/references">
               <span aria-hidden="true">
                 <Images size={22} />
               </span>
               <strong>
                 샘플 관리
-                <small>이미지 목록, 메타데이터, 카테고리 태그를 관리할 예정이에요.</small>
+                <small>이미지 목록, 메타데이터, 카테고리 태그를 관리합니다.</small>
               </strong>
-            </button>
+            </Link>
             <button className={styles.adminCard} type="button" data-disabled="true" disabled>
               <span aria-hidden="true">
                 <UploadCloud size={22} />

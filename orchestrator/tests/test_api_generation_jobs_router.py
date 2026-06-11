@@ -1,7 +1,10 @@
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from fastapi.testclient import TestClient
 
 from orchestrator.app.api.app import create_app
+from orchestrator.app.api.schemas.generation_jobs import GenerationJobResponse, GenerationProgress
 from orchestrator.app.chat_threads.errors import (
     ChatThreadArchivedError,
     ChatThreadHasActiveJobError,
@@ -9,13 +12,16 @@ from orchestrator.app.chat_threads.errors import (
     ChatThreadServiceError,
 )
 from orchestrator.app.generation_jobs.service import reset_generation_job_store_for_tests
+from orchestrator.app.chat_threads.service import reset_chat_thread_store_for_tests
 
 
 @pytest.fixture(autouse=True)
 def reset_store():
     reset_generation_job_store_for_tests()
+    reset_chat_thread_store_for_tests()
     yield
     reset_generation_job_store_for_tests()
+    reset_chat_thread_store_for_tests()
 
 
 @pytest.fixture()
@@ -55,9 +61,48 @@ def test_create_generation_job_and_get_job(client):
     assert job["metadata"]["effective_run_mode"] == "queued_only"
     assert job["output_path"] is None
 
-    fetched = client.get(f"/api/v1/generation-jobs/{job['job_id']}")
+    fetched = client.get(f"/api/v1/generation-jobs/{job['job_id']}?workspace_id=mem_workspace")
     assert fetched.status_code == 200
     assert fetched.json()["job"]["job_id"] == job["job_id"]
+
+
+def test_get_generation_job_marks_stale_running_planning_job_failed(client, monkeypatch):
+    stale_job = GenerationJobResponse(
+        job_id="job_stale_1",
+        thread_id="thread_stale_1",
+        user_id="user_1",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        created_at=(datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat(),
+        updated_at=(datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat(),
+        metadata={"execution_mode": "graph_execution"},
+    )
+    failed_job = stale_job.model_copy(
+        update={
+            "status": "failed",
+            "progress": GenerationProgress(progress_percent=50, current_stage="failed", stage_order=[]),
+            "metadata": {"execution_mode": "stale_running_recovered"},
+        }
+    )
+    calls = []
+
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", lambda job_id, **kwargs: stale_job)
+
+    def fake_maybe_mark_stale_generation_job_failed(job, **kwargs):
+        calls.append(job.job_id)
+        return failed_job
+
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.maybe_mark_stale_generation_job_failed",
+        fake_maybe_mark_stale_generation_job_failed,
+    )
+
+    response = client.get("/api/v1/generation-jobs/job_stale_1?workspace_id=mem_workspace")
+
+    assert response.status_code == 200
+    assert response.json()["job"]["status"] == "failed"
+    assert response.json()["job"]["progress"]["current_stage"] == "failed"
+    assert calls == ["job_stale_1"]
 
 
 def test_create_generation_job_mock_immediate_completes(client):
@@ -83,7 +128,7 @@ def test_create_generation_job_mock_immediate_completes(client):
 
 
 def test_invalid_job_reference_and_request_errors(client):
-    missing_job = client.get("/api/v1/generation-jobs/job_missing")
+    missing_job = client.get("/api/v1/generation-jobs/job_missing?workspace_id=mem_workspace")
     assert missing_job.status_code == 404
     assert missing_job.json()["detail"]["error_code"] == "generation_job_not_found"
 
@@ -151,24 +196,24 @@ def test_graph_job_routes_to_graph_executor_with_engine_metadata(client, monkeyp
             "user_input": "카페 신메뉴 광고 만들어줘",
             "run_mode": "graph_job",
             "metadata": {
-                "selected_engine": "flux_schnell",
-                "requested_engine": "flux",
-                "t2i_engine": "flux",
+                "selected_engine": "flux2_klein_4b",
+                "requested_engine": "flux2_klein_4b",
+                "t2i_engine": "flux2_klein_4b",
             },
         },
     )
 
     assert response.status_code == 201
     assert captured["run_mode"] == "graph_job"
-    assert captured["metadata"]["selected_engine"] == "flux_schnell"
-    assert captured["metadata"]["requested_engine"] == "flux"
-    assert captured["metadata"]["t2i_engine"] == "flux"
+    assert captured["metadata"]["selected_engine"] == "flux2_klein_4b"
+    assert captured["metadata"]["requested_engine"] == "flux2_klein_4b"
+    assert captured["metadata"]["t2i_engine"] == "flux2_klein_4b"
 
 
 def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
     captured = {}
 
-    def fake_resume_generation_job_graph(job_id, answer, *, allow_running=False):
+    def fake_resume_generation_job_graph(job_id, answer, *, allow_running=False, **kwargs):
         from orchestrator.app.generation_jobs.service import get_generation_job, update_generation_job
 
         captured["job_id"] = job_id
@@ -195,7 +240,7 @@ def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
     update_generation_job(job["job_id"], status="waiting_user_input")
 
     answer_response = client.post(
-        f"/api/v1/generation-jobs/{job['job_id']}/answer",
+        f"/api/v1/generation-jobs/{job['job_id']}/answer?workspace_id=mem_workspace",
         json={"field": "business_type", "value": "cafe"},
     )
 
@@ -209,11 +254,12 @@ def test_generation_job_answer_route_resumes_waiting_job(client, monkeypatch):
 
 def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
     monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "false")
+    monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_1", "false")
     monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "false")
     monkeypatch.setenv("EASYADS_ENABLE_SD35_LOCAL", "false")
     monkeypatch.setenv("EASYADS_ENABLE_FLUX_LOCAL", "false")
 
-    gpt = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "gpt_image_2_smoke"})
+    gpt = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "gpt_image_1_smoke"})
     sd35 = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "sd35_local_smoke"})
     flux = client.post("/api/v1/generation-jobs", json={"user_input": "Create an ad", "run_mode": "flux_local_smoke"})
 
@@ -226,7 +272,7 @@ def test_actual_lanes_default_disabled_return_failed_job(client, monkeypatch):
     assert flux.status_code == 201
     assert flux.json()["job"]["status"] == "failed"
     assert flux.json()["job"]["error"]["error_code"] == "t2i_engine_not_enabled"
-    assert flux.json()["job"]["metadata"]["t2i_engine"] == "flux"
+    assert flux.json()["job"]["metadata"]["t2i_engine"] == "flux2_klein_4b"
 
 
 def test_create_generation_job_accepts_camel_case_reference_alias(client):

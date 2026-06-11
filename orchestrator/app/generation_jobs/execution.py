@@ -33,11 +33,92 @@ from orchestrator.app.t2i.execution import TEXT_FREE_NEGATIVE_PROMPT, build_gene
 from orchestrator.app.t2i.settings import T2IEngineNotEnabledError, T2IEngineUnavailableError
 
 _EFFECTIVE_RUN_MODE_BY_ENGINE = {
+    "gpt_image_1": "gpt_image_1_actual",
     "gpt_image_2": "gpt_image_2_actual",
     "sd35_large": "sd35_local",
     "flux": "flux_local",
     "flux_local": "flux_local",
+    "flux2_klein_4b": "flux2_klein_4b",
 }
+
+_CHANNEL_TO_AD_FORMAT = {
+    "instagram-feed": "instagram_feed",
+    "instagram-story": "instagram_story",
+    "poster": "poster",
+    "flyer": "flyer",
+}
+_VALID_AD_FORMATS = {"instagram_feed", "instagram_story", "poster", "flyer", "banner", "product_detail"}
+
+
+def _clean_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _canonical_ad_format(value: Any) -> str | None:
+    normalized = _clean_optional_text(value)
+    if not normalized:
+        return None
+    mapped = _CHANNEL_TO_AD_FORMAT.get(normalized, normalized)
+    if mapped in _VALID_AD_FORMATS:
+        return mapped
+    return mapped.replace("-", "_")
+
+
+def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobCreateRequest) -> None:
+    current_brief = dict(state.get("current_brief") or {})
+    context = dict(state.get("context") or {})
+    context_extra = dict(context.get("extra") or {})
+
+    selected_channel_id = _clean_optional_text(state.get("selected_channel_id") or request.selected_channel_id)
+    selected_ad_format = _canonical_ad_format(
+        request.ad_format
+        or selected_channel_id
+        or state.get("selected_ad_format")
+        or current_brief.get("requested_ad_format")
+        or context_extra.get("ad_format")
+    )
+    selected_tone = _clean_optional_text(state.get("selected_tone") or request.selected_tone)
+    custom_direction = _clean_optional_text(state.get("custom_direction") or request.custom_direction)
+
+    if selected_channel_id:
+        state["selected_channel_id"] = selected_channel_id
+        current_brief["selected_channel_id"] = selected_channel_id
+        context_extra["selected_channel_id"] = selected_channel_id
+    if selected_ad_format:
+        state["selected_ad_format"] = selected_ad_format
+        current_brief["requested_ad_format"] = selected_ad_format
+        context_extra["ad_format"] = selected_ad_format
+        context_extra["selected_ad_format"] = selected_ad_format
+    if selected_tone:
+        state["selected_tone"] = selected_tone
+        current_brief["selected_tone"] = selected_tone
+        context["brand_tone"] = selected_tone
+        context_extra["selected_tone"] = selected_tone
+    if custom_direction:
+        state["custom_direction"] = custom_direction
+        current_brief["custom_direction"] = custom_direction
+        context_extra["custom_direction"] = custom_direction
+
+    if current_brief:
+        state["current_brief"] = current_brief
+    if context_extra or context:
+        context["extra"] = context_extra
+        state["context"] = context
+
+
+def _clear_stale_suggest_copy_state(state: dict[str, Any], request: GenerationJobCreateRequest) -> None:
+    mode = request.copy_generation_mode or state.get("copy_generation_mode")
+    if mode != "suggest_candidates" or _clean_optional_text(request.selected_copy_id):
+        return
+    state["selected_copy_id"] = None
+    state["copy_selection"] = None
+    state["marketing_copy"] = None
+    state["copy_candidates"] = []
+    state["copywriting_output"] = None
+    state["copy_candidate_origin"] = None
 
 
 def _assistant_message_from_interrupt(result_state: dict, fallback: str) -> str:
@@ -320,6 +401,9 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
                 reference_image_path=request.reference_image_path,
                 selected_reference_template_id=request.selected_reference_template_id,
                 renderer_mode=request.renderer_mode,
+                # #7 dedup: FE가 보낸 ad_format(기본 instagram_feed)을 시드 → ad_format이
+                # missing_fields에 안 들어가 intake에서 중복 질문 안 함. 최종 사이즈는 브리프의
+                # CopyChannelStep(selectedChannelId)가 소유(final gen이 channel로 adFormat 전송).
                 requested_ad_format=request.ad_format,
             )
         )
@@ -341,6 +425,11 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
 
         if request.selected_reference_template_id is not None:
             initial_state["selected_reference_template_id"] = request.selected_reference_template_id
+        _seed_generation_job_ui_state(initial_state, request)
+        _clear_stale_suggest_copy_state(initial_state, request)
+        regeneration_patch = (request.metadata or {}).get("regeneration_patch")
+        if regeneration_patch:
+            initial_state["regeneration_patch"] = regeneration_patch
 
         # Execute
         graph = get_generation_job_graph()
@@ -441,12 +530,14 @@ def resume_generation_job_graph(
     answer: GenerationJobAnswerRequest,
     *,
     allow_running: bool = False,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
 ) -> GenerationJobResponse:
     from langgraph.types import Command
     from orchestrator.app.chat_threads.state_snapshot import calculate_changed_fields
     from orchestrator.app.generation_jobs.service import mark_generation_job_done, mark_generation_job_failed, mark_generation_job_running, mark_generation_job_waiting_user_input
 
-    job = get_generation_job(job_id)
+    job = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id) if workspace_id or user_id else get_generation_job(job_id)
     if not job:
         raise ValueError("generation job was not found")
     if job.status != "waiting_user_input" and not (allow_running and job.status == "running"):
@@ -454,80 +545,103 @@ def resume_generation_job_graph(
     if not job.thread_id:
         raise ValueError("generation job has no thread_id")
 
-    running = mark_generation_job_running(job_id, stage="planning")
-    job = running or job
+    try:
+        running = mark_generation_job_running(job_id, stage="planning", workspace_id=workspace_id, user_id=user_id)
+        job = running or job
 
-    resume_payload = answer.to_resume_payload(job_id=job_id, thread_id=job.thread_id)
-    append_generation_job_user_answer_message(job_id, answer)
-    graph = get_generation_job_graph()
-    result_state = graph.invoke(
-        Command(resume=resume_payload),
-        config={"configurable": {"thread_id": job.thread_id}},
-    )
-    changed_fields = calculate_changed_fields(None, result_state)
-
-    if "__interrupt__" in result_state:
-        assistant_message = _assistant_message_from_interrupt(result_state, "추가 정보가 필요해요.")
-        updated = mark_generation_job_waiting_user_input(
-            job_id=job_id,
-            result_state=result_state,
-            changed_fields=changed_fields,
-            assistant_message=assistant_message,
+        resume_payload = answer.to_resume_payload(job_id=job_id, thread_id=job.thread_id)
+        append_generation_job_user_answer_message(job_id, answer, workspace_id=workspace_id, user_id=user_id)
+        graph = get_generation_job_graph()
+        result_state = graph.invoke(
+            Command(resume=resume_payload),
+            config={"configurable": {"thread_id": job.thread_id}},
         )
-        return updated or job
+        changed_fields = calculate_changed_fields(None, result_state)
 
-    if result_state.get("status") == "modal_running":
-        context = _resolve_graph_job_context(job_id, job)
-        return _mark_graph_modal_pending(
-            job_id=job_id,
-            job=job,
-            result_state=result_state,
-            changed_fields=changed_fields,
-            request_run_mode="graph_job",
-            workspace_id=str(context["workspace_id"]),
-            public_job_id=str(context["public_job_id"]),
-            internal_job_id=str(context["internal_job_id"]),
-            parent_snapshot_id=context.get("parent_snapshot_id"),
-        )
+        if "__interrupt__" in result_state:
+            assistant_message = _assistant_message_from_interrupt(result_state, "추가 정보가 필요해요.")
+            updated = mark_generation_job_waiting_user_input(
+                job_id=job_id,
+                result_state=result_state,
+                changed_fields=changed_fields,
+                assistant_message=assistant_message,
+            )
+            return updated or job
 
-    if result_state.get("status") == "done":
-        done = mark_generation_job_done(
-            job_id,
-            result_payload=result_state.get("result_payload") or {},
-            output_path=result_state.get("final_image_path"),
-            metadata={
-                "requested_run_mode": "graph_job",
-                "effective_run_mode": "graph_job",
-                "execution_mode": "graph_execution",
-                "final_brief": result_state.get("current_brief"),
-            },
-        )
-        return done or job
+        if result_state.get("status") == "modal_running":
+            context = _resolve_graph_job_context(job_id, job)
+            return _mark_graph_modal_pending(
+                job_id=job_id,
+                job=job,
+                result_state=result_state,
+                changed_fields=changed_fields,
+                request_run_mode="graph_job",
+                workspace_id=str(context["workspace_id"]),
+                public_job_id=str(context["public_job_id"]),
+                internal_job_id=str(context["internal_job_id"]),
+                parent_snapshot_id=context.get("parent_snapshot_id"),
+            )
 
-    if result_state.get("status") == "failed":
-        error_info = result_state.get("error_info") or {}
+        if result_state.get("status") == "done":
+            done = mark_generation_job_done(
+                job_id,
+                result_payload=result_state.get("result_payload") or {},
+                output_path=result_state.get("final_image_path"),
+                metadata={
+                    "requested_run_mode": "graph_job",
+                    "effective_run_mode": "graph_job",
+                    "execution_mode": "graph_execution",
+                    "final_brief": result_state.get("current_brief"),
+                },
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
+            return done or job
+
+        if result_state.get("status") == "failed":
+            error_info = result_state.get("error_info") or {}
+            failed = mark_generation_job_failed(
+                job_id,
+                {
+                    "error_code": error_info.get("error_code") or "generation_job_execution_failed",
+                    "error_type": error_info.get("error_type"),
+                    "message": error_info.get("message") or "Graph execution failed",
+                    "detail": result_state.get("error_message"),
+                },
+                metadata={"execution_mode": "graph_execution_failed"},
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
+            return failed or job
+
+        raise ValueError(f"Unexpected graph result status: {result_state.get('status')}")
+    except Exception as exc:
         failed = mark_generation_job_failed(
             job_id,
             {
-                "error_code": error_info.get("error_code") or "generation_job_execution_failed",
-                "error_type": error_info.get("error_type"),
-                "message": error_info.get("message") or "Graph execution failed",
-                "detail": result_state.get("error_message"),
+                "error_code": "generation_job_execution_failed",
+                "message": "Generation job graph resume failed.",
+                "detail": str(exc),
             },
-            metadata={"execution_mode": "graph_execution_failed"},
+            metadata={"execution_mode": "graph_resume_failed"},
+            workspace_id=workspace_id,
+            user_id=user_id,
         )
         return failed or job
 
-    raise ValueError(f"Unexpected graph result status: {result_state.get('status')}")
 
-
-def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobResponse | None:
+def poll_and_process_graph_modal_generation_job(
+    job_id: str,
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> GenerationJobResponse | None:
     from orchestrator.app.chat_threads import state_service
     from orchestrator.app.chat_threads.state_snapshot import calculate_changed_fields, restore_persistent_state
     from orchestrator.app.modal.client import poll_modal_t2i_result
     from orchestrator.app.t2i.graph_engines import write_modal_graph_result_image
 
-    job = get_generation_job(job_id)
+    job = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id) if workspace_id or user_id else get_generation_job(job_id)
     if not job:
         return None
     if job.status not in {"queued", "running"}:
@@ -543,11 +657,13 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
                 "message": "Graph Modal job is missing its Modal call id.",
             },
             metadata={"execution_mode": "graph_modal_poll_failed"},
+            workspace_id=workspace_id,
+            user_id=user_id,
         ) or job
 
     poll_result = poll_modal_t2i_result(modal_call_id)
     if poll_result.status in {"pending", "running", "unknown"}:
-        return mark_generation_job_running(job_id, "modal_running") or job
+        return mark_generation_job_running(job_id, "modal_running", workspace_id=workspace_id, user_id=user_id) or job
 
     if poll_result.status in {"failed", "canceled"}:
         return mark_generation_job_failed(
@@ -562,6 +678,8 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
                 "execution_mode": "graph_modal_failed",
                 "modal_status": poll_result.status,
             },
+            workspace_id=workspace_id,
+            user_id=user_id,
         ) or job
 
     if poll_result.status != "succeeded":
@@ -581,6 +699,8 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
                 "message": "Graph Modal state snapshot was not found.",
             },
             metadata={"execution_mode": "graph_modal_poll_failed"},
+            workspace_id=workspace_id,
+            user_id=user_id,
         ) or job
 
     state = restore_persistent_state(snapshot.state_payload)
@@ -620,6 +740,8 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
                 "modal_status": "succeeded",
                 "final_brief": state.get("current_brief"),
             },
+            workspace_id=workspace_id,
+            user_id=user_id,
         ) or job
 
     error_info = state.get("error_info") or {}
@@ -635,6 +757,8 @@ def poll_and_process_graph_modal_generation_job(job_id: str) -> GenerationJobRes
             "execution_mode": "graph_modal_postprocess_failed",
             "modal_status": "succeeded",
         },
+        workspace_id=workspace_id,
+        user_id=user_id,
     ) or job
 
 
@@ -705,12 +829,14 @@ def _run_graph_post_t2i_nodes(state: dict) -> None:
     from orchestrator.app.graph.routers import route_by_copy_presence
     from orchestrator.app.llm.nodes.background_validation import background_validation_node
     from orchestrator.app.llm.nodes.final_validation import final_validation_node
+    from orchestrator.app.llm.nodes.ocr_gate import background_ocr_gate_node, final_ocr_gate_node
     from orchestrator.app.llm.nodes.readability_gate import readability_gate_node
     from orchestrator.app.llm.nodes.result import result_node
     from orchestrator.app.llm.nodes.safe_area_gate import safe_area_gate_node
     from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
 
     for update in (
+        background_ocr_gate_node(state),
         background_validation_node(state),
         safe_area_gate_node(state),
     ):
@@ -722,6 +848,7 @@ def _run_graph_post_t2i_nodes(state: dict) -> None:
 
     for update in (
         text_renderer_node(state),
+        final_ocr_gate_node(state),
         readability_gate_node(state),
         final_validation_node(state),
         result_node(state),
@@ -733,11 +860,13 @@ def _normalize_graph_t2i_engine(value: object) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_")
     if normalized in {"sd35", "sd3_5", "sd3_5_large", "sd35_large"}:
         return "sd35_large"
-    if normalized in {"flux", "flux_schnell", "flux_1_schnell"}:
-        return "flux"
+    if normalized in {"flux", "flux_schnell", "flux_1_schnell", "flux2_klein", "flux2_klein_4b", "flux_2_klein_4b"}:
+        return "flux2_klein_4b"
+    if normalized in {"gpt_image_1", "gpt_image1"}:
+        return "gpt_image_1"
     if normalized in {"gpt_image_2", "gpt_image2"}:
         return "gpt_image_2"
-    return "flux"
+    raise ValueError(f"Unsupported graph T2I engine: {value}")
 
 
 def _safe_modal_error(error: dict | None) -> dict:
@@ -773,6 +902,15 @@ def execute_generation_job_t2i(job_id: str, request: GenerationJobCreateRequest,
                 },
             )
         )
+        generation_error = getattr(generation, "error", None)
+        if generation_error:
+            metadata = generation.metadata or {}
+            error_code = str(metadata.get("error_code") or "t2i_engine_unavailable")
+            if error_code == "t2i_engine_not_enabled":
+                raise T2IEngineNotEnabledError(generation_error)
+            exc = T2IEngineUnavailableError(generation_error)
+            setattr(exc, "error_code", error_code)
+            raise exc
         if not generation.image_paths:
             raise T2IEngineUnavailableError(f"{engine_name} did not return an image.")
 

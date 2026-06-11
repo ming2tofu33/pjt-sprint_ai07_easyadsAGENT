@@ -12,8 +12,9 @@ def render_gpt_image_2_prompt(
     scene_plan: ScenePlan,
     policy: PromptQualityPolicy,
     preset_id: str | None = None,
+    engine: str = "gpt_image_2",
 ) -> EnginePromptAdapterOutput:
-    """Render a creative brief style prompt for GPT-image-2."""
+    """Render a creative brief style prompt for OpenAI GPT-image engines."""
     reserved = scene_plan.reserved_copy_area
     subject_side = "right"
     if reserved in ["right", "upper_right", "lower_right"]:
@@ -34,7 +35,7 @@ def render_gpt_image_2_prompt(
     )
     
     return EnginePromptAdapterOutput(
-        engine="gpt_image_2",
+        engine=engine,
         prompt=prompt,
         negative_prompt=None,
         engine_fit_score=1.0,
@@ -126,14 +127,16 @@ def render_engine_prompt(
 ) -> EnginePromptAdapterOutput:
     """Dispatches rendering to the proper engine adapter."""
     engine_lower = (engine or "").lower()
-    if "gpt" in engine_lower or "openai" in engine_lower or engine_lower == "gpt_image_2":
-        return render_gpt_image_2_prompt(scene_plan, policy, preset_id=preset_id)
+    engine_key = engine_lower.replace("-", "_")
+    if "gpt" in engine_key or "openai" in engine_key or engine_key in {"gpt_image_1", "gpt_image_2"}:
+        engine_name = "gpt_image_1" if engine_key in {"gpt_image_1", "gpt_image1"} else "gpt_image_2"
+        return render_gpt_image_2_prompt(scene_plan, policy, preset_id=preset_id, engine=engine_name)
     elif "sd3" in engine_lower or "sd35" in engine_lower or "stability" in engine_lower or engine_lower == "sd35_large":
         return render_sd35_large_prompt(scene_plan, policy, preset_id=preset_id)
     elif "flux" in engine_lower:
         return render_flux_prompt(scene_plan, policy, preset_id=preset_id)
     else:
-        # Fallback to gpt_image_2 prompt layout
-        out = render_gpt_image_2_prompt(scene_plan, policy, preset_id=preset_id)
-        out.warnings.append(f"Unknown engine '{engine}', fallback to gpt_image_2 prompt layout.")
+        # Fallback to gpt_image_1 prompt layout
+        out = render_gpt_image_2_prompt(scene_plan, policy, preset_id=preset_id, engine="gpt_image_1")
+        out.warnings.append(f"Unknown engine '{engine}', fallback to gpt_image_1 prompt layout.")
         return out

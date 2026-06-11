@@ -32,9 +32,11 @@ const KNOWN_GRAPH_NODES = new Set([
   "t2i_request_builder",
   "t2i_generation",
   "background_validation",
+  "background_ocr_gate",
   "safe_area_gate",
   "text_renderer",
   "readability_gate",
+  "final_ocr_gate",
   "final_validation",
   "result",
 ]);
@@ -61,6 +63,9 @@ const ALL_CAPABILITIES: UiGraphCapability[] = [
   "generation.selected-channel-state",
   "generation.selected-tone-state",
   "validation.feedback-visible",
+  "thread.state-restore",
+  "result.quality-feedback",
+  "generation.progress-visible",
 ];
 
 describe("ui graph coverage matrix", () => {
@@ -83,10 +88,12 @@ describe("ui graph coverage matrix", () => {
       "reference-template",
       "reference-image",
       "validation-feedback",
+      "thread-state-restore",
+      "result-quality-feedback",
     ]);
     expect(report.uncoveredIds).toEqual([]);
-    expect(report.coveredCount).toBe(15);
-    expect(report.totalCount).toBe(15);
+    expect(report.coveredCount).toBe(17);
+    expect(report.totalCount).toBe(17);
     expect(report.coverageRatio).toBe(1);
   });
 
@@ -113,6 +120,13 @@ describe("ui graph coverage matrix", () => {
       .map((item) => item.id);
 
     expect(finalGraphGapIds).toEqual([]);
+  });
+
+  it("covers state restore and result quality feedback capabilities", () => {
+    const report = buildUiGraphCoverageReport();
+
+    expect(report.coveredIds).toContain("thread-state-restore");
+    expect(report.coveredIds).toContain("result-quality-feedback");
   });
 
   it("marks all matrix rows covered once the missing UI capabilities exist", () => {

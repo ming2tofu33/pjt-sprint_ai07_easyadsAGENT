@@ -529,10 +529,38 @@ def test_execute_generation_job_graph_receives_selected_ui_values(monkeypatch):
     assert executed.status == "done"
     assert received_payload["selected_copy_id"] == "copy_2"
     assert received_payload["selected_channel_id"] == "instagram-story"
+    assert received_payload["selected_ad_format"] == "instagram_story"
     assert received_payload["selected_tone"] == "상큼한"
     assert received_payload["custom_direction"] == "제품을 화면 중앙에 크게"
     assert received_payload["user_custom_headline"] == "오늘만 딸기라떼 반값"
     assert received_payload["user_custom_subcopy"] == "오후 2시부터 5시까지"
+    assert received_payload["current_brief"]["requested_ad_format"] == "instagram_story"
+    assert received_payload["current_brief"]["selected_tone"] == "상큼한"
+    assert received_payload["current_brief"]["custom_direction"] == "제품을 화면 중앙에 크게"
+    assert received_payload["context"]["brand_tone"] == "상큼한"
+    assert received_payload["context"]["extra"]["ad_format"] == "instagram_story"
+
+
+def test_suggest_candidates_create_clears_stale_copy_state():
+    state = {
+        "copy_generation_mode": "suggest_candidates",
+        "selected_copy_id": "copy_1",
+        "copy_selection": {"selected_copy_id": "copy_1"},
+        "marketing_copy": {"headline": "stale"},
+        "copy_candidates": [{"id": "copy_1", "headline": "stale"}],
+        "copywriting_output": {"recommended_candidate_id": "copy_1"},
+        "copy_candidate_origin": "rule_based",
+    }
+    request = GenerationJobCreateRequest(userInput="새 광고", copyGenerationMode="suggest_candidates", selectedCopyId=None)
+
+    execution._clear_stale_suggest_copy_state(state, request)
+
+    assert state["selected_copy_id"] is None
+    assert state["copy_selection"] is None
+    assert state["marketing_copy"] is None
+    assert state["copy_candidates"] == []
+    assert state["copywriting_output"] is None
+    assert state["copy_candidate_origin"] is None
 
 
 def test_execute_generation_job_graph_waiting_user_input(monkeypatch):
@@ -709,3 +737,55 @@ def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
         "어떤 업종인가요?",
         "카페",
     ]
+
+
+def test_resume_generation_job_graph_marks_failed_when_graph_raises(monkeypatch):
+    calls = []
+    expected_job_id = None
+    expected_thread_id = None
+
+    class MockSharedGraph:
+        def invoke(self, payload, config: dict | None = None) -> dict:
+            nonlocal expected_job_id, expected_thread_id
+            calls.append(payload)
+            if len(calls) == 1:
+                state = dict(payload)
+                expected_job_id = state["job_id"]
+                expected_thread_id = state["thread_id"]
+                state["__interrupt__"] = [
+                    FakeInterrupt(
+                        {
+                            "type": "option_question",
+                            "job_id": state["job_id"],
+                            "thread_id": state["thread_id"],
+                            "option_question": {
+                                "field": "item_or_service",
+                                "question": "홍보할 상품이나 서비스는 무엇인가요?",
+                                "options": [{"id": 1, "label": "대표 메뉴", "value": "대표 메뉴"}],
+                            },
+                        }
+                    )
+                ]
+                state["status"] = "waiting_user_input"
+                state["messages"] = [{"role": "assistant", "content": "홍보할 상품이나 서비스는 무엇인가요?"}]
+                return state
+
+            raise RuntimeError("resume graph crashed while planning image generation")
+
+    shared_graph = MockSharedGraph()
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: shared_graph)
+
+    request = GenerationJobCreateRequest(user_input="햄버거집 광고 만들어줘", run_mode="graph_job")
+    job = create_generation_job(request)
+    waiting = execute_generation_job_graph(job.job_id, request)
+    assert waiting.status == "waiting_user_input"
+
+    answer = GenerationJobAnswerRequest(field="item_or_service", value="햄버거 대표 메뉴", display_text="햄버거 대표 메뉴")
+    resumed = resume_generation_job_graph(waiting.job_id, answer)
+
+    assert resumed.status == "failed"
+    assert resumed.progress.current_stage == "failed"
+    assert resumed.error is not None
+    assert resumed.error.error_code == "generation_job_execution_failed"
+    assert resumed.metadata["execution_mode"] == "graph_resume_failed"
+    assert "resume graph crashed" in resumed.error.detail

@@ -14,7 +14,7 @@ const LOCAL_PATH_PREFIXES = [
 export type ValidationFeedbackStatus = "pass" | "warn" | "fail";
 
 export type ValidationFeedbackItem = {
-  id: "background" | "safe_area" | "readability" | "final";
+  id: "background" | "safe_area" | "readability" | "final" | "ocr" | "compliance";
   label: string;
   status: ValidationFeedbackStatus;
   message: string;
@@ -70,6 +70,64 @@ export function buildValidationFeedbackItems(summary: Record<string, unknown> | 
     fail: "최종 결과를 다시 조정하는 편이 좋아요."
   });
   return fallback ? [fallback] : [];
+}
+
+export function buildResultReviewItems(payload: ResultArtifactPayload | null | undefined): ValidationFeedbackItem[] {
+  if (!payload) {
+    return [];
+  }
+
+  const items = buildValidationFeedbackItems(payload.validation_summary ?? null);
+  const ocrDecision = safeString(payload.qualityDecision) || safeString(payload.ocr_gate?.decision);
+
+  if (payload.qualityRejected || ocrDecision === "reject") {
+    items.push({
+      id: "ocr",
+      label: "문구 검수",
+      status: "fail",
+      message: "이미지 안의 문구가 기준을 통과하지 못했어요."
+    });
+  } else if (payload.requiresManualReview || ["manual_review", "unavailable", "retry_image", "retry_layout"].includes(ocrDecision ?? "")) {
+    items.push({
+      id: "ocr",
+      label: "문구 검수",
+      status: "warn",
+      message: "사용 전에 이미지 안의 문구를 한 번 더 확인해주세요."
+    });
+  } else if (ocrDecision === "pass") {
+    items.push({
+      id: "ocr",
+      label: "문구 검수",
+      status: "pass",
+      message: "이미지 안의 문구가 요청한 내용과 잘 맞아요."
+    });
+  }
+
+  const compliance = payload.compliance;
+  if (compliance?.status === "blocked") {
+    items.push({
+      id: "compliance",
+      label: "광고 표현 확인",
+      status: "fail",
+      message: compliance.summary || "광고 표현 기준을 통과하지 못했어요."
+    });
+  } else if (compliance?.status === "rewritten" || compliance?.status === "needs_review") {
+    items.push({
+      id: "compliance",
+      label: "광고 표현 확인",
+      status: "warn",
+      message: compliance.summary || "일부 표현은 사용 전에 한 번 더 확인해주세요."
+    });
+  } else if (compliance?.status === "pass") {
+    items.push({
+      id: "compliance",
+      label: "광고 표현 확인",
+      status: "pass",
+      message: compliance.summary || "광고 표현 기준을 통과했어요."
+    });
+  }
+
+  return items;
 }
 
 export function resolveResultArtifact(job: GenerationJob | null | undefined): ResultArtifactPayload | null {
@@ -174,6 +232,17 @@ export function getGenerationResultNotice(job: GenerationJob | null | undefined)
     const payload = getResultArtifactPayload(job);
     if (!payload) {
       return { level: "warning", message: "생성은 끝났지만 결과 정보를 아직 확인할 수 없어요." };
+    }
+    const qualityDecision = safeString(payload.qualityDecision);
+    if (payload.qualityRejected || qualityDecision === "reject" || payload.compliance?.status === "blocked") {
+      return { level: "error", message: "검수에서 사용할 수 없는 결과로 판단됐어요." };
+    }
+    if (
+      payload.requiresManualReview ||
+      ["manual_review", "unavailable", "retry_image", "retry_layout"].includes(qualityDecision ?? "") ||
+      payload.compliance?.status === "needs_review"
+    ) {
+      return { level: "warning", message: "사용 전에 결과를 한 번 더 확인해야 해요." };
     }
     if (shouldShowImagePreview(payload)) {
       return { level: "success", message: "완성된 이미지를 확인할 수 있어요." };

@@ -9,6 +9,7 @@ import {
 
 export const GENERATION_DRAFT_PROMPT_STORAGE_KEY = "easyads_generation_draft_prompt_v1";
 export const GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY = "easyads_generation_draft_reference_template_v1";
+export const GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY = "easyads_generation_fresh_chat_request_v1";
 const GENERATION_REQUEST_CONTEXT_STORAGE_KEY = "easyads_generation_request_context_v1";
 
 export type GenerationRequestContext = {
@@ -74,6 +75,7 @@ export function writeGenerationDraftReferenceTemplateId(templateId: string) {
 export function saveGenerationRequestContext(context: GenerationRequestContext): void {
   try {
     storage()?.setItem(GENERATION_REQUEST_CONTEXT_STORAGE_KEY, JSON.stringify(context));
+    markFreshGenerationRequest();
     if (context.draftPrompt) {
       writeGenerationDraftPrompt(context.draftPrompt);
     }
@@ -82,6 +84,27 @@ export function saveGenerationRequestContext(context: GenerationRequestContext):
     }
   } catch {
     // Generation can continue without persisted request context.
+  }
+}
+
+export function markFreshGenerationRequest(): void {
+  try {
+    storage()?.setItem(GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY, "1");
+  } catch {
+    // The chat screen can still fall back to its regular reset path.
+  }
+}
+
+export function consumeFreshGenerationRequest(): boolean {
+  try {
+    const store = storage();
+    const hasFreshRequest = store?.getItem(GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY) === "1";
+    if (hasFreshRequest) {
+      store?.removeItem(GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY);
+    }
+    return hasFreshRequest;
+  } catch {
+    return false;
   }
 }
 
@@ -130,6 +153,7 @@ export function clearGenerationDraftPrompt() {
   try {
     storage()?.removeItem(GENERATION_DRAFT_PROMPT_STORAGE_KEY);
     storage()?.removeItem(GENERATION_DRAFT_REFERENCE_TEMPLATE_STORAGE_KEY);
+    storage()?.removeItem(GENERATION_FRESH_CHAT_REQUEST_STORAGE_KEY);
     storage()?.removeItem(GENERATION_REQUEST_CONTEXT_STORAGE_KEY);
   } catch {
     // Ignore storage failures; a fresh chat can still continue.

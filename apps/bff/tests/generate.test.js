@@ -126,6 +126,64 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+
+  it("proxies asset uploads and admin reference creation", async () => {
+    const fetchImpl = vi.fn(async (url, init) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "admin_user_1" });
+      }
+      if (String(url).endsWith("/assets/uploads/presign?user_id=admin_user_1")) {
+        return jsonResponse({ asset: { asset_id: "asset_abc", kind: "reference", status: "pending" }, upload: { method: "PUT", url: "https://r2.example.com/upload" } });
+      }
+      if (String(url).includes("/assets/uploads/asset_abc/complete")) {
+        return jsonResponse({ success: true, asset: { assetId: "asset_abc", kind: "reference", status: "ready" } });
+      }
+      return jsonResponse({
+        template: {
+          template_id: "ref_admin",
+          title: "관리자 샘플",
+          category: "cafe",
+          tags: [],
+          business_types: ["cafe"],
+          ad_formats: ["instagram_feed"],
+          platforms: ["instagram"],
+          style_keywords: [],
+          color_palette: [],
+          popularity_score: 0
+        }
+      });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets/uploads/presign",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: { kind: "reference", filename: "ref.png", mimeType: "image/png", sizeBytes: 3 }
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/assets/uploads/asset_abc/complete",
+      headers: { authorization: "Bearer access_token_1" }
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/admin/references",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: { assetId: "asset_abc", title: "관리자 샘플", category: "cafe", businessTypes: ["cafe"] }
+    });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://orchestrator/api/v1/assets/uploads/presign?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://orchestrator/api/v1/assets/uploads/asset_abc/complete?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://orchestrator/api/v1/admin/references?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    await app.close();
+  });
+
   it("proxies archive item saves with normalized payload fields", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse(
@@ -399,6 +457,70 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("verifies Supabase sessions before forwarding generation job user ids", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1", email: "owner@example.com" });
+      }
+      return jsonResponse(
+        {
+          success: true,
+          job: {
+            job_id: "job_1",
+            thread_id: "thread_1",
+            status: "queued",
+            progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+            metadata: { workspace_id: "workspace_1" }
+          }
+        },
+        { status: 201 }
+      );
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: {
+        userInput: "로그인 사용자 작업방 생성",
+        runMode: "queued_only",
+        userId: "spoofed_user"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://supabase.example.com/auth/v1/user",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: "anon_key",
+          authorization: "Bearer access_token_1"
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/generation-jobs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          userInput: "로그인 사용자 작업방 생성",
+          runMode: "queued_only",
+          userId: "user_uuid_1"
+        })
+      })
+    );
+    await app.close();
+  });
+
   it("proxies generation job answers to the orchestrator", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
@@ -426,6 +548,58 @@ describe("generate chat routes", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ field: "business_type", value: "cafe" })
+      })
+    );
+    await app.close();
+  });
+
+  it("verifies Supabase sessions before forwarding generation job answers", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1", email: "owner@example.com" });
+      }
+      return jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed", stage_order: [] },
+          metadata: { execution_mode: "graph_execution" }
+        }
+      });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs/job_1/answer",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: { field: "business_type", value: "restaurant", userId: "spoofed_user" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      1,
+      "https://supabase.example.com/auth/v1/user",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: "anon_key",
+          authorization: "Bearer access_token_1"
+        })
+      })
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/generation-jobs/job_1/answer",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ field: "business_type", value: "restaurant", userId: "user_uuid_1" })
       })
     );
     await app.close();

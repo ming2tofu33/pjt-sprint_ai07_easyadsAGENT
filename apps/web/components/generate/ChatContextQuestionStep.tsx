@@ -3,9 +3,9 @@
 import { Send } from "lucide-react";
 import { useState } from "react";
 import type { ChatFlowState, OptionItem } from "@/types/marketing";
-import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { MascotImage } from "./MascotImage";
+import { SmartChatInput } from "./SmartChatInput";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -18,34 +18,39 @@ type ChatContextQuestionStepProps = {
 
 export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: ChatContextQuestionStepProps) {
   const [customText, setCustomText] = useState("");
+  const [showCustomInput, setShowCustomInput] = useState(false);
+  const [selectedOption, setSelectedOption] = useState<OptionItem | null>(null);
   const question = state.currentQuestion;
   if (!question) {
     return null;
   }
 
   function submitCustomAnswer() {
-    if (state.isLoading) {
-      return;
-    }
+    if (state.isLoading) return;
     const answer = customText.trim();
-    if (!answer) {
-      return;
-    }
+    if (!answer) return;
     onAnswer({ value: "custom", label: answer, customText: answer });
     setCustomText("");
   }
 
-  function answerOption(option: OptionItem) {
-    if (state.isLoading) {
-      return;
-    }
-    if (option.value === "custom") {
-      return;
-    }
-    onAnswer({ value: option.value, label: option.label });
+  function submitSelectedOption() {
+    if (state.isLoading || !selectedOption) return;
+    onAnswer({ value: selectedOption.value, label: selectedOption.label });
   }
 
-  const hasCustomOption = question.options.length === 0 || question.options.some((option) => option.value === "custom");
+  function answerOption(option: OptionItem) {
+    if (state.isLoading) return;
+    if (option.value === "custom") {
+      setShowCustomInput(true);
+      setSelectedOption(null);
+      return;
+    }
+    setSelectedOption(option);
+    setShowCustomInput(false);
+  }
+
+  const noChips = question.options.length === 0;
+  const effectiveShowCustomInput = showCustomInput || noChips;
 
   return (
     <>
@@ -90,27 +95,36 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
       <h2 className={styles.sectionTitle}>{question.question}</h2>
       <div className={styles.chipGrid}>
         {question.options.map((option) => (
-          <ChoiceChip key={`${question.field}-${option.id}`} disabled={state.isLoading} onClick={() => answerOption(option)}>
+          <ChoiceChip
+            key={`${question.field}-${option.id}`}
+            disabled={state.isLoading}
+            selected={option.value !== "custom" && selectedOption?.id === option.id}
+            onClick={() => answerOption(option)}
+          >
             <span>{option.label}</span>
           </ChoiceChip>
         ))}
       </div>
 
-      {hasCustomOption ? (
-        <label className={`${styles.inputCard} ${styles.contextAnswerInputCard}`}>
-          <AutosizeTextarea
-            className={`${styles.input} ${styles.promptTextarea}`}
-            value={customText}
-            aria-label="직접 답변 입력"
-            placeholder="직접 입력"
-            disabled={state.isLoading}
-            onChange={(event) => setCustomText(event.target.value)}
-            onSubmit={submitCustomAnswer}
-          />
-          <button className={styles.sendButton} type="button" aria-label="직접 답변 보내기" disabled={state.isLoading} onClick={submitCustomAnswer}>
-            <Send size={18} aria-hidden="true" />
-          </button>
-        </label>
+      {effectiveShowCustomInput ? (
+        <SmartChatInput
+          className={styles.contextAnswerInputCard}
+          value={customText}
+          ariaLabel="직접 답변 입력"
+          placeholder="직접 입력"
+          disabled={state.isLoading}
+          onChange={setCustomText}
+          onSubmit={submitCustomAnswer}
+          rightControl={
+            <button className={styles.sendButton} type="button" aria-label="직접 답변 보내기" disabled={state.isLoading} onClick={submitCustomAnswer}>
+              <Send size={18} aria-hidden="true" />
+            </button>
+          }
+        />
+      ) : selectedOption ? (
+        <button className={styles.primaryButton} type="button" disabled={state.isLoading} onClick={submitSelectedOption}>
+          선택 완료
+        </button>
       ) : null}
 
       {state.errorMessage ? <p className={styles.helperText}>{state.errorMessage}</p> : null}

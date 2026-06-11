@@ -56,6 +56,7 @@ export type CopyOption = {
 };
 
 export type CopyCandidateSource = "empty" | "sample" | "backend";
+export type CopyCandidateOrigin = "unknown" | "llm" | "rule_based" | "fallback";
 export type CopyGenerationMode = "suggest_candidates" | "auto_pilot" | "custom_input" | "no_copy";
 
 export type CustomCopyFields = {
@@ -104,6 +105,7 @@ export type ChatFlowState = {
   contextSource: ContextSource;
   copyCandidates: CopyOption[];
   copyCandidateSource: CopyCandidateSource;
+  copyCandidateOrigin: CopyCandidateOrigin;
   copyGenerationMode: CopyGenerationMode;
   selectedTone: string;
   selectedCopyId: string;
@@ -146,6 +148,7 @@ export type ChatFlowAction =
       copyCandidates: CopyOption[];
       recommendedCopyId?: string | null;
       copyCandidateSource?: CopyCandidateSource;
+      copyCandidateOrigin?: CopyCandidateOrigin;
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
       sourceImagePath?: string | null;
@@ -173,7 +176,9 @@ export type ChatFlowAction =
   | { type: "selectCopy"; copyId: string }
   | { type: "selectChannel"; channelId: string }
   | { type: "setCustomDirection"; value: string }
+  | { type: "submitBriefRefinement"; message: string; customDirection: string }
   | { type: "backendBriefSucceeded"; brief: ChatBrief }
+  | { type: "briefRefinementSucceeded"; brief: ChatBrief }
   | {
       type: "requestContextLoaded";
       selectedReferenceTemplateId?: string | null;
@@ -194,6 +199,9 @@ export type ChatFlowAction =
       threadId: string;
       context: InferredContext;
       copyGenerationMode: CopyGenerationMode;
+      copyCandidates: CopyOption[];
+      copyCandidateOrigin: CopyCandidateOrigin;
+      selectedCopyId: string;
       selectedChannelId: string;
       selectedTone: string;
       selectedImageGenerationEngine: ImageGenerationEngine;
@@ -223,6 +231,9 @@ export type ChatFlowAction =
       type: "generationJobQuestionReceived";
       generationJob: GenerationJob;
       question: OptionQuestion;
+      context?: PartialInferredContext;
+      sourceImagePath?: string | null;
+      referenceImagePath?: string | null;
     }
   | { type: "generationJobInterruptReceived"; generationJob: GenerationJob }
   | { type: "submitGenerationJobAnswer"; label: string }

@@ -31,6 +31,18 @@ POLICIES: dict[str, dict[str, Any]] = {
         "promotion_style": "reservation_visit",
         "visual_fit_notes": ["warm grill mood", "food hero", "clear reservation CTA"],
     },
+    "macaron": {
+        "policy_id": "macaron_v1",
+        "business_type": "macaron",
+        "headline_max_chars": 20,
+        "subcopy_max_chars": 42,
+        "cta_max_chars": 8,
+        "preferred_tone": ["editorial", "delicate", "dessert", "premium"],
+        "avoid_terms": ["\uc0c1\ub2f4", "\ubb38\uc758", "\uc608\uc57d", "\uc2e0\uccad", "\uace0\uae30", "\uc22f\ubd88", "\ud68c\uc2dd"],
+        "cta_candidates": ["\uceec\ub809\uc158 \ubcf4\uae30", "\uba54\ub274 \ubcf4\uae30", "\uc624\ub298\uc758 \ub9db \ubcf4\uae30", "\ub77c\uc778\uc5c5 \ubcf4\uae30", ""],
+        "promotion_style": "menu_discovery",
+        "visual_fit_notes": ["editorial dessert product", "low body density", "CTA optional"],
+    },
     "beauty_skincare": {
         "policy_id": "beauty_skincare_v1",
         "business_type": "beauty_skincare",
@@ -106,6 +118,8 @@ ALIASES = {
     "nail": "beauty_nail",
     "spa": "beauty_spa",
     "dessert": "cafe",
+    "dessert_macaron": "macaron",
+    "macaron": "macaron",
     "bakery": "cafe",
 }
 
@@ -175,13 +189,9 @@ def _clean_text(text: str, avoid_terms: list[str], max_chars: int, warnings: lis
         applied.append("normalized_spacing_or_punctuation")
     for term in avoid_terms:
         if term in value:
-            value = value.replace(term, "").strip()
-            warnings.append("avoid_term_removed")
-            applied.append("removed_avoid_terms")
+            warnings.append("avoid_term_detected")
     if len(value) > max_chars:
-        value = value[:max_chars].rstrip()
-        warnings.append("copy_trimmed_to_policy_length")
-        applied.append("trimmed_length")
+        warnings.append("copy_exceeds_policy_length")
     return value
 
 
@@ -189,9 +199,11 @@ def _normalize_cta(text: str, policy: dict[str, Any], warnings: list[str], appli
     original = str(text or "")
     had_avoid_term = any(term in original for term in policy["avoid_terms"])
     value = _clean_text(original, policy["avoid_terms"], policy["cta_max_chars"], warnings, applied)
-    if not value or had_avoid_term or len(value) > policy["cta_max_chars"]:
+    if had_avoid_term:
+        warnings.append("cta_avoid_term_detected")
+    if not value:
         if had_avoid_term:
-            warnings.append("cta_avoid_term_replaced")
+            warnings.append("cta_empty_after_quality_check")
         applied.append("selected_policy_cta")
         return policy["cta_candidates"][0]
     return value

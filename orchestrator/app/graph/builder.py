@@ -15,11 +15,15 @@ from orchestrator.app.graph.routers import (
     route_after_input_reference_template,
     route_after_product_preprocess,
     route_after_reference_template_resolve,
+    route_after_ocr_gate,
     route_after_t2i_generation,
+    route_after_layout_refiner,
     route_after_tone_binding,
     route_after_validator_for_intake,
     route_after_validator_for_marketing,
     route_by_copy_presence,
+    route_after_compliance_gate,
+    route_after_compliance_resolution,
 )
 from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.nodes.auto_pilot_copywriting import auto_pilot_copywriting_node
@@ -31,9 +35,19 @@ from orchestrator.app.llm.nodes.custom_copy import custom_copy_input_interrupt_n
 from orchestrator.app.llm.nodes.final_validation import final_validation_node
 from orchestrator.app.llm.nodes.format_planner import format_planner_node
 from orchestrator.app.llm.nodes.design_recommendation_node import design_recommendation_node
+from orchestrator.app.llm.nodes.adaptive_typography_refiner import adaptive_typography_refiner_node
 from orchestrator.app.llm.nodes.image_prompt_planner import image_prompt_planner_node
+from orchestrator.app.llm.nodes.image_layout_analyzer import image_layout_analyzer_node
+from orchestrator.app.llm.nodes.copy_compliance import (
+    copy_compliance_gate_node,
+    copy_compliance_interrupt_node,
+    copy_compliance_resolution_node,
+    input_compliance_precheck_node,
+)
 from orchestrator.app.llm.nodes.no_copy import no_copy_bypass_node
+from orchestrator.app.llm.nodes.ocr_gate import background_ocr_gate_node, final_ocr_gate_node, ocr_image_revision_node, ocr_layout_revision_node
 from orchestrator.app.llm.nodes.prompt_renderer import prompt_renderer_node
+from orchestrator.app.llm.nodes.post_t2i_layout_refiner import post_t2i_layout_refiner_node
 from orchestrator.app.llm.nodes.readability_gate import readability_gate_node
 from orchestrator.app.llm.nodes.result import result_node
 from orchestrator.app.llm.nodes.safe_area_gate import safe_area_gate_node
@@ -47,6 +61,7 @@ from orchestrator.app.llm.nodes.image_analysis import image_analysis_node
 from orchestrator.app.llm.nodes.image_aware_quality_gate import image_aware_quality_gate_node
 from orchestrator.app.llm.nodes.text_layout_planner import text_layout_planner_node
 from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
+from orchestrator.app.llm.nodes.typography_art_director import typography_art_direction_node
 from orchestrator.app.llm.nodes.tone_binding import tone_binding_node
 from orchestrator.app.reference_catalog.nodes import reference_template_resolve_node
 from orchestrator.app.vision.nodes import product_preprocess_node, reference_preprocess_node
@@ -85,15 +100,25 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("auto_pilot_copywriting", auto_pilot_copywriting_node)
     graph.add_node("custom_copy_input", custom_copy_input_interrupt_node)
     graph.add_node("custom_copy_validation", custom_copy_validation_node)
+    graph.add_node("input_compliance_precheck", input_compliance_precheck_node)
     graph.add_node("no_copy_bypass", no_copy_bypass_node)
+    graph.add_node("copy_compliance_gate", copy_compliance_gate_node)
+    graph.add_node("copy_compliance_interrupt", copy_compliance_interrupt_node)
+    graph.add_node("copy_compliance_resolution", copy_compliance_resolution_node)
     graph.add_node("copy_spec_parser", copy_spec_parser_node)
+    graph.add_node("typography_art_direction", typography_art_direction_node)
     graph.add_node("text_style_binder", text_style_binder_node)
     graph.add_node("text_layout_planner", text_layout_planner_node)
     graph.add_node("image_prompt_planner", image_prompt_planner_node)
     graph.add_node("prompt_renderer", prompt_renderer_node)
     graph.add_node("t2i_request_builder", t2i_request_builder_node)
     graph.add_node("t2i_generation", t2i_generation_node)
+    graph.add_node("background_ocr_gate", background_ocr_gate_node)
+    graph.add_node("ocr_image_revision", ocr_image_revision_node)
     graph.add_node("background_validation", background_validation_node)
+    graph.add_node("image_layout_analyzer", image_layout_analyzer_node)
+    graph.add_node("post_t2i_layout_refiner", post_t2i_layout_refiner_node)
+    graph.add_node("adaptive_typography_refiner", adaptive_typography_refiner_node)
     graph.add_node("safe_area_gate", safe_area_gate_node)
     graph.add_node("text_renderer", text_renderer_node)
     graph.add_node("html_text_renderer", html_text_renderer_node)
@@ -102,6 +127,8 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("poster_renderer", poster_renderer_node)
     graph.add_node("image_aware_quality_gate", image_aware_quality_gate_node)
     graph.add_node("design_recommendation", design_recommendation_node)
+    graph.add_node("final_ocr_gate", final_ocr_gate_node)
+    graph.add_node("ocr_layout_revision", ocr_layout_revision_node)
     graph.add_node("readability_gate", readability_gate_node)
     graph.add_node("final_validation", final_validation_node)
     graph.add_node("result", result_node)
@@ -131,8 +158,9 @@ def build_marketing_graph(checkpointer=None):
     graph.add_conditional_edges(
         "validator",
         route_after_validator_for_marketing,
-        {"options": "options", "format_planner": "format_planner"},
+        {"options": "options", "format_planner": "input_compliance_precheck"},
     )
+    graph.add_edge("input_compliance_precheck", "format_planner")
     graph.add_edge("options", "state_update")
     graph.add_edge("state_update", "validator")
     graph.add_edge("format_planner", "tone_binding")
@@ -141,6 +169,7 @@ def build_marketing_graph(checkpointer=None):
         route_after_tone_binding,
         {
             "copy_candidate_generation": "copy_candidate_generation",
+            "state_update_selected_copy": "state_update_selected_copy",
             "auto_pilot_copywriting": "auto_pilot_copywriting",
             "custom_copy_input": "custom_copy_input",
             "no_copy_bypass": "no_copy_bypass",
@@ -148,12 +177,31 @@ def build_marketing_graph(checkpointer=None):
     )
     graph.add_edge("copy_candidate_generation", "copy_candidate_selection_interrupt")
     graph.add_edge("copy_candidate_selection_interrupt", "state_update_selected_copy")
-    graph.add_edge("state_update_selected_copy", "copy_spec_parser")
-    graph.add_edge("auto_pilot_copywriting", "copy_spec_parser")
+    graph.add_edge("state_update_selected_copy", "copy_compliance_gate")
+    graph.add_edge("auto_pilot_copywriting", "copy_compliance_gate")
     graph.add_edge("custom_copy_input", "custom_copy_validation")
-    graph.add_edge("custom_copy_validation", "copy_spec_parser")
+    graph.add_edge("custom_copy_validation", "copy_compliance_gate")
     graph.add_edge("no_copy_bypass", "copy_spec_parser")
-    graph.add_edge("copy_spec_parser", "text_style_binder")
+    graph.add_conditional_edges(
+        "copy_compliance_gate",
+        route_after_compliance_gate,
+        {
+            "copy_spec_parser": "copy_spec_parser",
+            "copy_compliance_interrupt": "copy_compliance_interrupt",
+        },
+    )
+    graph.add_edge("copy_compliance_interrupt", "copy_compliance_resolution")
+    graph.add_conditional_edges(
+        "copy_compliance_resolution",
+        route_after_compliance_resolution,
+        {
+            "copy_spec_parser": "copy_spec_parser",
+            "custom_copy_input": "custom_copy_input",
+            END: END,
+        },
+    )
+    graph.add_edge("copy_spec_parser", "typography_art_direction")
+    graph.add_edge("typography_art_direction", "text_style_binder")
     graph.add_edge("text_style_binder", "text_layout_planner")
     graph.add_edge("text_layout_planner", "image_prompt_planner")
     graph.add_edge("image_prompt_planner", "prompt_renderer")
@@ -162,17 +210,58 @@ def build_marketing_graph(checkpointer=None):
     graph.add_conditional_edges(
         "t2i_generation",
         route_after_t2i_generation,
-        {"background_validation": "background_validation", END: END},
+        {"background_ocr_gate": "background_ocr_gate", END: END},
     )
-    graph.add_edge("background_validation", "safe_area_gate")
-    graph.add_conditional_edges("safe_area_gate", route_by_copy_presence, {"result": "result", "text_renderer": "text_renderer", "html_text_renderer": "html_text_renderer", "image_analysis": "image_analysis", "poster_renderer": "poster_renderer"})
+    graph.add_conditional_edges(
+        "background_ocr_gate",
+        route_after_ocr_gate,
+        {
+            "continue": "background_validation",
+            "ocr_image_revision": "ocr_image_revision",
+            "ocr_layout_revision": "ocr_layout_revision",
+            "manual_review_result": "result",
+            "rejected_result": "result",
+        },
+    )
+    graph.add_edge("ocr_image_revision", "t2i_generation")
+    graph.add_edge("background_validation", "image_layout_analyzer")
+    graph.add_edge("image_layout_analyzer", "post_t2i_layout_refiner")
+    graph.add_conditional_edges(
+        "post_t2i_layout_refiner",
+        route_after_layout_refiner,
+        {"safe_area_gate": "adaptive_typography_refiner", "image_prompt_planner": "image_prompt_planner", "result": "result"},
+    )
+    graph.add_edge("adaptive_typography_refiner", "safe_area_gate")
+    graph.add_conditional_edges(
+        "safe_area_gate",
+        route_by_copy_presence,
+        {
+            "result": "result",
+            "text_renderer": "text_renderer",
+            "html_text_renderer": "html_text_renderer",
+            "image_analysis": "image_analysis",
+            "poster_renderer": "poster_renderer",
+        },
+    )
     graph.add_edge("image_analysis", "poster_layout_planner")
     graph.add_edge("poster_layout_planner", "poster_renderer")
-    graph.add_edge("text_renderer", "readability_gate")
-    graph.add_edge("html_text_renderer", "readability_gate")
     graph.add_edge("poster_renderer", "image_aware_quality_gate")
     graph.add_edge("image_aware_quality_gate", "design_recommendation")
     graph.add_edge("design_recommendation", "readability_gate")
+    graph.add_edge("text_renderer", "final_ocr_gate")
+    graph.add_edge("html_text_renderer", "final_ocr_gate")
+    graph.add_conditional_edges(
+        "final_ocr_gate",
+        route_after_ocr_gate,
+        {
+            "continue": "readability_gate",
+            "ocr_image_revision": "ocr_image_revision",
+            "ocr_layout_revision": "ocr_layout_revision",
+            "manual_review_result": "result",
+            "rejected_result": "result",
+        },
+    )
+    graph.add_edge("ocr_layout_revision", "text_renderer")
     graph.add_edge("readability_gate", "final_validation")
     graph.add_edge("final_validation", "result")
     graph.add_edge("result", END)

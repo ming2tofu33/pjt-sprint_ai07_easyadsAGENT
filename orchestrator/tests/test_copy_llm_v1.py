@@ -24,10 +24,19 @@ def _state(user_plan: str = "premium", mode: str = "suggest_candidates"):
     )
 
 
+def test_copy_candidates_free_plan_marks_rule_based_origin():
+    update = copy_candidate_generation_node(_state("free"))
+
+    assert update["copy_candidates"]
+    assert update["copy_candidate_origin"] == "rule_based"
+    assert update["llm_call_results"][0]["error"] == "free_plan_deterministic_fallback"
+
+
 def test_copy_candidates_disabled_uses_rule_based_fallback():
     update = copy_candidate_generation_node(_state("premium"))
 
     assert update["copy_candidates"]
+    assert update["copy_candidate_origin"] == "fallback"
     assert update["llm_call_results"][0]["error"] == "api_call_disabled"
 
 
@@ -69,6 +78,7 @@ def test_copy_candidate_llm_valid_output_converts_to_candidate_shape(monkeypatch
 
     update = copy_candidate_generation_node(_state("premium"))
 
+    assert update["copy_candidate_origin"] == "llm"
     assert update["copy_candidates"][0]["id"] == "x"
     assert update["copy_candidates"][0]["headline"] == "딸기 케이크 신메뉴"
     assert update["copy_candidates"][0]["metadata"]["copy_tone_policy"]["policy_id"] == "cafe_v1"
@@ -86,6 +96,7 @@ def test_copy_candidate_hallucinated_phone_or_discount_falls_back(monkeypatch):
 
     assert "010-1234-5678" not in rendered
     assert "50%" not in rendered
+    assert update["copy_candidate_origin"] == "fallback"
     assert update["copywriting_output"]["metadata"]["llm_metadata"]["fallback_reason"] == "llm_candidate_validation_failed"
 
 

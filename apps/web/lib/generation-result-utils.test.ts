@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildResultReviewItems,
   buildGenerationResultCopyText,
   buildValidationFeedbackItems,
   getDisplayImageUrl,
@@ -232,6 +233,63 @@ describe("generation result utils", () => {
     });
     expect(getGenerationResultNotice(failedJob).level).toBe("error");
     expect(getGenerationResultNotice(runningJob)).toEqual({ level: "info", message: "이미지를 생성하고 있어요." });
+  });
+
+  it("treats rejected quality decisions as blocked results", () => {
+    const rejectedJob: GenerationJob = {
+      job_id: "job_rejected",
+      status: "done",
+      result_payload: {
+        final_image_url: "https://cdn.example.com/rejected.png",
+        qualityDecision: "reject",
+        qualityRejected: true,
+        requiresManualReview: false,
+        ocr_gate: { decision: "reject" }
+      }
+    };
+
+    expect(getGenerationResultNotice(rejectedJob)).toEqual({
+      level: "error",
+      message: "검수에서 사용할 수 없는 결과로 판단됐어요."
+    });
+  });
+
+  it("treats manual review decisions as warning results", () => {
+    const reviewJob: GenerationJob = {
+      job_id: "job_review",
+      status: "done",
+      result_payload: {
+        final_image_url: "https://cdn.example.com/review.png",
+        qualityDecision: "manual_review",
+        requiresManualReview: true,
+        qualityRejected: false,
+        ocr_gate: { decision: "manual_review" }
+      }
+    };
+
+    expect(getGenerationResultNotice(reviewJob)).toEqual({
+      level: "warning",
+      message: "사용 전에 결과를 한 번 더 확인해야 해요."
+    });
+  });
+
+  it("builds OCR and compliance review items from result payload", () => {
+    const items = buildResultReviewItems({
+      validation_summary: { final: { overall_pass: true } },
+      ocr_gate: { decision: "manual_review" },
+      compliance: {
+        status: "rewritten",
+        summary: "일부 표현이 안전한 문구로 조정됐어요."
+      }
+    });
+
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "final", status: "pass" }),
+        expect.objectContaining({ id: "ocr", status: "warn", label: "문구 검수" }),
+        expect.objectContaining({ id: "compliance", status: "warn", label: "광고 표현 확인" })
+      ])
+    );
   });
 
   it("keeps failed and running jobs without preview or download", () => {

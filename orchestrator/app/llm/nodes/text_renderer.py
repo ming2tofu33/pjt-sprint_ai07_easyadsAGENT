@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-import logging
-import math
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import colorsys
-from PIL import Image, ImageDraw, ImageFont, ImageStat, ImageFilter
+from PIL import Image, ImageDraw, ImageFont, ImageStat
 
-logger = logging.getLogger(__name__)
-
-from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, load_font as load_resolved_font, resolve_font_path
-from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, RenderResult, TextLayoutSpec, TextSlot, TextStyleSpec
+from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, ResolvedFont, load_font as load_resolved_font, resolve_font, resolve_font_path
+from orchestrator.app.rendering.text_metrics import draw_text_with_tracking, fit_text_block_to_bbox, measure_text_with_tracking
+from orchestrator.app.rendering.typography_color import choose_text_color
+from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, RenderResult, TextLayoutSpec, TextSlot, TextStyleSpec, TypographyRenderTrace
 
 if TYPE_CHECKING:
     from orchestrator.app.graph.state import MarketingState
@@ -38,13 +35,17 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         return {"render_result": render_result.model_dump(), "status": "failed", "error_message": "missing background image path"}
 
     copy_spec = CopySpec(**(state.get("copy_spec") or {}))
-    layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
-    style = TextStyleSpec(**(state.get("text_style_spec") or {}))
+    layout_data, style_data = _apply_regeneration_layout_patch(state.get("text_layout_spec") or {}, state.get("text_style_spec") or {}, state.get("regeneration_patch") or {})
+    layout = TextLayoutSpec(**layout_data)
+    style = TextStyleSpec(**style_data)
     output_dir = Path("data") / "outputs" / str(state.get("job_id") or "unknown-job")
     output_dir.mkdir(parents=True, exist_ok=True)
     final_path = output_dir / "final_composite.png"
+    preview_path = output_dir / "failed_composite_preview.png"
 
     warnings: list[str] = []
+    overflow_errors: list[str] = []
+    render_traces: list[dict[str, Any]] = []
     rendered_count = 0
     skipped_count = 0
     with Image.open(background_path).convert("RGB") as image:
@@ -58,7 +59,8 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         layout_is_right = avg_x > 0.5
         
         # 텍스트가 가야할 빈 공간(empty_half)과 현재 기획된 텍스트 위치(layout_is_right)가 엇갈릴 경우
-        needs_flip = layout.auto_find_empty_space and ((layout_is_right and empty_half == "left") or (not layout_is_right and empty_half == "right"))
+        image_aware_layout_locked = bool(state.get("image_layout_analysis")) and bool((state.get("layout_refinement_result") or {}).get("selected_candidate_id") if isinstance(state.get("layout_refinement_result"), dict) else False)
+        needs_flip = (not image_aware_layout_locked) and layout.auto_find_empty_space and ((layout_is_right and empty_half == "left") or (not layout_is_right and empty_half == "right"))
         if needs_flip:
             warnings.append(f"Auto-flipped layout horizontally to match image negative space ({empty_half})")
 
@@ -81,175 +83,137 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
             if slot.alignment == "auto":
                 slot.alignment = "right" if slot.bbox.x > 0.5 else "left"
                 
+            apply_script_font_policy(slot, copy_item.text, style)
             x, y, w, h = slot.bbox.to_pixels(image.width, image.height)
-            
-            # Smart Rendering Pipeline: Dynamic Color and Overlay
-            crop = image.crop((x, y, x + w, y + h))
-            stat = ImageStat.Stat(crop)
-            # Complexity check
-            stddev = sum(stat.stddev) / len(stat.stddev) if stat.stddev else 0
-            complexity = min(1.0, stddev / 64.0)
-            if complexity > 0.45 and slot.overlay_treatment not in {"solid_panel", "gradient_panel", "blur_backdrop"}:
-                slot.overlay_treatment = "solid_panel"
-                if not slot.overlay_color:
-                    slot.overlay_color = style.typography.primary_color
-            
-            # Color Selection Strategy
-            bg_rgb = tuple(float(v) for v in stat.mean[:3])
-            bg_lum = _relative_luminance(bg_rgb)
-            
-            target_contrast = _get_contrast_target(slot.role)
-            
-            contrast_margin = 0.0
-            
-            if slot.role == "cta" and slot.overlay_treatment == "solid_panel":
-                # Exception Rule: CTA 버튼 가독성 최우선
-                w_rgb = hex_to_rgb("#FFFFFF")
-                b_rgb = hex_to_rgb("#111827")
-                w_ratio = _contrast_ratio(_relative_luminance(w_rgb), bg_lum)
-                b_ratio = _contrast_ratio(_relative_luminance(b_rgb), bg_lum)
-                
-                if w_ratio >= target_contrast:
-                    slot.text_color = "#FFFFFF"
-                elif b_ratio >= target_contrast:
-                    slot.text_color = "#111827"
-                else:
-                    slot.text_color = "#FFFFFF" if w_ratio > b_ratio else "#111827"
-                
-                c_rgb = tuple(float(v) for v in hex_to_rgb(slot.text_color))
-                c_ratio = _contrast_ratio(_relative_luminance(c_rgb), bg_lum)
-                contrast_margin = c_ratio - target_contrast
-                
-                logger.info(f"CTA Color Rule Applied | BG: {bg_lum:.2f} | Selected: {slot.text_color} (Margin: {contrast_margin:.1f})")
-            else:
-                primary = style.typography.primary_color
-                accent = style.typography.accent_color
-                tone_color = _generate_tone_on_tone_candidate(bg_rgb, bg_lum, target_contrast)
-                
-                candidates = {
-                    "Brand Primary": primary,
-                    "Brand Accent": accent,
-                }
-                if tone_color:
-                    candidates["Tone-on-Tone"] = tone_color
-                    
-                best_color = None
-                best_score = -1.0
-                
-                logger.info(f"--- Scoring Engine Started: {slot.role} ---")
-                logger.info(f"Background RGB: {bg_rgb}, Lum: {bg_lum:.2f}, Target: {target_contrast}")
-                
-                primary_rgb = hex_to_rgb(primary)
-                accent_rgb = hex_to_rgb(accent)
-                
-                for cand_name, cand_hex in candidates.items():
-                    c_rgb = tuple(float(v) for v in hex_to_rgb(cand_hex))
-                    c_lum = _relative_luminance(c_rgb)
-                    c_ratio = _contrast_ratio(c_lum, bg_lum)
-                    
-                    if c_ratio < target_contrast:
-                        logger.info(f"[{cand_name}] {cand_hex} - FAILED Contrast ({c_ratio:.2f} < {target_contrast})")
-                        continue
-                        
-                    contrast_score = _calculate_contrast_score(c_ratio)
-                    harmony_score = _calculate_harmony_score(c_rgb, bg_rgb)
-                    brand_score = _calculate_brand_score(c_rgb, primary_rgb, accent_rgb)
-                    
-                    final_score = (contrast_score * 0.3) + (harmony_score * 0.5) + (brand_score * 0.2)
-                    
-                    logger.info(f"[{cand_name}] {cand_hex} - Pass! "
-                                 f"Contrast:{contrast_score:.1f}({c_ratio:.1f}) "
-                                 f"Harmony:{harmony_score:.1f} Brand:{brand_score:.1f} "
-                                 f"-> Final:{final_score:.1f}")
-                                 
-                    if final_score > best_score:
-                        best_score = final_score
-                        best_color = cand_hex
-                        
-                if best_color:
-                    slot.text_color = best_color
-                    c_rgb = tuple(float(v) for v in hex_to_rgb(best_color))
-                    c_ratio = _contrast_ratio(_relative_luminance(c_rgb), bg_lum)
-                    contrast_margin = c_ratio - target_contrast
-                    logger.info(f"Selected: {best_color} with score {best_score:.1f} (Margin: {contrast_margin:.1f})")
-                else:
-                    # Fallback
-                    w_ratio = _contrast_ratio(1.0, bg_lum)
-                    b_ratio = _contrast_ratio(0.0, bg_lum)
-                    slot.text_color = style.typography.text_color_on_dark if w_ratio > b_ratio else style.typography.text_color_on_light
-                    contrast_margin = max(w_ratio, b_ratio) - target_contrast
-                    logger.warning(f"All candidates failed! Fallback to {slot.text_color} (Margin: {contrast_margin:.1f})")
-            
-            # Dynamic Font Scaling Loop
-            base_font_size = estimate_font_size(slot, image.width, image.height)
-            min_font_size = max(18, int(min(image.width, image.height) * slot.font_metric.min_size_ratio))
-            
-            best_font = None
-            best_lines = []
-            font_warning = None
-            
-            font_size = base_font_size
-            while font_size >= min_font_size:
-                font, f_warn = load_font(slot, font_size)
-                lines = wrap_text_by_pixel(copy_item.text, font, max_width=w, max_lines=slot.max_lines)
-                
-                is_truncated = len(lines) >= slot.max_lines and len(copy_item.text) > len(" ".join(lines))
-                line_height = int(getattr(font, "size", 18) * slot.font_metric.line_height_em)
-                actual_h = line_height * len(lines)
-                
-                if not is_truncated and actual_h <= h:
-                    best_font = font
-                    best_lines = lines
-                    font_warning = f_warn
-                    break
-                    
-                font_size -= 2
-                
-            if not best_font:
-                # Fallback to minimum size if it couldn't fit
-                font_size = max(18, min_font_size)
-                best_font, font_warning = load_font(slot, font_size)
-                best_lines = wrap_text_by_pixel(copy_item.text, best_font, max_width=w, max_lines=slot.max_lines)
-                
-            font = best_font
-            lines = best_lines
+            max_size = max(1, int(min(image.width, image.height) * slot.font_metric.max_size_ratio))
+            min_size = max(1, int(min(image.width, image.height) * slot.font_metric.min_size_ratio))
+            estimated_size = estimate_font_size(slot, image.width, image.height)
+            fit = fit_text_block_to_bbox(
+                copy_item.text,
+                font_factory=lambda size, current_slot=slot: load_font(current_slot, size)[0],
+                bbox_width=max(1, w),
+                bbox_height=max(1, h),
+                max_lines=slot.max_lines,
+                max_size=max(max_size, estimated_size),
+                min_size=min(min_size, estimated_size),
+                line_height_ratio=slot.font_metric.line_height_em,
+                letter_spacing_em=slot.font_metric.letter_spacing_em,
+            )
+            font_size = int(fit["font_size"])
+            font, resolved_font, font_warning = load_font(slot, font_size)
             if font_warning:
                 warnings.append(font_warning)
-            if len(lines) >= slot.max_lines and len(copy_item.text) > len(" ".join(lines)):
-                warnings.append(f"slot {slot.slot_id} clipping risk: text truncated to {slot.max_lines} lines")
+            if resolved_font.fallback_used:
+                overflow_errors.append(f"slot {slot.slot_id} font fallback used: {resolved_font.source}")
+                continue
+            lines = list(fit["lines"])
+            if not fit["fits"]:
+                overflow_errors.append(f"slot {slot.slot_id} overflow: text does not fit within {slot.max_lines} lines")
+                continue
             
             line_height = int(getattr(font, "size", 18) * slot.font_metric.line_height_em)
             actual_h = line_height * len(lines)
             actual_y = y + max(0, (h - actual_h) // 2)
-            
-            draw_overlay(draw, slot, x, actual_y, w, actual_h, style)
-            draw_wrapped_text(draw, lines, slot, font, x, y, w, h, complexity, contrast_margin)
+            color_result = choose_text_color(image, (x, y, w, h), role=slot.role, preferred=slot.text_color)
+            slot.text_color = color_result["text_color"]
+            draw_overlay(draw, slot, x, actual_y, w, actual_h, style, lines=lines, font=font)
+            rendered_bbox = draw_wrapped_text(draw, lines, slot, font, x, y, w, h)
+            slot.rendered_lines = lines
+            slot.effective_font_size_px = font_size
+            slot.effective_weight = resolved_font.resolved_weight
+            trace = TypographyRenderTrace(
+                role=slot.role,
+                font_id=resolved_font.font_id,
+                family_id=resolved_font.family_id,
+                resolved_weight=resolved_font.resolved_weight,
+                source=resolved_font.source,
+                effective_font_size_px=font_size,
+                rendered_lines=lines,
+                rendered_bbox_px=rendered_bbox,
+                letter_spacing_px=round(float(fit.get("tracking_px") or font_size * slot.font_metric.letter_spacing_em), 2),
+                line_height_px=line_height,
+                text_color=slot.text_color,
+                contrast_ratio_min=float(color_result["contrast_ratio"]),
+                contrast_ratio_average=float(color_result["contrast_ratio"]),
+                overlay_treatment=slot.overlay_treatment,
+                overlay_bbox_px=None,
+                fallback_used=resolved_font.fallback_used,
+                warnings=[],
+            )
+            render_traces.append(trace.model_dump())
             rendered_count += 1
-        image.save(final_path)
+        image.save(preview_path if overflow_errors else final_path)
 
     render_result = RenderResult(
         background_image_path=str(background_path),
-        final_image_path=str(final_path),
+            final_image_path=str(final_path if not overflow_errors else preview_path),
         rendered_slot_count=rendered_count,
         skipped_slot_count=skipped_count,
-        warnings=warnings,
-        metadata={"source_node": "text_renderer", "has_text_overlay": rendered_count > 0},
+        warnings=warnings + overflow_errors,
+        metadata={"source_node": "text_renderer", "has_text_overlay": rendered_count > 0, "overflow_detected": bool(overflow_errors), "typography_render_traces": render_traces},
     )
     artifacts = list(state.get("artifact_refs") or [])
-    artifacts.append(
-        {
-            "type": "final_image",
-            "path": str(final_path),
-            "metadata": {"source": "text_renderer", "has_text_overlay": rendered_count > 0},
-        }
-    )
+    if overflow_errors:
+        artifacts.append(
+            {
+                "type": "validation_preview",
+                "path": str(preview_path),
+                "metadata": {"source": "text_renderer", "has_text_overlay": rendered_count > 0, "overflow_detected": True},
+            }
+        )
+    else:
+        artifacts.append(
+            {
+                "type": "final_image",
+                "path": str(final_path),
+                "metadata": {"source": "text_renderer", "has_text_overlay": rendered_count > 0},
+            }
+        )
     return {
-        "final_image_path": str(final_path),
+        "final_image_path": None if overflow_errors else str(final_path),
         "render_result": render_result.model_dump(),
         "text_overlay_pending": False,
         "artifact_refs": artifacts,
-        "status": "overlaying_text",
+        "status": "failed" if overflow_errors else "overlaying_text",
+        "error_message": "; ".join(overflow_errors) if overflow_errors else None,
     }
+
+
+def _apply_regeneration_layout_patch(layout_value: object, style_value: object, patch_value: object) -> tuple[dict[str, Any], dict[str, Any]]:
+    layout = dict(layout_value) if isinstance(layout_value, dict) else {}
+    style = dict(style_value) if isinstance(style_value, dict) else {}
+    patches = patch_value.get("patches") if isinstance(patch_value, dict) else {}
+    for patch in (patches or {}).values():
+        if not isinstance(patch, dict):
+            continue
+        if patch.get("target") == "layout":
+            if patch.get("safeAreaScale"):
+                layout["safe_margin_ratio"] = min(0.5, float(layout.get("safe_margin_ratio") or 0.06) * float(patch["safeAreaScale"]))
+            slots = []
+            for raw_slot in layout.get("slots") or []:
+                slot = dict(raw_slot) if isinstance(raw_slot, dict) else raw_slot
+                if isinstance(slot, dict):
+                    if patch.get("increasePadding"):
+                        slot["inner_padding_ratio"] = min(0.5, float(slot.get("inner_padding_ratio") or 0.04) + 0.02)
+                    if patch.get("reduceFontScale"):
+                        metric = dict(slot.get("font_metric") or {})
+                        if metric.get("base_size_ratio") is not None:
+                            metric["base_size_ratio"] = max(0.01, float(metric["base_size_ratio"]) * 0.9)
+                        slot["font_metric"] = metric
+                    if patch.get("rewrapText"):
+                        slot["max_lines"] = max(int(slot.get("max_lines") or 1) + 1, 2)
+                slots.append(slot)
+            if slots:
+                layout["slots"] = slots
+        if patch.get("target") == "textStyle":
+            typography = dict(style.get("typography") or {})
+            if patch.get("increaseContrast"):
+                typography["use_text_plate"] = True
+            if patch.get("enableShadowOrOverlay"):
+                typography["default_overlay"] = typography.get("default_overlay") or "drop_shadow"
+            if typography:
+                style["typography"] = typography
+    return layout, style
 
 
 def find_empty_half(image: Image.Image) -> str:
@@ -298,21 +262,48 @@ def estimate_font_size(slot: TextSlot, canvas_w: int, canvas_h: int) -> int:
     return max(18, min(maximum, max(minimum, base)))
 
 
-def load_font(slot: TextSlot, size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, str | None]:
-    weight = "bold" if slot.font_metric.weight >= 700 else None
+def apply_script_font_policy(slot: TextSlot, text: str, style: TextStyleSpec) -> None:
+    direction = style.typography_art_direction or {}
+    if _contains_hanja(text):
+        slot.font_metric.font_family = direction.get("hanja_fallback_family_id") or "noto_serif_cjk_kr"
+        slot.font_metric.weight = 600 if slot.role == "headline" else 400
+        return
+    if slot.role == "headline" and _is_latin_only(text) and direction.get("latin_display_family_id"):
+        slot.font_metric.font_family = str(direction["latin_display_family_id"])
+        slot.font_metric.weight = int(direction.get("headline_weight") or slot.font_metric.weight)
+        return
+    if _contains_hangul(text) and slot.font_metric.font_family == "cormorant_garamond":
+        slot.font_metric.font_family = direction.get("korean_fallback_family_id") or "ridi_batang"
+        slot.font_metric.weight = 400
+
+
+def _contains_hangul(text: str) -> bool:
+    return any("\uac00" <= char <= "\ud7a3" for char in str(text or ""))
+
+
+def _contains_hanja(text: str) -> bool:
+    return any("\u4e00" <= char <= "\u9fff" for char in str(text or ""))
+
+
+def _is_latin_only(text: str) -> bool:
+    meaningful = [char for char in str(text or "") if char.isalpha()]
+    return bool(meaningful) and all(("A" <= char <= "Z") or ("a" <= char <= "z") for char in meaningful)
+
+
+def load_font(slot: TextSlot, size: int) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, ResolvedFont, str | None]:
     preferred = slot.font_metric.font_family
-    font = load_resolved_font(
-    size=size,
-    weight=weight,
-    preferred=preferred,)
-    if preferred and font and hasattr(font, "path"):
-        return font, None
-    if not resolve_font_path(preferred):
-        return font, f"slot {slot.slot_id} used default PIL font fallback"
-    return font, None
+    try:
+        font, resolved = resolve_font(family_id=preferred, weight=slot.font_metric.weight, size_px=size)
+        warning = f"slot {slot.slot_id} used {resolved.source} font fallback" if resolved.fallback_used else None
+        return font, resolved, warning
+    except Exception:
+        weight = "bold" if slot.font_metric.weight >= 700 else None
+        font = load_resolved_font(size=size, weight=weight, preferred=preferred)
+        resolved = ResolvedFont(font_id="unknown", family_id=str(preferred or "unknown"), requested_weight=slot.font_metric.weight, resolved_weight=slot.font_metric.weight, source="pil_default", fallback_used=True)
+        return font, resolved, f"slot {slot.slot_id} used default PIL font fallback"
 
 
-def wrap_text_by_pixel(text: str, font: ImageFont.ImageFont, max_width: int, max_lines: int) -> list[str]:
+def wrap_text(text: str, max_chars: int, max_lines: int) -> list[str]:
     words = text.split()
     if not words:
         words = [text]
@@ -320,12 +311,7 @@ def wrap_text_by_pixel(text: str, font: ImageFont.ImageFont, max_width: int, max
     current = ""
     for word in words:
         candidate = f"{current} {word}".strip()
-        try:
-            width = font.getbbox(candidate)[2]
-        except AttributeError:
-            width = font.getsize(candidate)[0] if hasattr(font, "getsize") else len(candidate) * 15
-            
-        if width <= max_width:
+        if len(candidate) <= max_chars:
             current = candidate
             continue
         if current:
@@ -337,13 +323,27 @@ def wrap_text_by_pixel(text: str, font: ImageFont.ImageFont, max_width: int, max
         lines.append(current)
     if len(lines) > max_lines:
         lines = lines[:max_lines]
-    if len(lines) == max_lines and len(" ".join(words)) > len(" ".join(lines)):
-        lines[-1] = lines[-1].rstrip(". ") + "..."
-    return lines or [text]
+    return lines or [text[:max_chars]]
 
 
-def draw_overlay(draw: ImageDraw.ImageDraw, slot: TextSlot, x: int, y: int, w: int, h: int, style: TextStyleSpec) -> None:
+def draw_overlay(
+    draw: ImageDraw.ImageDraw,
+    slot: TextSlot,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    style: TextStyleSpec,
+    *,
+    lines: list[str] | None = None,
+    font: ImageFont.ImageFont | None = None,
+) -> None:
     treatment = slot.overlay_treatment
+    cta_style = ((style.role_styles or {}).get("cta") or {}).get("style") if slot.role == "cta" else None
+    if slot.role == "cta" and cta_style in {"none", "text_link"}:
+        return
+    if slot.role == "cta" and treatment in {"drop_shadow", "stroke"} and slot.overlay_opacity > 0:
+        treatment = "solid_panel"
     if slot.role in {"promotion", "badge"} and treatment == "plain":
         treatment = "sticker_badge"
     if style.typography.use_text_plate and treatment == "plain":
@@ -354,69 +354,45 @@ def draw_overlay(draw: ImageDraw.ImageDraw, slot: TextSlot, x: int, y: int, w: i
     r, g, b = hex_to_rgb(color)
     alpha = int(255 * max(slot.overlay_opacity, 0.72))
     pad = max(10, int(min(w, h) * max(slot.inner_padding_ratio, 0.08 if slot.role == "cta" else 0.05)))
-    radius = max(10, pad * (2 if slot.role == "cta" else 1))
-    draw.rounded_rectangle((x - pad, y - pad, x + w + pad, y + h + pad), radius=radius, fill=(r, g, b, alpha))
+    box_x, box_y, box_w, box_h = x, y, w, h
+    if slot.role == "cta" and cta_style in {"small_label", "pill_button"} and lines and font:
+        text_w = max((draw.textbbox((0, 0), line, font=font)[2] - draw.textbbox((0, 0), line, font=font)[0]) for line in lines)
+        box_w = min(w, text_w)
+        if slot.alignment == "center":
+            box_x = x + max(0, (w - box_w) // 2)
+        elif slot.alignment == "right":
+            box_x = x + max(0, w - box_w)
+        pad = max(8, int(getattr(font, "size", 18) * (0.22 if cta_style == "small_label" else 0.45)))
+    radius = max(6, pad * (3 if slot.role == "cta" and cta_style == "pill_button" else 1))
+    draw.rounded_rectangle((box_x - pad, box_y - pad, box_x + box_w + pad, box_y + box_h + pad), radius=radius, fill=(r, g, b, alpha))
 
 
-def draw_wrapped_text(draw: ImageDraw.ImageDraw, lines: list[str], slot: TextSlot, font: ImageFont.ImageFont, x: int, y: int, w: int, h: int, complexity: float = 0.0, contrast_margin: float = 99.0) -> None:
+def draw_wrapped_text(draw: ImageDraw.ImageDraw, lines: list[str], slot: TextSlot, font: ImageFont.ImageFont, x: int, y: int, w: int, h: int) -> tuple[int, int, int, int]:
     fill = hex_to_rgb(slot.text_color) + (255,)
     line_height = int(getattr(font, "size", 18) * slot.font_metric.line_height_em)
     total_h = line_height * len(lines)
     cursor_y = y + max(0, (h - total_h) // 2)
-    
-    # Pre-calculate positions
-    positions = []
+    tracking_px = max(-2.0, min(8.0, getattr(font, "size", 18) * slot.font_metric.letter_spacing_em))
+    min_x = x + w
+    min_y = cursor_y
+    max_x = x
+    max_y = cursor_y
     for line in lines:
-        try:
-            bbox = font.getbbox(line)
-            text_w = bbox[2] - bbox[0]
-        except AttributeError:
-            text_w = font.getsize(line)[0] if hasattr(font, "getsize") else len(line) * 15
-            
+        text_w = int(measure_text_with_tracking(draw, line, font=font, tracking_px=tracking_px))
         if slot.alignment == "left":
             cursor_x = x
         elif slot.alignment == "right":
             cursor_x = x + max(0, w - text_w)
         else:
             cursor_x = x + max(0, (w - text_w) // 2)
-        positions.append((line, cursor_x, cursor_y))
+        if slot.overlay_treatment in {"drop_shadow", "stroke"}:
+            draw_text_with_tracking(draw, (cursor_x + 2, cursor_y + 2), line, font=font, fill=(0, 0, 0, 150), tracking_px=tracking_px)
+        draw_text_with_tracking(draw, (cursor_x, cursor_y), line, font=font, fill=fill, tracking_px=tracking_px)
+        min_x = min(min_x, cursor_x)
+        max_x = max(max_x, cursor_x + text_w)
+        max_y = max(max_y, cursor_y + line_height)
         cursor_y += line_height
-
-    # Draw shadow layer first if needed
-    if slot.overlay_treatment in {"drop_shadow", "stroke"}:
-        draw_shadow = False
-        shadow_opacity = 0
-        
-        if slot.role == "cta":
-            draw_shadow = False
-        elif slot.role == "headline":
-            if complexity > 0.45 and contrast_margin < 1.0:
-                draw_shadow = True
-                shadow_opacity = 70
-        else:
-            if complexity > 0.25 or contrast_margin < 1.0:
-                draw_shadow = True
-                shadow_opacity = 40
-                
-        if draw_shadow:
-            shadow_image = Image.new("RGBA", draw._image.size, (0, 0, 0, 0))
-            shadow_draw = ImageDraw.Draw(shadow_image)
-            font_size = getattr(font, "size", 18)
-            offset_val = min(max(1, int(font_size * 0.035)), 4)
-            
-            for line, cx, cy in positions:
-                shadow_draw.text((cx + offset_val, cy + offset_val), line, font=font, fill=(0, 0, 0, shadow_opacity))
-            
-            # Apply Gaussian Blur
-            blur_radius = min(max(2, int(font_size * 0.1)), 10)
-            shadow_image = shadow_image.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-            
-            # Paste shadow onto original
-            draw._image.paste(shadow_image, (0, 0), shadow_image)
-
-    # Draw actual text
-    for line, cx, cy in positions:
-        draw.text((cx, cy), line, font=font, fill=fill)
+    return (int(min_x), int(min_y), int(max_x), int(max_y))
 
 
 def hex_to_rgb(value: str) -> tuple[int, int, int]:
@@ -424,92 +400,3 @@ def hex_to_rgb(value: str) -> tuple[int, int, int]:
     if len(cleaned) != 6:
         return (255, 255, 255)
     return tuple(int(cleaned[index : index + 2], 16) for index in (0, 2, 4))
-
-
-def _relative_luminance(rgb: tuple[float, float, float]) -> float:
-    values = []
-    for channel in rgb:
-        value = channel / 255.0
-        values.append(value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4)
-    return 0.2126 * values[0] + 0.7152 * values[1] + 0.0722 * values[2]
-
-
-def _contrast_ratio(a: float, b: float) -> float:
-    lighter = max(a, b)
-    darker = min(a, b)
-    return (lighter + 0.05) / (darker + 0.05)
-
-
-def _get_contrast_target(role: str) -> float:
-    if role == "headline":
-        return 3.0
-    return 4.5
-
-
-def _calculate_contrast_score(ratio: float) -> float:
-    return min(100.0, (ratio / 21.0) * 100.0)
-
-
-def _calculate_harmony_score(cand_rgb: tuple[float, float, float], bg_rgb: tuple[float, float, float]) -> float:
-    c_h, c_l, c_s = colorsys.rgb_to_hls(*[v/255.0 for v in cand_rgb])
-    b_h, b_l, b_s = colorsys.rgb_to_hls(*[v/255.0 for v in bg_rgb])
-    
-    hue_dist = min(abs(c_h - b_h), 1.0 - abs(c_h - b_h))
-    hue_score = max(0.0, (0.5 - hue_dist) * 200.0)
-    
-    sat_score = 100.0
-    if c_s > 0.7:
-        sat_score -= (c_s - 0.7) * 100.0
-        
-    return (hue_score * 0.7) + (sat_score * 0.3)
-
-
-def _calculate_brand_score(cand_rgb: tuple[float, float, float], primary_rgb: tuple[float, float, float], accent_rgb: tuple[float, float, float]) -> float:
-    dist_p = math.sqrt(sum((c - p)**2 for c, p in zip(cand_rgb, primary_rgb)))
-    dist_a = math.sqrt(sum((c - a)**2 for c, a in zip(cand_rgb, accent_rgb)))
-    best_dist = min(dist_p, dist_a)
-    return max(0.0, 100.0 * (1.0 - best_dist / 441.67))
-
-
-def _generate_tone_on_tone_candidate(bg_rgb: tuple[float, float, float], bg_lum: float, target_contrast: float) -> str | None:
-    r, g, b = [c / 255.0 for c in bg_rgb]
-    h, l, s = colorsys.rgb_to_hls(r, g, b)
-    
-    # Saturation 20% 감소
-    s = max(0.0, s * 0.8)
-    
-    # Lightness Adjustment Constraints
-    step = 0.05
-    w_ratio = _contrast_ratio(1.0, bg_lum)
-    b_ratio = _contrast_ratio(0.0, bg_lum)
-    direction = 1 if w_ratio > b_ratio else -1
-    
-    current_l = l
-    iterations = 0
-    max_iterations = 20
-    
-    while iterations < max_iterations:
-        current_l += direction * step
-        
-        # Stop when Lightness reaches 0.0 or 1.0
-        if current_l <= 0.0:
-            current_l = 0.0
-            r_out, g_out, b_out = colorsys.hls_to_rgb(h, current_l, s)
-            return f"#{int(r_out*255):02x}{int(g_out*255):02x}{int(b_out*255):02x}"
-        if current_l >= 1.0:
-            current_l = 1.0
-            r_out, g_out, b_out = colorsys.hls_to_rgb(h, current_l, s)
-            return f"#{int(r_out*255):02x}{int(g_out*255):02x}{int(b_out*255):02x}"
-            
-        r_out, g_out, b_out = colorsys.hls_to_rgb(h, current_l, s)
-        rgb_tuple = (r_out * 255.0, g_out * 255.0, b_out * 255.0)
-        text_lum = _relative_luminance(rgb_tuple)
-        ratio = _contrast_ratio(text_lum, bg_lum)
-        
-        # Stop immediately when Contrast Target is satisfied
-        if ratio >= target_contrast:
-            return f"#{int(r_out*255):02x}{int(g_out*255):02x}{int(b_out*255):02x}"
-            
-        iterations += 1
-        
-    return None

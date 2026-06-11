@@ -1,5 +1,5 @@
 # .PHONY는 파일 이름과 타겟 이름이 겹쳐서 충돌하는 것을 방지하는 방어막입니다.
-.PHONY: help up down logs shell sync lint rag-test test port gpu dev-api dev-bff dev-web ad-gen ad-answer ad-brief eval-compile eval-test eval-sample eval-run eval-query eval-nodes eval-gates eval-trend eval-cost eval-logs eval-delete eval-judge eval-pending eval-llm eval-vlm eval-human eval-human-pending eval-ensemble eval-calibrate
+.PHONY: help up orchestrator-gpu down logs shell sync lint rag-test test port gpu dev-api dev-bff dev-web ad-gen ad-answer ad-brief eval-compile eval-test eval-sample eval-sample-judge eval-run eval-query eval-nodes eval-gates eval-trend eval-cost eval-logs eval-delete eval-judge eval-pending eval-llm eval-vlm eval-human eval-human-pending eval-ensemble eval-calibrate eval-calibrate-vlm eval-notebook eval-notebook-down
 
 # JUDGE 기본값을 변수로 둠 — $(or ...)는 쉼표를 인자 구분자로 처리해 "llm,vlm"을 쪼개므로
 # 직접 쓸 수 없다. ?= 는 커맨드라인 JUDGE=... 지정 시 덮어쓰기 가능.
@@ -44,9 +44,12 @@ help:
 	@echo ""
 	@echo "  [eval — 2단계: ① LOG(생성+로깅, $$0)  ② JUDGE(LLM/VLM/Human, 실 과금)]"
 	@echo "  eval-compile : orchestrator/eval/ 모듈 컴파일 검사"
-	@echo "  eval-test    : ①LOG 시나리오 배치(117건) 생성+ops로깅+자동게이트. make eval-test [SCENARIO=all|relevant|edge|copymode|nsfw|<name>] [RENDER=premium_api|fast] [PLAN=premium|free]"
-	@echo "  eval-sample  : ①LOG 무작위 총 N건(카테고리별 ≥1). make eval-sample [N=10] [SCENARIO=all] [SEED=<int>] [RENDER=premium_api|fast] [PLAN=premium|free]"
-	@echo "               RENDER 기본=premium_api(실제 렌더), PLAN 기본=premium(실제 LLM 카피). \$$0 스모크는 RENDER=fast PLAN=free."
+	@echo "  eval-test    : ①LOG 시나리오 배치(117건) 생성+ops로깅+자동게이트."
+	@echo "               make eval-test [SCENARIO=all|relevant|edge|copymode|nsfw|<name>] [RENDER=premium_api|fast|balanced] [PLAN=free|economic|premium|internal_benchmark]"
+	@echo "  eval-sample  : ①LOG 무작위 총 N건(카테고리별 ≥1)."
+	@echo "               make eval-sample [N=10] [SEED=<int>] [SCENARIO=all|relevant|edge|copymode|nsfw|<name>] [RENDER=premium_api|fast|balanced] [PLAN=free|economic|premium|internal_benchmark]"
+	@echo "               RENDER: premium_api=gpt-image / fast=mock / balanced=로컬 SD3.5(자동). PLAN: free=결정론 폴백 / premium=실 GPT. \$$0 스모크=RENDER=fast PLAN=free."
+	@echo "  eval-sample-judge : ①LOG+②JUDGE 한 방. sample N건 로깅(auto 게이트 포함) 후 같은 N건 LLM+VLM 판정. 옵션은 eval-sample와 동일 + [JUDGE=llm,vlm]."
 	@echo "  eval-pending : ②JUDGE 핵심) 미채점 최근 N건 자동 LLM+VLM 판정(멱등). make eval-pending [N=10] [JUDGE=llm,vlm] [RETRY_FAILED=1]"
 	@echo "  eval-judge   : ②JUDGE 한 job LLM+VLM. make eval-judge JOB_ID=<id> [JUDGE=llm,vlm] [FORCE=1] [RETRY_FAILED=1]"
 	@echo "  eval-llm     : ②JUDGE 한 job LLM-as-Judge만(11항목). make eval-llm JOB_ID=<id>"
@@ -62,13 +65,22 @@ help:
 	@echo "  eval-cost    : job별 LLM 토큰/USD + T2I 이미지 비용 내역. make eval-cost JOB_ID=<id>"
 	@echo "  eval-logs    : job ops 로그 전체 직접 조회(노드/LLM/스키마/비용). make eval-logs JOB_ID=<id>"
 	@echo "  eval-delete  : 한 job 로그 완전 삭제(ops+eval DB+이미지). make eval-delete JOB_ID=<id>"
-	@echo "  eval-calibrate: human vs LLM 편차 분석 (보정 기준)"
+	@echo "  eval-calibrate: human vs LLM 편차 분석 (텍스트 항목 보정)"
+	@echo "  eval-calibrate-vlm: human vs VLM 편차 분석 (이미지 항목 III-6/IV-6~9 보정)"
+	@echo "  eval-notebook: DB 뷰어(JupyterLab+polars) 컨테이너 기동 + 접속 URL 출력. [EVAL_NOTEBOOK_PORT=8888]"
+	@echo "  eval-notebook-down: DB 뷰어 컨테이너 종료"
 
 # ── 🐳 [도커 인프라 제어] ───────────────────────────────────────────────────
 
 up:
 	# 팀원들의 리눅스 고유 UID를 낚아채서 포트 충돌 없이 컨테이너를 올립니다.
 	HOST_UID=$$(id -u) docker compose up -d --build
+
+orchestrator-gpu:
+	# orchestrator를 GPU 이미지(Dockerfile.gpu: torch/diffusers 베이크)로 재빌드+기동.
+	# SD3.5 로컬 렌더(RENDER=balanced)가 컨테이너 재생성 후에도 동작(런타임 uv sync 불필요).
+	# 최초 빌드는 ~2.5GB 다운로드로 느림. 일반 작업은 make up(경량 Dockerfile).
+	HOST_UID=$$(id -u) ORCH_DOCKERFILE=Dockerfile.gpu docker compose up -d --build orchestrator
 
 down:
 	# 프로젝트를 내릴 때 깔끔하게 정리합니다.
@@ -188,11 +200,17 @@ eval-test:
 	# 시나리오 테스트셋(scenarios.json, 117건=relevant 50+edge 50+copymode 9+nsfw 8)을 일괄 실행.
 	# 각 케이스: start → HITL 자동응답 → 카피선택/커스텀입력 → 최종이미지 → auto/llm/vlm eval → 앙상블.
 	# tracked 그래프를 in-process로 돌려 ops DB 기록 보장(API는 untracked, fix.md #5).
-	# SCENARIO 기본 all (all|relevant|edge|copymode|<name>). LLM_ENABLE_API_CALL=true 면 llm/vlm 포함.
-	# RENDER 기본=premium_api(실제 렌더). 모든 케이스 render_profile override. $0 스모크는 RENDER=fast(mock 더미 PNG, VLM/Human 무의미).
-	# PLAN 기본=premium(실제 GPT-5.4 카피). PLAN=free 면 결정론적 폴백 카피만(LLM 미사용).
-	# 사용법: make eval-test  /  make eval-test SCENARIO=relevant  /  make eval-test SCENARIO=edge RENDER=fast PLAN=free
-	HOST_UID=$$(id -u) docker compose exec -e EVAL_RENDER_PROFILE=$(RENDER) -e EVAL_USER_PLAN=$(PLAN) orchestrator \
+	# LLM_ENABLE_API_CALL=true 면 llm/vlm 포함. 모든 케이스 render_profile override.
+	# ── 옵션(전부 선택, 미지정 시 기본값) ──
+	#   SCENARIO=all | relevant | edge | copymode | nsfw | <시나리오명>     (기본 all)
+	#   RENDER=premium_api | fast | balanced                               (기본 premium_api; balanced=로컬 SD3.5 자동 활성)
+	#   PLAN=free | economic | premium | internal_benchmark                (기본 premium)
+	#                       free=로컬 Gemma4 E4B 자동 활성(EASYADS_FREE_USE_LOCAL=1; .env에 BASE_URL/MODEL 필요) / premium=GPT-5.4
+	# 사용법: make eval-test
+	#         make eval-test SCENARIO=relevant
+	#         make eval-test SCENARIO=edge RENDER=fast PLAN=free   ($0 스모크)
+	#         make eval-test SCENARIO=all RENDER=balanced          (실 SD3.5)
+	HOST_UID=$$(id -u) docker compose exec -e EVAL_RENDER_PROFILE=$(RENDER) -e EVAL_USER_PLAN=$(PLAN) -e EASYADS_ENABLE_SD35_LOCAL=$(if $(filter balanced,$(RENDER)),true,false) -e EASYADS_FREE_USE_LOCAL=$(if $(filter free,$(PLAN)),1,0) -e EASYADS_SD35_RELEASE_AFTER_RENDER=$(if $(and $(filter free,$(PLAN)),$(filter balanced,$(RENDER))),1,0) -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True orchestrator \
 	  uv run python -m orchestrator.eval.scenario $(or $(SCENARIO),all)
 
 eval-sample:
@@ -201,10 +219,29 @@ eval-sample:
 	# SCENARIO=all(기본) → 전 카테고리 합산 총 N건(각 ≥1). SCENARIO=nsfw 등으로 한 카테고리만도 가능.
 	# RENDER 기본=premium_api(실제 렌더). $0 스모크는 RENDER=fast(mock 더미 PNG).
 	# PLAN 기본=premium(실제 GPT-5.4 카피). $0+LLM미사용 스모크는 RENDER=fast PLAN=free.
-	# 사용법: make eval-sample  /  make eval-sample N=4 RENDER=fast PLAN=free  /  make eval-sample N=10 SEED=42 SCENARIO=all
-	# 실 SD3.5 로컬 렌더: RENDER=balanced SD35=true (T5-drop+device_map, 768²로 클램프, ~23GB VRAM). expandable_segments는 단편화 완화.
-	HOST_UID=$$(id -u) docker compose exec -e EVAL_RENDER_PROFILE=$(RENDER) -e EVAL_USER_PLAN=$(PLAN) -e EVAL_SAMPLE_N=$(or $(N),10) -e EVAL_SAMPLE_SEED=$(SEED) -e EASYADS_ENABLE_SD35_LOCAL=$(or $(SD35),false) -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True orchestrator \
+	# ── 옵션(전부 선택, 미지정 시 위 기본값) ──
+	#   N=<정수>          추출 건수 (기본 10)
+	#   SEED=<정수>       난수 시드 — 지정 시 재현 가능 (미지정=매번 랜덤)
+	#   SCENARIO=all | relevant | edge | copymode | nsfw | <시나리오명>     (기본 all)
+	#   RENDER=premium_api | fast | balanced                               (기본 premium_api)
+	#                       premium_api=gpt-image / fast=mock 더미 / balanced=로컬 SD3.5(자동 활성, T5-drop 768² ~23GB VRAM)
+	#   PLAN=free | economic | premium | internal_benchmark                (기본 premium)
+	#                       free=로컬 Gemma4 E4B 자동 활성(EASYADS_FREE_USE_LOCAL=1; .env에 BASE_URL/MODEL 필요) / premium=GPT-5.4
+	# 사용법: make eval-sample
+	#         make eval-sample N=4 RENDER=fast PLAN=free          ($0 스모크)
+	#         make eval-sample N=10 SEED=42 SCENARIO=nsfw         (재현·카테고리 한정)
+	#         make eval-sample RENDER=balanced                    (실 SD3.5 로컬 렌더 — SD35 플래그 불필요)
+	HOST_UID=$$(id -u) docker compose exec -e EVAL_RENDER_PROFILE=$(RENDER) -e EVAL_USER_PLAN=$(PLAN) -e EVAL_SAMPLE_N=$(or $(N),10) -e EVAL_SAMPLE_SEED=$(SEED) -e EASYADS_ENABLE_SD35_LOCAL=$(if $(filter balanced,$(RENDER)),true,false) -e EASYADS_FREE_USE_LOCAL=$(if $(filter free,$(PLAN)),1,0) -e EASYADS_SD35_RELEASE_AFTER_RENDER=$(if $(and $(filter free,$(PLAN)),$(filter balanced,$(RENDER))),1,0) -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True orchestrator \
 	  uv run python -m orchestrator.eval.scenario $(or $(SCENARIO),all)
+
+eval-sample-judge:
+	# [①LOG + ②JUDGE 한 방] sample로 N건 로깅(auto 게이트 $0 포함) → 같은 N건 LLM+VLM 판정(eval-pending).
+	# eval-sample은 이미 auto 게이트를 인라인 실행하므로 eval-run 따로 필요 없음. 유료 판정만 이어 붙임.
+	# 옵션은 eval-sample와 동일(N/SEED/SCENARIO/RENDER/PLAN) + JUDGE(기본 llm,vlm). LLM_ENABLE_API_CALL=true 필요(JUDGE 단계 실 과금).
+	# 사용법: make eval-sample-judge N=4 RENDER=fast PLAN=premium
+	#         make eval-sample-judge N=10 SCENARIO=relevant RENDER=balanced
+	$(MAKE) eval-sample N=$(or $(N),10) SEED=$(SEED) SCENARIO=$(SCENARIO) RENDER=$(RENDER) PLAN=$(PLAN)
+	$(MAKE) eval-pending N=$(or $(N),10) JUDGE=$(JUDGE)
 
 eval-run:
 	# 이미 로깅된 job에 자동 게이트 5종 + 점수 산출. JOB_ID만 필수(thread_id 자동 해석).
@@ -373,3 +410,36 @@ eval-calibrate:
 	   WHERE si_h.evaluator_type='human' AND si_l.evaluator_type='llm' \
 	   GROUP BY si_h.item_id \
 	   ORDER BY ABS(AVG(si_h.score - si_l.score)) DESC"
+
+eval-calibrate-vlm:
+	# human vs VLM 채점 편차 분석 — 이미지 항목(III-6/IV-6~IV-9) 보정용. 편차 >1.0면 VLM 프롬프트 수정.
+	# IV-6(텍스트 환각)은 TLFP 핵심 — VLM이 false-negative(글자 있는데 '없음')면 음(-)편차로 드러남.
+	sqlite3 /home/records/easyads_eval.db \
+	  "SELECT si_h.item_id, \
+	          printf('%.2f', AVG(si_h.score - si_v.score)) AS avg_bias, \
+	          COUNT(*) AS samples \
+	   FROM score_items si_h \
+	   JOIN score_items si_v ON si_h.eval_id=si_v.eval_id AND si_h.item_id=si_v.item_id \
+	   WHERE si_h.evaluator_type='human' AND si_v.evaluator_type='vlm' \
+	   GROUP BY si_h.item_id \
+	   ORDER BY ABS(AVG(si_h.score - si_v.score)) DESC"
+
+# ── 📓 [eval DB 뷰어 — JupyterLab + polars] ──────────────────────────────────
+
+eval-notebook:
+	# DB 뷰어 컨테이너(JupyterLab+polars) 빌드+기동 후 접속 URL/토큰 출력.
+	# GPU 불필요 경량 이미지(Dockerfile.eval). 읽기 전용 SELECT 뷰어지만 컨테이너 root라 쓰기도 가능.
+	# 노트북: orchestrator/eval/eval.ipynb. records는 /app/records로 마운트(호스트 /home/records).
+	# 포트 충돌 시: make eval-notebook EVAL_NOTEBOOK_PORT=18888
+	HOST_UID=$$(id -u) docker compose --profile eval up -d --build eval
+	@sleep 3
+	@echo "── JupyterLab 접속 URL(토큰 포함) ──"
+	@HOST_UID=$$(id -u) docker compose --profile eval exec eval jupyter lab list 2>/dev/null \
+	  | sed "s#http://[^:]*:8888#http://127.0.0.1:$(or $(EVAL_NOTEBOOK_PORT),8888)#" \
+	  || echo "기동 중… 잠시 후: HOST_UID=$$(id -u) docker compose --profile eval exec eval jupyter lab list"
+	@echo "→ 브라우저에서 위 URL 열고 orchestrator/eval/eval.ipynb 실행. 종료: make eval-notebook-down"
+
+eval-notebook-down:
+	# DB 뷰어 컨테이너만 종료(orchestrator 등 다른 서비스는 안 건드림).
+	HOST_UID=$$(id -u) docker compose --profile eval stop eval
+	HOST_UID=$$(id -u) docker compose --profile eval rm -f eval

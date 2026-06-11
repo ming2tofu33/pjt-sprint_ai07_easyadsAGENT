@@ -66,13 +66,17 @@ dev = [
 [project.optional-dependencies]
 gpu-cu118 = [
     "torch==2.7.1",
-    "diffusers==0.32.2",
-    "transformers==4.46.3",
-    "accelerate",
-    "safetensors==0.7.0",
-    "huggingface_hub",
-    "sentencepiece",
-    "protobuf",
+    "torchvision==0.22.1",
+    "torchaudio==2.7.1",
+
+    "diffusers",
+    "transformers==5.10.2",
+    "accelerate==1.13.0",
+    "huggingface-hub==1.18.0",
+
+    "safetensors==0.8.0rc1",
+    "sentencepiece==0.2.1",
+    "protobuf==6.33.6",
 ]
 
 [tool.uv]
@@ -82,8 +86,21 @@ package = false
 torch = [
     { index = "pytorch-cu118", extra = "gpu-cu118" },
 ]
+torchvision = [
+    { index = "pytorch-cu118", extra = "gpu-cu118" },
+]
+torchaudio = [
+    { index = "pytorch-cu118", extra = "gpu-cu118" },
+]
+diffusers = { git = "https://github.com/huggingface/diffusers.git", rev = "41875e08abc13e27c43620d6a9742e72646310e8" }
 
 [[tool.uv.index]]
 name = "pytorch-cu118"
 url = "https://download.pytorch.org/whl/cu118"
 explicit = true
+
+[tool.pytest.ini_options]
+# Always isolate tests from .env / docs/api_key.env (real key sets enable_api_call=true,
+# breaking disabled-path tests). Plugin lives in eval/ to avoid git-pull conflict with
+# develop's tests/conftest.py. Makefile passes the same -p explicitly.
+addopts = "-p orchestrator.eval.dotenv_isolation"

@@ -19,10 +19,10 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { buildBrandKitHref } from "@/lib/brand-kit-navigation";
-import { brandKitMeta, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
+import { brandKitFromServerResponse, brandKitMeta, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
 import { buildLoginHref } from "@/lib/auth-navigation";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
-import { listArchiveItems } from "@/lib/api-client";
+import { getCurrentBrandKit, listArchiveItems } from "@/lib/api-client";
 import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
 import { buildMyHref } from "@/lib/my-navigation";
 import { buildNotificationHref } from "@/lib/notification-navigation";
@@ -50,6 +50,19 @@ export function MyPageStep() {
         setIsArchiveCountLoading(false);
         return;
       }
+
+      // Server brand kit is the source of truth for signed-in users; local
+      // storage is only a fallback for offline/unsynced devices.
+      void getCurrentBrandKit({ userId: access.profile.id })
+        .then((payload) => {
+          const serverBrandKit = brandKitFromServerResponse(payload);
+          if (serverBrandKit) {
+            setBrandKit(serverBrandKit);
+          }
+        })
+        .catch(() => {
+          // Keep the local fallback already set above.
+        });
 
       setIsArchiveCountLoading(true);
       void listArchiveItems({ limit: 1 })
