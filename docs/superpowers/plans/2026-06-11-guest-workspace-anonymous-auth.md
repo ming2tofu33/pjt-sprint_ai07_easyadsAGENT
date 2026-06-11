@@ -16,6 +16,7 @@ Completed on 2026-06-11 on branch `fix/srv/compliance-hitl-contract`.
 - Linked guest sessions to Google with `linkIdentity({ provider: "google" })` so the Supabase `user.id` and guest workspace continue after login.
 - Treated Supabase anonymous users as guests in the app profile/account UI.
 - Forwarded trusted BFF principal metadata to orchestrator for generation, archive, asset, and chat workspace APIs.
+- Preserved guest account type on generation read/resume paths and the legacy Next orchestrator proxy.
 - Hardened admin routes so anonymous Supabase sessions are rejected for admin reference APIs.
 - Updated orchestrator workspace creation so explicit `guest` creates guest metadata, explicit `user` promotes guest/legacy workspaces, and omitted account type preserves an existing workspace source.
 - Documented required Supabase Anonymous Sign-Ins configuration and production fallback guidance.
@@ -23,7 +24,7 @@ Completed on 2026-06-11 on branch `fix/srv/compliance-hitl-contract`.
 Final verification:
 
 ```bash
-npm --prefix apps/web run test -- api-client.test.ts user-profile.test.ts LoginClient.test.tsx lib/supabase/session.test.ts
+npm --prefix apps/web run test -- api-client.test.ts user-profile.test.ts LoginClient.test.tsx lib/supabase/session.test.ts app/api/_proxy/orchestrator.test.ts
 npm --prefix apps/bff run test -- generate.test.js
 PYTHONPATH=. ./.venv/bin/pytest orchestrator/tests/test_workspaces_repository.py orchestrator/tests/test_generation_job_service_db_backend.py orchestrator/tests/test_api_generation_jobs_workspace_scope.py orchestrator/tests/test_chat_thread_service.py orchestrator/tests/test_workspace_account_type_propagation.py -q
 PYTHONPATH=. ./.venv/bin/pytest orchestrator/tests/test_api_generation_outputs_router.py orchestrator/tests/test_api_usage_summary.py orchestrator/tests/test_validation_feedback_api.py orchestrator/tests/test_regeneration_api.py -q
@@ -1187,7 +1188,7 @@ git commit -m "docs: document anonymous guest workspace setup"
 - [x] **Step 1: Run web tests**
 
 ```bash
-npm --prefix apps/web run test -- api-client.test.ts user-profile.test.ts LoginClient.test.tsx lib/supabase/session.test.ts
+npm --prefix apps/web run test -- api-client.test.ts user-profile.test.ts LoginClient.test.tsx lib/supabase/session.test.ts app/api/_proxy/orchestrator.test.ts
 ```
 
 Expected: selected web tests pass.

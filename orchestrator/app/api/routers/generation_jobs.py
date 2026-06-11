@@ -169,7 +169,11 @@ def get_generation_job_route(
         resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
         if not resolved_workspace_id and not resolved_user_id:
             resolved_workspace_id, resolved_user_id = resolve_generation_job_scope_from_existing_job(job_id)
-        resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
+        resolved_workspace_id = resolve_scoped_workspace_id(
+            resolved_workspace_id,
+            resolved_user_id,
+            account_type=principal.account_type,
+        )
         job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     except GenerationJobError as exc:
         raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)
@@ -194,7 +198,11 @@ def answer_generation_job_route(
         resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
         if not resolved_workspace_id and not resolved_user_id:
             resolved_workspace_id, resolved_user_id = resolve_generation_job_scope_from_existing_job(job_id)
-        resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
+        resolved_workspace_id = resolve_scoped_workspace_id(
+            resolved_workspace_id,
+            resolved_user_id,
+            account_type=principal.account_type,
+        )
         job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     except GenerationJobError as exc:
         raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)

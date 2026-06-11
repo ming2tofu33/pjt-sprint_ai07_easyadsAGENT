@@ -1152,7 +1152,7 @@ def _use_postgres_backend() -> bool:
     return db_settings.get_db_backend() == "postgres"
 
 
-def resolve_scoped_workspace_id(workspace_id: str | None, user_id: str | None) -> str:
+def resolve_scoped_workspace_id(workspace_id: str | None, user_id: str | None, account_type: str | None = None) -> str:
     """Resolve a concrete workspace id for scoped (public) job access.
 
     HITL polling/answer only carry the authenticated user (no explicit
@@ -1172,7 +1172,11 @@ def resolve_scoped_workspace_id(workspace_id: str | None, user_id: str | None) -
         return "mem_workspace"
     if resolved_user_id:
         with db_transaction() as conn:
-            workspace = workspace_repo.ensure_user_workspace(user_id=resolved_user_id, connection=conn)
+            workspace = workspace_repo.ensure_user_workspace(
+                user_id=resolved_user_id,
+                account_type=account_type,
+                connection=conn,
+            )
         return str(workspace["id"])
     with db_transaction() as conn:
         workspace = workspace_repo.ensure_demo_workspace(user_id=db_settings.get_demo_user_id(), connection=conn)
