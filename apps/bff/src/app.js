@@ -353,11 +353,11 @@ async function resolveSupabaseUserId(args) {
 }
 
 async function requireSupabaseUserId(args) {
-  const userId = await resolveSupabaseUserId(args);
-  if (!userId) {
+  const principal = await resolveSupabasePrincipal(args);
+  if (!principal?.userId || principal.accountType === "guest") {
     throw createHttpError(401, "admin session required");
   }
-  return userId;
+  return principal.userId;
 }
 
 function extensionForMimeType(mimeType) {

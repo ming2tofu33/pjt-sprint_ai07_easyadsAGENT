@@ -73,9 +73,10 @@ def _workspace_source_for_account_type(account_type: str | None) -> str:
     return "supabase_guest" if account_type == "guest" else "supabase_auth"
 
 
-def ensure_user_workspace(user_id: str, account_type: str = "user", connection: object | None = None) -> dict:
-    target_source = _workspace_source_for_account_type(account_type)
-    target_account_type = "guest" if account_type == "guest" else "user"
+def ensure_user_workspace(user_id: str, account_type: str | None = None, connection: object | None = None) -> dict:
+    requested_account_type = account_type if account_type in {"guest", "user"} else None
+    target_source = _workspace_source_for_account_type(requested_account_type)
+    target_account_type = "guest" if requested_account_type == "guest" else "user"
     target_name = "Guest Workspace" if target_account_type == "guest" else "User Workspace"
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
@@ -105,6 +106,8 @@ def ensure_user_workspace(user_id: str, account_type: str = "user", connection: 
             )
             existing = cur.fetchone()
             if existing:
+                if requested_account_type is None:
+                    return existing
                 metadata = existing.get("metadata") if isinstance(existing.get("metadata"), dict) else {}
                 existing_source = metadata.get("source")
                 if existing_source == target_source:

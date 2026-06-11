@@ -42,6 +42,41 @@ describe("supabase session helper", () => {
     expect(signInAnonymously).toHaveBeenCalledTimes(1);
   });
 
+  it("shares one anonymous Supabase sign-in across concurrent token requests", async () => {
+    let finishSignIn: (() => void) | undefined;
+    const signInStarted = new Promise<void>((resolve) => {
+      finishSignIn = resolve;
+    });
+    const getSession = vi.fn(async () => ({ data: { session: null } }));
+    const signInAnonymously = vi.fn(async () => {
+      await signInStarted;
+      return {
+        data: { session: { access_token: "anon_access_token_1" } },
+        error: null
+      };
+    });
+    vi.doMock("./browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession,
+          signInAnonymously
+        }
+      })
+    }));
+    const { getSupabaseAccessToken } = await import("./session");
+
+    const firstTokenPromise = getSupabaseAccessToken();
+    await vi.waitFor(() => expect(signInAnonymously).toHaveBeenCalledTimes(1));
+    const secondTokenPromise = getSupabaseAccessToken();
+    await vi.waitFor(() => expect(getSession).toHaveBeenCalledTimes(2));
+    finishSignIn?.();
+    const [firstToken, secondToken] = await Promise.all([firstTokenPromise, secondTokenPromise]);
+
+    expect(firstToken).toBe("anon_access_token_1");
+    expect(secondToken).toBe("anon_access_token_1");
+    expect(signInAnonymously).toHaveBeenCalledTimes(1);
+  });
+
   it("throws when anonymous Supabase session creation returns an auth error", async () => {
     vi.doMock("./browser", () => ({
       createSupabaseBrowserClient: () => ({

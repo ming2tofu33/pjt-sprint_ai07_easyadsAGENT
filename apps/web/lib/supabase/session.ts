@@ -20,30 +20,18 @@ function sessionToken(session: Session | null | undefined): string | null {
   return typeof token === "string" && token.trim() ? token : null;
 }
 
-export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptions = {}): Promise<string | null> {
-  if (typeof window === "undefined") {
-    return null;
-  }
+let anonymousSignInPromise: Promise<string> | null = null;
 
-  const { createSupabaseBrowserClient } = await import("./browser");
-  const supabase = createSupabaseBrowserClient();
-  if (!supabase) {
-    return null;
-  }
+function clearAnonymousSignInPromiseAfterCurrentTick(promise: Promise<string>) {
+  setTimeout(() => {
+    if (anonymousSignInPromise === promise) {
+      anonymousSignInPromise = null;
+    }
+  }, 0);
+}
 
-  const {
-    data: { session }
-  } = await supabase.auth.getSession();
-  const currentToken = sessionToken(session);
-  if (currentToken) {
-    return currentToken;
-  }
-
-  if (options.allowAnonymous === false) {
-    return null;
-  }
-
-  if (typeof supabase.auth.signInAnonymously !== "function") {
+async function createAnonymousAccessToken(supabase: ReturnType<typeof import("./browser").createSupabaseBrowserClient>) {
+  if (!supabase || typeof supabase.auth.signInAnonymously !== "function") {
     throw new SupabaseGuestSessionError();
   }
 
@@ -71,6 +59,39 @@ export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptio
     throw new SupabaseGuestSessionError();
   }
   return guestToken;
+}
+
+export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptions = {}): Promise<string | null> {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const { createSupabaseBrowserClient } = await import("./browser");
+  const supabase = createSupabaseBrowserClient();
+  if (!supabase) {
+    return null;
+  }
+
+  const {
+    data: { session }
+  } = await supabase.auth.getSession();
+  const currentToken = sessionToken(session);
+  if (currentToken) {
+    return currentToken;
+  }
+
+  if (options.allowAnonymous === false) {
+    return null;
+  }
+
+  const signInPromise =
+    anonymousSignInPromise ?? (anonymousSignInPromise = createAnonymousAccessToken(supabase));
+
+  try {
+    return await signInPromise;
+  } finally {
+    clearAnonymousSignInPromiseAfterCurrentTick(signInPromise);
+  }
 }
 
 export async function getSupabaseAuthorizationHeader(

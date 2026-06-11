@@ -184,6 +184,34 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("rejects anonymous Supabase sessions for admin reference creation", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_user_1", is_anonymous: true });
+      }
+      return jsonResponse({ success: true });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/admin/references",
+      headers: { authorization: "Bearer anon_access_token_1" },
+      payload: { assetId: "asset_abc", title: "관리자 샘플", category: "cafe", businessTypes: ["cafe"] }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][0]).toBe("https://supabase.example.com/auth/v1/user");
+    expect(fetchImpl.mock.calls.some(([url]) => String(url).includes("/api/v1/admin/references"))).toBe(false);
+    await app.close();
+  });
+
   it("proxies archive item saves with normalized payload fields", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse(

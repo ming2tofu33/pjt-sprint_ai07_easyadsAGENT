@@ -40,7 +40,7 @@ def test_ensure_user_workspace_promotes_legacy_fallback_workspace(monkeypatch):
     conn = FakeConnection([legacy_row, normalized_row])
     monkeypatch.setattr(repo, "db_transaction", fake_transaction)
 
-    workspace = repo.ensure_user_workspace("user_uuid_1", connection=conn)
+    workspace = repo.ensure_user_workspace("user_uuid_1", account_type="user", connection=conn)
 
     lock_sql, lock_params = conn.cursor_obj.calls[0]
     select_sql, select_params = conn.cursor_obj.calls[1]
@@ -67,6 +67,17 @@ def test_ensure_user_workspace_reuses_existing_supabase_workspace(monkeypatch):
 
     assert len(conn.cursor_obj.calls) == 2
     assert workspace == existing_row
+
+
+def test_ensure_user_workspace_preserves_existing_guest_when_account_type_omitted(monkeypatch):
+    guest_row = {"id": "workspace_guest", "metadata": {"source": "supabase_guest", "account_type": "guest"}}
+    conn = FakeConnection([guest_row])
+    monkeypatch.setattr(repo, "db_transaction", fake_transaction)
+
+    workspace = repo.ensure_user_workspace("guest_uuid_1", connection=conn)
+
+    assert len(conn.cursor_obj.calls) == 2
+    assert workspace == guest_row
 
 
 def test_ensure_user_workspace_creates_guest_workspace(monkeypatch):
@@ -102,3 +113,14 @@ def test_ensure_user_workspace_promotes_guest_workspace_to_user(monkeypatch):
     assert update_params[0] == "User Workspace"
     assert update_params[2] == "workspace_guest"
     assert workspace == promoted_row
+
+
+def test_ensure_user_workspace_guest_account_does_not_downgrade_user_workspace(monkeypatch):
+    user_row = {"id": "workspace_user", "metadata": {"source": "supabase_auth", "account_type": "user"}}
+    conn = FakeConnection([user_row])
+    monkeypatch.setattr(repo, "db_transaction", fake_transaction)
+
+    workspace = repo.ensure_user_workspace("user_uuid_1", account_type="guest", connection=conn)
+
+    assert len(conn.cursor_obj.calls) == 2
+    assert workspace == user_row
