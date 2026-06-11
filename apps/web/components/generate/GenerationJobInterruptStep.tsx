@@ -58,6 +58,21 @@ function severityLabel(severity: string | null | undefined): string {
   return "확인";
 }
 
+function candidateComplianceSeverity(status: string | null | undefined): string {
+  return status === "blocked" ? "block" : status || "warn";
+}
+
+function candidateComplianceLabel(status: string | null | undefined): string {
+  if (status === "blocked" || status === "block") return "게시 차단";
+  if (status === "evidence_required") return "근거 필요";
+  if (status === "warn") return "주의";
+  return "규제 확인";
+}
+
+function shouldShowCandidateCompliance(status: string | null | undefined): boolean {
+  return Boolean(status && status !== "pass");
+}
+
 function ComplianceFinding({ finding }: { finding: ComplianceFindingFE }) {
   const severity = finding.severity ?? "warn";
   const displayReason = finding.hitl_question ?? finding.reason;
@@ -150,19 +165,34 @@ export function GenerationJobInterruptStep({
             {interrupt.candidates.map((candidate, index) => {
               const recommended = candidate.id === interrupt.recommendedCandidateId;
               const copyDetail = [candidate.subcopy, candidate.cta].filter(Boolean).join(" · ");
+              const compliance = candidate.metadata?.compliance ?? null;
+              const complianceStatus = compliance?.status ?? null;
+              const complianceDisabled = Boolean(compliance?.disabled);
+              const findingCount = typeof compliance?.finding_count === "number" ? compliance.finding_count : null;
               return (
                 <button
                   key={candidate.id}
                   type="button"
                   className={`${styles.copyCard} ${recommended ? styles.copyCardSelected : ""}`}
                   aria-label={`${candidate.headline} 선택`}
-                  disabled={isLoading}
+                  disabled={isLoading || complianceDisabled}
                   onClick={() => onSelectCopyCandidate({ selectedCopyId: candidate.id, label: candidate.headline })}
                 >
                   <span className={styles.copyNumber}>{index + 1}</span>
                   <span className={styles.copyContent}>
                     <span>{candidate.headline}</span>
                     {copyDetail ? <small>{copyDetail}</small> : recommended ? <small>추천</small> : null}
+                    {shouldShowCandidateCompliance(complianceStatus) ? (
+                      <span className={styles.candidateComplianceLine}>
+                        <span
+                          className={styles.severityBadge}
+                          data-severity={candidateComplianceSeverity(complianceStatus)}
+                        >
+                          {candidateComplianceLabel(complianceStatus)}
+                        </span>
+                        {findingCount ? <small>규제 표현 {findingCount}건</small> : null}
+                      </span>
+                    ) : null}
                   </span>
                   {recommended ? <Check size={19} aria-hidden="true" /> : <span />}
                 </button>

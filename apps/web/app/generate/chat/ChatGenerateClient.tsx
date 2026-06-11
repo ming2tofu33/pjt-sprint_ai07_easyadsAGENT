@@ -1872,12 +1872,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
-    if (action.id === "cancel") {
-      setGenerationStage("brief");
-      dispatch({ type: "back" });
-      return;
-    }
-
     dispatch({ type: "submitGenerationJobAnswer", label: action.label });
 
     try {

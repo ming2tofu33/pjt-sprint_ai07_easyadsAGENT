@@ -27,6 +27,7 @@ from orchestrator.app.generation_jobs.service import (
     maybe_mark_stale_generation_job_failed,
     maybe_poll_generation_job_from_modal,
     maybe_submit_generation_job_to_modal,
+    resolve_generation_job_scope_from_existing_job,
     resolve_scoped_workspace_id,
     should_route_generation_job_to_modal,
 )
@@ -151,6 +152,8 @@ def get_generation_job_route(
     from orchestrator.app.generation_jobs.errors import GenerationJobError
     try:
         resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
+        if not resolved_workspace_id and not resolved_user_id:
+            resolved_workspace_id, resolved_user_id = resolve_generation_job_scope_from_existing_job(job_id)
         resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
         job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     except GenerationJobError as exc:
@@ -174,6 +177,8 @@ def answer_generation_job_route(
     from orchestrator.app.generation_jobs.errors import GenerationJobError
     try:
         resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
+        if not resolved_workspace_id and not resolved_user_id:
+            resolved_workspace_id, resolved_user_id = resolve_generation_job_scope_from_existing_job(job_id)
         resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
         job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     except GenerationJobError as exc:

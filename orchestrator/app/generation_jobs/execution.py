@@ -451,6 +451,8 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
                 result_state=result_state,
                 changed_fields=changed_fields,
                 assistant_message=msg_content,
+                workspace_id=workspace_id,
+                user_id=job.user_id,
             )
             return updated or job
 
@@ -565,6 +567,8 @@ def resume_generation_job_graph(
                 result_state=result_state,
                 changed_fields=changed_fields,
                 assistant_message=assistant_message,
+                workspace_id=workspace_id,
+                user_id=user_id,
             )
             return updated or job
 

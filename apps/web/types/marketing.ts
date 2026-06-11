@@ -47,12 +47,22 @@ export type ToneOption = {
   icon: "heart" | "leaf" | "diamond" | "smile" | "sparkles" | "star";
 };
 
+export type CopyComplianceBadge = {
+  status?: string | null;
+  finding_count?: number | null;
+  disabled?: boolean | null;
+};
+
 export type CopyOption = {
   id: string;
   headline: string;
   subcopy?: string | null;
   cta?: string | null;
   selectedByDefault?: boolean;
+  metadata?: {
+    compliance?: CopyComplianceBadge | null;
+    [key: string]: unknown;
+  } | null;
 };
 
 export type CopyCandidateSource = "empty" | "sample" | "backend";

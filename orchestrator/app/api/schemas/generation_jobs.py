@@ -127,6 +127,7 @@ class GenerationJobAnswerRequest(BaseModel):
     selected_copy_id: str | None = Field(default=None, alias="selectedCopyId")
     user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
     user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
+    action: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 
     def to_resume_payload(self, *, job_id: str, thread_id: str) -> dict[str, Any]:
@@ -148,6 +149,8 @@ class GenerationJobAnswerRequest(BaseModel):
             resume_payload["user_custom_headline"] = self.user_custom_headline
         if self.user_custom_subcopy:
             resume_payload["user_custom_subcopy"] = self.user_custom_subcopy
+        if self.action:
+            resume_payload["action"] = self.action
         resume_payload.update(self.payload)
         return resume_payload
 

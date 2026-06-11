@@ -216,7 +216,17 @@ export interface GenerationProgress {
 export type ResultQualityDecision = "pass" | "manual_review" | "unavailable" | "retry_image" | "retry_layout" | "reject" | string;
 
 export type ResultCompliancePayload = {
-  status?: "pass" | "rewritten" | "blocked" | "needs_review" | string;
+  status?:
+    | "pass"
+    | "rewritten"
+    | "rewritten_by_user_choice"
+    | "blocked"
+    | "block"
+    | "needs_review"
+    | "manual_review_required"
+    | "evidence_required"
+    | "warn"
+    | string;
   summary?: string | null;
   findings?: unknown[];
 };

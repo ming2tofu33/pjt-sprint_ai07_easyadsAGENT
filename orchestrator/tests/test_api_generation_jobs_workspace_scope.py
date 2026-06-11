@@ -33,6 +33,51 @@ def test_generation_job_get_route_does_not_trust_query_user_id(monkeypatch):
     assert captured == {"workspace_id": WORKSPACE_A, "user_id": None}
 
 
+def test_generation_job_get_route_recovers_scope_from_existing_job_without_header(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false")
+    captured = {}
+    stale_scope = {}
+    modal_scope = {}
+    job = GenerationJobResponse(
+        job_id="job_polling",
+        thread_id="thread_polling",
+        user_id="user_a",
+        status="waiting_user_input",
+        progress=GenerationProgress(progress_percent=50, current_stage="waiting_user_input", stage_order=[]),
+        created_at="2026-06-09T00:00:00+00:00",
+        updated_at="2026-06-09T00:00:00+00:00",
+        metadata={},
+    )
+
+    def fake_get_generation_job(job_id, *, workspace_id=None, user_id=None):
+        captured.update({"job_id": job_id, "workspace_id": workspace_id, "user_id": user_id})
+        return job
+
+    def fake_mark_stale(current_job, **kwargs):
+        stale_scope.update(kwargs)
+        return current_job
+
+    def fake_poll_modal(current_job, **kwargs):
+        modal_scope.update(kwargs)
+        return current_job
+
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.resolve_generation_job_scope_from_existing_job",
+        lambda job_id: (WORKSPACE_A, "user_a"),
+    )
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_mark_stale_generation_job_failed", fake_mark_stale)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_poll_generation_job_from_modal", fake_poll_modal)
+
+    response = TestClient(create_app()).get("/api/v1/generation-jobs/job_polling")
+
+    assert response.status_code == 200
+    assert captured == {"job_id": "job_polling", "workspace_id": WORKSPACE_A, "user_id": "user_a"}
+    assert stale_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
+    assert modal_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
+
+
 def test_generation_job_get_route_passes_workspace_scope(monkeypatch):
     reset_generation_job_store_for_tests()
     captured = {}
@@ -126,3 +171,51 @@ def test_generation_job_answer_route_passes_workspace_scope(monkeypatch):
 
     assert response.status_code == 200
     assert captured == {"job_id": "job_waiting", "workspace_id": WORKSPACE_A, "user_id": "user_a"}
+
+
+def test_generation_job_answer_route_recovers_scope_from_existing_job_without_header(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false")
+    captured = {}
+    running_scope = {}
+    resume_scope = {}
+    job = GenerationJobResponse(
+        job_id="job_waiting",
+        thread_id="thread_waiting",
+        user_id="user_a",
+        status="waiting_user_input",
+        progress=GenerationProgress(progress_percent=50, current_stage="waiting_user_input", stage_order=[]),
+        created_at="2026-06-09T00:00:00+00:00",
+        updated_at="2026-06-09T00:00:00+00:00",
+        metadata={},
+    )
+
+    def fake_get_generation_job(job_id, *, workspace_id=None, user_id=None):
+        captured.update({"job_id": job_id, "workspace_id": workspace_id, "user_id": user_id})
+        return job
+
+    def fake_mark_running(job_id, stage="planning", **kwargs):
+        running_scope.update(kwargs)
+        return job
+
+    def fake_resume(job_id, answer, *, allow_running=False, **kwargs):
+        resume_scope.update(kwargs)
+        return job
+
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.resolve_generation_job_scope_from_existing_job",
+        lambda job_id: (WORKSPACE_A, "user_a"),
+    )
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.mark_generation_job_running", fake_mark_running)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.resume_generation_job_graph", fake_resume)
+
+    response = TestClient(create_app()).post(
+        "/api/v1/generation-jobs/job_waiting/answer",
+        json={"field": "business_type", "value": "cafe"},
+    )
+
+    assert response.status_code == 200
+    assert captured == {"job_id": "job_waiting", "workspace_id": WORKSPACE_A, "user_id": "user_a"}
+    assert running_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
+    assert resume_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}

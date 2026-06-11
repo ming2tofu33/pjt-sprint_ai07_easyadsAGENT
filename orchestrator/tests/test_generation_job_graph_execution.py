@@ -739,6 +739,68 @@ def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
     ]
 
 
+def test_resume_generation_job_graph_passes_scope_to_next_interrupt_waiting_update(monkeypatch):
+    captured = {}
+    job = _graph_job_response(
+        job_id="job_waiting",
+        thread_id="thread_waiting",
+        user_id="user_a",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning"),
+    )
+
+    class MockGraph:
+        def invoke(self, payload, config: dict | None = None) -> dict:
+            return {
+                "job_id": "job_waiting",
+                "thread_id": "thread_waiting",
+                "status": "waiting_user_input",
+                "__interrupt__": [
+                    FakeInterrupt(
+                        {
+                            "type": "option_question",
+                            "job_id": "job_waiting",
+                            "thread_id": "thread_waiting",
+                            "option_question": {
+                                "field": "item_or_service",
+                                "question": "홍보할 상품이나 서비스는 무엇인가요?",
+                                "options": [{"id": 1, "label": "대표 메뉴", "value": "대표 메뉴"}],
+                            },
+                        }
+                    )
+                ],
+                "messages": [{"role": "assistant", "content": "홍보할 상품이나 서비스는 무엇인가요?"}],
+            }
+
+    def mark_waiting(*args, **kwargs):
+        captured.update(kwargs)
+        return _graph_job_response(
+            job_id="job_waiting",
+            thread_id="thread_waiting",
+            user_id="user_a",
+            status="waiting_user_input",
+            progress=GenerationProgress(progress_percent=50, current_stage="waiting_user_input"),
+        )
+
+    monkeypatch.setattr(execution, "get_generation_job", lambda job_id, **kwargs: job)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_running", lambda *args, **kwargs: job)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.append_generation_job_user_answer_message", lambda *args, **kwargs: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.service.mark_generation_job_waiting_user_input", mark_waiting)
+
+    answer = GenerationJobAnswerRequest(field="business_type", value="cafe", display_text="카페")
+    resumed = resume_generation_job_graph(
+        "job_waiting",
+        answer,
+        allow_running=True,
+        workspace_id="11111111-1111-1111-1111-111111111111",
+        user_id="user_a",
+    )
+
+    assert resumed.status == "waiting_user_input"
+    assert captured["workspace_id"] == "11111111-1111-1111-1111-111111111111"
+    assert captured["user_id"] == "user_a"
+
 def test_resume_generation_job_graph_marks_failed_when_graph_raises(monkeypatch):
     calls = []
     expected_job_id = None

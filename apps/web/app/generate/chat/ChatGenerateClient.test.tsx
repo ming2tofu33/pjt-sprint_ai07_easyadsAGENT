@@ -1979,6 +1979,89 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
   });
 
+  it("sends compliance cancel decisions to the waiting generation job", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.startChatGeneration).mockClear();
+    vi.mocked(api.createGenerationJob).mockClear();
+    vi.mocked(api.answerGenerationJob).mockClear();
+    mockInitialAutoPilotBrief(api);
+    vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "generation_job_compliance_waiting",
+        thread_id: "thread_generation_compliance_waiting",
+        status: "waiting_user_input",
+        progress: {
+          progress_percent: 55,
+          current_stage: "copy_compliance_review"
+        },
+        metadata: {
+          pending_interrupt: {
+            type: "copy_compliance_review",
+            status: "blocked",
+            summary: "광고 규제 위험 표현 1개가 발견되었습니다.",
+            findings: [
+              {
+                finding_id: "finding_1",
+                field: "headline",
+                matched_text: "여드름 치료",
+                severity: "block",
+                reason: "화장품의 의약품 오인 표현"
+              }
+            ],
+            actions: [
+              { id: "use_suggestion", label: "안전한 문구로 수정", available: true },
+              { id: "cancel", label: "생성 취소", available: true }
+            ]
+          }
+        },
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    vi.mocked(api.answerGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "generation_job_compliance_waiting",
+        thread_id: "thread_generation_compliance_waiting",
+        status: "failed",
+        progress: {
+          progress_percent: 55,
+          current_stage: "failed"
+        },
+        error: {
+          error_code: "generation_job_cancelled_by_user",
+          message: "Generation cancelled by user."
+        },
+        metadata: {},
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "스킨케어 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    fireEvent.click(screen.getByText(/이 내용으로 이미지 생성/));
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "광고 규제 검토 결과" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "생성 취소" }));
+
+    await waitFor(() =>
+      expect(api.answerGenerationJob).toHaveBeenCalledWith("generation_job_compliance_waiting", {
+        action: "cancel",
+        displayText: "생성 취소"
+      })
+    );
+  });
+
   it("shows validation feedback from the final generation result", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.startChatGeneration).mockClear();

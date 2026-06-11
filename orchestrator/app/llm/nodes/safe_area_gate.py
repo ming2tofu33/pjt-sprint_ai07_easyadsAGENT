@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageStat
 
-from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.schemas.text_layout import ImageLayoutAnalysis, NormalizedBBox, SafeAreaReport, TextLayoutSpec, TextSlot
 from orchestrator.app.vision.layout_analysis import bbox_overlap_ratio
+
+if TYPE_CHECKING:
+    from orchestrator.app.graph.state import MarketingState
 
 
 def bbox_iou(a: NormalizedBBox, b: NormalizedBBox) -> float:
@@ -23,7 +25,7 @@ def bbox_iou(a: NormalizedBBox, b: NormalizedBBox) -> float:
     return intersection / union if union > 0 else 0.0
 
 
-def safe_area_gate_node(state: MarketingState) -> dict[str, Any]:
+def safe_area_gate_node(state: "MarketingState") -> dict[str, Any]:
     warnings: list[str] = []
     bbox_issues: list[str] = []
     overlap_warnings: list[str] = []
