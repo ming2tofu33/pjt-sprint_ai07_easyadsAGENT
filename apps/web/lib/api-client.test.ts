@@ -851,7 +851,9 @@ describe("api-client backend contract routes", () => {
         }
       })
     }));
-    const fetchMock = vi.fn(async () => jsonResponse({ success: true, items: [] }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({ success: true, items: [] })
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     await listAdminReferenceTemplates();
