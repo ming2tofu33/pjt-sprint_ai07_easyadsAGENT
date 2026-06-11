@@ -181,6 +181,19 @@ class MarketingState(TypedDict, total=False):
     text_overlay_config: dict[str, Any] | TextOverlayConfig | None
     final_image_path: str | None
     final_validation_report: dict[str, Any] | FinalValidationReport | None
+    final_composite_quality_report: dict[str, Any] | None
+    final_composite_revision_plan: dict[str, Any] | None
+    final_composite_revision_patch: dict[str, Any] | None
+    final_composite_retry_feedback: list[str]
+    final_composite_partial_rerun: bool
+    final_composite_rerun_action: str | None
+    reuse_existing_background: bool
+    final_copy_revision_result: dict[str, Any] | None
+    final_composite_attempts: int
+    final_copy_revision_attempts: int
+    final_layout_revision_attempts: int
+    final_style_revision_attempts: int
+    final_background_regeneration_attempts: int
     validation_report: dict[str, Any] | ValidationReport | None
     result_payload: dict[str, Any] | ResultPayload | None
     artifact_refs: list[dict[str, Any] | ArtifactRef]
@@ -455,6 +468,19 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "text_overlay_config": None,
         "final_image_path": None,
         "final_validation_report": None,
+        "final_composite_quality_report": None,
+        "final_composite_revision_plan": None,
+        "final_composite_revision_patch": None,
+        "final_composite_retry_feedback": [],
+        "final_composite_partial_rerun": False,
+        "final_composite_rerun_action": None,
+        "reuse_existing_background": False,
+        "final_copy_revision_result": None,
+        "final_composite_attempts": 0,
+        "final_copy_revision_attempts": 0,
+        "final_layout_revision_attempts": 0,
+        "final_style_revision_attempts": 0,
+        "final_background_regeneration_attempts": 0,
         "validation_report": None,
         "result_payload": None,
         "artifact_refs": [],

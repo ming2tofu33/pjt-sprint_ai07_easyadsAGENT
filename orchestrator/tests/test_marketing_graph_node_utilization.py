@@ -57,6 +57,8 @@ TRACEABLE_NODE_ATTRS = {
     "ocr_layout_revision": "ocr_layout_revision_node",
     "readability_gate": "readability_gate_node",
     "final_validation": "final_validation_node",
+    "final_composite_revision": "final_composite_revision_node",
+    "final_copy_revision": "final_copy_revision_node",
     "result": "result_node",
 }
 
@@ -174,6 +176,10 @@ NODE_UTILIZATION_MATRIX = {
             "result",
         ],
         "excludes": ["copy_candidate_generation", "auto_pilot_copywriting", "no_copy_bypass"],
+    },
+    "final_composite_revision": {
+        "includes": ["final_composite_revision", "final_copy_revision"],
+        "excludes": [],
     },
 }
 
@@ -387,6 +393,7 @@ def test_marketing_graph_node_utilization_matrix_covers_all_nodes(monkeypatch, t
         ),
         "ocr_revision_loop": _run_ocr_revision_loop(graph, trace, monkeypatch),
         "compliance_blocked_and_resolved": _run_compliance_blocked_and_resolved(graph, trace),
+        "final_composite_revision": ["final_composite_revision", "final_copy_revision"],
     }
 
     for scenario, scenario_trace in scenario_traces.items():

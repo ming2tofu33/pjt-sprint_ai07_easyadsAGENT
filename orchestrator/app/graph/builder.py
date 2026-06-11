@@ -18,6 +18,9 @@ from orchestrator.app.graph.routers import (
     route_after_ocr_gate,
     route_after_t2i_generation,
     route_after_layout_refiner,
+    route_after_final_composite_revision,
+    route_after_final_validation,
+    route_after_text_layout_planner,
     route_after_tone_binding,
     route_after_validator_for_intake,
     route_after_validator_for_marketing,
@@ -32,6 +35,8 @@ from orchestrator.app.llm.nodes.copy_candidates import copy_candidate_generation
 from orchestrator.app.llm.nodes.copywriting import copywriting_node
 from orchestrator.app.llm.nodes.copy_spec_parser import copy_spec_parser_node
 from orchestrator.app.llm.nodes.custom_copy import custom_copy_input_interrupt_node, custom_copy_validation_node
+from orchestrator.app.llm.nodes.final_composite_revision import final_composite_revision_node
+from orchestrator.app.llm.nodes.final_copy_revision import final_copy_revision_node
 from orchestrator.app.llm.nodes.final_validation import final_validation_node
 from orchestrator.app.llm.nodes.format_planner import format_planner_node
 from orchestrator.app.llm.nodes.design_recommendation_node import design_recommendation_node
@@ -131,6 +136,8 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("ocr_layout_revision", ocr_layout_revision_node)
     graph.add_node("readability_gate", readability_gate_node)
     graph.add_node("final_validation", final_validation_node)
+    graph.add_node("final_composite_revision", final_composite_revision_node)
+    graph.add_node("final_copy_revision", final_copy_revision_node)
     graph.add_node("result", result_node)
 
     graph.set_entry_point("input")
@@ -203,7 +210,11 @@ def build_marketing_graph(checkpointer=None):
     graph.add_edge("copy_spec_parser", "typography_art_direction")
     graph.add_edge("typography_art_direction", "text_style_binder")
     graph.add_edge("text_style_binder", "text_layout_planner")
-    graph.add_edge("text_layout_planner", "image_prompt_planner")
+    graph.add_conditional_edges(
+        "text_layout_planner",
+        route_after_text_layout_planner,
+        {"post_t2i_layout_refiner": "post_t2i_layout_refiner", "image_prompt_planner": "image_prompt_planner"},
+    )
     graph.add_edge("image_prompt_planner", "prompt_renderer")
     graph.add_edge("prompt_renderer", "t2i_request_builder")
     graph.add_edge("t2i_request_builder", "t2i_generation")
@@ -263,7 +274,20 @@ def build_marketing_graph(checkpointer=None):
     )
     graph.add_edge("ocr_layout_revision", "text_renderer")
     graph.add_edge("readability_gate", "final_validation")
-    graph.add_edge("final_validation", "result")
+    graph.add_conditional_edges("final_validation", route_after_final_validation, {"final_composite_revision": "final_composite_revision", "result": "result"})
+    graph.add_conditional_edges(
+        "final_composite_revision",
+        route_after_final_composite_revision,
+        {
+            "final_copy_revision": "final_copy_revision",
+            "copy_spec_parser": "copy_spec_parser",
+            "post_t2i_layout_refiner": "post_t2i_layout_refiner",
+            "adaptive_typography_refiner": "adaptive_typography_refiner",
+            "image_prompt_planner": "image_prompt_planner",
+            "result": "result",
+        },
+    )
+    graph.add_edge("final_copy_revision", "copy_spec_parser")
     graph.add_edge("result", END)
 
     return graph.compile(checkpointer=checkpointer or InMemorySaver())

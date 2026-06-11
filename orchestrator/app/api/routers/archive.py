@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, status
 from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.api.schemas.archive import (
     ArchiveItemCreateRequest,
+    ArchiveItemUpdateRequest,
     ArchiveListResponse,
     ArchiveMutationResponse,
     ArchiveItemResponse,
@@ -23,6 +24,7 @@ from orchestrator.app.archive.service import (
     delete_archive_item,
     get_archive_item,
     list_archive_items,
+    update_archive_item,
 )
 
 router = APIRouter()
@@ -135,6 +137,26 @@ def get_archive_item_route(archive_item_id: str, workspace_id: str | None = None
             message="Archive item was not found.",
             detail=f"archive_item_id={archive_item_id}",
         )
+
+
+@router.patch("/archive/items/{archive_item_id}", response_model=ArchiveMutationResponse)
+def update_archive_item_route(archive_item_id: str, request: ArchiveItemUpdateRequest) -> ArchiveMutationResponse:
+    try:
+        item = update_archive_item(archive_item_id=archive_item_id, request=request)
+    except ArchivePersistenceUnavailable as exc:
+        _archive_unavailable(exc)
+    except ArchiveWorkspaceRequired as exc:
+        _archive_workspace_required(exc)
+    except ArchiveWorkspaceForbidden as exc:
+        _archive_workspace_forbidden(exc)
+    except ArchiveItemNotFound:
+        raise_api_error(
+            status_code=404,
+            error_code="archive_item_not_found",
+            message="Archive item was not found.",
+            detail=f"archive_item_id={archive_item_id}",
+        )
+    return ArchiveMutationResponse(item=item)
 
 
 @router.delete("/archive/items/{archive_item_id}", response_model=ArchiveMutationResponse)

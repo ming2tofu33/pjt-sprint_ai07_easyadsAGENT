@@ -143,6 +143,10 @@ const archiveItemSchema = z.object({
   metadata: z.record(z.unknown()).optional()
 });
 
+const archiveItemUpdateSchema = z.object({
+  status: z.enum(["saved", "favorite"])
+});
+
 const assetPresignSchema = z.object({
   kind: z.enum(["upload", "source", "reference"]),
   filename: z.string().trim().min(1),
@@ -179,10 +183,10 @@ const adminReferenceSchema = z.object({
 
 const adminReferenceUpdateSchema = adminReferenceSchema.omit({ assetId: true, workspaceId: true }).partial();
 
-async function proxyJson({ fetchImpl, url, body }) {
+async function proxyJson({ fetchImpl, url, body, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
@@ -196,10 +200,10 @@ async function proxyJson({ fetchImpl, url, body }) {
   return payload;
 }
 
-async function proxyPatchJson({ fetchImpl, url, body }) {
+async function proxyPatchJson({ fetchImpl, url, body, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "PATCH",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
@@ -213,10 +217,10 @@ async function proxyPatchJson({ fetchImpl, url, body }) {
   return payload;
 }
 
-async function proxyDeleteJson({ fetchImpl, url }) {
+async function proxyDeleteJson({ fetchImpl, url, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "DELETE",
-    headers: { accept: "application/json" }
+    headers: { accept: "application/json", ...headers }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -229,10 +233,10 @@ async function proxyDeleteJson({ fetchImpl, url }) {
   return payload;
 }
 
-async function proxyGetJson({ fetchImpl, url }) {
+async function proxyGetJson({ fetchImpl, url, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "GET",
-    headers: { accept: "application/json" }
+    headers: { accept: "application/json", ...headers }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -284,6 +288,11 @@ function appendQueryParam(url, key, value) {
   }
   const str = params.toString();
   return str ? `${base}?${str}` : base;
+}
+
+
+function verifiedUserHeader(userId) {
+  return userId ? { "X-EasyAds-User-Id": userId } : {};
 }
 
 function normalizeBearerHeader(value) {
@@ -681,16 +690,19 @@ export function buildApp(options = {}) {
     return proxyJson({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/generation-jobs`,
-      body
+      body,
+      headers: verifiedUserHeader(userId)
     });
   });
 
-  app.get("/api/generation-jobs/:jobId", async (request) =>
-    proxyGetJson({
+  app.get("/api/generation-jobs/:jobId", async (request) => {
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
       fetchImpl,
-      url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}`
-    })
-  );
+      url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}`,
+      headers: verifiedUserHeader(userId)
+    });
+  });
 
   app.post("/api/generation-jobs/:jobId/answer", async (request, reply) => {
     const parsed = generationJobAnswerSchema.safeParse(request.body);
@@ -710,7 +722,8 @@ export function buildApp(options = {}) {
       body: {
         ...clientPayload,
         ...(userId ? { userId } : {})
-      }
+      },
+      headers: verifiedUserHeader(userId)
     });
   });
 
@@ -739,6 +752,32 @@ export function buildApp(options = {}) {
       }
     });
     return reply.code(201).send(payload);
+  });
+
+  app.get("/api/archive/items/:archiveItemId", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`, "user_id", userId)
+    });
+  });
+
+  app.patch("/api/archive/items/:archiveItemId", async (request, reply) => {
+    const parsed = archiveItemUpdateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+
+    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyPatchJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}`,
+      body: {
+        status: parsed.data.status,
+        ...(userId ? { user_id: userId } : {})
+      }
+    });
   });
 
   app.delete("/api/archive/items/:archiveItemId", async (request) => {

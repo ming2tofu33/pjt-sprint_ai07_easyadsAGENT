@@ -60,13 +60,11 @@ export function ReferenceBrowseStep({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const searchTags = useMemo(() => splitReferenceSearchTerms(searchTerm), [searchTerm]);
-  const visibleTemplates = useMemo(
-    () =>
-      templates
-        .filter(hasReferenceTemplateImage)
-        .sort((first, second) => second.popularityScore - first.popularityScore),
-    [templates]
-  );
+  const visibleTemplates = useMemo(() => {
+    const imageBackedTemplates = templates.filter(hasReferenceTemplateImage);
+    const candidates = imageBackedTemplates.length > 0 ? imageBackedTemplates : templates;
+    return [...candidates].sort((first, second) => second.popularityScore - first.popularityScore);
+  }, [templates]);
 
   useEffect(() => {
     let cancelled = false;
@@ -203,7 +201,7 @@ export function ReferenceBrowseStep({
                   creative={creative}
                   key={template.templateId}
                   savePlacement="copy"
-                  showPlaceholderArt={false}
+                  showPlaceholderArt
                   openOnImage
                   openLabel={`${template.title} 상세 보기`}
                   onOpen={() => {
@@ -221,8 +219,8 @@ export function ReferenceBrowseStep({
         ) : (
           <section className={styles.emptyResultPanel} aria-label="샘플 검색 결과 없음">
             <MascotImage role="referenceSearch" decorative className={styles.emptyMascot} />
-            <strong>조건에 맞는 샘플 이미지가 없어요</strong>
-            <p>직접 넣은 샘플 이미지가 연결되면 여기에 표시돼요.</p>
+            <strong>조건에 맞는 샘플이 없어요</strong>
+            <p>검색어를 바꾸거나 카테고리 필터를 해제해 주세요.</p>
           </section>
         )}
       </div>

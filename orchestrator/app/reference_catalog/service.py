@@ -16,7 +16,10 @@ from orchestrator.app.schemas.reference_catalog import (
     ReferenceTemplateSearchResult,
     ReferenceTemplateSelection,
 )
+from orchestrator.app.storage import settings as storage_settings
+from orchestrator.app.storage.r2_client import create_r2_client
 from orchestrator.app.storage.url_policy import build_public_r2_url
+from orchestrator.app.storage.url_policy import generate_signed_get_url
 
 
 PERMANENT_REFERENCE_MANIFEST_ENV = "EASYADS_PERMANENT_REFERENCE_MANIFEST"
@@ -286,14 +289,34 @@ def permanent_reference_asset_url(template: ReferenceTemplate, asset_kind: str) 
     if value.startswith(("http://", "https://")):
         return value
     if value.startswith(R2_REFERENCE_ASSET_PREFIX):
-        return build_public_r2_url(value.removeprefix(R2_REFERENCE_ASSET_PREFIX))
+        return r2_reference_asset_url(value.removeprefix(R2_REFERENCE_ASSET_PREFIX))
     if template.metadata.get("storage_provider") == "r2":
-        return build_public_r2_url(value)
+        return r2_reference_asset_url(value)
     return None
 
 
 def reference_template_asset_url(template: ReferenceTemplate, asset_kind: str) -> str | None:
     return temporary_reference_asset_url(template, asset_kind) or permanent_reference_asset_url(template, asset_kind)
+
+
+def r2_reference_asset_url(object_key: str) -> str | None:
+    public_url = build_public_r2_url(object_key)
+    if public_url:
+        return public_url
+    if storage_settings.get_r2_url_mode() != "signed":
+        return None
+    bucket = storage_settings.get_r2_bucket()
+    if not (bucket and storage_settings.get_r2_endpoint_url() and storage_settings.get_r2_access_key_id() and storage_settings.get_r2_secret_access_key()):
+        return None
+    try:
+        return generate_signed_get_url(
+            client=create_r2_client(),
+            bucket=bucket,
+            object_key=object_key,
+            expires_in=storage_settings.get_r2_signed_url_ttl_seconds(),
+        )
+    except Exception:
+        return None
 
 
 def temporary_reference_asset_path(removal_group: str, filename: str, root: str | Path | None = None) -> Path | None:
