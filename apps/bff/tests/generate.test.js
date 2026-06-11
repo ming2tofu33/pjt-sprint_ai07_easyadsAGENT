@@ -549,11 +549,72 @@ describe("generate chat routes", () => {
       "http://orchestrator/api/v1/generation-jobs",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({ "X-EasyAds-User-Id": "user_uuid_1" }),
+        headers: expect.objectContaining({
+          "X-EasyAds-User-Id": "user_uuid_1",
+          "X-EasyAds-Account-Type": "user"
+        }),
         body: JSON.stringify({
           userInput: "로그인 사용자 작업방 생성",
           runMode: "queued_only",
-          userId: "user_uuid_1"
+          userId: "user_uuid_1",
+          accountType: "user"
+        })
+      })
+    );
+    await app.close();
+  });
+
+  it("forwards anonymous Supabase users as guest generation principals", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_uuid_1", is_anonymous: true });
+      }
+      return jsonResponse(
+        {
+          success: true,
+          job: {
+            job_id: "job_guest_1",
+            thread_id: "thread_guest_1",
+            status: "queued",
+            progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+            metadata: { account_type: "guest" }
+          }
+        },
+        { status: 201 }
+      );
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs",
+      headers: { authorization: "Bearer guest_access_token_1" },
+      payload: {
+        userInput: "게스트 광고 생성",
+        runMode: "queued_only"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/generation-jobs",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "X-EasyAds-User-Id": "guest_uuid_1",
+          "X-EasyAds-Account-Type": "guest"
+        }),
+        body: JSON.stringify({
+          userInput: "게스트 광고 생성",
+          runMode: "queued_only",
+          userId: "guest_uuid_1",
+          accountType: "guest"
         })
       })
     );

@@ -291,8 +291,14 @@ function appendQueryParam(url, key, value) {
 }
 
 
-function verifiedUserHeader(userId) {
-  return userId ? { "X-EasyAds-User-Id": userId } : {};
+function verifiedPrincipalHeaders(principal) {
+  if (!principal?.userId) {
+    return {};
+  }
+  return {
+    "X-EasyAds-User-Id": principal.userId,
+    "X-EasyAds-Account-Type": principal.accountType
+  };
 }
 
 function normalizeBearerHeader(value) {
@@ -309,7 +315,7 @@ function normalizeBearerHeader(value) {
   return normalized;
 }
 
-async function resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey }) {
+async function resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey }) {
   const authorization = normalizeBearerHeader(request.headers.authorization);
   if (!authorization) {
     return null;
@@ -335,7 +341,15 @@ async function resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabase
   if (!payload?.id) {
     throw createHttpError(401, "invalid or expired session");
   }
-  return String(payload.id);
+  return {
+    userId: String(payload.id),
+    accountType: payload.is_anonymous ? "guest" : "user"
+  };
+}
+
+async function resolveSupabaseUserId(args) {
+  const principal = await resolveSupabasePrincipal(args);
+  return principal?.userId ?? null;
 }
 
 async function requireSupabaseUserId(args) {
@@ -652,7 +666,8 @@ export function buildApp(options = {}) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const userId = principal?.userId ?? null;
     const {
       userId: _clientUserId,
       user_id: _clientUserIdSnake,
@@ -662,6 +677,7 @@ export function buildApp(options = {}) {
     const body = {
       ...clientPayload,
       ...(userId ? { userId } : {}),
+      ...(principal?.accountType ? { accountType: principal.accountType } : {}),
       userInput: parsed.data.userInput ?? parsed.data.user_input,
       threadId: parsed.data.threadId ?? parsed.data.thread_id,
       selectedReferenceTemplateId: parsed.data.selectedReferenceTemplateId ?? parsed.data.selected_reference_template_id,
@@ -691,16 +707,16 @@ export function buildApp(options = {}) {
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/generation-jobs`,
       body,
-      headers: verifiedUserHeader(userId)
+      headers: verifiedPrincipalHeaders(principal)
     });
   });
 
   app.get("/api/generation-jobs/:jobId", async (request) => {
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}`,
-      headers: verifiedUserHeader(userId)
+      headers: verifiedPrincipalHeaders(principal)
     });
   });
 
@@ -709,7 +725,8 @@ export function buildApp(options = {}) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const userId = principal?.userId ?? null;
     const {
       userId: _clientUserId,
       user_id: _clientUserIdSnake,
@@ -723,7 +740,7 @@ export function buildApp(options = {}) {
         ...clientPayload,
         ...(userId ? { userId } : {})
       },
-      headers: verifiedUserHeader(userId)
+      headers: verifiedPrincipalHeaders(principal)
     });
   });
 
