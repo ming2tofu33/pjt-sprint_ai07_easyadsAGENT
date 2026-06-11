@@ -731,6 +731,31 @@ describe("api-client backend contract routes", () => {
     expect(deleted.item.adId).toBe("archive_1");
   });
 
+  it("uses the anonymous session for archive list requests", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "anon_access_token_1" } } }),
+          signInAnonymously: vi.fn()
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        items: [],
+        pagination: { limit: 20, offset: 0, total: 0, has_more: false }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listArchiveItems({ limit: 20 });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer anon_access_token_1" })
+    );
+  });
+
 
   it("uploads reference images through presign, R2 PUT, and complete", async () => {
     vi.doMock("./supabase/browser", () => ({

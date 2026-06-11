@@ -399,6 +399,38 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("uses anonymous Supabase user ids for archive list scope", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_uuid_1", is_anonymous: true });
+      }
+      return jsonResponse({
+        items: [],
+        pagination: { limit: 20, offset: 0, total: 0, has_more: false }
+      });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/archive/items?limit=20",
+      headers: { authorization: "Bearer guest_access_token_1" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/archive/items?limit=20&user_id=guest_uuid_1",
+      expect.objectContaining({ method: "GET" })
+    );
+    await app.close();
+  });
+
   it("rejects invalid archive authorization headers", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ id: "user_uuid_1" }));
     const app = buildApp({
