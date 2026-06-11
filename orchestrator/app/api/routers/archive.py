@@ -99,12 +99,15 @@ def list_archive_items_route(
     accountType: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    include_total: bool = Query(default=True),
 ) -> ArchiveListResponse:
     try:
         kwargs = {"workspace_id": workspace_id, "user_id": user_id, "limit": limit, "offset": offset}
         resolved_account_type = account_type or accountType
         if resolved_account_type:
             kwargs["account_type"] = resolved_account_type
+        if not include_total:
+            kwargs["include_total"] = False
         items, total = list_archive_items(**kwargs)
     except ArchivePersistenceUnavailable as exc:
         _archive_unavailable(exc)

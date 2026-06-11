@@ -1170,6 +1170,35 @@ describe("ChatGenerateClient", () => {
     await waitForReferenceTemplatesLoaded();
   });
 
+  it("waits for a generation job id before navigating to the generating route", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.createGenerationJob).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient />);
+
+    fireEvent.click(screen.getByText("대화로 시작하기"));
+    fireEvent.click(screen.getByText("우리 카페 딸기라떼 신메뉴 광고 만들어줘"));
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("button", { name: "문구 고르기" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByText("상큼한"));
+    fireEvent.click(screen.getByText("문구 고르기"));
+    fireEvent.click(screen.getByText("인스타 스토리"));
+    fireEvent.click(screen.getByText("브리프 확인하기"));
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+
+    fireEvent.click(screen.getByText(/이 내용으로 이미지 생성/));
+
+    await waitFor(() => expect(api.createGenerationJob).toHaveBeenCalled());
+    expect(navigationMock.push).not.toHaveBeenCalledWith("/generate/chat/generating");
+    await waitFor(() =>
+      expect(navigationMock.replace).toHaveBeenCalledWith("/generate/chat/generating?jobId=generation_job_1&threadId=thread_1")
+    );
+  });
+
   it("lets users refine the brief before starting image generation", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.createChatBrief).mockClear();
@@ -2313,6 +2342,132 @@ describe("ChatGenerateClient", () => {
     expect(api.createGenerationJob).not.toHaveBeenCalled();
   });
 
+  it("shows cached reference templates immediately while refreshing the gallery", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listReferenceTemplates).mockClear();
+    vi.mocked(api.listReferenceTemplates).mockReturnValueOnce(new Promise(() => undefined));
+    window.localStorage.setItem(
+      "easyads_reference_templates_cache_v1",
+      JSON.stringify({
+        entries: {
+          "category=&keyword=&tags=&limit=30": {
+            cachedAt: "2026-06-11T00:00:00.000Z",
+            items: [
+              {
+                templateId: "cached_reference_1",
+                title: "캐시된 샘플",
+                description: "기다림 없이 먼저 보이는 샘플",
+                category: "cafe",
+                tags: ["캐시", "카페"],
+                businessTypes: ["cafe"],
+                adFormats: ["instagram_feed"],
+                platforms: ["instagram"],
+                aspectRatio: "1:1",
+                thumbnailUrl: "http://127.0.0.1:4000/api/references/temp-assets/cache/ref.png",
+                previewUrl: "http://127.0.0.1:4000/api/references/temp-assets/cache/ref.png",
+                styleKeywords: ["quick"],
+                colorPalette: ["#5AB4F2", "#FFFFFF"],
+                layoutHint: "center_product",
+                typographyHint: "bold_headline",
+                popularityScore: 0.9,
+                isSaved: false
+              }
+            ]
+          }
+        }
+      })
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="reference" />);
+
+    expect(screen.getByText("캐시된 샘플")).toBeTruthy();
+    expect(screen.queryByLabelText("샘플 목록 불러오는 중")).toBeNull();
+    await waitFor(() =>
+      expect(api.listReferenceTemplates).toHaveBeenCalledWith({
+        keyword: "",
+        category: "",
+        tags: [],
+        limit: 30
+      })
+    );
+  });
+
+  it("caps stored reference template cache entries to the newest queries", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listReferenceTemplates).mockClear();
+    const existingEntries = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [
+        `category=cached_${index}&keyword=&tags=&limit=30`,
+        {
+          cachedAt: `2000-01-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`,
+          items: [{ templateId: `cached_${index}`, title: `오래된 캐시 ${index}` }]
+        }
+      ])
+    );
+    window.localStorage.setItem(
+      "easyads_reference_templates_cache_v1",
+      JSON.stringify({ entries: existingEntries })
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="reference" />);
+    await waitForReferenceTemplatesLoaded();
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("easyads_reference_templates_cache_v1") ?? "{}") as {
+        entries?: Record<string, unknown>;
+      };
+      const entries = stored.entries ?? {};
+      expect(Object.keys(entries)).toHaveLength(20);
+      expect(entries["category=&keyword=&tags=&limit=30"]).toBeTruthy();
+      expect(entries["category=cached_0&keyword=&tags=&limit=30"]).toBeUndefined();
+    });
+  });
+
+  it("debounces reference gallery search requests", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listReferenceTemplates).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="reference" />);
+    await waitForReferenceTemplatesLoaded();
+    vi.mocked(api.listReferenceTemplates).mockClear();
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(screen.getByLabelText("샘플 검색어"), { target: { value: "수" } });
+      fireEvent.change(screen.getByLabelText("샘플 검색어"), { target: { value: "수박" } });
+
+      expect(api.listReferenceTemplates).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(299);
+      });
+      expect(api.listReferenceTemplates).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+        await Promise.resolve();
+      });
+
+      vi.useRealTimers();
+      await waitFor(() =>
+        expect(api.listReferenceTemplates).toHaveBeenCalledWith({
+          keyword: "수박",
+          category: "",
+          tags: ["수박"],
+          limit: 30
+        })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
 
   it("keeps reference search results selectable when image urls are unavailable", async () => {
     const api = await import("@/lib/api-client");
@@ -3086,7 +3241,7 @@ describe("ChatGenerateClient", () => {
           }
         }
       ],
-      pagination: { limit: 50, offset: 0, total: 1, hasMore: false }
+      pagination: { limit: 20, offset: 0, total: 1, hasMore: false }
     });
     vi.mocked(api.updateArchiveItem).mockClear();
     vi.mocked(api.deleteArchiveItem).mockClear();
@@ -3095,7 +3250,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="ads" />);
 
-    await waitFor(() => expect(api.listArchiveItems).toHaveBeenCalledWith({ limit: 50 }));
+    await waitFor(() => expect(api.listArchiveItems).toHaveBeenCalledWith({ limit: 20, includeTotal: false }));
     await waitFor(() => expect(screen.getByText("DB 저장 광고")).toBeTruthy());
 
     fireEvent.click(screen.getByRole("button", { name: "DB 저장 광고 즐겨찾기" }));
@@ -3111,6 +3266,45 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(api.deleteArchiveItem).toHaveBeenCalledWith("archive_db_1"));
     await waitFor(() => expect(screen.queryByRole("button", { name: "DB 저장 광고 실제 생성 결과 보기" })).toBeNull());
     expect(screen.getByText("DB 저장 광고 항목을 보관함에서 삭제했어요.")).toBeTruthy();
+  });
+
+  it("shows cached archive items immediately while refreshing persisted archive items", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listArchiveItems).mockClear();
+    vi.mocked(api.listArchiveItems).mockReturnValueOnce(new Promise(() => undefined));
+    window.localStorage.setItem(
+      "easyads_archive_creatives_cache_v1",
+      JSON.stringify({
+        cachedAt: "2026-06-11T00:00:00.000Z",
+        creatives: [
+          {
+            id: "archive_cached_1",
+            title: "캐시된 광고",
+            subtitle: "카페 · 인스타 피드",
+            format: "1:1",
+            imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_cached%2Ffinal.png",
+            date: "2026. 06. 11.",
+            tone: "mint",
+            badge: "보관함",
+            status: "saved",
+            channel: "인스타 피드",
+            fileName: "final.png",
+            fileType: "PNG",
+            storage: "내 광고 보관함",
+            savedAt: "2026. 06. 11.",
+            tags: ["카페"]
+          }
+        ]
+      })
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="ads" />);
+
+    expect(screen.getByText("캐시된 광고")).toBeTruthy();
+    expect(screen.queryByText("보관함을 불러오는 중이에요")).toBeNull();
+    await waitFor(() => expect(api.listArchiveItems).toHaveBeenCalledWith({ limit: 20, includeTotal: false }));
   });
 
   it("pushes stable URLs when top-level tabs are selected", async () => {

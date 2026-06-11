@@ -756,6 +756,20 @@ describe("api-client backend contract routes", () => {
     );
   });
 
+  it("can skip exact archive totals for faster archive list requests", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        items: [],
+        pagination: { limit: 20, offset: 0, total: 0, has_more: false }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listArchiveItems({ limit: 20, includeTotal: false });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items?limit=20&include_total=false");
+  });
+
 
   it("uploads reference images through presign, R2 PUT, and complete", async () => {
     vi.doMock("./supabase/browser", () => ({

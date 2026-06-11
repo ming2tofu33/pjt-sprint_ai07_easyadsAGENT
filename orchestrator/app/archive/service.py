@@ -153,18 +153,24 @@ def list_archive_items(
     account_type: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    include_total: bool = True,
 ) -> tuple[list[ArchiveItemResponse], int]:
     _ensure_postgres_enabled()
     resolved_user_id = _resolve_user_id(user_id)
     resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id, account_type=account_type)
+    fetch_limit = limit + 1 if not include_total else limit
     rows = archive_item_repo.list_archive_item_rows(
         workspace_id=resolved_workspace_id,
         created_by=resolved_user_id,
-        limit=limit,
+        limit=fetch_limit,
         offset=offset,
     )
-    total = archive_item_repo.count_archive_item_rows(workspace_id=resolved_workspace_id, created_by=resolved_user_id)
-    return [archive_item_from_row(r) for r in rows], total
+    visible_rows = rows[:limit]
+    if include_total:
+        total = archive_item_repo.count_archive_item_rows(workspace_id=resolved_workspace_id, created_by=resolved_user_id)
+    else:
+        total = offset + len(visible_rows) + (1 if len(rows) > limit else 0)
+    return [archive_item_from_row(r) for r in visible_rows], total
 
 
 def get_archive_item(

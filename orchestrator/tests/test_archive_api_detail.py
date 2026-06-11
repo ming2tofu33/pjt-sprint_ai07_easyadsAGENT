@@ -62,7 +62,7 @@ def test_archive_detail_user_isolation(monkeypatch):
     # patch helpers
     monkeypatch.setattr(svc, "_ensure_postgres_enabled", lambda: None)
     monkeypatch.setattr(svc, "_resolve_user_id", lambda user_id: user_id or "u1")
-    monkeypatch.setattr(svc, "_resolve_workspace_id", lambda wid, user_id=None: wid or "ws1")
+    monkeypatch.setattr(svc, "_resolve_workspace_id", lambda wid, user_id=None, **_: wid or "ws1")
 
     # get_archive_item_row mock
     repo_mock = MagicMock()
@@ -199,6 +199,26 @@ def test_archive_list_pagination(monkeypatch):
     assert pg["limit"] == 1
     assert pg["offset"] == 0
     assert pg["has_more"] is True  # total=5, returned=1 → more items exist
+
+
+def test_archive_list_can_skip_exact_total(monkeypatch):
+    """include_total=false이면 목록 API가 정확한 count 조회를 생략하도록 서비스에 전달."""
+    item = ArchiveItemResponse(ad_id="a1", title="광고", status="saved", source="generated")
+    calls = {}
+
+    def fake_list_archive_items(workspace_id=None, user_id=None, limit=1, offset=0, include_total=True):
+        calls["include_total"] = include_total
+        return [item], 2
+
+    monkeypatch.setattr(archive_router, "list_archive_items", fake_list_archive_items)
+
+    resp = make_client().get("/api/v1/archive/items?limit=1&include_total=false")
+
+    assert resp.status_code == 200
+    assert calls["include_total"] is False
+    pg = resp.json()["pagination"]
+    assert pg["total"] == 2
+    assert pg["has_more"] is True
 
 
 def test_archive_list_returns_full_join_fields(monkeypatch):

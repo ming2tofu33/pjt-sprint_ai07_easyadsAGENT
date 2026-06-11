@@ -60,9 +60,18 @@ describe("generate chat routes", () => {
   it("proxies reference template list and temporary assets to the orchestrator", async () => {
     const fetchImpl = vi.fn(async (url) => {
       if (String(url).includes("/temp-assets/")) {
+        if (String(url).endsWith("/fallback-only.png")) {
+          return new Response(Buffer.from("image bytes"), {
+            status: 200,
+            headers: { "content-type": "image/png" }
+          });
+        }
         return new Response(Buffer.from("image bytes"), {
           status: 200,
-          headers: { "content-type": "image/png" }
+          headers: {
+            "content-type": "image/png",
+            "cache-control": "public, max-age=604800, immutable"
+          }
         });
       }
       return jsonResponse({
@@ -101,6 +110,10 @@ describe("generate chat routes", () => {
       method: "GET",
       url: "/api/references/temp_watermelon_juice_feed/similar?limit=3"
     });
+    const fallbackAssetResponse = await app.inject({
+      method: "GET",
+      url: "/api/references/temp-assets/2026-06-user-refs/fallback-only.png"
+    });
 
     expect(listResponse.statusCode).toBe(200);
     expect(listResponse.json().items[0].template_id).toBe("temp_watermelon_juice_feed");
@@ -120,9 +133,13 @@ describe("generate chat routes", () => {
       expect.objectContaining({ method: "GET" })
     );
     expect(assetResponse.statusCode).toBe(200);
+    expect(fallbackAssetResponse.statusCode).toBe(200);
     expect(similarResponse.statusCode).toBe(200);
     expect(assetResponse.headers["content-type"]).toContain("image/png");
+    expect(assetResponse.headers["cache-control"]).toBe("public, max-age=604800, immutable");
+    expect(fallbackAssetResponse.headers["cache-control"]).toBe("public, max-age=604800, immutable");
     expect(assetResponse.body).toBe("image bytes");
+    expect(fallbackAssetResponse.body).toBe("image bytes");
     await app.close();
   });
 

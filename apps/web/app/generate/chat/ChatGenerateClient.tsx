@@ -115,6 +115,8 @@ const CHAT_FLOW_SNAPSHOT_STORAGE_KEY = "easyads_chat_flow_snapshot_v1";
 const CHAT_TURN_SNAPSHOT_STORAGE_KEY = "easyads_chat_turn_snapshot_v1";
 const CHAT_GENERATION_FAILURE_STORAGE_KEY = "easyads_chat_generation_failure_v1";
 const CHAT_FLOW_BACK_TARGET_STORAGE_KEY = "easyads_chat_flow_back_target_v1";
+const ARCHIVE_CREATIVES_CACHE_STORAGE_KEY = "easyads_archive_creatives_cache_v1";
+const ARCHIVE_CREATIVES_CACHE_LIMIT = 20;
 const GENERATION_JOB_POLL_INTERVAL_MS = 1800;
 const GENERATION_JOB_MAX_POLLS = 80;
 const CHAT_FLOW_BACK_TARGETS = new Set(["home", "studio", "reference", "ads", "my", "brand", "photo"]);
@@ -135,6 +137,73 @@ type ChatGenerationFailureSnapshot = {
   userInput?: string | null;
   imageGenerationEngine?: ImageGenerationEngine | null;
 };
+
+type ArchiveCreativesCache = {
+  cachedAt: string;
+  creatives: MockCreative[];
+};
+
+function isCachedCreative(value: unknown): value is MockCreative {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const creative = value as { id?: unknown; title?: unknown };
+  return typeof creative.id === "string" && typeof creative.title === "string";
+}
+
+function mergeArchiveCreatives(...creativeGroups: MockCreative[][]): MockCreative[] {
+  const seen = new Set<string>();
+  return creativeGroups
+    .flat()
+    .filter((creative) => {
+      if (seen.has(creative.id)) {
+        return false;
+      }
+      seen.add(creative.id);
+      return true;
+    });
+}
+
+function readArchiveCreativesCache(): MockCreative[] {
+  try {
+    const raw = window.localStorage.getItem(ARCHIVE_CREATIVES_CACHE_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw) as Partial<ArchiveCreativesCache>;
+    return Array.isArray(parsed.creatives)
+      ? parsed.creatives.filter(isCachedCreative).slice(0, ARCHIVE_CREATIVES_CACHE_LIMIT)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeArchiveCreativesCache(creatives: MockCreative[]) {
+  try {
+    window.localStorage.setItem(
+      ARCHIVE_CREATIVES_CACHE_STORAGE_KEY,
+      JSON.stringify({
+        cachedAt: new Date().toISOString(),
+        creatives: mergeArchiveCreatives(creatives).slice(0, ARCHIVE_CREATIVES_CACHE_LIMIT)
+      })
+    );
+  } catch {
+    // The archive can still render from memory if browser storage is unavailable.
+  }
+}
+
+function updateArchiveCreativesCache(updater: (current: MockCreative[]) => MockCreative[]) {
+  writeArchiveCreativesCache(updater(readArchiveCreativesCache()));
+}
+
+function upsertArchiveCreativeCacheItem(creative: MockCreative) {
+  updateArchiveCreativesCache((current) => mergeArchiveCreatives([creative], current));
+}
+
+function removeArchiveCreativeCacheItem(creativeId: string) {
+  updateArchiveCreativesCache((current) => current.filter((creative) => creative.id !== creativeId));
+}
 
 function readChatFlowSnapshot(): ChatFlowSnapshot | null {
   try {
@@ -997,10 +1066,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     let isActive = true;
     const sessionCreatives = readGeneratedCreatives();
-    setGeneratedCreatives(sessionCreatives);
-    setArchiveLoadState("loading");
+    const cachedArchiveCreatives = readArchiveCreativesCache();
+    const initialCreatives = mergeArchiveCreatives(sessionCreatives, cachedArchiveCreatives);
+    setGeneratedCreatives(initialCreatives);
+    setArchiveLoadState(initialCreatives.length > 0 ? "ready" : "loading");
 
-    void listArchiveItems({ limit: 50 })
+    void listArchiveItems({ limit: 20, includeTotal: false })
       .then((response) => {
         if (!isActive) {
           return;
@@ -1013,21 +1084,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         // Show both local (this-device) and server-saved results instead of
         // discarding either; dedupe by id (session ids are `generated-<jobId>`,
         // archive ids are adIds, so overlap is rare but guarded).
-        const seen = new Set<string>();
-        const merged = [...sessionCreatives, ...archivedCreatives].filter((creative) => {
-          if (seen.has(creative.id)) {
-            return false;
-          }
-          seen.add(creative.id);
-          return true;
-        });
-        setGeneratedCreatives(merged);
+        writeArchiveCreativesCache(archivedCreatives);
+        setGeneratedCreatives(mergeArchiveCreatives(sessionCreatives, archivedCreatives));
         setArchiveLoadState("ready");
       })
       .catch(() => {
         if (isActive) {
-          setGeneratedCreatives(sessionCreatives);
-          setArchiveLoadState("error");
+          setGeneratedCreatives(initialCreatives);
+          setArchiveLoadState(initialCreatives.length > 0 ? "ready" : "error");
         }
       });
 
@@ -1918,7 +1982,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     dispatch({ type: "generationJobRequested" });
     setGenerationStage("generating");
     lastPrimedStageRef.current = "generating";
-    navigateTo("chat", "generating");
 
     try {
       const created = await createGenerationJob({
@@ -2069,6 +2132,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     try {
       const response = await updateArchiveItem(creative.id, { status: nextStatus });
       const updatedCreative = archiveItemToCreative(response.item);
+      upsertArchiveCreativeCacheItem(updatedCreative ?? { ...creative, status: nextStatus });
       setGeneratedCreatives((current) =>
         current.map((item) =>
           item.id === creative.id
@@ -2091,6 +2155,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     try {
       await deleteArchiveItem(creativeId);
+      removeArchiveCreativeCacheItem(creativeId);
       setGeneratedCreatives((current) => current.filter((item) => item.id !== creativeId));
       showToast(`${title} 항목을 보관함에서 삭제했어요.`);
     } catch {
@@ -2123,6 +2188,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         }
       });
       const archivedCreative = archiveItemToCreative(response.item);
+      if (archivedCreative) {
+        upsertArchiveCreativeCacheItem(archivedCreative);
+      }
       setGeneratedCreatives((current) => {
         const updated = current.map((item) => (item.id === creative.id ? { ...item, storage: "내 광고 보관함" } : item));
         if (!archivedCreative) {

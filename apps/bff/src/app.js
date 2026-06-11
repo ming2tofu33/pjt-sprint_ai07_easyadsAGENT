@@ -249,7 +249,7 @@ async function proxyGetJson({ fetchImpl, url, headers = {} }) {
   return payload;
 }
 
-async function proxyBinary({ fetchImpl, url, reply }) {
+async function proxyBinary({ fetchImpl, url, reply, cacheControl }) {
   const response = await fetchImpl(url, {
     method: "GET"
   });
@@ -263,6 +263,10 @@ async function proxyBinary({ fetchImpl, url, reply }) {
   const contentType = response.headers.get("content-type");
   if (contentType) {
     reply.header("content-type", contentType);
+  }
+  const responseCacheControl = response.headers.get("cache-control") || cacheControl;
+  if (responseCacheControl) {
+    reply.header("cache-control", responseCacheControl);
   }
   return Buffer.from(await response.arrayBuffer());
 }
@@ -442,7 +446,8 @@ export function buildApp(options = {}) {
     proxyBinary({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/references/temp-assets/${encodeURIComponent(request.params.removalGroup)}/${encodeURIComponent(request.params.filename)}`,
-      reply
+      reply,
+      cacheControl: "public, max-age=604800, immutable"
     })
   );
 

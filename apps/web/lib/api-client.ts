@@ -876,12 +876,14 @@ export async function listArchiveItems(params: {
   workspaceId?: string;
   limit?: number;
   offset?: number;
+  includeTotal?: boolean;
 } = {}): Promise<ArchiveListResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   return getJson<RawArchiveListResponse>("/api/archive/items", {
     workspace_id: params.workspaceId,
     limit: params.limit,
-    offset: params.offset
+    offset: params.offset,
+    include_total: params.includeTotal === false ? false : undefined
   }, authHeaders).then((payload) => ({
     items: (payload.items ?? []).map(mapArchiveItem),
     pagination: {
