@@ -7,6 +7,7 @@ from typing import Any
 from langgraph.types import interrupt
 
 from orchestrator.app.graph.state import MarketingState, context_to_model
+from orchestrator.app.llm.ad_format_policy import role_allowed
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
 from orchestrator.app.llm.copy_quality_v2 import annotate_and_rank_candidate_output, generate_copy_candidates_v2
@@ -49,7 +50,10 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
     max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
     output, llm_metadata = validate_or_fallback_candidate_output(state, output, llm_metadata)
     output = annotate_and_rank_candidate_output(output, state=state, max_candidates=max_candidates)
-    candidates = [apply_candidate_quality_policy(candidate) for candidate in normalize_candidate_ids(output.candidates[: max(1, max_candidates)])]
+    candidates = [
+        apply_candidate_quality_policy(apply_copy_presence_to_candidate(candidate, state.get("copy_presence_plan")))
+        for candidate in normalize_candidate_ids(output.candidates[: max(1, max_candidates)])
+    ]
     recommended_candidate_id = output.recommended_candidate_id or candidates[0].id
     output = CopyCandidateListOutput(
         candidates=candidates,
@@ -103,6 +107,19 @@ def classify_copy_candidate_origin(metadata: dict[str, Any], llm_metadata: dict[
     if metadata.get("fallback") == "rule_based" and not fallback_reason:
         return "rule_based"
     return "fallback"
+
+
+def apply_copy_presence_to_candidate(candidate: CopyCandidate, plan: dict[str, Any] | None) -> CopyCandidate:
+    updates: dict[str, Any] = {}
+    mode = str((plan or {}).get("mode") or "")
+    if not role_allowed("subheadline", plan) or mode in {"brand_only", "headline_only"}:
+        updates["subcopy"] = ""
+    if not role_allowed("cta", plan):
+        updates["cta"] = ""
+    if updates:
+        updates["metadata"] = {**candidate.metadata, "copy_presence_plan_applied": True}
+        return candidate.model_copy(update=updates)
+    return candidate
 
 
 def validate_or_fallback_candidate_output(

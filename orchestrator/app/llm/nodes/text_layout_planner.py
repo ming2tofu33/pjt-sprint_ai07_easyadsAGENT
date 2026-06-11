@@ -10,10 +10,13 @@ def text_layout_planner_node(state: dict[str, object]) -> dict[str, object]:
     style_spec = TextStyleSpec(**(state.get("text_style_spec") or {}))
     intent = CopyVisualIntent(**state["copy_visual_intent"]) if state.get("copy_visual_intent") else None
     ad_format_spec = state.get("ad_format_spec") or {}
+    copy_presence_plan = state.get("copy_presence_plan") or {}
+    information_panel_plan = state.get("information_panel_plan") or {}
+    platform_safe_zone_spec = state.get("platform_safe_zone_spec") or {}
     ad_format = ad_format_spec.get("ad_format", "instagram_feed")
     width = int(ad_format_spec.get("width") or 1024)
     height = int(ad_format_spec.get("height") or 1024)
-    template = template_for_ad_format(ad_format, copy_spec.copy_mode, intent)
+    template = template_for_ad_format(ad_format, copy_spec.copy_mode, intent, information_panel_plan)
     font_metric = FontMetric(
         font_family=style_spec.typography.headline_font,
         base_size_ratio=style_spec.typography.headline_size_ratio,
@@ -23,7 +26,7 @@ def text_layout_planner_node(state: dict[str, object]) -> dict[str, object]:
         letter_spacing_em=style_spec.typography.letter_spacing_em,
         line_height_em=style_spec.typography.line_height_em,
     )
-    layout = build_text_layout_spec(copy_spec, template, width, height, font_metric, style_spec, intent)
+    layout = build_text_layout_spec(copy_spec, template, width, height, font_metric, style_spec, intent, copy_presence_plan, information_panel_plan, platform_safe_zone_spec)
     return {
         "text_layout_spec": layout.model_dump(),
         "current_brief": {**state.get("current_brief", {}), "text_layout_ready": True},
@@ -31,9 +34,17 @@ def text_layout_planner_node(state: dict[str, object]) -> dict[str, object]:
     }
 
 
-def template_for_ad_format(ad_format: str, copy_mode: str, intent: CopyVisualIntent | None = None) -> str:
+def template_for_ad_format(ad_format: str, copy_mode: str, intent: CopyVisualIntent | None = None, information_panel_plan: dict | None = None) -> str:
     if copy_mode == "no_copy":
         return "no_text"
+    if information_panel_plan and information_panel_plan.get("enabled"):
+        panel_type = information_panel_plan.get("panel_type")
+        if panel_type == "left_information_column":
+            return "left_text_right_product"
+        if panel_type in {"right_information_column", "split_screen_diagonal_panel"}:
+            return "right_text_left_product"
+        if panel_type == "full_poster_grid":
+            return "multi_zone_flyer"
     if intent and intent.reference_layout_hint:
         hinted = template_from_reference_hint(intent.reference_layout_hint)
         if hinted:
@@ -56,10 +67,24 @@ def template_for_ad_format(ad_format: str, copy_mode: str, intent: CopyVisualInt
     }.get(ad_format, "top_headline_center_product_bottom_cta")
 
 
-def build_text_layout_spec(copy_spec: CopySpec, template: str, width: int, height: int, font_metric: FontMetric, style_spec: TextStyleSpec, intent: CopyVisualIntent | None = None) -> TextLayoutSpec:
+def build_text_layout_spec(
+    copy_spec: CopySpec,
+    template: str,
+    width: int,
+    height: int,
+    font_metric: FontMetric,
+    style_spec: TextStyleSpec,
+    intent: CopyVisualIntent | None = None,
+    copy_presence_plan: dict | None = None,
+    information_panel_plan: dict | None = None,
+    platform_safe_zone_spec: dict | None = None,
+) -> TextLayoutSpec:
     if template == "no_text":
         return TextLayoutSpec(template="no_text", canvas_width=width, canvas_height=height, slots=[], reserved_text_areas=[], product_zone=NormalizedBBox(x=0.15, y=0.18, w=0.70, h=0.64))
     role_boxes, product_zone = boxes_for_template(template)
+    role_boxes = apply_panel_geometry(role_boxes, product_zone, information_panel_plan or {})
+    role_boxes = apply_platform_safe_zones(role_boxes, platform_safe_zone_spec or {})
+    role_boxes = enforce_text_area_budget(role_boxes, float((copy_presence_plan or {}).get("max_text_area_ratio") or 0.75))
     renderable_roles = {item.role for item in copy_spec.get_renderable()}
     slots: list[TextSlot] = []
     for role, bbox in role_boxes.items():
@@ -83,7 +108,7 @@ def build_text_layout_spec(copy_spec: CopySpec, template: str, width: int, heigh
                 max_lines=2 if role == "headline" else 3,
             )
         )
-    return TextLayoutSpec(
+    layout = TextLayoutSpec(
         template=template, 
         canvas_width=width, 
         canvas_height=height, 
@@ -91,6 +116,61 @@ def build_text_layout_spec(copy_spec: CopySpec, template: str, width: int, heigh
         product_zone=product_zone,
         auto_find_empty_space=(template == "dynamic_side_split")
     )
+    layout.safe_margin_ratio = float((information_panel_plan or {}).get("safe_margin_ratio") or layout.safe_margin_ratio)
+    return layout
+
+
+def apply_panel_geometry(role_boxes: dict[str, NormalizedBBox], product_zone: NormalizedBBox, panel: dict) -> dict[str, NormalizedBBox]:
+    if not panel.get("enabled"):
+        return role_boxes
+    panel_type = panel.get("panel_type")
+    coverage = float(panel.get("coverage_ratio") or 0.40)
+    if panel_type in {"left_information_column", "split_screen_diagonal_panel"}:
+        return {role: NormalizedBBox(x=0.06, y=bbox.y, w=min(max(0.24, coverage - 0.08), 0.48), h=bbox.h) for role, bbox in role_boxes.items()}
+    if panel_type == "right_information_column":
+        panel_w = min(max(0.24, coverage - 0.08), 0.48)
+        return {role: NormalizedBBox(x=1.0 - panel_w - 0.06, y=bbox.y, w=panel_w, h=bbox.h) for role, bbox in role_boxes.items()}
+    if panel_type == "full_poster_grid":
+        return {
+            "headline": NormalizedBBox(x=0.07, y=0.06, w=0.86, h=0.12),
+            "subheadline": NormalizedBBox(x=0.08, y=0.20, w=0.40, h=0.10),
+            "body": NormalizedBBox(x=0.08, y=0.32, w=0.40, h=0.20),
+            "promotion": NormalizedBBox(x=0.08, y=0.56, w=0.30, h=0.10),
+            "discount": NormalizedBBox(x=0.08, y=0.56, w=0.30, h=0.10),
+            "price": NormalizedBBox(x=0.08, y=0.68, w=0.34, h=0.10),
+            "period": NormalizedBBox(x=0.08, y=0.78, w=0.34, h=0.08),
+            "badge": NormalizedBBox(x=0.08, y=0.80, w=0.24, h=0.08),
+            "store_info": NormalizedBBox(x=0.08, y=0.90, w=0.84, h=0.06),
+        }
+    return role_boxes
+
+
+def enforce_text_area_budget(role_boxes: dict[str, NormalizedBBox], max_ratio: float) -> dict[str, NormalizedBBox]:
+    total = sum(box.area_ratio() for box in role_boxes.values())
+    if total <= max_ratio or total <= 0:
+        return role_boxes
+    scale = max(0.15, (max_ratio / total) ** 0.5)
+    return {
+        role: NormalizedBBox(x=box.x, y=box.y, w=max(0.01, min(box.w * scale, 1.0 - box.x)), h=max(0.01, min(box.h * scale, 1.0 - box.y)))
+        for role, box in role_boxes.items()
+    }
+
+
+def apply_platform_safe_zones(role_boxes: dict[str, NormalizedBBox], safe: dict) -> dict[str, NormalizedBBox]:
+    top = float(safe.get("top_ratio") or 0.0)
+    bottom = float(safe.get("bottom_ratio") or 0.0)
+    left = float(safe.get("left_ratio") or 0.0)
+    right = float(safe.get("right_ratio") or 0.0)
+    if not any((top, bottom, left, right)):
+        return role_boxes
+    output = {}
+    for role, box in role_boxes.items():
+        x = min(max(box.x, left), max(left, 1.0 - right - box.w))
+        y = min(max(box.y, top), max(top, 1.0 - bottom - box.h))
+        w = min(box.w, 1.0 - right - x)
+        h = min(box.h, 1.0 - bottom - y)
+        output[role] = NormalizedBBox(x=x, y=y, w=max(0.01, w), h=max(0.01, h))
+    return output
 
 
 def overlay_for_role(role: str, style_spec: TextStyleSpec, intent: CopyVisualIntent | None) -> str:
@@ -149,7 +229,13 @@ def boxes_for_template(template: str) -> tuple[dict[str, NormalizedBBox], Normal
             {
                 "headline": NormalizedBBox(x=0.06, y=0.12, w=0.42, h=0.20),
                 "subheadline": NormalizedBBox(x=0.06, y=0.35, w=0.40, h=0.16),
+                "body": NormalizedBBox(x=0.06, y=0.52, w=0.40, h=0.14),
+                "promotion": NormalizedBBox(x=0.06, y=0.66, w=0.26, h=0.08),
+                "discount": NormalizedBBox(x=0.06, y=0.66, w=0.26, h=0.08),
+                "period": NormalizedBBox(x=0.34, y=0.66, w=0.14, h=0.08),
+                "price": NormalizedBBox(x=0.06, y=0.76, w=0.26, h=0.08),
                 "cta": NormalizedBBox(x=0.06, y=0.72, w=0.32, h=0.10),
+                "store_info": NormalizedBBox(x=0.06, y=0.86, w=0.40, h=0.06),
             },
             NormalizedBBox(x=0.52, y=0.10, w=0.42, h=0.80),
         )
@@ -158,7 +244,13 @@ def boxes_for_template(template: str) -> tuple[dict[str, NormalizedBBox], Normal
             {
                 "headline": NormalizedBBox(x=0.52, y=0.12, w=0.42, h=0.20),
                 "subheadline": NormalizedBBox(x=0.54, y=0.35, w=0.40, h=0.16),
+                "body": NormalizedBBox(x=0.54, y=0.52, w=0.40, h=0.14),
+                "promotion": NormalizedBBox(x=0.54, y=0.66, w=0.24, h=0.08),
+                "discount": NormalizedBBox(x=0.54, y=0.66, w=0.24, h=0.08),
+                "period": NormalizedBBox(x=0.80, y=0.66, w=0.14, h=0.08),
+                "price": NormalizedBBox(x=0.54, y=0.76, w=0.26, h=0.08),
                 "cta": NormalizedBBox(x=0.62, y=0.72, w=0.32, h=0.10),
+                "store_info": NormalizedBBox(x=0.54, y=0.86, w=0.40, h=0.06),
             },
             NormalizedBBox(x=0.06, y=0.10, w=0.42, h=0.80),
         )
@@ -167,10 +259,13 @@ def boxes_for_template(template: str) -> tuple[dict[str, NormalizedBBox], Normal
             {
                 "headline": NormalizedBBox(x=0.06, y=0.05, w=0.88, h=0.14),
                 "promotion": NormalizedBBox(x=0.08, y=0.22, w=0.35, h=0.10),
+                "discount": NormalizedBBox(x=0.08, y=0.22, w=0.35, h=0.10),
                 "price": NormalizedBBox(x=0.55, y=0.22, w=0.37, h=0.10),
+                "period": NormalizedBBox(x=0.08, y=0.84, w=0.35, h=0.06),
                 "body": NormalizedBBox(x=0.08, y=0.72, w=0.84, h=0.12),
                 "subheadline": NormalizedBBox(x=0.08, y=0.72, w=0.84, h=0.12),
                 "cta": NormalizedBBox(x=0.12, y=0.87, w=0.76, h=0.08),
+                "store_info": NormalizedBBox(x=0.46, y=0.84, w=0.46, h=0.06),
             },
             NormalizedBBox(x=0.10, y=0.34, w=0.80, h=0.34),
         )

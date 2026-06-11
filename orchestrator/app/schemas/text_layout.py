@@ -8,7 +8,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, model_validator
 
 
-CopyRole = Literal["headline", "subheadline", "promotion", "price", "cta", "store_info", "disclaimer", "badge", "body"]
+CopyRole = Literal["headline", "subheadline", "promotion", "discount", "period", "price", "cta", "store_info", "disclaimer", "badge", "body"]
 StyleProfile = Literal["cute", "premium", "clean", "trendy", "emotional", "event"]
 OverlayTreatment = Literal["plain", "drop_shadow", "stroke", "gradient_panel", "solid_panel", "blur_backdrop", "sticker_badge"]
 TypographyOverlayTreatment = Literal[

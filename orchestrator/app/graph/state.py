@@ -113,6 +113,11 @@ class MarketingState(TypedDict, total=False):
     missing_fields: list[MissingField]
     option_question: dict[str, Any] | OptionQuestion | None
     ad_format_spec: dict[str, Any] | AdFormatSpec | None
+    ad_format_contract: dict[str, Any] | None
+    creative_lane_decision: dict[str, Any] | None
+    copy_presence_plan: dict[str, Any] | None
+    information_panel_plan: dict[str, Any] | None
+    platform_safe_zone_spec: dict[str, Any] | None
     layout_spec: dict[str, Any] | LayoutSpec | None
     marketing_copy: dict[str, Any] | MarketingCopy | None
     copywriting_output: dict[str, Any] | CopywritingOutput | None
@@ -312,6 +317,11 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "missing_fields": [],
         "option_question": None,
         "ad_format_spec": None,
+        "ad_format_contract": None,
+        "creative_lane_decision": None,
+        "copy_presence_plan": None,
+        "information_panel_plan": None,
+        "platform_safe_zone_spec": None,
         "layout_spec": None,
         "marketing_copy": None,
         "copywriting_output": None,

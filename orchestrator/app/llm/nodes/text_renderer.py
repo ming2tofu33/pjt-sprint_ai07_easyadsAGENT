@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 
+from orchestrator.app.llm.ad_format_policy import role_allowed
 from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, ResolvedFont, load_font as load_resolved_font, resolve_font, resolve_font_path
 from orchestrator.app.rendering.text_metrics import draw_text_with_tracking, fit_text_block_to_bbox, measure_text_with_tracking
 from orchestrator.app.rendering.typography_color import choose_text_color
@@ -66,6 +67,10 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
 
         draw = ImageDraw.Draw(image, "RGBA")
         for slot in layout.slots:
+            if not role_allowed(slot.role, state.get("copy_presence_plan")):
+                skipped_count += 1
+                warnings.append(f"slot {slot.slot_id} skipped: role forbidden by copy presence plan")
+                continue
             copy_item = find_copy_item(copy_spec, slot)
             if not copy_item:
                 skipped_count += 1
@@ -143,6 +148,7 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
             render_traces.append(trace.model_dump())
             rendered_count += 1
         image.save(preview_path if overflow_errors else final_path)
+    text_area_ratio = sum(_bbox_area(trace.get("rendered_bbox_px")) for trace in render_traces) / max(1, _image_area_from_path(background_path))
 
     render_result = RenderResult(
         background_image_path=str(background_path),
@@ -150,7 +156,17 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         rendered_slot_count=rendered_count,
         skipped_slot_count=skipped_count,
         warnings=warnings + overflow_errors,
-        metadata={"source_node": "text_renderer", "has_text_overlay": rendered_count > 0, "overflow_detected": bool(overflow_errors), "typography_render_traces": render_traces},
+        metadata={
+            "source_node": "text_renderer",
+            "has_text_overlay": rendered_count > 0,
+            "overflow_detected": bool(overflow_errors),
+            "typography_render_traces": render_traces,
+            "ad_format_contract": state.get("ad_format_contract"),
+            "copy_presence_plan": state.get("copy_presence_plan"),
+            "information_panel_plan": state.get("information_panel_plan"),
+            "text_area_ratio": text_area_ratio,
+            "embedded_cta_count": sum(1 for trace in render_traces if trace.get("role") == "cta"),
+        },
     )
     artifacts = list(state.get("artifact_refs") or [])
     if overflow_errors:
@@ -400,3 +416,17 @@ def hex_to_rgb(value: str) -> tuple[int, int, int]:
     if len(cleaned) != 6:
         return (255, 255, 255)
     return tuple(int(cleaned[index : index + 2], 16) for index in (0, 2, 4))
+
+
+def _bbox_area(bbox: object) -> int:
+    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+        return 0
+    return max(0, int(bbox[2]) - int(bbox[0])) * max(0, int(bbox[3]) - int(bbox[1]))
+
+
+def _image_area_from_path(path: str | Path) -> int:
+    try:
+        with Image.open(path) as image:
+            return image.width * image.height
+    except Exception:
+        return 1

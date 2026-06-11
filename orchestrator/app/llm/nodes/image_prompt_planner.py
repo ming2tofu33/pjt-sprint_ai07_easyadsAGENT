@@ -55,6 +55,10 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
     reference_template_selection = state.get("reference_template_selection") or {}
     template_style_hint = reference_template_selection.get("style_profile_hint") or {}
     text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
+    ad_format_contract = state.get("ad_format_contract") or {}
+    creative_lane = state.get("creative_lane_decision") or {}
+    copy_presence_plan = state.get("copy_presence_plan") or {}
+    information_panel_plan = state.get("information_panel_plan") or {}
     subject = context.item_or_service or "advertising subject"
     visual_direction = selected_visual_direction(state)
     selected_tone = selected_tone_label(state)
@@ -65,6 +69,7 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
     if visual_direction:
         scene = f"{scene}; follow this user visual direction: {visual_direction}"
     composition = f"{visual_template.composition}. {build_composition(reserved_text)} Main subject zone: {visual_template.main_subject_zone}."
+    composition = f"{composition} {build_ad_format_composition_hint(ad_format_contract, creative_lane, copy_presence_plan, information_panel_plan)}"
     style_hint = reference_style_profile.get("ad_style_prompt")
     template_hint = build_reference_template_hint(selected_reference_template, template_style_hint)
     product_hint = build_product_preserve_hint(product_preserve_spec)
@@ -204,9 +209,32 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
             "prompt_critic": prompt_critic_metadata,
             "business_visual_preset_id": preset_id,
             "beauty_subtype": scene_plan.business_type if scene_plan.business_type.startswith("beauty_") else None,
+            "ad_format_contract": ad_format_contract,
+            "creative_lane_decision": creative_lane,
+            "copy_presence_plan": copy_presence_plan,
+            "information_panel_plan": information_panel_plan,
+            "platform_safe_zone_spec": state.get("platform_safe_zone_spec"),
         },
     )
     return spec
+
+
+def build_ad_format_composition_hint(contract: dict[str, Any], lane: dict[str, Any], copy_plan: dict[str, Any], panel: dict[str, Any]) -> str:
+    hints: list[str] = []
+    if lane.get("lane") == "visual_first":
+        hints.append("Preserve product/lifestyle visual dominance; avoid large panels and button-like CTA graphics.")
+    if lane.get("lane") == "information_design" and panel.get("enabled"):
+        hints.append(
+            f"Reserve a structured {panel.get('panel_type')} information panel with {panel.get('geometry')} geometry, "
+            f"about {panel.get('coverage_ratio')} canvas coverage, product zone {panel.get('product_zone')}."
+        )
+    if contract.get("embedded_cta_policy") in {"forbidden", "platform_only"}:
+        hints.append("Do not render embedded button-style CTA in the image background.")
+    if contract.get("platform_safe_zones"):
+        hints.append(f"Respect platform safe zones: {contract.get('platform_safe_zones')}.")
+    if copy_plan:
+        hints.append(f"Expected text density mode {copy_plan.get('mode')} with max text area {copy_plan.get('max_text_area_ratio')}.")
+    return " ".join(hints)
 
 
 def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> ImagePrompt:

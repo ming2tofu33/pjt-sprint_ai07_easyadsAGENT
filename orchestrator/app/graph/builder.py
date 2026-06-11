@@ -30,6 +30,12 @@ from orchestrator.app.graph.routers import (
 )
 from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.nodes.auto_pilot_copywriting import auto_pilot_copywriting_node
+from orchestrator.app.llm.nodes.ad_format_contract import (
+    ad_format_contract_node,
+    creative_lane_decision_node,
+    copy_presence_planner_node,
+    information_panel_planner_node,
+)
 from orchestrator.app.llm.nodes.background_validation import background_validation_node
 from orchestrator.app.llm.nodes.copy_candidates import copy_candidate_generation_node, copy_candidate_selection_interrupt_node, state_update_selected_copy_node
 from orchestrator.app.llm.nodes.copywriting import copywriting_node
@@ -92,6 +98,10 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("options", options_node)
     graph.add_node("state_update", state_update_node)
     graph.add_node("format_planner", format_planner_node)
+    graph.add_node("ad_format_contract", ad_format_contract_node)
+    graph.add_node("creative_lane_decision", creative_lane_decision_node)
+    graph.add_node("copy_presence_planner", copy_presence_planner_node)
+    graph.add_node("information_panel_planner", information_panel_planner_node)
     graph.add_node("tone_binding", tone_binding_node)
     graph.add_node("copy_candidate_generation", copy_candidate_generation_node)
     graph.add_node("copy_candidate_selection_interrupt", copy_candidate_selection_interrupt_node)
@@ -158,7 +168,11 @@ def build_marketing_graph(checkpointer=None):
     graph.add_edge("input_compliance_precheck", "format_planner")
     graph.add_edge("options", "state_update")
     graph.add_edge("state_update", "validator")
-    graph.add_edge("format_planner", "tone_binding")
+    graph.add_edge("format_planner", "ad_format_contract")
+    graph.add_edge("ad_format_contract", "creative_lane_decision")
+    graph.add_edge("creative_lane_decision", "copy_presence_planner")
+    graph.add_edge("copy_presence_planner", "information_panel_planner")
+    graph.add_edge("information_panel_planner", "tone_binding")
     graph.add_conditional_edges(
         "tone_binding",
         route_after_tone_binding,
