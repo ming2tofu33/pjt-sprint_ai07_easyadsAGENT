@@ -1183,6 +1183,9 @@ def _resolve_db_workspace_for_public_access(
     workspace_id = (requested_workspace_id or "").strip()
     resolved_user_id = (user_id or "").strip() or None
     if not workspace_id:
+        if resolved_user_id:
+            workspace = workspace_repo.ensure_user_workspace(user_id=resolved_user_id, connection=connection)
+            return str(workspace["id"])
         if db_settings.allow_demo_workspace_fallback():
             resolved_user_id = resolved_user_id or db_settings.get_demo_user_id()
             workspace = workspace_repo.ensure_demo_workspace(user_id=resolved_user_id, connection=connection)
