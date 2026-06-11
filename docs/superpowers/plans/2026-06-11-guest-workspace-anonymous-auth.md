@@ -8,6 +8,30 @@
 
 **Tech Stack:** Next.js 14, `@supabase/supabase-js@2.107.0`, Fastify BFF, FastAPI orchestrator, Postgres/Supabase, Vitest, Pytest.
 
+## Implementation Status
+
+Completed on 2026-06-11 on branch `fix/srv/compliance-hitl-contract`.
+
+- Added browser-side Supabase anonymous session creation for user-scoped APIs, with a shared in-flight anonymous sign-in guard for concurrent first requests.
+- Linked guest sessions to Google with `linkIdentity({ provider: "google" })` so the Supabase `user.id` and guest workspace continue after login.
+- Treated Supabase anonymous users as guests in the app profile/account UI.
+- Forwarded trusted BFF principal metadata to orchestrator for generation, archive, asset, and chat workspace APIs.
+- Hardened admin routes so anonymous Supabase sessions are rejected for admin reference APIs.
+- Updated orchestrator workspace creation so explicit `guest` creates guest metadata, explicit `user` promotes guest/legacy workspaces, and omitted account type preserves an existing workspace source.
+- Documented required Supabase Anonymous Sign-Ins configuration and production fallback guidance.
+
+Final verification:
+
+```bash
+npm --prefix apps/web run test -- api-client.test.ts user-profile.test.ts LoginClient.test.tsx lib/supabase/session.test.ts
+npm --prefix apps/bff run test -- generate.test.js
+PYTHONPATH=. ./.venv/bin/pytest orchestrator/tests/test_workspaces_repository.py orchestrator/tests/test_generation_job_service_db_backend.py orchestrator/tests/test_api_generation_jobs_workspace_scope.py orchestrator/tests/test_chat_thread_service.py orchestrator/tests/test_workspace_account_type_propagation.py -q
+PYTHONPATH=. ./.venv/bin/pytest orchestrator/tests/test_api_generation_outputs_router.py orchestrator/tests/test_api_usage_summary.py orchestrator/tests/test_validation_feedback_api.py orchestrator/tests/test_regeneration_api.py -q
+npm --prefix apps/web run build
+```
+
+Manual Google OAuth smoke still requires a configured Supabase project with Anonymous Sign-Ins and Google OAuth enabled.
+
 ---
 
 ## File Structure
@@ -59,7 +83,7 @@
 - Modify: `apps/web/lib/api-client.ts`
 - Test: `apps/web/lib/api-client.test.ts`
 
-- [ ] **Step 1: Write failing tests for anonymous generation auth**
+- [x] **Step 1: Write failing tests for anonymous generation auth**
 
 Add this test near the existing generation-job auth tests in `apps/web/lib/api-client.test.ts`:
 
@@ -135,7 +159,7 @@ it("does not create anonymous sessions for admin reference APIs", async () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -145,7 +169,7 @@ npm --prefix apps/web run test -- api-client.test.ts
 
 Expected: the first new test fails because `signInAnonymously` is not called and the request has no `authorization` header.
 
-- [ ] **Step 3: Add the shared Supabase session helper**
+- [x] **Step 3: Add the shared Supabase session helper**
 
 Create `apps/web/lib/supabase/session.ts`:
 
@@ -223,7 +247,7 @@ export async function getSupabaseAuthorizationHeader(
 }
 ```
 
-- [ ] **Step 4: Replace the private auth helper in `api-client.ts`**
+- [x] **Step 4: Replace the private auth helper in `api-client.ts`**
 
 At the top of `apps/web/lib/api-client.ts`, add:
 
@@ -254,7 +278,7 @@ Leave generation, archive, asset upload, and chat-thread calls as:
 const authHeaders = await getSupabaseAuthorizationHeader();
 ```
 
-- [ ] **Step 5: Run tests and verify they pass**
+- [x] **Step 5: Run tests and verify they pass**
 
 Run:
 
@@ -264,7 +288,7 @@ npm --prefix apps/web run test -- api-client.test.ts
 
 Expected: all `api-client.test.ts` tests pass, including the two new anonymous/admin assertions.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/web/lib/supabase/session.ts apps/web/lib/api-client.ts apps/web/lib/api-client.test.ts
@@ -279,7 +303,7 @@ git commit -m "feat(web): create anonymous session for guest generation"
 - Modify: `apps/web/app/login/LoginClient.tsx`
 - Create: `apps/web/app/login/LoginClient.test.tsx`
 
-- [ ] **Step 1: Write failing login tests**
+- [x] **Step 1: Write failing login tests**
 
 Create `apps/web/app/login/LoginClient.test.tsx`:
 
@@ -344,7 +368,7 @@ describe("LoginClient", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -354,7 +378,7 @@ npm --prefix apps/web run test -- LoginClient.test.tsx
 
 Expected: the first test fails because `LoginClient` always calls `signInWithOAuth`.
 
-- [ ] **Step 3: Implement identity linking**
+- [x] **Step 3: Implement identity linking**
 
 Replace the OAuth call block in `apps/web/app/login/LoginClient.tsx` with:
 
@@ -387,7 +411,7 @@ Replace the OAuth call block in `apps/web/app/login/LoginClient.tsx` with:
     }
 ```
 
-- [ ] **Step 4: Run tests and verify they pass**
+- [x] **Step 4: Run tests and verify they pass**
 
 Run:
 
@@ -397,7 +421,7 @@ npm --prefix apps/web run test -- LoginClient.test.tsx
 
 Expected: both login tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/app/login/LoginClient.tsx apps/web/app/login/LoginClient.test.tsx
@@ -413,7 +437,7 @@ git commit -m "feat(web): link Google login to guest sessions"
 - Modify: `apps/web/lib/user-profile.test.ts`
 - Modify: `apps/web/app/auth/callback/route.ts`
 
-- [ ] **Step 1: Write failing profile tests**
+- [x] **Step 1: Write failing profile tests**
 
 Add this test to `apps/web/lib/user-profile.test.ts`:
 
@@ -432,7 +456,7 @@ it("returns null for Supabase anonymous users", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -442,7 +466,7 @@ npm --prefix apps/web run test -- user-profile.test.ts
 
 Expected: the new test fails because anonymous users are currently converted into a visible `AppUserProfile`.
 
-- [ ] **Step 3: Treat anonymous users as guests**
+- [x] **Step 3: Treat anonymous users as guests**
 
 In `apps/web/lib/user-profile.ts`, update `buildAppUserProfile`:
 
@@ -472,7 +496,7 @@ In `apps/web/app/auth/callback/route.ts`, update the `metadata` object in the pr
         },
 ```
 
-- [ ] **Step 4: Run tests and verify they pass**
+- [x] **Step 4: Run tests and verify they pass**
 
 Run:
 
@@ -482,7 +506,7 @@ npm --prefix apps/web run test -- user-profile.test.ts
 
 Expected: all user-profile tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/lib/user-profile.ts apps/web/lib/user-profile.test.ts apps/web/app/auth/callback/route.ts
@@ -497,7 +521,7 @@ git commit -m "fix(web): keep anonymous users in guest account state"
 - Modify: `apps/bff/src/app.js`
 - Modify: `apps/bff/tests/generate.test.js`
 
-- [ ] **Step 1: Write failing BFF principal test**
+- [x] **Step 1: Write failing BFF principal test**
 
 Add this test near the existing generation-job auth tests in `apps/bff/tests/generate.test.js`:
 
@@ -560,7 +584,7 @@ Add this test near the existing generation-job auth tests in `apps/bff/tests/gen
   });
 ```
 
-- [ ] **Step 2: Run tests and verify they fail**
+- [x] **Step 2: Run tests and verify they fail**
 
 Run:
 
@@ -570,7 +594,7 @@ npm --prefix apps/bff run test -- generate.test.js
 
 Expected: the new test fails because BFF currently forwards only `userId` and `X-EasyAds-User-Id`.
 
-- [ ] **Step 3: Implement principal resolution**
+- [x] **Step 3: Implement principal resolution**
 
 In `apps/bff/src/app.js`, replace `verifiedUserHeader` and `resolveSupabaseUserId` with:
 
@@ -657,7 +681,7 @@ headers: verifiedPrincipalHeaders(principal)
 
 Keep archive and chat-thread routes on `resolveSupabaseUserId()` because they only need the stable user id.
 
-- [ ] **Step 4: Run tests and verify they pass**
+- [x] **Step 4: Run tests and verify they pass**
 
 Run:
 
@@ -667,7 +691,7 @@ npm --prefix apps/bff run test -- generate.test.js
 
 Expected: all BFF tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/bff/src/app.js apps/bff/tests/generate.test.js
@@ -687,7 +711,7 @@ git commit -m "feat(bff): forward anonymous users as guest principals"
 - Test: `orchestrator/tests/test_generation_job_service_db_backend.py`
 - Test: `orchestrator/tests/test_api_generation_jobs_workspace_scope.py`
 
-- [ ] **Step 1: Write failing workspace repository tests**
+- [x] **Step 1: Write failing workspace repository tests**
 
 Add to `orchestrator/tests/test_workspaces_repository.py`:
 
@@ -727,7 +751,7 @@ def test_ensure_user_workspace_promotes_guest_workspace_to_user(monkeypatch):
     assert workspace == promoted_row
 ```
 
-- [ ] **Step 2: Write failing generation service test**
+- [x] **Step 2: Write failing generation service test**
 
 Add to `orchestrator/tests/test_generation_job_service_db_backend.py` near `test_postgres_backend_create_uses_authenticated_user_workspace`:
 
@@ -777,7 +801,7 @@ def test_postgres_backend_create_marks_guest_workspace_and_job(monkeypatch):
     assert job.thread_id == "thread_guest"
 ```
 
-- [ ] **Step 3: Write failing router test**
+- [x] **Step 3: Write failing router test**
 
 Add to `orchestrator/tests/test_api_generation_jobs_workspace_scope.py`:
 
@@ -816,7 +840,7 @@ def test_generation_job_create_route_passes_guest_account_type_header(monkeypatc
     assert captured == {"user_id": "guest_uuid_1", "account_type": "guest"}
 ```
 
-- [ ] **Step 4: Run tests and verify they fail**
+- [x] **Step 4: Run tests and verify they fail**
 
 Run:
 
@@ -826,7 +850,7 @@ PYTHONPATH=. pytest orchestrator/tests/test_workspaces_repository.py orchestrato
 
 Expected: new tests fail because `account_type` is not accepted or forwarded.
 
-- [ ] **Step 5: Add account type to the API schema**
+- [x] **Step 5: Add account type to the API schema**
 
 In `orchestrator/app/api/schemas/generation_jobs.py`, add this import:
 
@@ -840,7 +864,7 @@ The import already exists. Add this field to `GenerationJobCreateRequest` after 
     account_type: Literal["user", "guest"] | None = Field(default=None, alias="accountType")
 ```
 
-- [ ] **Step 6: Forward account type in the generation job router**
+- [x] **Step 6: Forward account type in the generation job router**
 
 In `orchestrator/app/api/routers/generation_jobs.py`, update the dataclass:
 
@@ -876,7 +900,7 @@ Update `_scoped_create_request`:
     )
 ```
 
-- [ ] **Step 7: Update workspace repository**
+- [x] **Step 7: Update workspace repository**
 
 In `orchestrator/app/db/repositories/workspaces.py`, replace `ensure_user_workspace` with:
 
@@ -956,7 +980,7 @@ def ensure_user_workspace(user_id: str, account_type: str = "user", connection: 
             return cur.fetchone()
 ```
 
-- [ ] **Step 8: Pass account type in generation job service**
+- [x] **Step 8: Pass account type in generation job service**
 
 In `orchestrator/app/generation_jobs/service.py`, update `_resolve_db_workspace_for_generation_request`:
 
@@ -977,7 +1001,7 @@ Update metadata creation in `_create_generation_job_db`:
 
 Use the explicit account type from the request whenever present; the `guest_` fallback only helps legacy tests and should not be used as the primary product contract.
 
-- [ ] **Step 9: Run tests and verify they pass**
+- [x] **Step 9: Run tests and verify they pass**
 
 Run:
 
@@ -987,7 +1011,7 @@ PYTHONPATH=. pytest orchestrator/tests/test_workspaces_repository.py orchestrato
 
 Expected: all targeted orchestrator tests pass.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add orchestrator/app/api/schemas/generation_jobs.py orchestrator/app/api/routers/generation_jobs.py orchestrator/app/db/repositories/workspaces.py orchestrator/app/generation_jobs/service.py orchestrator/tests/test_workspaces_repository.py orchestrator/tests/test_generation_job_service_db_backend.py orchestrator/tests/test_api_generation_jobs_workspace_scope.py
@@ -1003,7 +1027,7 @@ git commit -m "feat(orchestrator): mark anonymous users as guest workspaces"
 - Modify: `apps/bff/tests/generate.test.js`
 - Modify: `orchestrator/tests/test_chat_thread_service.py`
 
-- [ ] **Step 1: Add web archive anonymous auth regression**
+- [x] **Step 1: Add web archive anonymous auth regression**
 
 Add to `apps/web/lib/api-client.test.ts`:
 
@@ -1034,7 +1058,7 @@ it("uses the anonymous session for archive list requests", async () => {
 });
 ```
 
-- [ ] **Step 2: Add BFF archive anonymous principal regression**
+- [x] **Step 2: Add BFF archive anonymous principal regression**
 
 Add to `apps/bff/tests/generate.test.js`:
 
@@ -1072,7 +1096,7 @@ Add to `apps/bff/tests/generate.test.js`:
   });
 ```
 
-- [ ] **Step 3: Add thread limit continuity test**
+- [x] **Step 3: Add thread limit continuity test**
 
 Add to `orchestrator/tests/test_chat_thread_service.py`:
 
@@ -1088,7 +1112,7 @@ def test_guest_thread_limit_uses_guest_owner_id():
     assert other_guest.thread_id
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -1100,7 +1124,7 @@ PYTHONPATH=. pytest orchestrator/tests/test_chat_thread_service.py -q
 
 Expected: all targeted tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/lib/api-client.test.ts apps/bff/tests/generate.test.js orchestrator/tests/test_chat_thread_service.py
@@ -1115,7 +1139,7 @@ git commit -m "test: pin guest archive and thread continuity"
 - Modify: `.env.example`
 - Modify: `apps/web/README.md`
 
-- [ ] **Step 1: Update `.env.example`**
+- [x] **Step 1: Update `.env.example`**
 
 Add this comment block under the Supabase public env variables if they exist, or under the Database section if they do not:
 
@@ -1126,7 +1150,7 @@ Add this comment block under the Supabase public env variables if they exist, or
 EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK=false
 ```
 
-- [ ] **Step 2: Update `apps/web/README.md`**
+- [x] **Step 2: Update `apps/web/README.md`**
 
 Add this section after the existing user login section:
 
@@ -1146,7 +1170,7 @@ Add this section after the existing user login section:
 `EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK=true`는 로컬/테스트용 공유 fallback입니다. 운영 게스트 기능에는 사용하지 않습니다.
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .env.example apps/web/README.md
@@ -1160,15 +1184,15 @@ git commit -m "docs: document anonymous guest workspace setup"
 **Files:**
 - No source edits.
 
-- [ ] **Step 1: Run web tests**
+- [x] **Step 1: Run web tests**
 
 ```bash
-npm --prefix apps/web run test -- api-client.test.ts user-profile.test.ts LoginClient.test.tsx
+npm --prefix apps/web run test -- api-client.test.ts user-profile.test.ts LoginClient.test.tsx lib/supabase/session.test.ts
 ```
 
 Expected: selected web tests pass.
 
-- [ ] **Step 2: Run BFF tests**
+- [x] **Step 2: Run BFF tests**
 
 ```bash
 npm --prefix apps/bff run test -- generate.test.js
@@ -1176,15 +1200,15 @@ npm --prefix apps/bff run test -- generate.test.js
 
 Expected: BFF tests pass.
 
-- [ ] **Step 3: Run orchestrator tests**
+- [x] **Step 3: Run orchestrator tests**
 
 ```bash
-PYTHONPATH=. pytest orchestrator/tests/test_workspaces_repository.py orchestrator/tests/test_generation_job_service_db_backend.py orchestrator/tests/test_api_generation_jobs_workspace_scope.py orchestrator/tests/test_chat_thread_service.py -q
+PYTHONPATH=. pytest orchestrator/tests/test_workspaces_repository.py orchestrator/tests/test_generation_job_service_db_backend.py orchestrator/tests/test_api_generation_jobs_workspace_scope.py orchestrator/tests/test_chat_thread_service.py orchestrator/tests/test_workspace_account_type_propagation.py -q
 ```
 
 Expected: targeted orchestrator tests pass.
 
-- [ ] **Step 4: Run type checks/builds**
+- [x] **Step 4: Run type checks/builds**
 
 ```bash
 npm --prefix apps/web run build
@@ -1209,7 +1233,7 @@ Start local services using the repo’s normal commands. Then:
 11. Click Google login.
 12. Confirm the same generated/archive items are visible after callback.
 
-- [ ] **Step 6: Commit verification notes if docs changed**
+- [x] **Step 6: Commit verification notes if docs changed**
 
 If manual smoke reveals an environment nuance, add it to `apps/web/README.md` and commit:
 
@@ -1226,7 +1250,7 @@ If no doc update is needed, do not create an empty commit.
 
 - Spec coverage:
   - 비로그인 사용 가능: Task 1 creates anonymous sessions before scoped API calls.
-  - 게스트 workspace 생성: Task 4 and Task 5 pass verified guest principal into orchestrator and create guest workspace metadata.
+  - 게스트 workspace 생성: Task 4 and Task 5 pass verified guest principal into orchestrator; final hardening also propagates guest account type through archive, asset, and chat workspace APIs.
   - 3개 제한: Task 6 pins guest active thread limit using existing per-owner/per-workspace guard.
   - 로그인 후 이어서 작업: Task 2 uses `linkIdentity`, preserving Supabase `user.id`.
   - 로그인 후 3개 이상의 보관함 가능: Archive APIs use the same user id and archive count is not limited; only active thread count is limited.
@@ -1236,6 +1260,6 @@ If no doc update is needed, do not create an empty commit.
   - Every code-changing step includes concrete code.
 - Type consistency:
   - Frontend uses `account_type` in Supabase anonymous metadata.
-  - BFF sends `accountType: "guest" | "user"` and `X-EasyAds-Account-Type`.
+  - BFF sends `accountType: "guest" | "user"` and `X-EasyAds-Account-Type` for generation, and propagates `account_type`/`accountType` query or body fields for archive, asset, and chat workspace APIs.
   - Orchestrator schema uses `account_type` with alias `accountType`.
-  - Workspace repository uses `account_type` argument with default `"user"`.
+  - Workspace repository uses optional `account_type`; omitted account type preserves an existing workspace source, explicit `"user"` promotes, and explicit `"guest"` creates/reuses guest metadata without downgrading user workspaces.
