@@ -64,7 +64,12 @@ def _scoped_create_request(request: GenerationJobCreateRequest, principal: Reque
             }
         )
     if db_settings.allow_demo_workspace_fallback() and not principal.user_id:
-        return request
+        return request.model_copy(
+            update={
+                "account_type": principal.account_type or request.account_type,
+                "workspace_id": request.workspace_id or principal.workspace_id,
+            }
+        )
     return request.model_copy(
         update={
             "user_id": principal.user_id,

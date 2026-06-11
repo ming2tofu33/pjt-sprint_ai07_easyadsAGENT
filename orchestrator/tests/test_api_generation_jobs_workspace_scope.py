@@ -253,3 +253,40 @@ def test_generation_job_create_route_passes_guest_account_type_header(monkeypatc
 
     assert response.status_code == 201
     assert captured == {"user_id": "guest_uuid_1", "account_type": "guest"}
+
+
+def test_generation_job_create_route_merges_guest_scope_with_demo_fallback(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "true")
+    captured = {}
+    job = GenerationJobResponse(
+        job_id="job_guest",
+        thread_id="thread_guest",
+        user_id=None,
+        status="queued",
+        progress=GenerationProgress(progress_percent=0, current_stage="queued", stage_order=[]),
+        created_at="2026-06-11T00:00:00+00:00",
+        updated_at="2026-06-11T00:00:00+00:00",
+        metadata={"account_type": "guest"},
+    )
+
+    def fake_create_generation_job(request):
+        captured["user_id"] = request.user_id
+        captured["workspace_id"] = request.workspace_id
+        captured["account_type"] = request.account_type
+        return job
+
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.create_generation_job", fake_create_generation_job)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.should_route_generation_job_to_modal", lambda request: False)
+
+    response = TestClient(create_app()).post(
+        "/api/v1/generation-jobs",
+        headers={
+            "X-EasyAds-Workspace-Id": WORKSPACE_A,
+            "X-EasyAds-Account-Type": "guest",
+        },
+        json={"userInput": "게스트 광고", "runMode": "queued_only"},
+    )
+
+    assert response.status_code == 201
+    assert captured == {"user_id": None, "workspace_id": WORKSPACE_A, "account_type": "guest"}

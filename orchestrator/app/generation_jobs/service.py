@@ -86,6 +86,7 @@ _RESERVED_METADATA_KEYS = {
     "requested_run_mode",
     "effective_run_mode",
     "execution_mode",
+    "account_type",
     "user_input_preview",
 }
 PUBLIC_METADATA_BLOCKED_KEYS = {
