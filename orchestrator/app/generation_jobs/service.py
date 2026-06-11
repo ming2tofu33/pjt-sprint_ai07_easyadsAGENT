@@ -1197,7 +1197,11 @@ def _resolve_db_workspace_for_generation_request(request: GenerationJobCreateReq
             raise GenerationJobWorkspaceNotFound("Workspace was not found.")
         return workspace
     if user_id:
-        return workspace_repo.ensure_user_workspace(user_id=user_id, connection=connection)
+        return workspace_repo.ensure_user_workspace(
+            user_id=user_id,
+            account_type=request.account_type or "user",
+            connection=connection,
+        )
     if db_settings.allow_demo_workspace_fallback():
         user_id = user_id or db_settings.get_demo_user_id()
         return workspace_repo.ensure_demo_workspace(user_id=user_id, connection=connection)
@@ -1338,6 +1342,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             "requested_run_mode": request.run_mode,
             "effective_run_mode": effective_run_mode,
             "execution_mode": execution_mode,
+            "account_type": request.account_type or ("guest" if str(request.user_id or "").startswith("guest_") else "user"),
             "user_input_preview": prompt_preview,
             "brand_kit_id": request.brand_kit_id,
             "user_id": request.user_id,

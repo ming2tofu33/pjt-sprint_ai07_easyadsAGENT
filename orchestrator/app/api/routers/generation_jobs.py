@@ -42,23 +42,33 @@ router = APIRouter()
 class RequestPrincipal:
     user_id: str | None
     workspace_id: str | None
+    account_type: str | None
 
 
 def _request_principal(
     x_easyads_user_id: str | None = Header(default=None, alias="X-EasyAds-User-Id"),
     x_easyads_workspace_id: str | None = Header(default=None, alias="X-EasyAds-Workspace-Id"),
+    x_easyads_account_type: str | None = Header(default=None, alias="X-EasyAds-Account-Type"),
 ) -> RequestPrincipal:
-    return RequestPrincipal(user_id=x_easyads_user_id, workspace_id=x_easyads_workspace_id)
+    account_type = x_easyads_account_type if x_easyads_account_type in {"user", "guest"} else None
+    return RequestPrincipal(user_id=x_easyads_user_id, workspace_id=x_easyads_workspace_id, account_type=account_type)
 
 
 def _scoped_create_request(request: GenerationJobCreateRequest, principal: RequestPrincipal) -> GenerationJobCreateRequest:
     if db_settings.get_db_backend() != "postgres":
-        return request
+        return request.model_copy(
+            update={
+                "user_id": principal.user_id or request.user_id,
+                "account_type": principal.account_type or request.account_type,
+                "workspace_id": request.workspace_id or principal.workspace_id,
+            }
+        )
     if db_settings.allow_demo_workspace_fallback() and not principal.user_id:
         return request
     return request.model_copy(
         update={
             "user_id": principal.user_id,
+            "account_type": principal.account_type or request.account_type,
             "workspace_id": request.workspace_id or principal.workspace_id,
         }
     )
