@@ -51,6 +51,7 @@ def _resolve_workspace_id(
     workspace_id: str | None,
     *,
     user_id: str | None,
+    account_type: str | None = None,
 ) -> str:
     from orchestrator.app.db.workspace_scope import (
         WorkspaceScopeForbidden,
@@ -60,6 +61,8 @@ def _resolve_workspace_id(
     from orchestrator.app.assets.errors import AssetWorkspaceRequired, AssetWorkspaceForbidden
     
     try:
+        if account_type:
+            return resolve_workspace_scope(workspace_id, user_id, account_type=account_type)
         return resolve_workspace_scope(workspace_id, user_id)
     except WorkspaceScopeRequired as exc:
         raise AssetWorkspaceRequired(
@@ -143,10 +146,11 @@ def get_asset_response(
     public_asset_id: str,
     workspace_id: str | None = None,
     user_id: str | None = None,
+    account_type: str | None = None,
 ) -> AssetResponse:
     from orchestrator.app.db import settings as db_settings
     resolved_user_id = user_id or db_settings.get_demo_user_id()
-    resolved_ws = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
+    resolved_ws = _resolve_workspace_id(workspace_id, user_id=resolved_user_id, account_type=account_type)
     with db_transaction() as conn:
         row = asset_repo.get_asset_by_public_id(
             public_asset_id,
@@ -164,6 +168,7 @@ def presign_asset_upload(
     req: AssetPresignRequest,
     *,
     user_id: str | None = None,
+    account_type: str | None = None,
 ) -> AssetPresignResponse:
     vision_settings = get_vision_settings()
     
@@ -200,7 +205,7 @@ def presign_asset_upload(
     resolved_user_id = user_id or db_settings.get_demo_user_id()
 
     with db_transaction() as conn:
-        workspace_id = _resolve_workspace_id(req.workspace_id, user_id=resolved_user_id)
+        workspace_id = _resolve_workspace_id(req.workspace_id, user_id=resolved_user_id, account_type=account_type)
         
         public_asset_id = f"asset_{uuid.uuid4().hex}"
         object_key = build_upload_object_key(workspace_id=workspace_id, public_asset_id=public_asset_id, extension=ext)
@@ -313,12 +318,13 @@ def complete_asset_upload(
     public_asset_id: str,
     workspace_id: str | None = None,
     user_id: str | None = None,
+    account_type: str | None = None,
 ) -> AssetResponse:
     from orchestrator.app.assets.errors import AssetServiceError
     from orchestrator.app.db import settings as db_settings
     _validate_public_asset_id(public_asset_id)
     resolved_user_id = user_id or db_settings.get_demo_user_id()
-    resolved_ws = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
+    resolved_ws = _resolve_workspace_id(workspace_id, user_id=resolved_user_id, account_type=account_type)
     try:
         updated_row = _complete_asset_upload_internal(
             public_asset_id=public_asset_id,

@@ -86,6 +86,7 @@ _RESERVED_METADATA_KEYS = {
     "requested_run_mode",
     "effective_run_mode",
     "execution_mode",
+    "account_type",
     "user_input_preview",
 }
 PUBLIC_METADATA_BLOCKED_KEYS = {
@@ -1151,7 +1152,7 @@ def _use_postgres_backend() -> bool:
     return db_settings.get_db_backend() == "postgres"
 
 
-def resolve_scoped_workspace_id(workspace_id: str | None, user_id: str | None) -> str:
+def resolve_scoped_workspace_id(workspace_id: str | None, user_id: str | None, account_type: str | None = None) -> str:
     """Resolve a concrete workspace id for scoped (public) job access.
 
     HITL polling/answer only carry the authenticated user (no explicit
@@ -1171,7 +1172,11 @@ def resolve_scoped_workspace_id(workspace_id: str | None, user_id: str | None) -
         return "mem_workspace"
     if resolved_user_id:
         with db_transaction() as conn:
-            workspace = workspace_repo.ensure_user_workspace(user_id=resolved_user_id, connection=conn)
+            workspace = workspace_repo.ensure_user_workspace(
+                user_id=resolved_user_id,
+                account_type=account_type,
+                connection=conn,
+            )
         return str(workspace["id"])
     with db_transaction() as conn:
         workspace = workspace_repo.ensure_demo_workspace(user_id=db_settings.get_demo_user_id(), connection=conn)
@@ -1197,7 +1202,11 @@ def _resolve_db_workspace_for_generation_request(request: GenerationJobCreateReq
             raise GenerationJobWorkspaceNotFound("Workspace was not found.")
         return workspace
     if user_id:
-        return workspace_repo.ensure_user_workspace(user_id=user_id, connection=connection)
+        return workspace_repo.ensure_user_workspace(
+            user_id=user_id,
+            account_type=request.account_type or "user",
+            connection=connection,
+        )
     if db_settings.allow_demo_workspace_fallback():
         user_id = user_id or db_settings.get_demo_user_id()
         return workspace_repo.ensure_demo_workspace(user_id=user_id, connection=connection)
@@ -1338,6 +1347,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             "requested_run_mode": request.run_mode,
             "effective_run_mode": effective_run_mode,
             "execution_mode": execution_mode,
+            "account_type": request.account_type or ("guest" if str(request.user_id or "").startswith("guest_") else "user"),
             "user_input_preview": prompt_preview,
             "brand_kit_id": request.brand_kit_id,
             "user_id": request.user_id,

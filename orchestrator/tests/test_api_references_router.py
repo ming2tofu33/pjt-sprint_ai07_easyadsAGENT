@@ -164,7 +164,7 @@ def test_similar_references_excludes_self_and_applies_limit():
     assert_no_local_paths(payload)
 
 
-def test_temporary_reference_assets_use_safe_urls(monkeypatch, tmp_path):
+def test_temporary_reference_assets_are_exposed_without_local_paths(monkeypatch, tmp_path):
     manifest_dir = tmp_path / "2026-06-user-refs"
     manifest_dir.mkdir()
     image_path = manifest_dir / "watermelon-juice.png"
@@ -208,6 +208,7 @@ def test_temporary_reference_assets_use_safe_urls(monkeypatch, tmp_path):
     asset_response = client().get(payload["items"][0]["thumbnail_url"])
     assert asset_response.status_code == 200
     assert asset_response.content == b"temporary image"
+    assert asset_response.headers["cache-control"] == "public, max-age=604800, immutable"
 
 
 def test_permanent_reference_assets_use_r2_public_urls(monkeypatch, tmp_path):

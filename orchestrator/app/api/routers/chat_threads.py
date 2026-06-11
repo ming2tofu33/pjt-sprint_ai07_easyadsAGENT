@@ -73,6 +73,13 @@ def _handle_service_error(exc: ChatThreadServiceError, thread_id: str) -> None:
     )
 
 
+def _user_scope_kwargs(user_id: str | None, account_type: str | None) -> dict:
+    kwargs = {"user_id": user_id}
+    if account_type:
+        kwargs["account_type"] = account_type
+    return kwargs
+
+
 # ---------------------------------------------------------------------------
 # Thread endpoints
 # ---------------------------------------------------------------------------
@@ -102,6 +109,7 @@ def create_chat_thread_route(request: ChatThreadCreateRequest) -> ChatThreadCrea
 )
 def list_chat_threads_route(
     user_id: str | None = Query(default=None, alias="userId"),
+    account_type: str | None = Query(default=None, alias="accountType"),
     include_archived: bool = Query(default=False),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -110,7 +118,7 @@ def list_chat_threads_route(
         include_archived=include_archived,
         limit=limit,
         offset=offset,
-        user_id=user_id,
+        **_user_scope_kwargs(user_id, account_type),
     )
     return ChatThreadListResponse(threads=threads, total=total)
 
@@ -119,8 +127,12 @@ def list_chat_threads_route(
     "/chat-threads/{thread_id}",
     response_model=ChatThreadGetResponse,
 )
-def get_chat_thread_route(thread_id: str, user_id: str | None = Query(default=None, alias="userId")) -> ChatThreadGetResponse:
-    thread = chat_service.get_chat_thread(thread_id, user_id=user_id)
+def get_chat_thread_route(
+    thread_id: str,
+    user_id: str | None = Query(default=None, alias="userId"),
+    account_type: str | None = Query(default=None, alias="accountType"),
+) -> ChatThreadGetResponse:
+    thread = chat_service.get_chat_thread(thread_id, **_user_scope_kwargs(user_id, account_type))
     if not thread:
         _not_found(thread_id)
     return ChatThreadGetResponse(thread=thread)
@@ -130,9 +142,14 @@ def get_chat_thread_route(thread_id: str, user_id: str | None = Query(default=No
     "/chat-threads/{thread_id}",
     response_model=ChatThreadGetResponse,
 )
-def update_chat_thread_route(thread_id: str, request: ChatThreadUpdateRequest, user_id: str | None = Query(default=None, alias="userId")) -> ChatThreadGetResponse:
+def update_chat_thread_route(
+    thread_id: str,
+    request: ChatThreadUpdateRequest,
+    user_id: str | None = Query(default=None, alias="userId"),
+    account_type: str | None = Query(default=None, alias="accountType"),
+) -> ChatThreadGetResponse:
     try:
-        thread = chat_service.update_chat_thread(thread_id, request, user_id=user_id)
+        thread = chat_service.update_chat_thread(thread_id, request, **_user_scope_kwargs(user_id, account_type))
     except ChatThreadServiceError as exc:
         _handle_service_error(exc, thread_id)
         return  # type: ignore[return-value]
@@ -145,9 +162,13 @@ def update_chat_thread_route(thread_id: str, request: ChatThreadUpdateRequest, u
     "/chat-threads/{thread_id}/archive",
     response_model=ChatThreadGetResponse,
 )
-def archive_chat_thread_route(thread_id: str, user_id: str | None = Query(default=None, alias="userId")) -> ChatThreadGetResponse:
+def archive_chat_thread_route(
+    thread_id: str,
+    user_id: str | None = Query(default=None, alias="userId"),
+    account_type: str | None = Query(default=None, alias="accountType"),
+) -> ChatThreadGetResponse:
     try:
-        thread = chat_service.archive_chat_thread(thread_id, user_id=user_id)
+        thread = chat_service.archive_chat_thread(thread_id, **_user_scope_kwargs(user_id, account_type))
     except ChatThreadServiceError as exc:
         _handle_service_error(exc, thread_id)
         return  # type: ignore[return-value]
@@ -163,8 +184,9 @@ def archive_chat_thread_route(thread_id: str, user_id: str | None = Query(defaul
 def get_chat_thread_state_route(
     thread_id: str,
     user_id: str | None = Query(default=None, alias="userId"),
+    account_type: str | None = Query(default=None, alias="accountType"),
 ) -> ChatThreadStateGetResponse:
-    resolved = chat_service.get_chat_thread_with_workspace(thread_id, user_id=user_id)
+    resolved = chat_service.get_chat_thread_with_workspace(thread_id, **_user_scope_kwargs(user_id, account_type))
     if not resolved:
         _not_found(thread_id)
 
@@ -187,9 +209,14 @@ def get_chat_thread_state_route(
     response_model=ChatMessageCreateResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def append_message_route(thread_id: str, request: ChatMessageCreateRequest, user_id: str | None = Query(default=None, alias="userId")) -> ChatMessageCreateResponse:
+def append_message_route(
+    thread_id: str,
+    request: ChatMessageCreateRequest,
+    user_id: str | None = Query(default=None, alias="userId"),
+    account_type: str | None = Query(default=None, alias="accountType"),
+) -> ChatMessageCreateResponse:
     try:
-        msg = chat_service.append_chat_message(thread_id, request, user_id=user_id)
+        msg = chat_service.append_chat_message(thread_id, request, **_user_scope_kwargs(user_id, account_type))
     except ChatThreadServiceError as exc:
         _handle_service_error(exc, thread_id)
         return  # type: ignore[return-value]
@@ -205,11 +232,17 @@ def append_message_route(thread_id: str, request: ChatMessageCreateRequest, user
 def list_messages_route(
     thread_id: str,
     user_id: str | None = Query(default=None, alias="userId"),
+    account_type: str | None = Query(default=None, alias="accountType"),
     limit: int = Query(default=100, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ChatMessageListResponse:
-    thread = chat_service.get_chat_thread(thread_id, user_id=user_id)
+    thread = chat_service.get_chat_thread(thread_id, **_user_scope_kwargs(user_id, account_type))
     if not thread:
         _not_found(thread_id)
-    messages, total = chat_service.list_chat_messages(thread_id, user_id=user_id, limit=limit, offset=offset)
+    messages, total = chat_service.list_chat_messages(
+        thread_id,
+        limit=limit,
+        offset=offset,
+        **_user_scope_kwargs(user_id, account_type),
+    )
     return ChatMessageListResponse(messages=messages, total=total)

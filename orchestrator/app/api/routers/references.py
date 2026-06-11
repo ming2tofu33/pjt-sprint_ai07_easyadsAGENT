@@ -100,7 +100,10 @@ def get_temporary_reference_asset(removal_group: str, filename: str) -> FileResp
             message="Temporary reference asset was not found.",
             detail=f"filename={quote(filename, safe='')}",
         )
-    return FileResponse(asset_path)
+    return FileResponse(
+        asset_path,
+        headers={"Cache-Control": "public, max-age=604800, immutable"},
+    )
 
 
 @router.get("/references", response_model=ReferenceTemplateListResponse)

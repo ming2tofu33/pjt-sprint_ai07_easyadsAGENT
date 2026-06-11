@@ -94,6 +94,16 @@ def test_list_count_and_soft_delete_archive_items(monkeypatch):
     assert deleted["id"] == "archive_uuid"
 
 
+def test_archive_list_query_omits_output_payload_by_default(monkeypatch):
+    conn = FakeConnection()
+    monkeypatch.setattr(repo, "db_transaction", fake_transaction)
+
+    repo.list_archive_item_rows(workspace_id="workspace_uuid", limit=20, offset=0, connection=conn)
+
+    sql = conn.cursor_obj.calls[0][0]
+    assert "o.result_payload as output_result_payload" not in sql
+
+
 def test_archive_item_queries_can_filter_by_creator(monkeypatch):
     conn = FakeConnection()
     monkeypatch.setattr(repo, "db_transaction", fake_transaction)
@@ -126,4 +136,3 @@ def test_archive_item_get_queries_can_filter_by_creator(monkeypatch):
     sql, params = conn.cursor_obj.calls[0]
     assert "i.created_by = %s" in sql
     assert params == ("archive_1", "ws1", "user1")
-

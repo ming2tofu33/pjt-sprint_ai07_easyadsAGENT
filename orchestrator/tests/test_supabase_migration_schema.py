@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 MIGRATION = Path("supabase/migrations/20260602_core_schema_v1.sql")
+ARCHIVE_PERFORMANCE_MIGRATION = Path("supabase/migrations/20260611_archive_items_user_recent_idx.sql")
 
 
 def test_core_schema_migration_exists_and_contains_tables():
@@ -50,6 +51,14 @@ def test_core_schema_migration_contains_required_indexes_and_public_ids():
 
     assert "public_job_id text unique not null" in sql
     assert "public_thread_id text unique not null" in sql
+
+
+def test_archive_user_recent_index_migration_exists():
+    sql = ARCHIVE_PERFORMANCE_MIGRATION.read_text(encoding="utf-8")
+
+    assert "archive_items_workspace_created_by_saved_idx" in sql
+    assert "on archive_items (workspace_id, created_by, saved_at desc)" in sql
+    assert "where deleted_at is null" in sql
 
 
 def test_core_schema_assets_usage_and_events_are_workspace_scoped():

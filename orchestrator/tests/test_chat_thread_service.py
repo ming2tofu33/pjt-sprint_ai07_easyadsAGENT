@@ -62,6 +62,17 @@ def test_memory_thread_limit_blocks_fourth_thread():
     assert other.thread_id
 
 
+def test_guest_thread_limit_uses_guest_owner_id():
+    for index in range(3):
+        create_chat_thread(ChatThreadCreateRequest(user_id="guest_uuid_1", title=f"Guest {index}"))
+
+    with pytest.raises(ChatThreadLimitReachedError):
+        create_chat_thread(ChatThreadCreateRequest(user_id="guest_uuid_1", title="Guest overflow"))
+
+    other_guest = create_chat_thread(ChatThreadCreateRequest(user_id="guest_uuid_2", title="Other guest"))
+    assert other_guest.thread_id
+
+
 def test_memory_thread_limit_frees_slot_after_archive():
     threads = [
         create_chat_thread(ChatThreadCreateRequest(user_id="user_a", title=f"A {i}"))

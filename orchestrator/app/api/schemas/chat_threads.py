@@ -36,6 +36,7 @@ class ChatThreadCreateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     user_id: str | None = Field(default=None, alias="userId")
+    account_type: Literal["guest", "user"] | None = Field(default=None, alias="accountType")
     title: str | None = Field(default=None, max_length=120)
     brand_kit_id: str | None = Field(default=None, alias="brandKitId")
     project_id: str | None = Field(default=None, alias="projectId")

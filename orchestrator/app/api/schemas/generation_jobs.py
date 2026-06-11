@@ -49,6 +49,7 @@ class GenerationJobCreateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     user_id: str | None = Field(default=None, alias="userId")
+    account_type: Literal["user", "guest"] | None = Field(default=None, alias="accountType")
     workspace_id: str | None = Field(default=None, alias="workspaceId")
     thread_id: str | None = Field(default=None, alias="threadId")
     brand_kit_id: str | None = Field(default=None, alias="brandKitId")

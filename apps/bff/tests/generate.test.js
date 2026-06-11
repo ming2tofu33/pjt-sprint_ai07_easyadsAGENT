@@ -60,9 +60,18 @@ describe("generate chat routes", () => {
   it("proxies reference template list and temporary assets to the orchestrator", async () => {
     const fetchImpl = vi.fn(async (url) => {
       if (String(url).includes("/temp-assets/")) {
+        if (String(url).endsWith("/fallback-only.png")) {
+          return new Response(Buffer.from("image bytes"), {
+            status: 200,
+            headers: { "content-type": "image/png" }
+          });
+        }
         return new Response(Buffer.from("image bytes"), {
           status: 200,
-          headers: { "content-type": "image/png" }
+          headers: {
+            "content-type": "image/png",
+            "cache-control": "public, max-age=604800, immutable"
+          }
         });
       }
       return jsonResponse({
@@ -101,6 +110,10 @@ describe("generate chat routes", () => {
       method: "GET",
       url: "/api/references/temp_watermelon_juice_feed/similar?limit=3"
     });
+    const fallbackAssetResponse = await app.inject({
+      method: "GET",
+      url: "/api/references/temp-assets/2026-06-user-refs/fallback-only.png"
+    });
 
     expect(listResponse.statusCode).toBe(200);
     expect(listResponse.json().items[0].template_id).toBe("temp_watermelon_juice_feed");
@@ -120,9 +133,13 @@ describe("generate chat routes", () => {
       expect.objectContaining({ method: "GET" })
     );
     expect(assetResponse.statusCode).toBe(200);
+    expect(fallbackAssetResponse.statusCode).toBe(200);
     expect(similarResponse.statusCode).toBe(200);
     expect(assetResponse.headers["content-type"]).toContain("image/png");
+    expect(assetResponse.headers["cache-control"]).toBe("public, max-age=604800, immutable");
+    expect(fallbackAssetResponse.headers["cache-control"]).toBe("public, max-age=604800, immutable");
     expect(assetResponse.body).toBe("image bytes");
+    expect(fallbackAssetResponse.body).toBe("image bytes");
     await app.close();
   });
 
@@ -132,7 +149,7 @@ describe("generate chat routes", () => {
       if (String(url).includes("/auth/v1/user")) {
         return jsonResponse({ id: "admin_user_1" });
       }
-      if (String(url).endsWith("/assets/uploads/presign?user_id=admin_user_1")) {
+      if (String(url).endsWith("/assets/uploads/presign?user_id=admin_user_1&account_type=user")) {
         return jsonResponse({ asset: { asset_id: "asset_abc", kind: "reference", status: "pending" }, upload: { method: "PUT", url: "https://r2.example.com/upload" } });
       }
       if (String(url).includes("/assets/uploads/asset_abc/complete")) {
@@ -178,9 +195,78 @@ describe("generate chat routes", () => {
       payload: { assetId: "asset_abc", title: "관리자 샘플", category: "cafe", businessTypes: ["cafe"] }
     });
 
-    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://orchestrator/api/v1/assets/uploads/presign?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
-    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://orchestrator/api/v1/assets/uploads/asset_abc/complete?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://orchestrator/api/v1/assets/uploads/presign?user_id=admin_user_1&account_type=user", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://orchestrator/api/v1/assets/uploads/asset_abc/complete?user_id=admin_user_1&account_type=user", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://orchestrator/api/v1/admin/references?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    await app.close();
+  });
+
+  it("forwards anonymous account type for asset uploads and chat threads", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_uuid_1", is_anonymous: true });
+      }
+      if (String(url).includes("/assets/uploads/presign")) {
+        return jsonResponse({ asset: { asset_id: "asset_guest", kind: "source", status: "pending" }, upload: { method: "PUT", url: "https://r2.example.com/upload" } });
+      }
+      return jsonResponse({ threads: [], total: 0 });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const assetResponse = await app.inject({
+      method: "POST",
+      url: "/api/assets/uploads/presign",
+      headers: { authorization: "Bearer guest_access_token_1" },
+      payload: { kind: "source", filename: "source.png", mimeType: "image/png", sizeBytes: 1024 }
+    });
+    const chatResponse = await app.inject({
+      method: "GET",
+      url: "/api/chat-threads?include_archived=true",
+      headers: { authorization: "Bearer guest_access_token_1" }
+    });
+
+    expect(assetResponse.statusCode).toBe(200);
+    expect(chatResponse.statusCode).toBe(200);
+    const assetUrl = new URL(fetchImpl.mock.calls[1][0]);
+    expect(assetUrl.searchParams.get("user_id")).toBe("guest_uuid_1");
+    expect(assetUrl.searchParams.get("account_type")).toBe("guest");
+    const chatUrl = new URL(fetchImpl.mock.calls[3][0]);
+    expect(chatUrl.searchParams.get("include_archived")).toBe("true");
+    expect(chatUrl.searchParams.get("userId")).toBe("guest_uuid_1");
+    expect(chatUrl.searchParams.get("accountType")).toBe("guest");
+    await app.close();
+  });
+
+  it("rejects anonymous Supabase sessions for admin reference creation", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_user_1", is_anonymous: true });
+      }
+      return jsonResponse({ success: true });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/admin/references",
+      headers: { authorization: "Bearer anon_access_token_1" },
+      payload: { assetId: "asset_abc", title: "관리자 샘플", category: "cafe", businessTypes: ["cafe"] }
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0][0]).toBe("https://supabase.example.com/auth/v1/user");
+    expect(fetchImpl.mock.calls.some(([url]) => String(url).includes("/api/v1/admin/references"))).toBe(false);
     await app.close();
   });
 
@@ -379,13 +465,14 @@ describe("generate chat routes", () => {
           title: "봄을 닮은 한 잔",
           public_job_id: "job_1",
           status: "saved",
-          user_id: "user_uuid_1"
+          user_id: "user_uuid_1",
+          account_type: "user"
         })
       })
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       4,
-      "http://orchestrator/api/v1/archive/items/archive_1?user_id=user_uuid_1",
+      "http://orchestrator/api/v1/archive/items/archive_1?user_id=user_uuid_1&account_type=user",
       expect.objectContaining({ method: "GET" })
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
@@ -393,8 +480,40 @@ describe("generate chat routes", () => {
       "http://orchestrator/api/v1/archive/items/archive_1",
       expect.objectContaining({
         method: "PATCH",
-        body: JSON.stringify({ status: "favorite", user_id: "user_uuid_1" })
+        body: JSON.stringify({ status: "favorite", user_id: "user_uuid_1", account_type: "user" })
       })
+    );
+    await app.close();
+  });
+
+  it("uses anonymous Supabase user ids for archive list scope", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_uuid_1", is_anonymous: true });
+      }
+      return jsonResponse({
+        items: [],
+        pagination: { limit: 20, offset: 0, total: 0, has_more: false }
+      });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/archive/items?limit=20",
+      headers: { authorization: "Bearer guest_access_token_1" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/archive/items?limit=20&user_id=guest_uuid_1&account_type=guest",
+      expect.objectContaining({ method: "GET" })
     );
     await app.close();
   });
@@ -549,11 +668,72 @@ describe("generate chat routes", () => {
       "http://orchestrator/api/v1/generation-jobs",
       expect.objectContaining({
         method: "POST",
-        headers: expect.objectContaining({ "X-EasyAds-User-Id": "user_uuid_1" }),
+        headers: expect.objectContaining({
+          "X-EasyAds-User-Id": "user_uuid_1",
+          "X-EasyAds-Account-Type": "user"
+        }),
         body: JSON.stringify({
           userInput: "로그인 사용자 작업방 생성",
           runMode: "queued_only",
-          userId: "user_uuid_1"
+          userId: "user_uuid_1",
+          accountType: "user"
+        })
+      })
+    );
+    await app.close();
+  });
+
+  it("forwards anonymous Supabase users as guest generation principals", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_uuid_1", is_anonymous: true });
+      }
+      return jsonResponse(
+        {
+          success: true,
+          job: {
+            job_id: "job_guest_1",
+            thread_id: "thread_guest_1",
+            status: "queued",
+            progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+            metadata: { account_type: "guest" }
+          }
+        },
+        { status: 201 }
+      );
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs",
+      headers: { authorization: "Bearer guest_access_token_1" },
+      payload: {
+        userInput: "게스트 광고 생성",
+        runMode: "queued_only"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/generation-jobs",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "X-EasyAds-User-Id": "guest_uuid_1",
+          "X-EasyAds-Account-Type": "guest"
+        }),
+        body: JSON.stringify({
+          userInput: "게스트 광고 생성",
+          runMode: "queued_only",
+          userId: "guest_uuid_1",
+          accountType: "guest"
         })
       })
     );

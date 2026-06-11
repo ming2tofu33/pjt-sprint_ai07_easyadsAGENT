@@ -14,12 +14,15 @@ class WorkspaceScopeForbidden(PermissionError):
     """Raised when the requested workspace is not available for the user."""
 
 
-def resolve_workspace_scope(workspace_id: str | None = None, user_id: str | None = None) -> str:
+def resolve_workspace_scope(workspace_id: str | None = None, user_id: str | None = None, account_type: str | None = None) -> str:
     uid = (user_id or db_settings.get_demo_user_id() or "").strip()
     req_ws = (workspace_id or "").strip()
     
     if uid:
-        workspace = workspace_repo.ensure_user_workspace(user_id=uid)
+        if account_type:
+            workspace = workspace_repo.ensure_user_workspace(user_id=uid, account_type=account_type)
+        else:
+            workspace = workspace_repo.ensure_user_workspace(user_id=uid)
         resolved_id = str(workspace["id"])
         if req_ws and req_ws != resolved_id:
             raise WorkspaceScopeForbidden("Workspace is not available for the authenticated user.")

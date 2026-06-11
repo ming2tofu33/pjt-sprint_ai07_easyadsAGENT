@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from orchestrator.app.api.schemas.common import ApiMeta, EmptyState, Pagination
 
@@ -33,6 +33,8 @@ class ArchiveItemResponse(BaseModel):
 
 
 class ArchiveItemCreateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     title: str = Field(..., min_length=1, max_length=200)
     public_job_id: str | None = Field(default=None, max_length=120)
     thumbnail_url: str | None = None
@@ -43,13 +45,17 @@ class ArchiveItemCreateRequest(BaseModel):
     source: Literal["generated", "reference_template", "uploaded"] = "generated"
     workspace_id: str | None = None
     user_id: str | None = None
+    account_type: Literal["guest", "user"] | None = Field(default=None, alias="accountType")
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class ArchiveItemUpdateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     status: Literal["saved", "favorite"]
     workspace_id: str | None = None
     user_id: str | None = None
+    account_type: Literal["guest", "user"] | None = Field(default=None, alias="accountType")
 
 
 class ArchiveListResponse(BaseModel):

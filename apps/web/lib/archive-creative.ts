@@ -21,7 +21,7 @@ function normalizeFileType(value: unknown): "PNG" | "JPG" {
 }
 
 export function archiveItemToCreative(item: ArchiveItem): MockCreative | null {
-  const imageUrl = item.imageUrl || item.thumbnailUrl || item.downloadUrl;
+  const imageUrl = item.thumbnailUrl || item.imageUrl || item.downloadUrl;
   if (!imageUrl) {
     return null;
   }
