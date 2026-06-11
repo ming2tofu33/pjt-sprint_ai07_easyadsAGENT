@@ -7,11 +7,43 @@ from scripts import _actual_creative_pipeline as pipeline
 
 
 def test_run_actual_creative_case_uses_shared_provider_flux_and_renderer(monkeypatch, tmp_path):
-    calls = {"copy": 0, "vision": 0, "flux": 0, "renderer": 0}
+    calls = {"normalize": 0, "copy": 0, "vision": 0, "flux": 0, "renderer": 0}
 
     class Adapter:
+        def normalize_input_evidence(self, *, request, model):
+            calls["normalize"] += 1
+            return {
+                "input_mode": request.input_mode,
+                "user_text": request.user_text,
+                "user_intent": "product_promotion",
+                "explicit_product_mentions": ["cheesecake"],
+                "explicit_user_facts": [
+                    {
+                        "key": "product_name",
+                        "value": "cheesecake",
+                        "normalized_value": "cheesecake",
+                        "source": "user_text",
+                        "evidence_class": "verified_fact",
+                        "confidence": 1.0,
+                        "usable_for_copy": True,
+                    }
+                ],
+                "visual_observations": [],
+                "input_conflicts": [],
+                "unknown_fields": [],
+                "unresolved_questions": [],
+                "clarification_required": False,
+                "manual_review_required": False,
+                "overall_confidence": 0.95,
+                "provider_metadata": {
+                    "normalizer": {"provider": "openai", "model": "gpt-5.4", "fallback_used": False, "token_usage": {"input_tokens": 10, "output_tokens": 5}}
+                },
+            }
+
         def generate_product_copy(self, *, request, evidence, model):
             calls["copy"] += 1
+            assert evidence["schema_version"] == "input_evidence_bundle_v1"
+            assert evidence["explicit_product_mentions"] == ["cheesecake"]
             return {
                 "product_understanding": {
                     "product_name": "cheesecake",
@@ -26,8 +58,6 @@ def test_run_actual_creative_case_uses_shared_provider_flux_and_renderer(monkeyp
                 "selected_copy": {"headline": "Creamy cheesecake", "subcopy": "A soft cafe dessert", "cta": "Taste today"},
                 "input_conflicts": [],
                 "requires_manual_review": False,
-                "visual_observations": [],
-                "vision_provider_metadata": {},
                 "provider_metadata": {"provider": "openai", "model": "gpt-5.4", "fallback_used": False, "token_usage": {"input_tokens": 10, "output_tokens": 5}},
             }
 
@@ -80,7 +110,7 @@ def test_run_actual_creative_case_uses_shared_provider_flux_and_renderer(monkeyp
     result = pipeline.run_actual_creative_case(request, runtime)
 
     assert result.status == "completed"
-    assert calls == {"copy": 1, "vision": 1, "flux": 1, "renderer": 1}
+    assert calls == {"normalize": 1, "copy": 1, "vision": 1, "flux": 1, "renderer": 1}
     assert result.mock_or_fixture_count == 0
 
 

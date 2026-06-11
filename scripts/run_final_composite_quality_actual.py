@@ -122,14 +122,17 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
             output_dir=str(output_dir),
         )
     ]
+    cases[0] = cases[0].model_copy(update={"user_text": "치즈케이크를 홍보하고 싶어"})
+    cases[0] = cases[0].model_copy(update={"user_text": "\uce58\uc988\ucf00\uc774\ud06c\ub97c \ud64d\ubcf4\ud558\uace0 \uc2f6\uc5b4"})
     runs = [_run_or_resume_canonical_case(cases[0], runtime, resume=bool(args.resume))]
-    source_image = args.source_image
+    source_image = args.source_image if _is_clean_background_source(args.source_image) else None
     if (
         not source_image
         and args.reuse_text_only_background_as_source
         and runs[0].get("status") == "completed"
         and runs[0].get("background_image_path")
         and Path(str(runs[0].get("background_image_path"))).exists()
+        and _is_clean_background_source(str(runs[0].get("background_image_path")))
     ):
         source_image = runs[0]["background_image_path"]
     if source_image:
@@ -158,10 +161,13 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
                 ),
             ]
         )
+        cases[-1] = cases[-1].model_copy(update={"user_text": "카페 신메뉴 치즈케이크를 인스타 피드로 홍보하고 싶어"})
+        cases[-1] = cases[-1].model_copy(update={"user_text": "\uce74\ud398 \uc2e0\uba54\ub274 \uce58\uc988\ucf00\uc774\ud06c\ub97c \uc778\uc2a4\ud0c0 \ud53c\ub4dc\ub85c \ud64d\ubcf4\ud558\uace0 \uc2f6\uc5b4"})
         for case in cases[1:]:
             runs.append(_run_or_resume_canonical_case(case, runtime, resume=bool(args.resume)))
 
     comparison_path = _build_canonical_comparison(output_dir, runs)
+    evidence_comparison_path = _write_evidence_comparison(output_dir, runs)
     cross = {
         "schema_version": "canonical_actual_creative_pipeline_comparison_v1",
         "runs": [
@@ -186,6 +192,7 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
                 "t2i_backend": "local_diffusers",
                 "max_openai_calls": args.max_openai_calls,
                 "max_flux_generations": args.max_flux_generations,
+                "runtime_environment": _runtime_environment_report(),
             },
             ensure_ascii=False,
             indent=2,
@@ -197,10 +204,13 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
         "status": _canonical_summary_status(runs),
         "runs": runs,
         "cross_input_comparison_path": str(output_dir / "cross_input_comparison.json"),
+        "evidence_comparison_path": str(evidence_comparison_path),
         "comparison_all_modes_path": str(comparison_path) if comparison_path else None,
-        "actual_api_calls": all(_has_provider_usage(run.get("copy_provider_metadata")) and _has_provider_usage((run.get("vlm_result") or {}).get("provider_metadata") or run.get("vlm_result")) for run in runs),
+        "actual_api_calls": any(_has_provider_usage(run.get("copy_provider_metadata")) or _has_provider_usage((run.get("vlm_result") or {}).get("provider_metadata") or run.get("vlm_result")) for run in runs),
+        "all_runs_have_actual_api_calls": all(_has_provider_usage(run.get("copy_provider_metadata")) and _has_provider_usage((run.get("vlm_result") or {}).get("provider_metadata") or run.get("vlm_result")) for run in runs),
         "image_generation_performed": any(bool(run.get("flux_metadata")) for run in runs),
         "mock_or_fixture_count": sum(int(run.get("mock_or_fixture_count") or 0) for run in runs),
+        "runtime_environment": _runtime_environment_report(),
     }
 
 
@@ -214,14 +224,13 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
         def __init__(self, openai_client: Any):
             self.client = openai_client
 
-        def generate_product_copy(self, *, request: Any, evidence: dict[str, Any], model: str) -> dict[str, Any]:
+        def normalize_input_evidence(self, *, request: Any, model: str) -> dict[str, Any]:
             started = time.perf_counter()
             prompt = (
-                "Return JSON only with product_understanding, product_copy_context, copy_candidates, "
-                "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review, visual_observations, vision_provider_metadata. "
-                "product_understanding must include product_name, broad_category, explicit_product_candidate, normalized_product_candidate, product_identity_confidence. "
-                "product_copy_context must include brand_tone. Generate grounded advertising copy only from supplied evidence. "
-                f"Request: {request.model_dump_json()} Evidence: {json.dumps(evidence, ensure_ascii=False)}"
+                "Return JSON only matching InputEvidenceBundle. Separate explicit_user_facts from visual_observations, "
+                "creative_inferences, unknown_fields, unresolved_questions, and input_conflicts. "
+                "Do not treat user intent as visual evidence. Use user text as authoritative for explicit claims, and image content only for visible observations. "
+                f"Request: {request.model_dump_json()}"
             )
             if getattr(request, "source_image_path", None):
                 encoded = base64.b64encode(Path(request.source_image_path).read_bytes()).decode("ascii")
@@ -241,6 +250,28 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
             else:
                 response = self.client.responses.create(model=model, input=prompt, temperature=0)
             payload = json.loads(getattr(response, "output_text", "") or "{}")
+            metadata = {
+                "provider": "openai",
+                "model": model,
+                "fallback_used": False,
+                "token_usage": _usage_dict(response),
+                "latency_ms": int((time.perf_counter() - started) * 1000),
+            }
+            payload["provider_metadata"] = {"vision": metadata} if request.input_mode in {"image_only", "text_and_image"} else {"normalizer": metadata}
+            return payload
+
+        def generate_product_copy(self, *, request: Any, evidence: dict[str, Any], model: str) -> dict[str, Any]:
+            started = time.perf_counter()
+            prompt = (
+                "Return JSON only with product_understanding, product_copy_context, copy_candidates, "
+                "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review. "
+                "product_understanding must include product_name, broad_category, explicit_product_candidate, normalized_product_candidate, product_identity_confidence. "
+                "product_copy_context must include brand_tone. Generate grounded advertising copy only from the supplied InputEvidenceBundle. "
+                "Do not use source image bytes or raw visual assumptions outside the bundle. "
+                f"Request metadata: {request.model_dump_json()} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
+            )
+            response = self.client.responses.create(model=model, input=prompt, temperature=0)
+            payload = json.loads(getattr(response, "output_text", "") or "{}")
             candidates = payload.get("copy_candidates") or []
             selected = next((item for item in candidates if item.get("id") == payload.get("recommended_candidate_id")), None) or (candidates[0] if candidates else None)
             return {
@@ -251,18 +282,6 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
                 "selected_copy": selected,
                 "input_conflicts": payload.get("input_conflicts") or [],
                 "requires_manual_review": bool(payload.get("requires_manual_review")),
-                "visual_observations": payload.get("visual_observations") or [],
-                "vision_provider_metadata": payload.get("vision_provider_metadata") or (
-                    {
-                        "provider": "openai",
-                        "model": model,
-                        "fallback_used": False,
-                        "token_usage": _usage_dict(response),
-                        "latency_ms": int((time.perf_counter() - started) * 1000),
-                    }
-                    if request.input_mode in {"image_only", "text_and_image"}
-                    else {}
-                ),
                 "provider_metadata": {
                     "provider": "openai",
                     "model": model,
@@ -388,6 +407,32 @@ def _build_canonical_comparison(output_dir: Path, runs: list[dict[str, Any]]) ->
     output = output_dir / "comparison_all_modes.png"
     sheet.save(output)
     return output
+
+
+def _write_evidence_comparison(output_dir: Path, runs: list[dict[str, Any]]) -> Path:
+    rows: list[dict[str, Any]] = []
+    for run in runs:
+        evidence = run.get("input_evidence") or {}
+        explicit = evidence.get("explicit_user_facts") or []
+        visual = evidence.get("visual_observations") or []
+        product = next((item.get("value") for item in explicit if item.get("key") == "product_name"), None)
+        rows.append(
+            {
+                "case_id": run.get("case_id"),
+                "input_mode": run.get("input_mode"),
+                "status": run.get("status"),
+                "product_identity": product,
+                "user_intent": evidence.get("user_intent"),
+                "explicit_user_facts": explicit,
+                "visual_observations": visual,
+                "unknown_fields": evidence.get("unknown_fields") or [],
+                "input_conflicts": evidence.get("input_conflicts") or [],
+                "overall_confidence": evidence.get("overall_confidence"),
+            }
+        )
+    path = output_dir / "evidence_comparison.json"
+    path.write_text(json.dumps({"schema_version": "input_evidence_comparison_v1", "runs": rows}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
 
 
 def _has_provider_usage(metadata: object) -> bool:
@@ -882,7 +927,40 @@ def _base_summary(args: argparse.Namespace, env_report: dict[str, Any]) -> dict[
         "env_file_found": env_report.get("env_file_found"),
         "actual_api_calls": False,
         "image_generation_performed": False,
+        "runtime_environment": _runtime_environment_report(),
     }
+
+
+def _is_clean_background_source(path: str | None) -> bool:
+    if not path:
+        return False
+    name = Path(path).name.lower()
+    if "final_composite" in name:
+        return False
+    return "background" in name or "clean" in name
+
+
+def _runtime_environment_report() -> dict[str, Any]:
+    report: dict[str, Any] = {"python_executable": sys.executable, "uv_project_environment": os.getenv("UV_PROJECT_ENVIRONMENT")}
+    try:
+        import diffusers  # type: ignore
+
+        report["diffusers_version"] = getattr(diffusers, "__version__", None)
+        report["flux2_pipeline_available"] = hasattr(diffusers, "Flux2KleinPipeline")
+    except Exception as exc:  # pragma: no cover - diagnostic only
+        report["diffusers_error"] = type(exc).__name__
+        report["flux2_pipeline_available"] = False
+    try:
+        import torch  # type: ignore
+
+        report["torch_version"] = getattr(torch, "__version__", None)
+        report["cuda_available"] = bool(torch.cuda.is_available())
+        report["cuda_device"] = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+    except Exception as exc:  # pragma: no cover - diagnostic only
+        report["torch_error"] = type(exc).__name__
+        report["cuda_available"] = False
+        report["cuda_device"] = None
+    return report
 
 
 def _write_summary(output_dir: Path, summary: dict[str, Any]) -> None:

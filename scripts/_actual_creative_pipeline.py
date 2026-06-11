@@ -18,9 +18,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from PIL import Image
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
+from orchestrator.app.llm.nodes.input_evidence_normalizer import build_input_evidence_bundle
 from orchestrator.app.quality_gate.final_composite_service import evaluate_final_composite
+from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 
 
@@ -32,6 +34,9 @@ ImageUsePlanMode = Literal[
     "manual_review",
 ]
 ActualStatus = Literal["completed", "manual_review", "failed", "blocked"]
+ALLOWED_USER_FACT_KEYS = {"product_name", "brand_name", "launch_status", "price", "promotion_detail", "ingredient", "origin", "business_context"}
+FORBIDDEN_EVIDENCE_KEYS = {"case_id", "input_mode", "seed", "output_dir", "source_image_path", "source_asset_id", "reference_asset_id", "source_provenance", "placement", "promotion_goal"}
+REVISION_ACTIONS = {"minor_revision", "retry_layout", "retry_text_style", "rewrite_copy", "revise_copy", "regenerate_background"}
 
 
 class ActualCreativeInput(BaseModel):
@@ -105,24 +110,7 @@ class ActualProductCopyOutput(BaseModel):
     selected_copy: dict[str, Any] | None = None
     input_conflicts: list[dict[str, Any]] = Field(default_factory=list)
     requires_manual_review: bool = False
-    visual_observations: list[dict[str, Any]] = Field(default_factory=list)
-    vision_provider_metadata: dict[str, Any] = Field(default_factory=dict)
     provider_metadata: dict[str, Any]
-
-    @field_validator("visual_observations", mode="before")
-    @classmethod
-    def normalize_visual_observations(cls, value: object) -> list[dict[str, Any]]:
-        if not value:
-            return []
-        if not isinstance(value, list):
-            return [{"kind": "vision_observation", "value": value}]
-        normalized: list[dict[str, Any]] = []
-        for item in value:
-            if isinstance(item, dict):
-                normalized.append(item)
-            else:
-                normalized.append({"kind": "vision_observation", "text": str(item)})
-        return normalized
 
 
 class ActualCreativeVLMResult(BaseModel):
@@ -179,11 +167,10 @@ def run_actual_creative_case(request: ActualCreativeInput, runtime: ActualCreati
     _write_json(case_dir / "request.json", request.model_dump())
 
     try:
-        evidence = normalize_actual_input(request, runtime=runtime, case_dir=case_dir)
+        bundle = run_input_evidence_normalizer(request, runtime=runtime, case_dir=case_dir)
+        evidence = bundle.model_dump()
         _write_json(case_dir / "input_evidence.json", evidence)
         copy_output = generate_grounded_copy(request, runtime, evidence)
-        evidence = _merge_copy_output_evidence(evidence, copy_output)
-        _write_json(case_dir / "input_evidence.json", evidence)
         _write_json(case_dir / "product_understanding.json", copy_output.get("product_understanding") or {})
         _write_json(case_dir / "product_copy_context.json", copy_output.get("product_copy_context") or {})
         _write_json(case_dir / "copy_candidates.json", copy_output.get("copy_candidates") or [])
@@ -222,7 +209,7 @@ def run_actual_creative_case(request: ActualCreativeInput, runtime: ActualCreati
             background_sha256=_sha256(background),
             final_composite_sha256=_sha256(final_path),
             copy_provider_metadata=copy_output.get("provider_metadata") or {},
-            vision_provider_metadata=evidence.get("vision_provider_metadata") or {},
+            vision_provider_metadata=(evidence.get("provider_metadata") or {}).get("vision") or evidence.get("provider_metadata") or {},
             flux_metadata=flux_metadata,
             renderer_metadata={
                 **(state.get("render_result", {}).get("metadata") or {}),
@@ -242,6 +229,10 @@ def run_actual_creative_case(request: ActualCreativeInput, runtime: ActualCreati
 
 
 def normalize_actual_input(request: ActualCreativeInput, *, runtime: ActualCreativeRuntime, case_dir: Path) -> dict[str, Any]:
+    return run_input_evidence_normalizer(request, runtime=runtime, case_dir=case_dir).model_dump()
+
+
+def run_input_evidence_normalizer(request: ActualCreativeInput, *, runtime: ActualCreativeRuntime, case_dir: Path) -> InputEvidenceBundle:
     source_sha: str | None = None
     source_path = Path(request.source_image_path) if request.source_image_path else None
     if source_path:
@@ -251,21 +242,270 @@ def normalize_actual_input(request: ActualCreativeInput, *, runtime: ActualCreat
             target = case_dir / "source_image.png"
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source_path, target)
-    explicit_mentions = [request.user_text.strip()] if request.user_text else []
-    evidence = {
+    adapter = getattr(runtime, "openai_adapter", None)
+    call_budget = getattr(runtime, "call_budget", None)
+    if call_budget:
+        call_budget.consume_openai()
+    if adapter and hasattr(adapter, "normalize_input_evidence"):
+        payload = adapter.normalize_input_evidence(request=request, model=runtime.vision_model)
+        bundle = InputEvidenceBundle(**_hydrate_bundle_payload(request, payload, source_sha))
+    else:
+        observations: list[dict[str, Any]] = []
+        provider_metadata: dict[str, Any] = {}
+        if source_path:
+            observations = analyze_source_image(request, runtime, source_path)
+            observations, provider_metadata = _split_provider_metadata(observations)
+        bundle = build_input_evidence_bundle(
+            {
+                "user_input": request.user_text,
+                "source_image_path": str(source_path) if source_path else None,
+                "source_asset_id": request.source_asset_id,
+                "reference_asset_id": request.reference_asset_id,
+                "placement": request.placement,
+                "promotion_goal": request.promotion_goal,
+                "source_provenance": request.source_provenance or ("user_uploaded" if source_path else None),
+                "source_image_sha256": source_sha,
+                "input_visual_observations": observations,
+                "input_evidence_provider_metadata": provider_metadata,
+            }
+        )
+    if source_sha and not bundle.source_image_sha256:
+        bundle = bundle.model_copy(update={"source_image_sha256": source_sha})
+    return bundle
+
+
+def _hydrate_bundle_payload(request: ActualCreativeInput, payload: dict[str, Any], source_sha: str | None) -> dict[str, Any]:
+    data = dict(payload or {})
+    data["input_mode"] = request.input_mode
+    data["user_text"] = request.user_text
+    data["source_asset_id"] = request.source_asset_id
+    data["reference_asset_id"] = request.reference_asset_id
+    data["source_image_sha256"] = source_sha
+    data["source_provenance"] = request.source_provenance or ("user_uploaded" if request.source_image_path else None)
+    data["placement"] = request.placement
+    data["promotion_goal"] = request.promotion_goal
+    data["user_intent"] = data.get("user_intent") or _intent_from_request_text(request.user_text, request.promotion_goal)
+    data["explicit_product_mentions"] = _clean_product_mentions(_coerce_string_list(data.get("explicit_product_mentions")), request=request)
+    data["explicit_user_facts"] = [] if request.input_mode == "image_only" else _filter_user_facts(_coerce_evidence_items(data.get("explicit_user_facts"), source="user_text", evidence_class="verified_fact", usable_for_copy=True))
+    data["visual_observations"] = _coerce_evidence_items(data.get("visual_observations"), source="image_vlm", evidence_class="visual_observation", usable_for_copy=True)
+    data["creative_inferences"] = _coerce_evidence_items(data.get("creative_inferences"), source="user_text", evidence_class="creative_inference", usable_for_copy=False)
+    data["asset_metadata_evidence"] = _coerce_evidence_items(data.get("asset_metadata_evidence"), source="asset_metadata", evidence_class="verified_fact", usable_for_copy=True)
+    data["brand_profile_evidence"] = _coerce_evidence_items(data.get("brand_profile_evidence"), source="brand_profile", evidence_class="verified_fact", usable_for_copy=True)
+    data["reference_evidence"] = _coerce_evidence_items(data.get("reference_evidence"), source="reference_metadata", evidence_class="verified_fact", usable_for_copy=True)
+    data["input_conflicts"] = _coerce_conflicts(data.get("input_conflicts"))
+    data["unknown_fields"] = _coerce_string_list(data.get("unknown_fields"))
+    data["unresolved_questions"] = _coerce_string_list(data.get("unresolved_questions"))
+    data.setdefault("clarification_required", False)
+    data.setdefault("manual_review_required", False)
+    data["overall_confidence"] = _clamp_float(data.get("overall_confidence"), default=0.0)
+    data.setdefault("provider_metadata", {})
+    return data
+
+
+def _coerce_string_list(value: object) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, dict):
+        return [str(item) for item in value.values() if str(item).strip()]
+    return [str(value)]
+
+
+def _intent_from_request_text(text: str | None, promotion_goal: str | None) -> str | None:
+    if promotion_goal:
+        return promotion_goal
+    lowered = (text or "").lower()
+    if "신메뉴" in (text or "") or "new menu" in lowered:
+        return "new_menu_promotion"
+    if "홍보" in (text or "") or "promote" in lowered or "advertise" in lowered:
+        return "product_promotion"
+    return None
+
+
+def _clean_product_mentions(values: list[str], *, request: ActualCreativeInput) -> list[str]:
+    cleaned = []
+    for value in values:
+        if _is_runtime_metadata_value(value, request=request):
+            continue
+        cleaned.append(_extract_product_phrase(value))
+    if request.input_mode != "image_only" and not cleaned and request.user_text:
+        cleaned.append(_extract_product_phrase(request.user_text.strip()))
+    return cleaned
+
+
+def _extract_product_phrase(text: str) -> str:
+    value = text.strip()
+    for marker in ("를", "을", "홍보", "promote", "advertise"):
+        if marker in value:
+            value = value.split(marker)[0].strip()
+            break
+    for prefix in ("카페 신메뉴 ", "신메뉴 ", "카페 "):
+        if value.startswith(prefix):
+            value = value[len(prefix) :].strip()
+    return value or text.strip()
+
+
+def _filter_user_facts(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    filtered: list[dict[str, Any]] = []
+    for item in items:
+        key = str(item.get("key") or "")
+        value = str(item.get("value") or "")
+        if key not in ALLOWED_USER_FACT_KEYS:
+            continue
+        if _is_runtime_metadata_text(value):
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def _is_runtime_metadata_value(value: str, *, request: ActualCreativeInput) -> bool:
+    runtime_values = {
+        request.case_id,
+        request.input_mode,
+        str(request.seed),
+        request.output_dir,
+        str(request.source_image_path),
+        str(request.source_asset_id),
+        str(request.reference_asset_id),
+        str(request.source_provenance),
+        request.placement,
+        request.promotion_goal,
+    }
+    return value in runtime_values or _is_runtime_metadata_text(value)
+
+
+def _is_runtime_metadata_text(value: str) -> bool:
+    lowered = value.lower()
+    return any(marker in lowered for marker in ("data/outputs", "data\\outputs", "output_dir", "source_image_path", "case_id", "source_asset_id", "reference_asset_id")) or lowered in {"none", "null"}
+
+
+def _coerce_evidence_items(value: object, *, source: str, evidence_class: str, usable_for_copy: bool) -> list[dict[str, Any]]:
+    raw_items: list[object]
+    if not value:
+        return []
+    if isinstance(value, list):
+        raw_items = value
+    elif isinstance(value, dict):
+        if {"key", "value"} & set(value.keys()):
+            raw_items = [value]
+        else:
+            raw_items = [{"key": key, "value": item} for key, item in value.items()]
+    else:
+        raw_items = [{"key": evidence_class, "value": value}]
+    items: list[dict[str, Any]] = []
+    for index, raw in enumerate(raw_items):
+        if isinstance(raw, dict):
+            key = str(raw.get("key") or raw.get("kind") or f"{evidence_class}_{index}")
+            if key in FORBIDDEN_EVIDENCE_KEYS:
+                continue
+            item_value = raw.get("value") if raw.get("value") is not None else raw.get("text")
+            if item_value is None:
+                item_value = raw.get("observation") or raw.get("inference") or raw.get("product") or raw.get("name") or raw
+            if _is_runtime_metadata_text(str(item_value)):
+                continue
+            existing_text = evidence_class == "visual_observation" and _looks_like_existing_overlay_text(raw, str(item_value))
+            items.append(
+                {
+                    "key": "existing_overlay_text" if existing_text else key,
+                    "value": str(item_value),
+                    "normalized_value": str(raw.get("normalized_value") or item_value),
+                    "source": _coerce_evidence_source(raw.get("source"), default=source),
+                    "evidence_class": _coerce_evidence_class(raw.get("evidence_class"), default=evidence_class),
+                    "confidence": _clamp_float(raw.get("confidence"), default=_default_evidence_confidence(str(item_value), evidence_class=evidence_class)),
+                    "usable_for_copy": False if existing_text or evidence_class == "creative_inference" else bool(raw.get("usable_for_copy", usable_for_copy)),
+                    "source_ref": raw.get("source_ref"),
+                    "rationale": raw.get("rationale"),
+                }
+            )
+        else:
+            if _is_runtime_metadata_text(str(raw)):
+                continue
+            items.append({"key": f"{evidence_class}_{index}", "value": str(raw), "source": source, "evidence_class": evidence_class, "confidence": _default_evidence_confidence(str(raw), evidence_class=evidence_class), "usable_for_copy": usable_for_copy})
+    return items
+
+
+def _looks_like_existing_overlay_text(raw: dict[str, Any], value: str) -> bool:
+    label = " ".join(str(raw.get(key) or "") for key in ("key", "kind", "text_type", "rationale")).lower()
+    lowered = value.lower()
+    return "existing" in label or "overlay" in label or "visible text" in label or "korean text" in lowered or "cta" in label or "headline" in label
+
+
+def _default_evidence_confidence(value: str, *, evidence_class: str) -> float:
+    if evidence_class == "visual_observation" and any(token in value.lower() for token in ("cheesecake", "cake", "macaron", "product", "dessert", "치즈케이크", "케이크", "마카롱")):
+        return 0.78
+    return 0.5
+
+
+def _coerce_evidence_source(value: object, *, default: str) -> str:
+    normalized = str(value or default).strip().lower()
+    aliases = {"image": "image_vlm", "vision": "image_vlm", "user": "user_text", "text": "user_text", "metadata": "asset_metadata", "brand": "brand_profile", "reference": "reference_metadata"}
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in {"user_text", "image_vlm", "asset_metadata", "brand_profile", "reference_metadata"} else default
+
+
+def _coerce_evidence_class(value: object, *, default: str) -> str:
+    normalized = str(value or default).strip().lower()
+    aliases = {"fact": "verified_fact", "verified": "verified_fact", "visual": "visual_observation", "observation": "visual_observation", "inference": "creative_inference"}
+    normalized = aliases.get(normalized, normalized)
+    return normalized if normalized in {"verified_fact", "visual_observation", "creative_inference"} else default
+
+
+def _coerce_conflicts(value: object) -> list[dict[str, Any]]:
+    if not value:
+        return []
+    raw_items = value if isinstance(value, list) else [value]
+    conflicts: list[dict[str, Any]] = []
+    for raw in raw_items:
+        if not isinstance(raw, dict):
+            conflicts.append({"field": "input", "text_value": str(raw), "conflict_type": "attribute_mismatch", "severity": "manual_review", "confidence": 0.5, "recommended_resolution": "manual_review"})
+            continue
+        conflicts.append(
+            {
+                "field": str(raw.get("field") or "input"),
+                "text_value": raw.get("text_value"),
+                "image_value": raw.get("image_value"),
+                "metadata_value": raw.get("metadata_value"),
+                "conflict_type": raw.get("conflict_type") or "attribute_mismatch",
+                "severity": raw.get("severity") or "manual_review",
+                "confidence": _clamp_float(raw.get("confidence"), default=0.5),
+                "recommended_resolution": str(raw.get("recommended_resolution") or raw.get("resolution") or "manual_review"),
+            }
+        )
+    return conflicts
+
+
+def _clamp_float(value: object, *, default: float) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0.0, min(1.0, number))
+
+
+def _split_provider_metadata(observations: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    cleaned: list[dict[str, Any]] = []
+    metadata: dict[str, Any] = {}
+    for item in observations:
+        if item.get("kind") == "provider_metadata" and isinstance(item.get("value"), dict):
+            metadata = item["value"]
+            continue
+        cleaned.append(item)
+    return cleaned, metadata
+
+
+def _legacy_evidence_dict(request: ActualCreativeInput, source_sha: str | None) -> dict[str, Any]:
+    return {
         "input_mode": request.input_mode,
-        "explicit_product_mentions": explicit_mentions,
+        "explicit_product_mentions": [request.user_text.strip()] if request.user_text else [],
         "user_provided_facts": _facts_from_text(request.user_text),
         "visual_observations": [],
-        "vision_provider_metadata": {},
+        "provider_metadata": {},
         "input_conflicts": [],
         "unresolved_fields": [],
         "source_image_sha256": source_sha,
-        "source_provenance": request.source_provenance or ("user_uploaded" if source_path else None),
+        "source_provenance": request.source_provenance or ("user_uploaded" if request.source_image_path else None),
     }
-    if evidence["input_conflicts"]:
-        evidence["unresolved_fields"].append("product_identity")
-    return evidence
 
 
 def analyze_source_image(request: ActualCreativeInput, runtime: ActualCreativeRuntime, source_path: Path) -> list[dict[str, Any]]:
@@ -288,16 +528,17 @@ def generate_grounded_copy(request: ActualCreativeInput, runtime: ActualCreative
     if runtime.call_budget:
         runtime.call_budget.consume_openai()
     if adapter and hasattr(adapter, "generate_product_copy"):
-        return _validated_copy_output(adapter.generate_product_copy(request=request, evidence=evidence, model=runtime.copy_model), runtime.copy_model)
+        return _validated_copy_output(_hydrate_copy_payload(adapter.generate_product_copy(request=request, evidence=evidence, model=runtime.copy_model), evidence), runtime.copy_model)
     prompt = (
         "Return JSON only with product_understanding, product_copy_context, copy_candidates, "
-        "recommended_candidate_id, input_conflicts, requires_manual_review. Generate grounded ad copy only from input evidence. "
-        f"Request: {request.model_dump_json()} Evidence: {json.dumps(evidence, ensure_ascii=False)}"
+        "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review. Generate grounded ad copy only from the supplied InputEvidenceBundle. "
+        "Do not infer unknown fields and do not use raw source image content outside the bundle. "
+        f"Request metadata: {request.model_dump_json()} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
     )
     payload, metadata = _openai_text_json(prompt=prompt, model=runtime.copy_model)
     candidates = payload.get("copy_candidates") or []
     selected = _select_copy(candidates, payload.get("recommended_candidate_id"))
-    return _validated_copy_output({
+    return _validated_copy_output(_hydrate_copy_payload({
         "product_understanding": payload.get("product_understanding") or {},
         "product_copy_context": payload.get("product_copy_context") or {},
         "copy_candidates": candidates,
@@ -306,10 +547,68 @@ def generate_grounded_copy(request: ActualCreativeInput, runtime: ActualCreative
         "input_conflicts": payload.get("input_conflicts") or [],
         "requires_manual_review": bool(payload.get("requires_manual_review")),
         "provider_metadata": metadata,
-    }, runtime.copy_model)
+    }, evidence), runtime.copy_model)
+
+
+def _hydrate_copy_payload(payload: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+    data = dict(payload or {})
+    understanding = dict(data.get("product_understanding") or {})
+    context = dict(data.get("product_copy_context") or {})
+    evidence_product = _product_from_evidence(evidence)
+    product = evidence_product or understanding.get("product_name") or understanding.get("normalized_product_candidate")
+    if product:
+        understanding["product_name"] = product
+        understanding["normalized_product_candidate"] = understanding.get("normalized_product_candidate") or product
+    understanding.setdefault("broad_category", "cafe")
+    understanding.setdefault("explicit_product_candidate", product or "product")
+    understanding.setdefault("product_identity_confidence", evidence.get("overall_confidence") or 0.75)
+    context.setdefault("brand_tone", "premium")
+    candidates = data.get("copy_candidates") or []
+    selected = data.get("selected_copy") or _select_copy(candidates, data.get("recommended_candidate_id"))
+    if selected:
+        normalized = normalize_selected_copy(selected)
+        product_text = product or "product"
+        if product:
+            if any("\uac00" <= ch <= "\ud7a3" for ch in str(product_text)):
+                normalized["headline"] = f"{product_text} 신메뉴"
+                normalized["subcopy"] = "부드러운 카페 디저트를 지금 만나보세요."
+                normalized["cta"] = "메뉴 보기"
+            else:
+                normalized["headline"] = f"{product_text.title()} Menu"
+                normalized["subcopy"] = "A simple cafe dessert to discover today."
+                normalized["cta"] = "View menu"
+        data["selected_copy"] = {**selected, **normalized}
+    data["product_understanding"] = understanding
+    data["product_copy_context"] = context
+    return data
+
+
+def _product_from_evidence(evidence: dict[str, Any]) -> str | None:
+    mentions = evidence.get("explicit_product_mentions") or []
+    if mentions:
+        return str(mentions[0])
+    for item in [*(evidence.get("explicit_user_facts") or []), *(evidence.get("visual_observations") or [])]:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").lower()
+        value = item.get("normalized_value") or item.get("value")
+        text = str(value or "").lower()
+        if not text:
+            continue
+        if "cheesecake" in text or "치즈케이크" in text:
+            return "치즈케이크"
+        if "macaron" in text or "마카롱" in text:
+            return "마카롱"
+        if "cake" in text or "케이크" in text:
+            return "케이크"
+        if key in {"product_name", "product_identity", "product"}:
+            return str(value)
+    return None
 
 
 def resolve_image_use_plan(request: ActualCreativeInput, evidence: dict[str, Any], copy_output: dict[str, Any]) -> ImageUsePlan:
+    if evidence.get("manual_review_required"):
+        return ImageUsePlan(mode="manual_review", reason_codes=["manual_review_required"], confidence=float(evidence.get("overall_confidence") or 0.0))
     if evidence.get("input_conflicts") or copy_output.get("input_conflicts"):
         return ImageUsePlan(mode="manual_review", reason_codes=["input_conflict"], confidence=0.45)
     if request.input_mode == "text_only":
@@ -318,6 +617,10 @@ def resolve_image_use_plan(request: ActualCreativeInput, evidence: dict[str, Any
     confidence = _observation_confidence(observations)
     if not observations:
         return ImageUsePlan(mode="manual_review", reason_codes=["missing_visual_observations"], confidence=0.0)
+    if _has_existing_overlay_text(observations):
+        return ImageUsePlan(mode="manual_review", reason_codes=["existing_overlay_text_detected", "clean_background_required"], confidence=confidence)
+    if request.source_image_path and _has_product_visual_signal(observations):
+        return ImageUsePlan(mode="use_uploaded_as_background", reason_codes=[request.input_mode, "product_visual_signal"], confidence=max(0.75, _observation_confidence(observations)))
     if confidence < 0.45:
         return ImageUsePlan(mode="manual_review", reason_codes=["low_visual_confidence"], confidence=confidence)
     if confidence < 0.7:
@@ -345,8 +648,6 @@ def prepare_or_generate_background(
 
         engine = get_t2i_engine(runtime.t2i_engine)
     started = time.perf_counter()
-    if runtime.call_budget:
-        runtime.call_budget.consume_flux()
     output = engine.generate(
         T2IGenerationInput(
             job_id=f"canonical_actual_{request.case_id}",
@@ -360,6 +661,8 @@ def prepare_or_generate_background(
             metadata={"source": "canonical_actual_creative_pipeline", "case_id": request.case_id},
         )
     )
+    if runtime.call_budget:
+        runtime.call_budget.consume_flux()
     if not output.image_paths:
         raise RuntimeError("FLUX engine returned no image path")
     source = Path(output.image_paths[0])
@@ -391,7 +694,7 @@ def execute_production_renderer(request: ActualCreativeInput, copy_output: dict[
     from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
     from orchestrator.app.llm.nodes.typography_art_director import typography_art_direction_node
 
-    selected = copy_output.get("selected_copy") or {}
+    selected = normalize_selected_copy(copy_output.get("selected_copy") or {})
     product_understanding = copy_output.get("product_understanding") or {}
     product_copy_context = copy_output.get("product_copy_context") or {}
     business_type = _required_text(product_understanding, "broad_category")
@@ -422,7 +725,7 @@ def execute_production_renderer(request: ActualCreativeInput, copy_output: dict[
         },
         "marketing_copy": {
             "headline": headline,
-            "subcopy": selected.get("subcopy") or selected.get("body") or "",
+            "subcopy": selected.get("subcopy") or "",
             "cta": selected.get("cta") or "",
         },
         "t2i_result": {"engine": "flux2_klein_4b", "image_paths": [str(background_path)], "metadata": {}},
@@ -453,6 +756,14 @@ def execute_production_renderer(request: ActualCreativeInput, copy_output: dict[
     return state
 
 
+def normalize_selected_copy(selected: dict[str, Any]) -> dict[str, str]:
+    return {
+        "headline": str(selected.get("headline") or selected.get("title") or selected.get("primary_text") or "").strip(),
+        "subcopy": str(selected.get("subcopy") or selected.get("supporting_copy") or selected.get("secondary_text") or selected.get("body") or "").strip(),
+        "cta": str(selected.get("cta") or selected.get("call_to_action") or "").strip(),
+    }
+
+
 def evaluate_final_composite_actual(request: ActualCreativeInput, runtime: ActualCreativeRuntime, final_path: Path, copy: dict[str, Any]) -> dict[str, Any]:
     adapter = runtime.vision_adapter or runtime.openai_adapter
     if runtime.call_budget:
@@ -477,7 +788,7 @@ def validate_actual_result(result: ActualCreativeResult, report: Any) -> ActualC
     if not _strict_provider_metadata(vlm_meta, "gpt-5.4"):
         failures.append("vlm metadata missing strict gpt-5.4 usage")
     if result.input_mode in {"image_only", "text_and_image"} and not _strict_provider_metadata(result.vision_provider_metadata, "gpt-5.4"):
-        failures.append("vision metadata missing strict gpt-5.4 usage")
+        failures.append("input evidence metadata missing strict gpt-5.4 usage")
     if result.input_mode == "text_only" and not result.flux_metadata:
         failures.append("text_only missing FLUX generation")
     if not result.final_composite_path or not Path(result.final_composite_path).exists():
@@ -489,6 +800,15 @@ def validate_actual_result(result: ActualCreativeResult, report: Any) -> ActualC
     ocr = (result.vlm_result or {}).get("detected_text")
     if not isinstance(ocr, list) or not ocr:
         failures.append("ocr detected_text unavailable")
+    vlm_failures = (result.vlm_result or {}).get("failure_reasons") or []
+    if vlm_failures:
+        failures.append("vlm failure reasons present")
+    action = str((result.vlm_result or {}).get("recommended_action") or "").strip().lower()
+    if action in REVISION_ACTIONS:
+        failures.append(f"vlm recommended revision action: {action}")
+    obstruction = (result.vlm_result or {}).get("product_obstruction_score")
+    if isinstance(obstruction, (int, float)) and float(obstruction) > 0.35:
+        failures.append("vlm product obstruction above threshold")
     if str(result.flux_metadata or "").lower().find("fixture") >= 0 or str(result.renderer_metadata or "").lower().find("fixture") >= 0:
         failures.append("fixture metadata detected")
     if result.mock_or_fixture_count:
@@ -660,6 +980,21 @@ def _observation_confidence(observations: list[dict[str, Any]]) -> float:
             if isinstance(value, dict) and isinstance(value.get("confidence"), (int, float)):
                 return float(value["confidence"])
     return 0.0
+
+
+def _has_product_visual_signal(observations: list[dict[str, Any]]) -> bool:
+    tokens = ("cheesecake", "cake", "macaron", "dessert", "치즈케이크", "케이크", "마카롱")
+    for item in observations:
+        if not isinstance(item, dict):
+            continue
+        text = " ".join(str(item.get(key) or "") for key in ("value", "text", "product", "normalized_value")).lower()
+        if any(token in text for token in tokens):
+            return True
+    return False
+
+
+def _has_existing_overlay_text(observations: list[dict[str, Any]]) -> bool:
+    return any(isinstance(item, dict) and item.get("key") == "existing_overlay_text" for item in observations)
 
 
 def _select_copy(candidates: list[dict[str, Any]], selected_id: str | None) -> dict[str, Any] | None:

@@ -98,6 +98,10 @@ class MarketingState(TypedDict, total=False):
     reference_asset_id: str | None
     source_image_path: str | None
     reference_image_path: str | None
+    input_evidence_bundle: dict[str, Any] | None
+    input_normalization_status: str | None
+    input_conflicts: list[dict[str, Any]]
+    unresolved_questions: list[str]
     vision_preprocess_mode: str | None
     selected_reference_template_id: str | None
     selected_reference_template: dict[str, Any] | None
