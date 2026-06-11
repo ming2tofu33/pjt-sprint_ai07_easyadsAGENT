@@ -98,6 +98,23 @@ function asCopyCandidateOrigin(value: unknown): CopyCandidateOrigin {
   return value === "llm" || value === "rule_based" || value === "fallback" || value === "unknown" ? value : "unknown";
 }
 
+function normalizeCandidateMetadata(raw: unknown): CopyOption["metadata"] | undefined {
+  if (!isRecord(raw)) {
+    return undefined;
+  }
+  const metadata: NonNullable<CopyOption["metadata"]> = { ...raw };
+  const compliance = raw.compliance;
+  if (isRecord(compliance)) {
+    metadata.compliance = {
+      ...compliance,
+      status: asString(compliance.status) ?? null,
+      finding_count: asNumber(compliance.finding_count ?? compliance.findingCount),
+      disabled: asBoolean(compliance.disabled)
+    };
+  }
+  return metadata;
+}
+
 function normalizeCandidate(raw: unknown, index: number): CopyOption | null {
   if (!isRecord(raw)) {
     return null;
@@ -106,11 +123,13 @@ function normalizeCandidate(raw: unknown, index: number): CopyOption | null {
   if (!headline) {
     return null;
   }
+  const metadata = normalizeCandidateMetadata(raw.metadata);
   return {
     id: asString(raw.id) ?? `copy_${index + 1}`,
     headline,
     subcopy: asString(raw.subcopy) ?? asString(raw.body) ?? null,
-    cta: asString(raw.cta) ?? null
+    cta: asString(raw.cta) ?? null,
+    ...(metadata ? { metadata } : {})
   };
 }
 

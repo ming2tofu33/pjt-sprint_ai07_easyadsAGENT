@@ -160,7 +160,9 @@ def test_resolution_cancel_sets_compliance_blocked_status():
     state = _blocked_state()
     state["copy_compliance_resolution"] = {"action": "cancel"}
     update = copy_compliance_resolution_node(state)
-    assert update["status"] == "compliance_blocked"
+    assert update["status"] == "failed"
+    assert update["error_info"]["error_code"] == "generation_job_cancelled_by_user"
+    assert update["copy_compliance_gate"]["user_decision"] == "cancel"
 
 
 def test_resolution_edit_manually_records_decision():
@@ -240,3 +242,13 @@ def test_route_after_compliance_resolution_cancel_to_end():
     state = _state()
     state["copy_compliance_gate"] = {"user_decision": "cancel"}
     assert route_after_compliance_resolution(state) == END
+
+
+def test_resolution_cancel_routes_to_end_after_node_update():
+    from langgraph.graph import END
+
+    state = _blocked_state()
+    state["copy_compliance_resolution"] = {"action": "cancel"}
+    update = copy_compliance_resolution_node(state)
+
+    assert route_after_compliance_resolution({**state, **update}) == END

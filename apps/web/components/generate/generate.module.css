@@ -1390,6 +1390,19 @@
   font-weight: 900;
 }
 
+.candidateComplianceLine {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.candidateComplianceLine small {
+  background: transparent;
+  color: var(--color-text-muted);
+  padding: 0;
+}
+
 .copyCardSelected {
   border-color: var(--color-purple);
   background: var(--color-purple-soft);

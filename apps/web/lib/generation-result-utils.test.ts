@@ -278,7 +278,7 @@ describe("generation result utils", () => {
       validation_summary: { final: { overall_pass: true } },
       ocr_gate: { decision: "manual_review" },
       compliance: {
-        status: "rewritten",
+        status: "rewritten_by_user_choice",
         summary: "일부 표현이 안전한 문구로 조정됐어요."
       }
     });
@@ -287,6 +287,30 @@ describe("generation result utils", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: "final", status: "pass" }),
         expect.objectContaining({ id: "ocr", status: "warn", label: "문구 검수" }),
+        expect.objectContaining({ id: "compliance", status: "warn", label: "광고 표현 확인" })
+      ])
+    );
+  });
+
+  it("treats compliance manual review status as warning result", () => {
+    const reviewJob: GenerationJob = {
+      job_id: "job_compliance_review",
+      status: "done",
+      result_payload: {
+        final_image_url: "https://cdn.example.com/review.png",
+        compliance: {
+          status: "manual_review_required",
+          summary: "게시 전 광고 표현 확인이 필요합니다."
+        }
+      }
+    };
+
+    expect(getGenerationResultNotice(reviewJob)).toEqual({
+      level: "warning",
+      message: "사용 전에 결과를 한 번 더 확인해야 해요."
+    });
+    expect(buildResultReviewItems(reviewJob.result_payload)).toEqual(
+      expect.arrayContaining([
         expect.objectContaining({ id: "compliance", status: "warn", label: "광고 표현 확인" })
       ])
     );

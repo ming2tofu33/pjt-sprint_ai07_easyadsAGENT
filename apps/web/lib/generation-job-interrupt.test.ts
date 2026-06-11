@@ -44,7 +44,11 @@ describe("generation job interrupt helpers", () => {
       parseGenerationJobInterrupt({
         type: "copy_candidate_selection",
         candidates: [
-          { id: "copy_1", headline: "오늘만 할인" },
+          {
+            id: "copy_1",
+            headline: "오늘만 할인",
+            metadata: { compliance: { status: "evidence_required", finding_count: 1, disabled: true } }
+          },
           { id: "copy_2", headline: "이번 주 신메뉴" }
         ],
         recommended_candidate_id: "copy_1",
@@ -55,7 +59,11 @@ describe("generation job interrupt helpers", () => {
       recommendedCandidateId: "copy_1",
       copyCandidateOrigin: "rule_based",
       candidates: [
-        { id: "copy_1", headline: "오늘만 할인" },
+        {
+          id: "copy_1",
+          headline: "오늘만 할인",
+          metadata: { compliance: { status: "evidence_required", finding_count: 1, disabled: true } }
+        },
         { id: "copy_2", headline: "이번 주 신메뉴" }
       ]
     });
