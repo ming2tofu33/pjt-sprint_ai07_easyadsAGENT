@@ -458,6 +458,24 @@ def get_generation_job_internal(job_id: str) -> GenerationJobResponse | None:
         return _GENERATION_JOBS.get(job_id)
 
 
+def resolve_generation_job_scope_from_existing_job(job_id: str) -> tuple[str | None, str | None]:
+    if _use_postgres_backend():
+        row = generation_job_repo.get_generation_job_internal_by_public_id(job_id)
+        if not row:
+            return None, None
+        metadata = row.get("metadata") or {}
+        return str(row.get("workspace_id")) if row.get("workspace_id") else None, (
+            str(row.get("requested_by") or metadata.get("user_id"))
+            if row.get("requested_by") or metadata.get("user_id")
+            else None
+        )
+    with _GENERATION_JOB_LOCK:
+        job = _GENERATION_JOBS.get(job_id)
+    if not job:
+        return None, None
+    return _memory_job_workspace_id(job), job.user_id
+
+
 def update_generation_job(job_id: str, *, workspace_id: str | None = None, user_id: str | None = None, **fields) -> GenerationJobResponse | None:
     if _use_postgres_backend():
         return _update_generation_job_db(job_id, workspace_id=workspace_id, user_id=user_id, **fields)
@@ -732,11 +750,21 @@ def mark_generation_job_waiting_user_input(
     result_state: dict,
     changed_fields: list[str],
     assistant_message: str | None = None,
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
 ) -> GenerationJobResponse | None:
     if _use_postgres_backend():
-        return _mark_generation_job_waiting_user_input_db(job_id, result_state, changed_fields, assistant_message)
+        return _mark_generation_job_waiting_user_input_db(
+            job_id,
+            result_state,
+            changed_fields,
+            assistant_message,
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
 
-    existing = get_generation_job(job_id)
+    existing = get_generation_job(job_id, workspace_id=workspace_id, user_id=user_id) if workspace_id or user_id else get_generation_job(job_id)
     if not existing:
         return None
 
@@ -751,6 +779,8 @@ def mark_generation_job_waiting_user_input(
     }
     updated = update_generation_job(
         job_id,
+        workspace_id=workspace_id,
+        user_id=user_id,
         status="waiting_user_input",
         progress=progress,
         metadata=metadata,
@@ -1836,9 +1866,21 @@ def _mark_generation_job_waiting_user_input_db(
     result_state: dict,
     changed_fields: list[str],
     assistant_message: str | None = None,
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
 ) -> GenerationJobResponse | None:
     with db_transaction() as conn:
-        existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if workspace_id is not None or user_id is not None:
+            resolved_workspace_id = _resolve_db_workspace_for_public_access(
+                requested_workspace_id=workspace_id, user_id=user_id, connection=conn
+            )
+            existing = generation_job_repo.get_generation_job_scoped_by_public_id(
+                job_id, workspace_id=resolved_workspace_id, connection=conn, for_update=True
+            )
+        else:
+            resolved_workspace_id = None
+            existing = generation_job_repo.get_generation_job_row(job_id, connection=conn)
         if not existing:
             return None
         pending_interrupt = _pending_interrupt_from_state(result_state)
@@ -1866,6 +1908,9 @@ def _mark_generation_job_waiting_user_input_db(
             _record_generation_job_event_db(existing, "stale_waiting_ignored", message="Stale waiting ignored.", connection=conn)
             return _job_response_from_db_row(existing)
 
+        update_kwargs = {}
+        if resolved_workspace_id:
+            update_kwargs["workspace_id"] = resolved_workspace_id
         row = generation_job_repo.update_generation_job_row(
             job_id,
             status="waiting_user_input",
@@ -1873,6 +1918,7 @@ def _mark_generation_job_waiting_user_input_db(
             progress_percent=50,
             metadata=metadata,
             connection=conn,
+            **update_kwargs,
         )
         if not row:
             return None
