@@ -626,19 +626,51 @@
 
 .copyModeGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
 }
 
-.quickStartGrid .chip,
-.copyModeGrid .chip {
+.quickStartGrid .chip {
   gap: 5px;
   padding: 9px 6px;
   font-size: 12px;
   line-height: 1.2;
 }
 
-.quickStartGrid .chip span,
-.copyModeGrid .chip span {
+.quickStartGrid .chip span {
   white-space: nowrap;
+}
+
+.copyModeGrid .chip {
+  min-height: 150px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  line-height: 1.45;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.copyModeGrid .chip span {
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  line-height: 1.45;
+}
+
+@media (max-width: 360px) {
+  .copyModeGrid {
+    gap: 12px;
+  }
+
+  .copyModeGrid .chip {
+    min-height: 132px;
+    padding: 16px 12px;
+    font-size: 13px;
+  }
 }
 
 .engineGrid {
@@ -8142,4 +8174,62 @@
 .onboardingFinalActions button:active,
 .onboardingSkipButton:active {
   transform: scale(0.98);
+}
+
+.threadLimitOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+}
+
+.threadLimitModal {
+  background-color: var(--color-bg-card);
+  border-radius: 24px;
+  padding: 32px 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.threadLimitEmoji {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.threadLimitText {
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-text-primary);
+  margin-bottom: 24px;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+.threadLimitButton {
+  background-color: var(--color-purple-soft);
+  color: var(--color-brand-purple-text);
+  border: none;
+  border-radius: 12px;
+  padding: 16px 24px;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  width: 100%;
+  transition: opacity 0.2s;
+}
+
+.threadLimitButton:hover {
+  opacity: 0.9;
 }

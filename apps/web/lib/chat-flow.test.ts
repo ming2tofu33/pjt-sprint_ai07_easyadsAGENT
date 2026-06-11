@@ -36,6 +36,23 @@ describe("chat flow state", () => {
     expect(next.selectedImageGenerationEngine).toBe("gpt_image_1");
   });
 
+  it("clears a thread-limit error code when retrying from the prompt flow", () => {
+    const failed = chatFlowReducer(createInitialChatFlowState(), {
+      type: "backendRequestFailed",
+      message: "작업은 최대 3개까지만 만들 수 있어요.",
+      errorCode: "thread_limit_reached"
+    });
+
+    const retrying = chatFlowReducer(failed, {
+      type: "submitPrompt",
+      prompt: "새 광고 요청"
+    });
+
+    expect(failed.errorCode).toBe("thread_limit_reached");
+    expect(retrying.errorMessage).toBeNull();
+    expect(retrying.errorCode).toBeNull();
+  });
+
   it("appends new user prompts and can update the current turn without duplicating it", () => {
     let state = createInitialChatFlowState();
     state = chatFlowReducer(state, {

@@ -20,6 +20,7 @@ import { PhotoGenerateStep } from "@/components/generate/PhotoGenerateStep";
 import { RecentAdsStep } from "@/components/generate/RecentAdsStep";
 import { ReferenceBrowseStep } from "@/components/generate/ReferenceBrowseStep";
 import { StudioEntryStep } from "@/components/generate/StudioEntryStep";
+import { ThreadLimitModal } from "@/components/generate/ThreadLimitModal";
 import {
   answerGenerationJob,
   answerChatQuestion,
@@ -36,6 +37,7 @@ import {
   updateArchiveItem,
   uploadPhotoAsset,
   uploadReferenceAsset,
+  ApiError,
   type ChatTurnResponse,
   type GenerationJob,
   type GenerationStartOptions,
@@ -1514,7 +1516,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       }
       dispatch({
         type: "backendRequestFailed",
-        message: error instanceof Error ? error.message : "생성 요청에 실패했습니다. 잠시 후 다시 시도해주세요."
+        message: error instanceof Error ? error.message : "생성 요청에 실패했습니다. 잠시 후 다시 시도해주세요.",
+        errorCode: error instanceof ApiError ? error.errorCode : undefined
       });
     }
   }
@@ -1571,7 +1574,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     } catch (error) {
       dispatch({
         type: "backendRequestFailed",
-        message: error instanceof Error ? error.message : "답변 전송에 실패해 다시 시도해주세요."
+        message: error instanceof Error ? error.message : "답변 전송에 실패해 다시 시도해주세요.",
+        errorCode: error instanceof ApiError ? error.errorCode : undefined
       });
     }
   }
@@ -1638,7 +1642,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     if (!state.jobId || !state.threadId) {
       dispatch({
         type: "backendRequestFailed",
-        message: "생성 연결 정보가 없어 실제 이미지 생성을 시작할 수 없습니다. 첫 요청을 다시 보내주세요."
+        message: "생성 연결 정보가 없어 실제 이미지 생성을 시작할 수 없습니다. 첫 요청을 다시 보내주세요.",
+        errorCode: undefined
       });
       return;
     }
@@ -1673,7 +1678,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     } catch (error) {
       dispatch({
         type: "backendRequestFailed",
-        message: error instanceof Error ? error.message : "브리프와 이미지 생성에 실패했습니다. 설정을 확인한 뒤 다시 시도해주세요."
+        message: error instanceof Error ? error.message : "브리프와 이미지 생성에 실패했습니다. 설정을 확인한 뒤 다시 시도해주세요.",
+        errorCode: error instanceof ApiError ? error.errorCode : undefined
       });
     }
   }
@@ -1723,7 +1729,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const message = error instanceof Error ? error.message : "추가 요청을 브리프에 반영하지 못했어요. 잠시 뒤 다시 시도해주세요.";
       dispatch({
         type: "backendRequestFailed",
-        message
+        message,
+        errorCode: error instanceof ApiError ? error.errorCode : undefined
       });
       throw new Error(message);
     }
@@ -2214,8 +2221,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     window.setTimeout(() => setToastMessage(null), 3000);
   }
 
+  const hasThreadLimitError = state.errorCode === "thread_limit_reached";
+  const displayState = hasThreadLimitError ? { ...state, errorMessage: null } : state;
+
   return (
     <MobileShell>
+      {hasThreadLimitError && <ThreadLimitModal />}
       {appSurface === "home" ? (
         <HomeStartStep
           onOpenStudio={() => navigateTo("studio")}
@@ -2246,7 +2257,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "reference" ? (
         <ReferenceBrowseStep
-          state={state}
+          state={displayState}
           isStandaloneGallery
           onGoHome={() => navigateTo("home")}
           onOpenReference={() => navigateTo("reference")}
@@ -2313,7 +2324,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "chat" && state.step === 2 && state.currentQuestion ? (
         <ChatContextQuestionStep
-          state={state}
+          state={displayState}
           onBack={() => dispatch({ type: "back" })}
           onAnswer={handleAnswerQuestion}
           onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
@@ -2322,7 +2333,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "chat" && state.step === 2 && !state.currentQuestion && state.isLoading ? (
         <ChatAnalysisPendingStep
-          state={state}
+          state={displayState}
           onBack={() => dispatch({ type: "back" })}
           onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
         />
@@ -2330,7 +2341,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "chat" && state.step === 2 && !state.currentQuestion && !state.isLoading ? (
         <IntentReviewStep
-          state={state}
+          state={displayState}
           onBack={() => dispatch({ type: "back" })}
           onSelectTone={(tone) => dispatch({ type: "selectTone", tone })}
           onContinue={() => dispatch({ type: "continueToCopy" })}
@@ -2340,7 +2351,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "chat" && state.step === 3 ? (
         <CopyChannelStep
-          state={state}
+          state={displayState}
           onBack={() => dispatch({ type: "back" })}
           onSelectCopy={(copyId) => dispatch({ type: "selectCopy", copyId })}
           onSelectChannel={(channelId) => dispatch({ type: "selectChannel", channelId })}
@@ -2352,7 +2363,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "chat" && state.step === 4 && generationStage === "brief" ? (
         <BriefConfirmStep
-          state={state}
+          state={displayState}
           onBack={handleBackFromBrief}
           onGenerate={handleOpenGeneratedResult}
           onRefineBrief={handleRefineBrief}
@@ -2362,7 +2373,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "chat" && state.step === 4 && generationStage === "jobQuestion" && state.currentQuestion ? (
         <ChatContextQuestionStep
-          state={state}
+          state={displayState}
           onBack={() => setGenerationStage("brief")}
           onAnswer={handleAnswerGenerationJobQuestion}
           onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
@@ -2376,7 +2387,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       !currentGenerationJobInterrupt &&
       state.isLoading ? (
         <ChatAnalysisPendingStep
-          state={state}
+          state={displayState}
           onBack={() => setGenerationStage("brief")}
           onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
         />
@@ -2390,9 +2401,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       currentGenerationJobInterrupt.type !== "option_question" ? (
         <GenerationJobInterruptStep
           interrupt={currentGenerationJobInterrupt}
-          state={state}
+          state={displayState}
           isLoading={state.isLoading}
-          errorMessage={state.errorMessage}
+          errorMessage={displayState.errorMessage}
           onBack={() => setGenerationStage("brief")}
           onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
           onSelectCopyCandidate={handleSelectGenerationJobCopyCandidate}
@@ -2403,14 +2414,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "chat" && state.step === 4 && generationStage === "generating" ? (
         <GenerationInProgressStep
-          state={state}
+          state={displayState}
           onBrowse={() => setGenerationStage("browsing")}
         />
       ) : null}
 
       {appSurface === "chat" && state.step === 4 && generationStage === "browsing" ? (
         <ReferenceBrowseStep
-          state={state}
+          state={displayState}
           onShowProgress={() => setGenerationStage("generating")}
           onGoHome={() => navigateTo("home")}
           onOpenReference={() => navigateTo("reference")}
@@ -2426,7 +2437,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "chat" && state.step === 4 && generationStage === "complete" ? (
         <GenerationCompleteStep
-          state={state}
+          state={displayState}
           onBrowseSimilar={() => {
             setGenerationStage("similarBrowsing");
             lastPrimedStageRef.current = "similar";
@@ -2443,7 +2454,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       {appSurface === "chat" && state.step === 4 && generationStage === "similarBrowsing" ? (
         <ReferenceBrowseStep
-          state={state}
+          state={displayState}
           isGenerationComplete
           onShowProgress={() => setGenerationStage("complete")}
           onGoHome={() => navigateTo("home")}
