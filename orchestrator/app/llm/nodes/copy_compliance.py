@@ -90,7 +90,22 @@ def copy_compliance_resolution_node(state: MarketingState) -> dict[str, Any]:
         }
 
     if decision == "cancel":
-        return {"status": "compliance_blocked"}
+        return {
+            "copy_compliance_gate": {
+                **gate,
+                "user_decision": "cancel",
+                "status": "cancelled_by_user",
+                "publication_ready": False,
+            },
+            "copy_compliance_status": "cancelled_by_user",
+            "copy_compliance_publication_ready": False,
+            "status": "failed",
+            "error_info": {
+                "error_code": "generation_job_cancelled_by_user",
+                "message": "사용자가 광고 규제 검토 단계에서 생성을 취소했습니다.",
+            },
+            "error_message": "사용자가 광고 규제 검토 단계에서 생성을 취소했습니다.",
+        }
 
     # edit_manually: router가 custom_copy_input으로 분기
     return {

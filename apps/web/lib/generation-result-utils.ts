@@ -20,6 +20,16 @@ export type ValidationFeedbackItem = {
   message: string;
 };
 
+const COMPLIANCE_BLOCKED_STATUSES = new Set(["blocked", "block"]);
+const COMPLIANCE_WARNING_STATUSES = new Set([
+  "needs_review",
+  "rewritten",
+  "rewritten_by_user_choice",
+  "manual_review_required",
+  "evidence_required",
+  "warn"
+]);
+
 export function isTerminalGenerationStatus(status: string | undefined | null): boolean {
   return status === "done" || status === "failed";
 }
@@ -104,21 +114,22 @@ export function buildResultReviewItems(payload: ResultArtifactPayload | null | u
   }
 
   const compliance = payload.compliance;
-  if (compliance?.status === "blocked") {
+  const complianceStatus = safeString(compliance?.status);
+  if (complianceStatus && COMPLIANCE_BLOCKED_STATUSES.has(complianceStatus)) {
     items.push({
       id: "compliance",
       label: "광고 표현 확인",
       status: "fail",
       message: compliance.summary || "광고 표현 기준을 통과하지 못했어요."
     });
-  } else if (compliance?.status === "rewritten" || compliance?.status === "needs_review") {
+  } else if (complianceStatus && COMPLIANCE_WARNING_STATUSES.has(complianceStatus)) {
     items.push({
       id: "compliance",
       label: "광고 표현 확인",
       status: "warn",
       message: compliance.summary || "일부 표현은 사용 전에 한 번 더 확인해주세요."
     });
-  } else if (compliance?.status === "pass") {
+  } else if (complianceStatus === "pass") {
     items.push({
       id: "compliance",
       label: "광고 표현 확인",
@@ -234,13 +245,18 @@ export function getGenerationResultNotice(job: GenerationJob | null | undefined)
       return { level: "warning", message: "생성은 끝났지만 결과 정보를 아직 확인할 수 없어요." };
     }
     const qualityDecision = safeString(payload.qualityDecision);
-    if (payload.qualityRejected || qualityDecision === "reject" || payload.compliance?.status === "blocked") {
+    const complianceStatus = safeString(payload.compliance?.status);
+    if (
+      payload.qualityRejected ||
+      qualityDecision === "reject" ||
+      (complianceStatus !== null && COMPLIANCE_BLOCKED_STATUSES.has(complianceStatus))
+    ) {
       return { level: "error", message: "검수에서 사용할 수 없는 결과로 판단됐어요." };
     }
     if (
       payload.requiresManualReview ||
       ["manual_review", "unavailable", "retry_image", "retry_layout"].includes(qualityDecision ?? "") ||
-      payload.compliance?.status === "needs_review"
+      (complianceStatus !== null && COMPLIANCE_WARNING_STATUSES.has(complianceStatus))
     ) {
       return { level: "warning", message: "사용 전에 결과를 한 번 더 확인해야 해요." };
     }
