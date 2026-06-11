@@ -132,7 +132,7 @@ describe("generate chat routes", () => {
       if (String(url).includes("/auth/v1/user")) {
         return jsonResponse({ id: "admin_user_1" });
       }
-      if (String(url).endsWith("/assets/uploads/presign?user_id=admin_user_1")) {
+      if (String(url).endsWith("/assets/uploads/presign?user_id=admin_user_1&account_type=user")) {
         return jsonResponse({ asset: { asset_id: "asset_abc", kind: "reference", status: "pending" }, upload: { method: "PUT", url: "https://r2.example.com/upload" } });
       }
       if (String(url).includes("/assets/uploads/asset_abc/complete")) {
@@ -178,9 +178,50 @@ describe("generate chat routes", () => {
       payload: { assetId: "asset_abc", title: "관리자 샘플", category: "cafe", businessTypes: ["cafe"] }
     });
 
-    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://orchestrator/api/v1/assets/uploads/presign?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
-    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://orchestrator/api/v1/assets/uploads/asset_abc/complete?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://orchestrator/api/v1/assets/uploads/presign?user_id=admin_user_1&account_type=user", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://orchestrator/api/v1/assets/uploads/asset_abc/complete?user_id=admin_user_1&account_type=user", expect.objectContaining({ method: "POST" }));
     expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://orchestrator/api/v1/admin/references?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    await app.close();
+  });
+
+  it("forwards anonymous account type for asset uploads and chat threads", async () => {
+    const fetchImpl = vi.fn(async (url) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_uuid_1", is_anonymous: true });
+      }
+      if (String(url).includes("/assets/uploads/presign")) {
+        return jsonResponse({ asset: { asset_id: "asset_guest", kind: "source", status: "pending" }, upload: { method: "PUT", url: "https://r2.example.com/upload" } });
+      }
+      return jsonResponse({ threads: [], total: 0 });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    const assetResponse = await app.inject({
+      method: "POST",
+      url: "/api/assets/uploads/presign",
+      headers: { authorization: "Bearer guest_access_token_1" },
+      payload: { kind: "source", filename: "source.png", mimeType: "image/png", sizeBytes: 1024 }
+    });
+    const chatResponse = await app.inject({
+      method: "GET",
+      url: "/api/chat-threads?include_archived=true",
+      headers: { authorization: "Bearer guest_access_token_1" }
+    });
+
+    expect(assetResponse.statusCode).toBe(200);
+    expect(chatResponse.statusCode).toBe(200);
+    const assetUrl = new URL(fetchImpl.mock.calls[1][0]);
+    expect(assetUrl.searchParams.get("user_id")).toBe("guest_uuid_1");
+    expect(assetUrl.searchParams.get("account_type")).toBe("guest");
+    const chatUrl = new URL(fetchImpl.mock.calls[3][0]);
+    expect(chatUrl.searchParams.get("include_archived")).toBe("true");
+    expect(chatUrl.searchParams.get("userId")).toBe("guest_uuid_1");
+    expect(chatUrl.searchParams.get("accountType")).toBe("guest");
     await app.close();
   });
 
@@ -407,13 +448,14 @@ describe("generate chat routes", () => {
           title: "봄을 닮은 한 잔",
           public_job_id: "job_1",
           status: "saved",
-          user_id: "user_uuid_1"
+          user_id: "user_uuid_1",
+          account_type: "user"
         })
       })
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
       4,
-      "http://orchestrator/api/v1/archive/items/archive_1?user_id=user_uuid_1",
+      "http://orchestrator/api/v1/archive/items/archive_1?user_id=user_uuid_1&account_type=user",
       expect.objectContaining({ method: "GET" })
     );
     expect(fetchImpl).toHaveBeenNthCalledWith(
@@ -421,7 +463,7 @@ describe("generate chat routes", () => {
       "http://orchestrator/api/v1/archive/items/archive_1",
       expect.objectContaining({
         method: "PATCH",
-        body: JSON.stringify({ status: "favorite", user_id: "user_uuid_1" })
+        body: JSON.stringify({ status: "favorite", user_id: "user_uuid_1", account_type: "user" })
       })
     );
     await app.close();
@@ -453,7 +495,7 @@ describe("generate chat routes", () => {
     expect(response.statusCode).toBe(200);
     expect(fetchImpl).toHaveBeenNthCalledWith(
       2,
-      "http://orchestrator/api/v1/archive/items?limit=20&user_id=guest_uuid_1",
+      "http://orchestrator/api/v1/archive/items?limit=20&user_id=guest_uuid_1&account_type=guest",
       expect.objectContaining({ method: "GET" })
     );
     await app.close();

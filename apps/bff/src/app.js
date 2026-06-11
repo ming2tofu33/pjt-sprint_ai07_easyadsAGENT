@@ -283,11 +283,20 @@ function appendQueryParam(url, key, value) {
     params.delete("userId");
     params.delete("user_id");
   }
+  if (key === "accountType" || key === "account_type") {
+    params.delete("accountType");
+    params.delete("account_type");
+  }
   if (value) {
     params.set(key, value);
   }
   const str = params.toString();
   return str ? `${base}?${str}` : base;
+}
+
+function appendPrincipalQueryParams(url, principal, { userKey = "user_id", accountKey = "account_type" } = {}) {
+  const withUser = appendQueryParam(url, userKey, principal?.userId ?? null);
+  return appendQueryParam(withUser, accountKey, principal?.accountType ?? null);
 }
 
 
@@ -345,11 +354,6 @@ async function resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supab
     userId: String(payload.id),
     accountType: payload.is_anonymous ? "guest" : "user"
   };
-}
-
-async function resolveSupabaseUserId(args) {
-  const principal = await resolveSupabasePrincipal(args);
-  return principal?.userId ?? null;
 }
 
 async function requireSupabaseUserId(args) {
@@ -463,30 +467,30 @@ export function buildApp(options = {}) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/assets/uploads/presign`, "user_id", userId),
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/assets/uploads/presign`, principal),
       body: parsed.data
     });
   });
 
   app.post("/api/assets/uploads/:assetId/complete", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/assets/uploads/${encodeURIComponent(request.params.assetId)}/complete${queryString}`, "user_id", userId),
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/assets/uploads/${encodeURIComponent(request.params.assetId)}/complete${queryString}`, principal),
       body: {}
     });
   });
 
   app.get("/api/assets/:assetId", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/assets/${encodeURIComponent(request.params.assetId)}${queryString}`, "user_id", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/assets/${encodeURIComponent(request.params.assetId)}${queryString}`, principal)
     });
   });
 
@@ -545,46 +549,46 @@ export function buildApp(options = {}) {
 
   app.get("/api/chat-threads", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads${queryString}`, "userId", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads${queryString}`, principal, { userKey: "userId", accountKey: "accountType" })
     });
   });
 
   app.get("/api/chat-threads/:threadId", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}${queryString}`, "userId", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}${queryString}`, principal, { userKey: "userId", accountKey: "accountType" })
     });
   });
 
   app.get("/api/chat-threads/:threadId/messages", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/messages${queryString}`, "userId", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/messages${queryString}`, principal, { userKey: "userId", accountKey: "accountType" })
     });
   });
 
   app.get("/api/chat-threads/:threadId/state", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/state${queryString}`, "userId", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/state${queryString}`, principal, { userKey: "userId", accountKey: "accountType" })
     });
   });
 
   app.post("/api/chat-threads/:threadId/archive", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/archive${queryString}`, "userId", userId),
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/archive${queryString}`, principal, { userKey: "userId", accountKey: "accountType" }),
       body: {}
     });
   });
@@ -746,10 +750,10 @@ export function buildApp(options = {}) {
 
   app.get("/api/archive/items", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/archive/items${queryString}`, "user_id", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/archive/items${queryString}`, principal)
     });
   });
 
@@ -759,13 +763,14 @@ export function buildApp(options = {}) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
 
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     const payload = await proxyJson({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/archive/items`,
       body: {
         ...toArchiveItemPayload(parsed.data),
-        ...(userId ? { user_id: userId } : {})
+        ...(principal?.userId ? { user_id: principal.userId } : {}),
+        ...(principal?.accountType ? { account_type: principal.accountType } : {})
       }
     });
     return reply.code(201).send(payload);
@@ -773,10 +778,10 @@ export function buildApp(options = {}) {
 
   app.get("/api/archive/items/:archiveItemId", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`, "user_id", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`, principal)
     });
   });
 
@@ -786,23 +791,24 @@ export function buildApp(options = {}) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
 
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyPatchJson({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}`,
       body: {
         status: parsed.data.status,
-        ...(userId ? { user_id: userId } : {})
+        ...(principal?.userId ? { user_id: principal.userId } : {}),
+        ...(principal?.accountType ? { account_type: principal.accountType } : {})
       }
     });
   });
 
   app.delete("/api/archive/items/:archiveItemId", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyDeleteJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`, "user_id", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`, principal)
     });
   });
 

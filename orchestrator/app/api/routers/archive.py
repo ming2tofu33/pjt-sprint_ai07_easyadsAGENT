@@ -95,11 +95,17 @@ def create_archive_item_route(request: ArchiveItemCreateRequest) -> ArchiveMutat
 def list_archive_items_route(
     workspace_id: str | None = None,
     user_id: str | None = None,
+    account_type: str | None = None,
+    accountType: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> ArchiveListResponse:
     try:
-        items, total = list_archive_items(workspace_id=workspace_id, user_id=user_id, limit=limit, offset=offset)
+        kwargs = {"workspace_id": workspace_id, "user_id": user_id, "limit": limit, "offset": offset}
+        resolved_account_type = account_type or accountType
+        if resolved_account_type:
+            kwargs["account_type"] = resolved_account_type
+        items, total = list_archive_items(**kwargs)
     except ArchivePersistenceUnavailable as exc:
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:
@@ -121,9 +127,19 @@ def list_archive_items_route(
 
 
 @router.get("/archive/items/{archive_item_id}", response_model=ArchiveItemResponse)
-def get_archive_item_route(archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveItemResponse:
+def get_archive_item_route(
+    archive_item_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+    account_type: str | None = None,
+    accountType: str | None = None,
+) -> ArchiveItemResponse:
     try:
-        return get_archive_item(archive_item_id=archive_item_id, workspace_id=workspace_id, user_id=user_id)
+        kwargs = {"archive_item_id": archive_item_id, "workspace_id": workspace_id, "user_id": user_id}
+        resolved_account_type = account_type or accountType
+        if resolved_account_type:
+            kwargs["account_type"] = resolved_account_type
+        return get_archive_item(**kwargs)
     except ArchivePersistenceUnavailable as exc:
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:
@@ -160,9 +176,19 @@ def update_archive_item_route(archive_item_id: str, request: ArchiveItemUpdateRe
 
 
 @router.delete("/archive/items/{archive_item_id}", response_model=ArchiveMutationResponse)
-def delete_archive_item_route(archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveMutationResponse:
+def delete_archive_item_route(
+    archive_item_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+    account_type: str | None = None,
+    accountType: str | None = None,
+) -> ArchiveMutationResponse:
     try:
-        item = delete_archive_item(archive_item_id=archive_item_id, workspace_id=workspace_id, user_id=user_id)
+        kwargs = {"archive_item_id": archive_item_id, "workspace_id": workspace_id, "user_id": user_id}
+        resolved_account_type = account_type or accountType
+        if resolved_account_type:
+            kwargs["account_type"] = resolved_account_type
+        item = delete_archive_item(**kwargs)
     except ArchivePersistenceUnavailable as exc:
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:
