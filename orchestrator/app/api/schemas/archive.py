@@ -46,6 +46,12 @@ class ArchiveItemCreateRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ArchiveItemUpdateRequest(BaseModel):
+    status: Literal["saved", "favorite"]
+    workspace_id: str | None = None
+    user_id: str | None = None
+
+
 class ArchiveListResponse(BaseModel):
     success: Literal[True] = True
     items: list[ArchiveItemResponse]

@@ -33,6 +33,7 @@ import {
   listArchiveItems,
   saveArchiveItem,
   startPhotoGeneration,
+  updateArchiveItem,
   uploadPhotoAsset,
   uploadReferenceAsset,
   type ChatTurnResponse,
@@ -88,6 +89,7 @@ import type {
 import styles from "@/components/generate/generate.module.css";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing" | "jobQuestion";
+type ArchiveLoadState = "idle" | "loading" | "ready" | "error";
 
 type ChatGenerateClientProps = {
   initialSurface?: DashboardSurface;
@@ -753,6 +755,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [generationStage, setGenerationStage] = useState<GenerationStage>("brief");
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [generatedCreatives, setGeneratedCreatives] = useState<MockCreative[]>([]);
+  const [archiveLoadState, setArchiveLoadState] = useState<ArchiveLoadState>("idle");
+  const [archiveReloadToken, setArchiveReloadToken] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
   const [isCurrentThreadDeleteOpen, setCurrentThreadDeleteOpen] = useState(false);
   const [isDeletingCurrentThread, setDeletingCurrentThread] = useState(false);
@@ -987,12 +991,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
   useEffect(() => {
     if (appSurface !== "ads") {
+      setArchiveLoadState("idle");
       return;
     }
 
     let isActive = true;
     const sessionCreatives = readGeneratedCreatives();
     setGeneratedCreatives(sessionCreatives);
+    setArchiveLoadState("loading");
 
     void listArchiveItems({ limit: 50 })
       .then((response) => {
@@ -1016,17 +1022,19 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           return true;
         });
         setGeneratedCreatives(merged);
+        setArchiveLoadState("ready");
       })
       .catch(() => {
         if (isActive) {
           setGeneratedCreatives(sessionCreatives);
+          setArchiveLoadState("error");
         }
       });
 
     return () => {
       isActive = false;
     };
-  }, [appSurface]);
+  }, [appSurface, archiveReloadToken]);
 
   useEffect(() => {
     if (appSurface !== "chat") {
@@ -2055,6 +2063,31 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
   }
 
+  function handleRetryArchiveLoad() {
+    setArchiveReloadToken((current) => current + 1);
+  }
+
+  async function handleToggleFavoriteGeneratedAd(creative: MockCreative, nextStatus: "saved" | "favorite") {
+    if (creative.id.startsWith("generated-")) {
+      return;
+    }
+
+    try {
+      const response = await updateArchiveItem(creative.id, { status: nextStatus });
+      const updatedCreative = archiveItemToCreative(response.item);
+      setGeneratedCreatives((current) =>
+        current.map((item) =>
+          item.id === creative.id
+            ? updatedCreative ?? { ...item, status: nextStatus }
+            : item
+        )
+      );
+      showToast(nextStatus === "favorite" ? `${creative.title}를 즐겨찾기에 추가했어요.` : `${creative.title} 즐겨찾기를 해제했어요.`);
+    } catch {
+      showToast(`${creative.title} 즐겨찾기를 저장하지 못했어요. 잠시 후 다시 시도해주세요.`);
+    }
+  }
+
   async function handleDeleteGeneratedAd(creativeId: string, title: string) {
     if (creativeId.startsWith("generated-")) {
       setGeneratedCreatives(removeGeneratedCreative(creativeId));
@@ -2177,11 +2210,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onOpenGeneratedAd={(creativeId) => router.push(buildAdHref(creativeId))}
           onDownloadGeneratedAd={(title) => showToast(`${title} 다운로드는 실제 파일 저장 연결 후 활성화돼요.`)}
           onDeleteGeneratedAd={handleDeleteGeneratedAd}
+          onToggleFavoriteGeneratedAd={handleToggleFavoriteGeneratedAd}
+          archiveLoadState={archiveLoadState}
+          onRetryArchiveLoad={handleRetryArchiveLoad}
           onOpenNotifications={() => router.push(buildNotificationHref())}
         />
       ) : null}
 
-      {appSurface === "my" || appSurface === "brand" ? (
+      {appSurface === "my" ? (
         <MyPageStep />
       ) : null}
 

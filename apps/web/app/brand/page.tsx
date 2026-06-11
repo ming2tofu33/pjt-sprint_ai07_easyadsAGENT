@@ -1,10 +1,5 @@
-import { MobileShell } from "@/components/generate/MobileShell";
-import { MyPageStep } from "@/components/generate/MyPageStep";
+import { redirect } from "next/navigation";
 
 export default function BrandPage() {
-  return (
-    <MobileShell>
-      <MyPageStep />
-    </MobileShell>
-  );
+  redirect("/brand/kit");
 }

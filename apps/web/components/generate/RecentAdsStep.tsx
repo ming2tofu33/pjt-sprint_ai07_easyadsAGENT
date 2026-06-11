@@ -17,7 +17,10 @@ type RecentAdsStepProps = {
   onOpenGeneratedAd: (creativeId: string) => void;
   onDownloadGeneratedAd: (title: string) => void;
   onDeleteGeneratedAd: (creativeId: string, title: string) => void;
+  onToggleFavoriteGeneratedAd: (creative: MockCreative, nextStatus: "saved" | "favorite") => void;
   onOpenNotifications: () => void;
+  archiveLoadState?: "idle" | "loading" | "ready" | "error";
+  onRetryArchiveLoad?: () => void;
 };
 
 const toneClassByCreativeTone: Record<CreativeTone, string> = {
@@ -73,7 +76,10 @@ export function RecentAdsStep({
   onOpenGeneratedAd,
   onDownloadGeneratedAd,
   onDeleteGeneratedAd,
-  onOpenNotifications
+  onToggleFavoriteGeneratedAd,
+  onOpenNotifications,
+  archiveLoadState = "idle",
+  onRetryArchiveLoad
 }: RecentAdsStepProps) {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -82,16 +88,21 @@ export function RecentAdsStep({
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  function toggleFavorite(id: string) {
-    setFavoriteIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+  function toggleFavorite(creative: MockCreative) {
+    const isCurrentlyFavorite = favoriteIds.has(creative.id) || creative.status === "favorite";
+    const nextStatus = isCurrentlyFavorite ? "saved" : "favorite";
+    if (creative.id.startsWith("generated-")) {
+      setFavoriteIds((current) => {
+        const next = new Set(current);
+        if (nextStatus === "favorite") {
+          next.add(creative.id);
+        } else {
+          next.delete(creative.id);
+        }
+        return next;
+      });
+    }
+    onToggleFavoriteGeneratedAd(creative, nextStatus);
   }
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   const filteredGeneratedCreatives = useMemo(
@@ -103,6 +114,9 @@ export function RecentAdsStep({
     [generatedCreatives, activeFilter, normalizedSearchTerm]
   );
   const hasActiveSearch = normalizedSearchTerm.length > 0;
+  const hasActiveFilter = activeFilter !== "전체";
+  const isArchiveLoading = archiveLoadState === "loading";
+  const isArchiveError = archiveLoadState === "error";
 
   useEffect(() => {
     if (isSearchOpen) {
@@ -195,7 +209,7 @@ export function RecentAdsStep({
                   onDownload={() => onDownloadGeneratedAd(ad.title)}
                   onOpen={() => onOpenGeneratedAd(ad.id)}
                   onRegenerate={onRegenerate}
-                  onToggleFavorite={() => toggleFavorite(ad.id)}
+                  onToggleFavorite={() => toggleFavorite(ad)}
                   onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
                 />
               ))}
@@ -203,25 +217,41 @@ export function RecentAdsStep({
           ) : (
             <section className={styles.emptyResultPanel} aria-label="최근 실제 생성 검색 결과 없음">
               <MascotImage role="referenceSearch" decorative className={styles.emptyMascot} />
-              <strong>검색 결과가 없어요</strong>
-              <p>다른 광고 제목이나 채널명으로 다시 찾아보세요.</p>
+              <strong>{hasActiveSearch ? "검색 결과가 없어요" : "조건에 맞는 실제 생성 결과가 없어요"}</strong>
+              <p>{hasActiveSearch ? "다른 광고 제목이나 채널명으로 다시 찾아보세요." : "다른 보관함 필터를 선택해보세요."}</p>
             </section>
           )}
         </>
       ) : (
-        <section className={styles.emptyResultPanel} aria-label="실제 생성 광고 없음">
+        <section className={styles.emptyResultPanel} aria-label={isArchiveLoading ? "보관함 로딩 중" : isArchiveError ? "보관함 로드 실패" : "실제 생성 광고 없음"}>
           <MascotImage role="archiveBox" decorative className={styles.emptyMascot} />
-          <strong>{hasActiveSearch ? "검색할 실제 생성 결과가 없어요" : "아직 저장된 실제 생성 결과가 없어요"}</strong>
+          <strong>
+            {isArchiveLoading
+              ? "보관함을 불러오는 중이에요"
+              : isArchiveError
+                ? "보관함을 불러오지 못했어요"
+                : hasActiveSearch || hasActiveFilter
+                  ? "조건에 맞는 실제 생성 결과가 없어요"
+                  : "아직 저장된 실제 생성 결과가 없어요"}
+          </strong>
           <p>
-            {hasActiveSearch
-              ? "실제 완성된 이미지가 생기면 제목이나 채널명으로 찾아볼 수 있어요."
-              : "대화나 사진으로 광고를 만들면 실제 완성된 이미지 결과만 이 브라우저의 최근 결과에 표시됩니다."}
+            {isArchiveLoading
+              ? "저장된 광고와 이 기기의 최근 결과를 확인하고 있어요."
+              : isArchiveError
+                ? "로그인 상태나 네트워크를 확인한 뒤 다시 시도해주세요."
+                : hasActiveSearch || hasActiveFilter
+                  ? "검색어나 보관함 필터를 바꿔 다시 찾아보세요."
+                  : "대화나 사진으로 광고를 만들면 실제 완성된 이미지 결과만 이 브라우저의 최근 결과에 표시됩니다."}
           </p>
-          {hasActiveSearch ? null : (
+          {isArchiveError ? (
+            <button className={styles.secondaryButton} type="button" onClick={onRetryArchiveLoad}>
+              다시 불러오기
+            </button>
+          ) : !isArchiveLoading && !hasActiveSearch && !hasActiveFilter ? (
             <button className={styles.secondaryButton} type="button" onClick={onOpenStudio}>
               새 광고 만들기
             </button>
-          )}
+          ) : null}
         </section>
       )}
 

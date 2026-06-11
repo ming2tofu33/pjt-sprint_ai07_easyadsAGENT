@@ -157,6 +157,33 @@ def soft_delete_archive_item_row(
             return cur.fetchone()
 
 
+def update_archive_item_status_row(
+    *,
+    archive_item_id: str,
+    workspace_id: str,
+    status: str,
+    created_by: str | None = None,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            filters = ["public_archive_id = %s", "workspace_id = %s", "deleted_at is null"]
+            params: list[object] = [archive_item_id, workspace_id]
+            if created_by:
+                filters.append("created_by = %s")
+                params.append(created_by)
+            cur.execute(
+                f"""
+                update archive_items
+                set status = %s, updated_at = now()
+                where {" and ".join(filters)}
+                returning *
+                """,
+                tuple([status, *params]),
+            )
+            return cur.fetchone()
+
+
 def get_archive_item_row(
     *,
     public_archive_id: str,

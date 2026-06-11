@@ -445,10 +445,10 @@ async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, h
   return payload as TResponse;
 }
 
-async function patchJson<TResponse>(path: string, body: unknown): Promise<TResponse> {
+async function patchJson<TResponse>(path: string, body: unknown, headers: RequestHeaders = {}): Promise<TResponse> {
   const response = await fetch(buildBffUrl(path), {
     method: "PATCH",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
@@ -909,6 +909,17 @@ export async function getArchiveItem(archiveItemId: string, params?: { workspace
   return getJson<RawArchiveItem>(`/api/archive/items/${encodeURIComponent(archiveItemId)}`, {
     workspace_id: params?.workspaceId
   }, authHeaders).then(mapArchiveItem);
+}
+
+export async function updateArchiveItem(
+  archiveItemId: string,
+  input: { status: Exclude<ArchiveItemStatus, "generating" | "failed">; workspaceId?: string | null }
+): Promise<ArchiveMutationResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return patchJson<RawArchiveMutationResponse>(`/api/archive/items/${encodeURIComponent(archiveItemId)}`, {
+    status: input.status,
+    workspaceId: input.workspaceId ?? undefined
+  }, authHeaders).then((payload) => ({ item: mapArchiveItem(payload.item) }));
 }
 
 export async function deleteArchiveItem(archiveItemId: string, params?: { workspaceId?: string }): Promise<ArchiveMutationResponse> {

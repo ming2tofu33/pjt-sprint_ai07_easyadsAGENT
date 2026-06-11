@@ -80,14 +80,17 @@ def test_list_count_and_soft_delete_archive_items(monkeypatch):
 
     rows = repo.list_archive_item_rows(workspace_id="workspace_uuid", limit=20, offset=0, connection=conn)
     total = repo.count_archive_item_rows(workspace_id="workspace_uuid", connection=conn)
+    updated = repo.update_archive_item_status_row(archive_item_id="archive_uuid", workspace_id="workspace_uuid", status="favorite", connection=conn)
     deleted = repo.soft_delete_archive_item_row(archive_item_id="archive_uuid", workspace_id="workspace_uuid", connection=conn)
 
     joined = "\n".join(call[0] for call in conn.cursor_obj.calls)
     assert "i.workspace_id = %s and i.deleted_at is null order by i.saved_at desc" in joined
     assert "select count(*) as total from archive_items" in joined
+    assert "set status = %s, updated_at = now()" in joined
     assert "set deleted_at = now(), updated_at = now()" in joined
     assert rows[0]["id"] == "archive_uuid"
     assert total == 1
+    assert updated["id"] == "archive_uuid"
     assert deleted["id"] == "archive_uuid"
 
 
@@ -97,6 +100,7 @@ def test_archive_item_queries_can_filter_by_creator(monkeypatch):
 
     repo.list_archive_item_rows(workspace_id="workspace_uuid", created_by="user_1", limit=20, offset=0, connection=conn)
     repo.count_archive_item_rows(workspace_id="workspace_uuid", created_by="user_1", connection=conn)
+    repo.update_archive_item_status_row(archive_item_id="archive_uuid", workspace_id="workspace_uuid", created_by="user_1", status="favorite", connection=conn)
     repo.soft_delete_archive_item_row(archive_item_id="archive_uuid", workspace_id="workspace_uuid", created_by="user_1", connection=conn)
 
     joined = "\n".join(call[0] for call in conn.cursor_obj.calls)
@@ -104,7 +108,8 @@ def test_archive_item_queries_can_filter_by_creator(monkeypatch):
     assert "i.created_by = %s" in joined
     assert params[0] == ("workspace_uuid", "user_1", 20, 0)
     assert params[1] == ("workspace_uuid", "user_1")
-    assert params[2] == ("archive_uuid", "workspace_uuid", "user_1")
+    assert params[2] == ("favorite", "archive_uuid", "workspace_uuid", "user_1")
+    assert params[3] == ("archive_uuid", "workspace_uuid", "user_1")
 
 
 def test_archive_item_get_queries_can_filter_by_creator(monkeypatch):

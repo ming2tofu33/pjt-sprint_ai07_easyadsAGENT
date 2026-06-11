@@ -31,6 +31,6 @@ export function POST(request: NextRequest) {
       delete payload.referenceImagePath;
       return payload;
     },
-    { injectVerifiedUserId: true }
+    { injectVerifiedUserId: true, injectVerifiedUserIdHeader: true }
   );
 }
