@@ -83,6 +83,45 @@ def test_postgres_create_requires_workspace_without_demo_fallback(monkeypatch):
         service.create_generation_job(GenerationJobCreateRequest(userInput="Create an ad"))
 
 
+def test_postgres_public_access_resolves_workspace_from_user_id(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false")
+    monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
+
+    calls = []
+    running_kwargs = {}
+
+    def ensure_user_workspace(*, user_id, connection=None):
+        calls.append((user_id, connection is not None))
+        return {"id": WORKSPACE_A, "owner_user_id": user_id}
+
+    def mark_running(public_job_id, current_stage=None, connection=None, **kwargs):
+        assert public_job_id == "job_db"
+        running_kwargs.update(kwargs)
+        row = _row(public_job_id=public_job_id, workspace_id=kwargs["workspace_id"])
+        row["status"] = "running"
+        row["current_stage"] = current_stage
+        row["progress_percent"] = 50
+        return row
+
+    monkeypatch.setattr(service.workspace_repo, "ensure_user_workspace", ensure_user_workspace)
+    monkeypatch.setattr(service.generation_job_repo, "mark_generation_job_running_row", mark_running)
+    monkeypatch.setattr(service.generation_job_repo, "update_generation_job_row", lambda *args, **kwargs: None)
+    monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: {"id": "event_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "update_chat_thread_status", lambda *args, **kwargs: {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
+    monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
+    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: {"snapshot_id": "snap_uuid"})
+
+    found = service.mark_generation_job_running("job_db", "planning", user_id="user_a")
+
+    assert found is not None
+    assert found.job_id == "job_db"
+    assert found.progress.current_stage == "planning"
+    assert calls == [("user_a", True)]
+    assert running_kwargs == {"workspace_id": WORKSPACE_A}
+
+
 def test_postgres_scoped_get_hides_cross_workspace_job(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
