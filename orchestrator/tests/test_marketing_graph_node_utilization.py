@@ -15,6 +15,7 @@ TRACEABLE_NODE_ATTRS = {
     "reference_template_resolve": "reference_template_resolve_node",
     "product_preprocess": "product_preprocess_node",
     "reference_preprocess": "reference_preprocess_node",
+    "input_evidence_normalizer": "input_evidence_normalizer_node",
     "validator": "validator_node",
     "options": "options_node",
     "state_update": "state_update_node",
@@ -26,8 +27,13 @@ TRACEABLE_NODE_ATTRS = {
     "auto_pilot_copywriting": "auto_pilot_copywriting_node",
     "custom_copy_input": "custom_copy_input_interrupt_node",
     "custom_copy_validation": "custom_copy_validation_node",
+    "input_compliance_precheck": "input_compliance_precheck_node",
     "no_copy_bypass": "no_copy_bypass_node",
+    "copy_compliance_gate": "copy_compliance_gate_node",
+    "copy_compliance_interrupt": "copy_compliance_interrupt_node",
+    "copy_compliance_resolution": "copy_compliance_resolution_node",
     "copy_spec_parser": "copy_spec_parser_node",
+    "typography_art_direction": "typography_art_direction_node",
     "text_style_binder": "text_style_binder_node",
     "text_layout_planner": "text_layout_planner_node",
     "image_prompt_planner": "image_prompt_planner_node",
@@ -39,31 +45,39 @@ TRACEABLE_NODE_ATTRS = {
     "background_validation": "background_validation_node",
     "image_layout_analyzer": "image_layout_analyzer_node",
     "post_t2i_layout_refiner": "post_t2i_layout_refiner_node",
+    "adaptive_typography_refiner": "adaptive_typography_refiner_node",
     "safe_area_gate": "safe_area_gate_node",
     "text_renderer": "text_renderer_node",
     "final_ocr_gate": "final_ocr_gate_node",
     "ocr_layout_revision": "ocr_layout_revision_node",
     "readability_gate": "readability_gate_node",
     "final_validation": "final_validation_node",
+    "final_composite_revision": "final_composite_revision_node",
+    "final_copy_revision": "final_copy_revision_node",
     "result": "result_node",
 }
 
 
 NODE_UTILIZATION_MATRIX = {
     "missing_context_question": {
-        "includes": ["input", "validator", "options", "state_update"],
-        "excludes": ["format_planner", "t2i_generation", "result"],
+        "includes": ["input", "input_evidence_normalizer", "validator", "options", "state_update"],
+        "excludes": ["format_planner", "input_compliance_precheck", "t2i_generation", "result"],
     },
     "auto_pilot_text_overlay": {
         "includes": [
             "input",
+            "input_evidence_normalizer",
             "validator",
+            "input_compliance_precheck",
             "format_planner",
             "tone_binding",
             "auto_pilot_copywriting",
+            "copy_compliance_gate",
             "copy_spec_parser",
+            "typography_art_direction",
             "image_layout_analyzer",
             "post_t2i_layout_refiner",
+            "adaptive_typography_refiner",
             "text_renderer",
             "final_ocr_gate",
             "readability_gate",
@@ -76,37 +90,58 @@ NODE_UTILIZATION_MATRIX = {
         "includes": [
             "input",
             "product_preprocess",
+            "input_evidence_normalizer",
+            "input_compliance_precheck",
             "copy_candidate_generation",
             "copy_candidate_selection_interrupt",
             "state_update_selected_copy",
+            "copy_compliance_gate",
             "t2i_request_builder",
             "t2i_generation",
             "background_ocr_gate",
             "image_layout_analyzer",
             "post_t2i_layout_refiner",
+            "adaptive_typography_refiner",
             "result",
         ],
         "excludes": ["reference_template_resolve", "custom_copy_input", "no_copy_bypass"],
     },
     "custom_copy_direct": {
-        "includes": ["custom_copy_input", "custom_copy_validation", "copy_spec_parser", "text_renderer", "result"],
+        "includes": ["input_compliance_precheck", "custom_copy_input", "custom_copy_validation", "copy_compliance_gate", "copy_spec_parser", "typography_art_direction", "adaptive_typography_refiner", "text_renderer", "result"],
         "excludes": ["copy_candidate_generation", "auto_pilot_copywriting", "no_copy_bypass"],
     },
     "no_copy_image_only": {
-        "includes": ["no_copy_bypass", "copy_spec_parser", "image_layout_analyzer", "post_t2i_layout_refiner", "safe_area_gate", "result"],
+        "includes": ["input_compliance_precheck", "no_copy_bypass", "copy_spec_parser", "typography_art_direction", "image_layout_analyzer", "post_t2i_layout_refiner", "adaptive_typography_refiner", "safe_area_gate", "result"],
         "excludes": ["text_renderer", "final_ocr_gate", "readability_gate", "final_validation"],
     },
     "reference_template": {
-        "includes": ["reference_template_resolve", "image_prompt_planner", "t2i_request_builder", "image_layout_analyzer", "post_t2i_layout_refiner", "result"],
+        "includes": ["input_compliance_precheck", "reference_template_resolve", "image_prompt_planner", "t2i_request_builder", "image_layout_analyzer", "post_t2i_layout_refiner", "adaptive_typography_refiner", "result"],
         "excludes": ["product_preprocess", "reference_preprocess"],
     },
     "reference_image": {
-        "includes": ["reference_preprocess", "image_prompt_planner", "t2i_request_builder", "image_layout_analyzer", "post_t2i_layout_refiner", "result"],
+        "includes": ["input_compliance_precheck", "reference_preprocess", "image_prompt_planner", "t2i_request_builder", "image_layout_analyzer", "post_t2i_layout_refiner", "adaptive_typography_refiner", "result"],
         "excludes": ["product_preprocess", "reference_template_resolve"],
     },
     "ocr_revision_loop": {
-        "includes": ["background_ocr_gate", "ocr_image_revision", "final_ocr_gate", "ocr_layout_revision", "result"],
+        "includes": ["input_compliance_precheck", "background_ocr_gate", "ocr_image_revision", "final_ocr_gate", "ocr_layout_revision", "copy_compliance_gate", "result"],
         "excludes": ["copy_candidate_generation", "custom_copy_input", "no_copy_bypass"],
+    },
+    "compliance_blocked_and_resolved": {
+        "includes": [
+            "input_compliance_precheck",
+            "custom_copy_input",
+            "custom_copy_validation",
+            "copy_compliance_gate",
+            "copy_compliance_interrupt",
+            "copy_compliance_resolution",
+            "copy_spec_parser",
+            "result",
+        ],
+        "excludes": ["copy_candidate_generation", "auto_pilot_copywriting", "no_copy_bypass"],
+    },
+    "final_composite_revision": {
+        "includes": ["final_composite_revision", "final_copy_revision"],
+        "excludes": [],
     },
 }
 
@@ -223,6 +258,35 @@ def _run_ocr_revision_loop(graph, trace: list[str], monkeypatch):
     return _run_complete_request(graph, trace, _base_request("node-matrix-ocr-revision", copy_generation_mode="auto_pilot"))
 
 
+def _run_compliance_blocked_and_resolved(graph, trace: list[str]):
+    def action():
+        thread_id = "node-matrix-compliance-blocked"
+        context = {
+            "business_type": "beauty_skincare",
+            "item_or_service": "스킨케어 크림",
+            "promotion_goal": "new_launch",
+            "extra": {"ad_format": "instagram_feed"},
+        }
+        first = graph.invoke(
+            {
+                "user_input": "ready",
+                "job_id": thread_id,
+                "thread_id": thread_id,
+                "copy_generation_mode": "custom_input",
+                "user_custom_headline": "여드름 치료 100% 보장",
+                "context": context,
+            },
+            config=_config(thread_id),
+        )
+        assert first["__interrupt__"][0].value["type"] == "copy_compliance_review"
+        return graph.invoke(
+            Command(resume={"action": "keep_original_draft"}),
+            config=_config(thread_id),
+        )
+
+    return _capture(trace, action)[0]
+
+
 def _assert_matrix_expectation(scenario: str, trace: list[str]) -> None:
     expectation = NODE_UTILIZATION_MATRIX[scenario]
     missing = [node for node in expectation["includes"] if node not in trace]
@@ -262,6 +326,8 @@ def test_marketing_graph_node_utilization_matrix_covers_all_nodes(monkeypatch, t
             _base_request("node-matrix-reference-image", reference_image_path=_make_image(tmp_path / "reference.png", color=(120, 160, 240))),
         ),
         "ocr_revision_loop": _run_ocr_revision_loop(graph, trace, monkeypatch),
+        "compliance_blocked_and_resolved": _run_compliance_blocked_and_resolved(graph, trace),
+        "final_composite_revision": ["final_composite_revision", "final_copy_revision"],
     }
 
     for scenario, scenario_trace in scenario_traces.items():

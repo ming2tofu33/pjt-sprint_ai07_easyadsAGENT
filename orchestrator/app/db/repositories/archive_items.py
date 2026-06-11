@@ -5,6 +5,28 @@ from __future__ import annotations
 from orchestrator.app.db.json import jsonb_param
 from orchestrator.app.db.session import db_transaction
 
+_SELECT_ARCHIVE_LIST = """
+select
+    i.*,
+    j.public_job_id as j_public_job_id,
+    o.public_output_id,
+    o.is_final,
+    t.public_thread_id,
+    a.public_url as asset_public_url,
+    a.storage_provider,
+    a.mime_type as asset_mime_type,
+    a.width as asset_width,
+    a.height as asset_height,
+    ta.public_url as thumbnail_public_url
+from archive_items i
+left join generation_jobs j on j.id = i.job_id
+left join generation_outputs o on o.id = i.output_id
+left join chat_threads t on t.id = o.thread_id
+left join assets a on a.id = i.asset_id
+left join assets ta on ta.id = o.thumbnail_asset_id
+"""
+
+
 _SELECT_ARCHIVE_WITH_OUTPUT = """
 select
     i.*,
@@ -100,7 +122,7 @@ def list_archive_item_rows(
             where_clause = " and ".join(filters)
             cur.execute(
                 f"""
-                {_SELECT_ARCHIVE_WITH_OUTPUT}
+                {_SELECT_ARCHIVE_LIST}
                 where {where_clause}
                 order by i.saved_at desc
                 limit %s offset %s
@@ -153,6 +175,33 @@ def soft_delete_archive_item_row(
                 returning *
                 """,
                 tuple(params),
+            )
+            return cur.fetchone()
+
+
+def update_archive_item_status_row(
+    *,
+    archive_item_id: str,
+    workspace_id: str,
+    status: str,
+    created_by: str | None = None,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            filters = ["public_archive_id = %s", "workspace_id = %s", "deleted_at is null"]
+            params: list[object] = [archive_item_id, workspace_id]
+            if created_by:
+                filters.append("created_by = %s")
+                params.append(created_by)
+            cur.execute(
+                f"""
+                update archive_items
+                set status = %s, updated_at = now()
+                where {" and ".join(filters)}
+                returning *
+                """,
+                tuple([status, *params]),
             )
             return cur.fetchone()
 

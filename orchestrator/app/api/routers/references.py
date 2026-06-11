@@ -12,6 +12,10 @@ from pydantic import ValidationError
 from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.api.schemas.common import EmptyState, Pagination, RecoveryAction
 from orchestrator.app.api.schemas.references import (
+    AdminReferenceTemplateCreateRequest,
+    AdminReferenceTemplateItemResponse,
+    AdminReferenceTemplateListResponse,
+    AdminReferenceTemplateUpdateRequest,
     ReferenceTemplateCardResponse,
     ReferenceTemplateDetailResponse,
     ReferenceTemplateListResponse,
@@ -24,6 +28,14 @@ from orchestrator.app.reference_catalog.service import (
     search_reference_templates,
     temporary_reference_asset_path,
     temporary_references_enabled,
+)
+from orchestrator.app.reference_catalog.admin_service import (
+    admin_reference_payload,
+    create_admin_reference_template,
+    list_admin_reference_templates,
+    publish_admin_reference_template,
+    unpublish_admin_reference_template,
+    update_admin_reference_template,
 )
 from orchestrator.app.schemas.reference_catalog import ReferenceTemplate, ReferenceTemplateSearchQuery
 
@@ -88,7 +100,10 @@ def get_temporary_reference_asset(removal_group: str, filename: str) -> FileResp
             message="Temporary reference asset was not found.",
             detail=f"filename={quote(filename, safe='')}",
         )
-    return FileResponse(asset_path)
+    return FileResponse(
+        asset_path,
+        headers={"Cache-Control": "public, max-age=604800, immutable"},
+    )
 
 
 @router.get("/references", response_model=ReferenceTemplateListResponse)
@@ -172,3 +187,54 @@ def get_similar_references(
         template_id=template_id,
         items=[to_reference_card_response(item) for item in similar if item.template_id != template_id],
     )
+
+
+def _admin_not_found(template_id: str) -> NoReturn:
+    raise_api_error(
+        status_code=404,
+        error_code="admin_reference_template_not_found",
+        message="Admin reference template was not found.",
+        detail=f"template_id={template_id}",
+    )
+
+
+@router.get("/admin/references", response_model=AdminReferenceTemplateListResponse)
+def list_admin_references(active_only: bool = False) -> AdminReferenceTemplateListResponse:
+    templates = list_admin_reference_templates(active_only=active_only)
+    return AdminReferenceTemplateListResponse(items=[admin_reference_payload(template) for template in templates])
+
+
+@router.post("/admin/references", response_model=AdminReferenceTemplateItemResponse)
+def create_admin_reference(
+    request: AdminReferenceTemplateCreateRequest,
+    user_id: str | None = None,
+) -> AdminReferenceTemplateItemResponse:
+    template = create_admin_reference_template(request, user_id=user_id)
+    return AdminReferenceTemplateItemResponse(template=admin_reference_payload(template))
+
+
+@router.patch("/admin/references/{template_id}", response_model=AdminReferenceTemplateItemResponse)
+def update_admin_reference(
+    template_id: str,
+    request: AdminReferenceTemplateUpdateRequest,
+) -> AdminReferenceTemplateItemResponse:
+    template = update_admin_reference_template(template_id, request)
+    if not template:
+        _admin_not_found(template_id)
+    return AdminReferenceTemplateItemResponse(template=admin_reference_payload(template))
+
+
+@router.post("/admin/references/{template_id}/publish", response_model=AdminReferenceTemplateItemResponse)
+def publish_admin_reference(template_id: str) -> AdminReferenceTemplateItemResponse:
+    template = publish_admin_reference_template(template_id)
+    if not template:
+        _admin_not_found(template_id)
+    return AdminReferenceTemplateItemResponse(template=admin_reference_payload(template))
+
+
+@router.post("/admin/references/{template_id}/unpublish", response_model=AdminReferenceTemplateItemResponse)
+def unpublish_admin_reference(template_id: str) -> AdminReferenceTemplateItemResponse:
+    template = unpublish_admin_reference_template(template_id)
+    if not template:
+        _admin_not_found(template_id)
+    return AdminReferenceTemplateItemResponse(template=admin_reference_payload(template))

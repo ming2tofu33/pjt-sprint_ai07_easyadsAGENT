@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, status
 from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.api.schemas.archive import (
     ArchiveItemCreateRequest,
+    ArchiveItemUpdateRequest,
     ArchiveListResponse,
     ArchiveMutationResponse,
     ArchiveItemResponse,
@@ -23,6 +24,7 @@ from orchestrator.app.archive.service import (
     delete_archive_item,
     get_archive_item,
     list_archive_items,
+    update_archive_item,
 )
 
 router = APIRouter()
@@ -93,11 +95,20 @@ def create_archive_item_route(request: ArchiveItemCreateRequest) -> ArchiveMutat
 def list_archive_items_route(
     workspace_id: str | None = None,
     user_id: str | None = None,
+    account_type: str | None = None,
+    accountType: str | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    include_total: bool = Query(default=True),
 ) -> ArchiveListResponse:
     try:
-        items, total = list_archive_items(workspace_id=workspace_id, user_id=user_id, limit=limit, offset=offset)
+        kwargs = {"workspace_id": workspace_id, "user_id": user_id, "limit": limit, "offset": offset}
+        resolved_account_type = account_type or accountType
+        if resolved_account_type:
+            kwargs["account_type"] = resolved_account_type
+        if not include_total:
+            kwargs["include_total"] = False
+        items, total = list_archive_items(**kwargs)
     except ArchivePersistenceUnavailable as exc:
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:
@@ -119,9 +130,19 @@ def list_archive_items_route(
 
 
 @router.get("/archive/items/{archive_item_id}", response_model=ArchiveItemResponse)
-def get_archive_item_route(archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveItemResponse:
+def get_archive_item_route(
+    archive_item_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+    account_type: str | None = None,
+    accountType: str | None = None,
+) -> ArchiveItemResponse:
     try:
-        return get_archive_item(archive_item_id=archive_item_id, workspace_id=workspace_id, user_id=user_id)
+        kwargs = {"archive_item_id": archive_item_id, "workspace_id": workspace_id, "user_id": user_id}
+        resolved_account_type = account_type or accountType
+        if resolved_account_type:
+            kwargs["account_type"] = resolved_account_type
+        return get_archive_item(**kwargs)
     except ArchivePersistenceUnavailable as exc:
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:
@@ -137,10 +158,40 @@ def get_archive_item_route(archive_item_id: str, workspace_id: str | None = None
         )
 
 
-@router.delete("/archive/items/{archive_item_id}", response_model=ArchiveMutationResponse)
-def delete_archive_item_route(archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveMutationResponse:
+@router.patch("/archive/items/{archive_item_id}", response_model=ArchiveMutationResponse)
+def update_archive_item_route(archive_item_id: str, request: ArchiveItemUpdateRequest) -> ArchiveMutationResponse:
     try:
-        item = delete_archive_item(archive_item_id=archive_item_id, workspace_id=workspace_id, user_id=user_id)
+        item = update_archive_item(archive_item_id=archive_item_id, request=request)
+    except ArchivePersistenceUnavailable as exc:
+        _archive_unavailable(exc)
+    except ArchiveWorkspaceRequired as exc:
+        _archive_workspace_required(exc)
+    except ArchiveWorkspaceForbidden as exc:
+        _archive_workspace_forbidden(exc)
+    except ArchiveItemNotFound:
+        raise_api_error(
+            status_code=404,
+            error_code="archive_item_not_found",
+            message="Archive item was not found.",
+            detail=f"archive_item_id={archive_item_id}",
+        )
+    return ArchiveMutationResponse(item=item)
+
+
+@router.delete("/archive/items/{archive_item_id}", response_model=ArchiveMutationResponse)
+def delete_archive_item_route(
+    archive_item_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+    account_type: str | None = None,
+    accountType: str | None = None,
+) -> ArchiveMutationResponse:
+    try:
+        kwargs = {"archive_item_id": archive_item_id, "workspace_id": workspace_id, "user_id": user_id}
+        resolved_account_type = account_type or accountType
+        if resolved_account_type:
+            kwargs["account_type"] = resolved_account_type
+        item = delete_archive_item(**kwargs)
     except ArchivePersistenceUnavailable as exc:
         _archive_unavailable(exc)
     except ArchiveWorkspaceRequired as exc:

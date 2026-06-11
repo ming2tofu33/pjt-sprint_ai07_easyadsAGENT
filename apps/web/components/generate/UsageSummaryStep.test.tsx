@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 function seedGeneratedCreatives() {
-  window.sessionStorage.setItem(
+  window.localStorage.setItem(
     "easyads_generated_creatives_v1",
     JSON.stringify([
       {
@@ -84,6 +84,7 @@ describe("UsageSummaryStep", () => {
     navigationMock.push.mockClear();
     navigationMock.back.mockClear();
     window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
   it("opens period options and updates the selected period", async () => {

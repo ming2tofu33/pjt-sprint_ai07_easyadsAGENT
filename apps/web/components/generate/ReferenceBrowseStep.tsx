@@ -36,6 +36,102 @@ const categories = [
   { label: "스토리", value: "instagram_story" }
 ];
 
+const REFERENCE_TEMPLATE_CACHE_STORAGE_KEY = "easyads_reference_templates_cache_v1";
+const REFERENCE_TEMPLATE_CACHE_LIMIT = 30;
+const REFERENCE_TEMPLATE_CACHE_ENTRY_LIMIT = 20;
+const REFERENCE_SEARCH_DEBOUNCE_MS = 300;
+
+type ReferenceTemplateCacheEntry = {
+  cachedAt: string;
+  items: ReferenceTemplateCard[];
+};
+
+type ReferenceTemplateCachePayload = {
+  entries?: Record<string, ReferenceTemplateCacheEntry>;
+};
+
+type ReferenceTemplateQuery = {
+  keyword: string;
+  category: string;
+  tags: string[];
+  limit: number;
+};
+
+function isCachedReferenceTemplate(value: unknown): value is ReferenceTemplateCard {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const template = value as { templateId?: unknown; title?: unknown };
+  return typeof template.templateId === "string" && typeof template.title === "string";
+}
+
+function referenceTemplateCacheKey(query: ReferenceTemplateQuery): string {
+  return [
+    `category=${query.category}`,
+    `keyword=${query.keyword}`,
+    `tags=${query.tags.join(",")}`,
+    `limit=${query.limit}`
+  ].join("&");
+}
+
+function readReferenceTemplateCache(cacheKey: string): ReferenceTemplateCard[] {
+  try {
+    const raw = window.localStorage.getItem(REFERENCE_TEMPLATE_CACHE_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw) as ReferenceTemplateCachePayload;
+    const entry = parsed.entries?.[cacheKey];
+    return Array.isArray(entry?.items)
+      ? entry.items.filter(isCachedReferenceTemplate).slice(0, REFERENCE_TEMPLATE_CACHE_LIMIT)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeReferenceTemplateCache(cacheKey: string, items: ReferenceTemplateCard[]) {
+  try {
+    const raw = window.localStorage.getItem(REFERENCE_TEMPLATE_CACHE_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as ReferenceTemplateCachePayload) : {};
+    const entries = parsed.entries ?? {};
+    const cachedAt = new Date().toISOString();
+    const nextEntries = Object.fromEntries(
+      Object.entries({
+        ...entries,
+        [cacheKey]: {
+          cachedAt,
+          items: items.slice(0, REFERENCE_TEMPLATE_CACHE_LIMIT)
+        }
+      })
+        .sort(([, first], [, second]) => Date.parse(second.cachedAt) - Date.parse(first.cachedAt))
+        .slice(0, REFERENCE_TEMPLATE_CACHE_ENTRY_LIMIT)
+    );
+    window.localStorage.setItem(
+      REFERENCE_TEMPLATE_CACHE_STORAGE_KEY,
+      JSON.stringify({
+        entries: nextEntries
+      })
+    );
+  } catch {
+    // The gallery still renders from memory if browser storage is unavailable.
+  }
+}
+
+function useDebouncedValue(value: string, delayMs: number): string {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    if (value === debouncedValue) {
+      return undefined;
+    }
+    const timerId = window.setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => window.clearTimeout(timerId);
+  }, [debouncedValue, delayMs, value]);
+
+  return debouncedValue;
+}
+
 export function ReferenceBrowseStep({
   state,
   onShowProgress,
@@ -59,38 +155,51 @@ export function ReferenceBrowseStep({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
-  const searchTags = useMemo(() => splitReferenceSearchTerms(searchTerm), [searchTerm]);
-  const visibleTemplates = useMemo(
-    () =>
-      templates
-        .filter(hasReferenceTemplateImage)
-        .sort((first, second) => second.popularityScore - first.popularityScore),
-    [templates]
+  const debouncedSearchTerm = useDebouncedValue(searchTerm, REFERENCE_SEARCH_DEBOUNCE_MS);
+  const searchTags = useMemo(() => splitReferenceSearchTerms(debouncedSearchTerm), [debouncedSearchTerm]);
+  const referenceQuery = useMemo<ReferenceTemplateQuery>(
+    () => ({
+      keyword: debouncedSearchTerm,
+      category: selectedCategory,
+      tags: searchTags,
+      limit: REFERENCE_TEMPLATE_CACHE_LIMIT
+    }),
+    [debouncedSearchTerm, searchTags, selectedCategory]
   );
+  const referenceQueryCacheKey = useMemo(() => referenceTemplateCacheKey(referenceQuery), [referenceQuery]);
+  const visibleTemplates = useMemo(() => {
+    const imageBackedTemplates = templates.filter(hasReferenceTemplateImage);
+    const candidates = imageBackedTemplates.length > 0 ? imageBackedTemplates : templates;
+    return [...candidates].sort((first, second) => second.popularityScore - first.popularityScore);
+  }, [templates]);
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
+    const cachedTemplates = readReferenceTemplateCache(referenceQueryCacheKey);
+    if (cachedTemplates.length > 0) {
+      setTemplates(cachedTemplates);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
     setErrorMessage(null);
 
-    listReferenceTemplates({
-      keyword: searchTerm,
-      category: selectedCategory,
-      tags: searchTags,
-      limit: 60
-    })
+    listReferenceTemplates(referenceQuery)
       .then((response) => {
         if (cancelled) {
           return;
         }
         setTemplates(response.items);
+        writeReferenceTemplateCache(referenceQueryCacheKey, response.items);
       })
       .catch((error) => {
         if (cancelled) {
           return;
         }
-        setTemplates([]);
-        setErrorMessage(error instanceof Error ? error.message : "샘플 목록을 불러오지 못했어요.");
+        if (cachedTemplates.length === 0) {
+          setTemplates([]);
+          setErrorMessage(error instanceof Error ? error.message : "샘플 목록을 불러오지 못했어요.");
+        }
       })
       .finally(() => {
         if (!cancelled) {
@@ -101,7 +210,7 @@ export function ReferenceBrowseStep({
     return () => {
       cancelled = true;
     };
-  }, [searchTags, searchTerm, selectedCategory, reloadToken]);
+  }, [referenceQuery, referenceQueryCacheKey, reloadToken]);
 
   return (
     <>
@@ -203,7 +312,7 @@ export function ReferenceBrowseStep({
                   creative={creative}
                   key={template.templateId}
                   savePlacement="copy"
-                  showPlaceholderArt={false}
+                  showPlaceholderArt
                   openOnImage
                   openLabel={`${template.title} 상세 보기`}
                   onOpen={() => {
@@ -221,8 +330,8 @@ export function ReferenceBrowseStep({
         ) : (
           <section className={styles.emptyResultPanel} aria-label="샘플 검색 결과 없음">
             <MascotImage role="referenceSearch" decorative className={styles.emptyMascot} />
-            <strong>조건에 맞는 샘플 이미지가 없어요</strong>
-            <p>직접 넣은 샘플 이미지가 연결되면 여기에 표시돼요.</p>
+            <strong>조건에 맞는 샘플이 없어요</strong>
+            <p>검색어를 바꾸거나 카테고리 필터를 해제해 주세요.</p>
           </section>
         )}
       </div>

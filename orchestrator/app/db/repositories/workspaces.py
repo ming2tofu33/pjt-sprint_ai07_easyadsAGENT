@@ -69,9 +69,21 @@ def ensure_demo_workspace(workspace_id: str | None = None, user_id: str | None =
             return cur.fetchone()
 
 
-def ensure_user_workspace(user_id: str, connection: object | None = None) -> dict:
+def _workspace_source_for_account_type(account_type: str | None) -> str:
+    return "supabase_guest" if account_type == "guest" else "supabase_auth"
+
+
+def ensure_user_workspace(user_id: str, account_type: str | None = None, connection: object | None = None) -> dict:
+    requested_account_type = account_type if account_type in {"guest", "user"} else None
+    target_source = _workspace_source_for_account_type(requested_account_type)
+    target_account_type = "guest" if requested_account_type == "guest" else "user"
+    target_name = "Guest Workspace" if target_account_type == "guest" else "User Workspace"
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                "select pg_advisory_xact_lock(hashtext(%s))",
+                (f"workspace_owner:{user_id}",),
+            )
             cur.execute(
                 """
                 select w.*
@@ -94,8 +106,13 @@ def ensure_user_workspace(user_id: str, connection: object | None = None) -> dic
             )
             existing = cur.fetchone()
             if existing:
+                if requested_account_type is None:
+                    return existing
                 metadata = existing.get("metadata") if isinstance(existing.get("metadata"), dict) else {}
-                if metadata.get("source") == "supabase_auth":
+                existing_source = metadata.get("source")
+                if existing_source == target_source:
+                    return existing
+                if target_source == "supabase_guest" and existing_source == "supabase_auth":
                     return existing
                 cur.execute(
                     """
@@ -107,10 +124,11 @@ def ensure_user_workspace(user_id: str, connection: object | None = None) -> dic
                     returning *
                     """,
                     (
-                        "User Workspace",
+                        target_name,
                         jsonb_param({
-                            "source": "supabase_auth",
-                            "normalized_from": metadata.get("source") or "legacy_workspace",
+                            "source": target_source,
+                            "account_type": target_account_type,
+                            "normalized_from": existing_source or "legacy_workspace",
                         }),
                         existing["id"],
                     ),
@@ -122,6 +140,13 @@ def ensure_user_workspace(user_id: str, connection: object | None = None) -> dic
                 values (%s, %s, %s::jsonb)
                 returning *
                 """,
-                ("User Workspace", user_id, jsonb_param({"source": "supabase_auth"})),
+                (
+                    target_name,
+                    user_id,
+                    jsonb_param({
+                        "source": target_source,
+                        "account_type": target_account_type,
+                    }),
+                ),
             )
             return cur.fetchone()

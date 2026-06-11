@@ -1,0 +1,39 @@
+version: "kr_legal_basis_v1"
+updated_at: "2026-06-10"
+
+legal_basis:
+  KR-FAIR-AD-3:
+    law_name: "표시·광고의 공정화에 관한 법률"
+    article: "제3조"
+    summary: "소비자를 속이거나 소비자가 잘못 알 우려가 있는 부당한 표시·광고 행위 금지"
+    source_url: "https://www.law.go.kr/"
+    effective_date: "2023-09-14"
+    last_verified_at: "2026-06-01"
+    chunk_id: null
+
+  KR-FOOD-AD-8:
+    law_name: "식품 등의 표시ㆍ광고에 관한 법률"
+    article: "제8조"
+    summary: "식품 등에 대해 질병 예방·치료 효능 또는 의약품 오인 우려가 있는 표시·광고 금지"
+    source_url: "https://www.law.go.kr/"
+    effective_date: "2024-01-01"
+    last_verified_at: "2026-06-01"
+    chunk_id: null
+
+  KR-MEDICAL-AD-56:
+    law_name: "의료법"
+    article: "제56조"
+    summary: "의료광고에서 치료 효과 보장, 소비자 현혹 우려가 있는 내용 금지"
+    source_url: "https://www.law.go.kr/"
+    effective_date: "2023-06-13"
+    last_verified_at: "2026-06-01"
+    chunk_id: null
+
+  KR-COSMETIC-AD-13:
+    law_name: "화장품법"
+    article: "제13조"
+    summary: "의약품 오인, 기능성 오인, 사실과 다른 표시·광고 금지"
+    source_url: "https://www.law.go.kr/"
+    effective_date: "2024-02-20"
+    last_verified_at: "2026-06-01"
+    chunk_id: null

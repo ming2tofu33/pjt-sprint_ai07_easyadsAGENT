@@ -123,6 +123,8 @@ def test_options_node_eligible_augmented(mock_augment):
     
     # We supply missing_fields manually by constructing a state that goes to options
     result = graph.invoke({
+        "schema_version": "1.0",
+        "job_id": "job-123",
         "user_input": "Test",
         "thread_id": "thread-123",
         "missing_fields": ["item_or_service"], # Force item_or_service first

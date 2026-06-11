@@ -3,10 +3,15 @@ import { NextRequest, NextResponse } from "next/server";
 type ProxyMethod = "GET" | "POST" | "PATCH";
 type ProxyOptions = {
   injectVerifiedUserId?: boolean;
+  injectVerifiedUserIdHeader?: boolean;
 };
 type ProxyError = Error & {
   statusCode?: number;
   errorCode?: string;
+};
+type SupabasePrincipal = {
+  userId: string;
+  accountType: "guest" | "user";
 };
 
 function getOrchestratorBaseUrl(): string {
@@ -42,7 +47,7 @@ function normalizeBearerHeader(value: string | null): string | null {
   return normalized;
 }
 
-async function resolveSupabaseUserId(request: NextRequest): Promise<string | null> {
+async function resolveSupabasePrincipal(request: NextRequest): Promise<SupabasePrincipal | null> {
   const authorization = normalizeBearerHeader(request.headers.get("authorization"));
   if (!authorization) {
     return null;
@@ -70,7 +75,10 @@ async function resolveSupabaseUserId(request: NextRequest): Promise<string | nul
   if (!payload?.id) {
     throw proxyError("Invalid or expired session.", 401, "invalid_or_expired_session");
   }
-  return String(payload.id);
+  return {
+    userId: String(payload.id),
+    accountType: payload.is_anonymous ? "guest" : "user"
+  };
 }
 
 export async function proxyOrchestratorJson(
@@ -80,13 +88,27 @@ export async function proxyOrchestratorJson(
   bodyTransform?: (body: unknown) => unknown,
   options: ProxyOptions = {}
 ) {
+  const headers: Record<string, string> = { "content-type": "application/json" };
   const init: RequestInit = {
     method,
-    headers: { "content-type": "application/json" },
+    headers,
     cache: "no-store"
   };
 
   try {
+    let verifiedPrincipalPromise: Promise<SupabasePrincipal | null> | null = null;
+    const getVerifiedPrincipal = () => {
+      verifiedPrincipalPromise ??= resolveSupabasePrincipal(request);
+      return verifiedPrincipalPromise;
+    };
+
+    if (options.injectVerifiedUserIdHeader) {
+      const principal = await getVerifiedPrincipal();
+      if (principal) {
+        headers["X-EasyAds-User-Id"] = principal.userId;
+        headers["X-EasyAds-Account-Type"] = principal.accountType;
+      }
+    }
     if (method !== "GET") {
       const body = await request.text();
       if (body) {
@@ -98,9 +120,12 @@ export async function proxyOrchestratorJson(
         if (options.injectVerifiedUserId && payload && typeof payload === "object" && !Array.isArray(payload)) {
           delete (payload as Record<string, unknown>).user_id;
           delete (payload as Record<string, unknown>).userId;
-          const userId = await resolveSupabaseUserId(request);
-          if (userId) {
-            (payload as Record<string, unknown>).userId = userId;
+          delete (payload as Record<string, unknown>).account_type;
+          delete (payload as Record<string, unknown>).accountType;
+          const principal = await getVerifiedPrincipal();
+          if (principal) {
+            (payload as Record<string, unknown>).userId = principal.userId;
+            (payload as Record<string, unknown>).accountType = principal.accountType;
           }
         }
         init.body = JSON.stringify(payload);

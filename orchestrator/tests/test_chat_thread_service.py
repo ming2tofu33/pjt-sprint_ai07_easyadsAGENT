@@ -7,7 +7,7 @@ from contextlib import contextmanager
 import pytest
 
 from orchestrator.app.api.schemas.chat_threads import ChatMessageCreateRequest, ChatThreadCreateRequest, ChatThreadUpdateRequest
-from orchestrator.app.chat_threads.errors import ChatThreadHasActiveJobError
+from orchestrator.app.chat_threads.errors import ChatThreadHasActiveJobError, ChatThreadLimitReachedError
 from orchestrator.app.chat_threads.service import (
     append_chat_message,
     archive_chat_thread,
@@ -31,7 +31,12 @@ def memory_backend(monkeypatch):
     reset_chat_thread_store_for_tests()
 
 
-def test_memory_thread_owner_scope_and_pagination_total():
+def test_memory_thread_owner_scope_and_pagination_total(monkeypatch):
+    # Raise the per-workspace cap so this pagination scenario can seed >3 threads.
+    monkeypatch.setattr(
+        "orchestrator.app.chat_threads.service.db_settings.get_max_threads_per_workspace",
+        lambda: 99,
+    )
     for index in range(5):
         create_chat_thread(ChatThreadCreateRequest(user_id="user_a", title=f"A {index}"))
     create_chat_thread(ChatThreadCreateRequest(user_id="user_b", title="B"))
@@ -41,6 +46,43 @@ def test_memory_thread_owner_scope_and_pagination_total():
     assert total == 5
     assert len(threads) == 2
     assert all(get_chat_thread(thread.thread_id, user_id="user_b") is None for thread in threads)
+
+
+def test_memory_thread_limit_blocks_fourth_thread():
+    # Default cap is 3 non-archived threads per owner in the memory backend.
+    for index in range(3):
+        create_chat_thread(ChatThreadCreateRequest(user_id="user_a", title=f"A {index}"))
+
+    with pytest.raises(ChatThreadLimitReachedError) as exc_info:
+        create_chat_thread(ChatThreadCreateRequest(user_id="user_a", title="overflow"))
+    assert exc_info.value.error_code == "thread_limit_reached"
+
+    # A different owner is unaffected.
+    other = create_chat_thread(ChatThreadCreateRequest(user_id="user_b", title="B"))
+    assert other.thread_id
+
+
+def test_guest_thread_limit_uses_guest_owner_id():
+    for index in range(3):
+        create_chat_thread(ChatThreadCreateRequest(user_id="guest_uuid_1", title=f"Guest {index}"))
+
+    with pytest.raises(ChatThreadLimitReachedError):
+        create_chat_thread(ChatThreadCreateRequest(user_id="guest_uuid_1", title="Guest overflow"))
+
+    other_guest = create_chat_thread(ChatThreadCreateRequest(user_id="guest_uuid_2", title="Other guest"))
+    assert other_guest.thread_id
+
+
+def test_memory_thread_limit_frees_slot_after_archive():
+    threads = [
+        create_chat_thread(ChatThreadCreateRequest(user_id="user_a", title=f"A {i}"))
+        for i in range(3)
+    ]
+    archive_chat_thread(threads[0].thread_id, user_id="user_a")
+
+    # Archiving the first thread frees a slot, so a new thread can be created.
+    fresh = create_chat_thread(ChatThreadCreateRequest(user_id="user_a", title="fresh"))
+    assert fresh.thread_id
 
 
 def test_final_brief_and_message_payload_are_sanitized():

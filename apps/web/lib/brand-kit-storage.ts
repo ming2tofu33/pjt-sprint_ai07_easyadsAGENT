@@ -67,7 +67,7 @@ function writeBrandKit(input: BrandKitInput, status: BrandKitStatus): StoredBran
     updatedAt: new Date().toISOString()
   });
   try {
-    window.sessionStorage.setItem(BRAND_KIT_STORAGE_KEY, JSON.stringify(next));
+    window.localStorage.setItem(BRAND_KIT_STORAGE_KEY, JSON.stringify(next));
   } catch {
     // The active form still reflects the user's input even if storage is blocked.
   }
@@ -80,7 +80,7 @@ export function createEmptyBrandKitDraft(): StoredBrandKit {
 
 export function readBrandKit(): StoredBrandKit | null {
   try {
-    const raw = window.sessionStorage.getItem(BRAND_KIT_STORAGE_KEY);
+    const raw = window.localStorage.getItem(BRAND_KIT_STORAGE_KEY);
     return raw ? normalizeBrandKit(JSON.parse(raw) as Partial<StoredBrandKit>) : null;
   } catch {
     return null;
@@ -102,6 +102,54 @@ export function writeBrandKitDraft(input: BrandKitInput): StoredBrandKit {
 
 export function saveBrandKit(input: BrandKitInput): StoredBrandKit {
   return writeBrandKit(input, "saved");
+}
+
+/**
+ * Maps a server `/api/brand-kits/current` payload into the local StoredBrandKit
+ * shape. Returns null when the user has no server-side brand kit. Tolerant of
+ * receiving either the wrapped response ({ has_brand_kit, brand_kit }) or the
+ * bare brand_kit object.
+ */
+export function brandKitFromServerResponse(payload: unknown): StoredBrandKit | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const root = payload as Record<string, unknown>;
+  if (root.has_brand_kit === false) {
+    return null;
+  }
+  const source = (root.brand_kit ?? root) as Record<string, unknown> | null;
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const storeName = cleanText(source.store_name);
+  const businessType = cleanText(source.business_type);
+  if (!storeName && !businessType) {
+    return null;
+  }
+
+  const logo = (source.logo_asset ?? null) as Record<string, unknown> | null;
+  const products = Array.isArray(source.representative_products)
+    ? (source.representative_products as Array<Record<string, unknown>>)
+        .map((item) => cleanText(item?.name))
+        .filter(Boolean)
+    : [];
+
+  return normalizeBrandKit({
+    businessName: storeName,
+    businessType,
+    region: cleanText(source.region_text),
+    sns: cleanText(source.sns_handle),
+    logoFileName: cleanText(logo?.file_name ?? logo?.fileName),
+    logoDataUrl: cleanText(logo?.url ?? logo?.signed_url ?? logo?.signedUrl),
+    tones: cleanList(source.brand_tones),
+    colors: cleanList(source.brand_colors),
+    phrases: cleanList(source.frequent_phrases),
+    products,
+    status: "saved",
+    updatedAt: cleanText(source.updated_at)
+  });
 }
 
 export function brandKitMeta(brandKit: StoredBrandKit): string {

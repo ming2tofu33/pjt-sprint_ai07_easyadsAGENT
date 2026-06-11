@@ -12,7 +12,7 @@ describe("dashboard navigation", () => {
     expect(buildDashboardHref("reference")).toBe("/reference");
     expect(buildDashboardHref("ads")).toBe("/ads");
     expect(buildDashboardHref("my")).toBe("/my");
-    expect(buildDashboardHref("brand")).toBe("/my");
+    expect(buildDashboardHref("brand")).toBe("/brand/kit");
     expect(buildDashboardHref("photo")).toBe("/generate/photo");
     expect(buildDashboardHref("chat")).toBe("/generate/chat");
   });

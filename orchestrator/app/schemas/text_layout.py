@@ -11,6 +11,16 @@ from pydantic import BaseModel, Field, model_validator
 CopyRole = Literal["headline", "subheadline", "promotion", "price", "cta", "store_info", "disclaimer", "badge", "body"]
 StyleProfile = Literal["cute", "premium", "clean", "trendy", "emotional", "event"]
 OverlayTreatment = Literal["plain", "drop_shadow", "stroke", "gradient_panel", "solid_panel", "blur_backdrop", "sticker_badge"]
+TypographyOverlayTreatment = Literal[
+    "none",
+    "soft_shadow",
+    "soft_gradient_veil",
+    "localized_blur",
+    "content_fit_plate",
+    "small_chip",
+    "editorial_underline",
+]
+TypographyRole = Literal["eyebrow", "brand_label", "headline", "subheadline", "body", "price", "cta", "disclaimer"]
 AnchorPosition = Literal[
     "top_left",
     "top_center",
@@ -233,6 +243,55 @@ class TypographyRule(BaseModel):
     plate_style: str | None = None
 
 
+class TypographyRoleStyle(BaseModel):
+    role: TypographyRole
+    family_id: str
+    font_id: str | None = None
+    weight: int = Field(..., ge=100, le=1000)
+    size_ratio: float = Field(..., gt=0.0, le=1.0)
+    min_size_ratio: float = Field(..., gt=0.0, le=1.0)
+    max_size_ratio: float = Field(..., gt=0.0, le=1.0)
+    letter_spacing_em: float = 0.0
+    line_height_em: float = Field(default=1.15, gt=0.0)
+    text_color: str | None = None
+    alignment: Literal["left", "center", "right"] = "left"
+    max_lines: int = Field(default=2, ge=1)
+    overlay_treatment: TypographyOverlayTreatment = "none"
+
+
+class TypographyRenderTrace(BaseModel):
+    role: str
+    font_id: str
+    family_id: str
+    resolved_weight: int
+    source: str
+    effective_font_size_px: int
+    rendered_lines: list[str]
+    rendered_bbox_px: tuple[int, int, int, int]
+    letter_spacing_px: float
+    line_height_px: float
+    text_color: str
+    contrast_ratio_min: float
+    contrast_ratio_average: float
+    overlay_treatment: str
+    overlay_bbox_px: tuple[int, int, int, int] | None = None
+    fallback_used: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class TypographyLanguagePolicy(BaseModel):
+    primary_locale: Literal["ko-KR", "en-US", "mixed"] = "ko-KR"
+    headline_language_mode: Literal["korean", "english", "bilingual", "auto"] = "auto"
+    body_language_mode: Literal["korean", "english", "bilingual", "auto"] = "korean"
+    cta_language_mode: Literal["korean", "english", "bilingual", "auto"] = "auto"
+    allow_english_display_headline: bool = True
+    allow_english_brand_label: bool = True
+    allow_hanja: bool = False
+    english_allowed_roles: list[str] = Field(default_factory=lambda: ["brand_label", "eyebrow", "headline", "cta"])
+    korean_required_roles: list[str] = Field(default_factory=lambda: ["body"])
+    mixed_script_policy: Literal["allow_when_natural", "prefer_korean", "prefer_english", "forbid_mixed"] = "allow_when_natural"
+
+
 class TextStyleSpec(BaseModel):
     schema_version: Literal["1.0"] = "1.0"
     profile: StyleProfile
@@ -240,6 +299,14 @@ class TextStyleSpec(BaseModel):
     brand_color_override: str | None = None
     brand_font_override: str | None = None
     role_styles: dict[str, Any] = Field(default_factory=dict)
+    headline_style: TypographyRoleStyle | None = None
+    body_style: TypographyRoleStyle | None = None
+    cta_style: TypographyRoleStyle | None = None
+    label_style: TypographyRoleStyle | None = None
+    price_style: TypographyRoleStyle | None = None
+    disclaimer_style: TypographyRoleStyle | None = None
+    font_pair_id: str | None = None
+    typography_art_direction: dict[str, Any] | None = None
 
 
 class CopyVisualIntent(BaseModel):
@@ -363,4 +430,5 @@ class ResultPayload(BaseModel):
     has_text_overlay: bool
     validation_summary: dict[str, Any] = Field(default_factory=dict)
     artifact_refs: list[dict[str, Any]] = Field(default_factory=list)
+    compliance: dict[str, Any] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

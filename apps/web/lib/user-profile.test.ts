@@ -29,4 +29,17 @@ describe("buildAppUserProfile", () => {
   it("returns null for guests", () => {
     expect(buildAppUserProfile(null)).toBeNull();
   });
+
+  it("returns null for Supabase anonymous users", () => {
+    expect(
+      buildAppUserProfile({
+        id: "guest_uuid_1",
+        email: "",
+        user_metadata: {},
+        app_metadata: {},
+        identities: [],
+        is_anonymous: true
+      } as never)
+    ).toBeNull();
+  });
 });

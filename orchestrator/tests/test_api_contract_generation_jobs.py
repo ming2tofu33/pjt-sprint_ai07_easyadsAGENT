@@ -59,6 +59,20 @@ def test_generation_job_answer_request_supports_camel_case_custom_text():
     assert payload["display_text"] == "딸기라떼"
 
 
+def test_generation_job_answer_request_preserves_compliance_action():
+    request = GenerationJobAnswerRequest.model_validate(
+        {
+            "action": "use_suggestion",
+            "displayText": "안전한 문구로 수정",
+        }
+    )
+
+    payload = request.to_resume_payload(job_id="job_1", thread_id="thread_1")
+
+    assert payload["action"] == "use_suggestion"
+    assert payload["display_text"] == "안전한 문구로 수정"
+
+
 def test_generation_progress_percent_validation():
     progress = GenerationProgress(progress_percent=100, current_stage="completed")
     assert progress.progress_percent == 100

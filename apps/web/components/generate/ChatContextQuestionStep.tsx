@@ -3,9 +3,9 @@
 import { Send } from "lucide-react";
 import { useState } from "react";
 import type { ChatFlowState, OptionItem } from "@/types/marketing";
-import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { MascotImage } from "./MascotImage";
+import { SmartChatInput } from "./SmartChatInput";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -40,6 +40,13 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
 
   function answerOption(option: OptionItem) {
     if (state.isLoading) return;
+    if (question?.field === "copy_generation_mode" && option.value === "custom_input") {
+      // 개인 문구 직접 입력: 별도 "선택 완료" 없이 즉시 제출 → 백엔드 custom_copy_input interrupt 폼으로 진입
+      setShowCustomInput(false);
+      setSelectedOption(null);
+      onAnswer({ value: option.value, label: option.label });
+      return;
+    }
     if (option.value === "custom") {
       setShowCustomInput(true);
       setSelectedOption(null);
@@ -51,6 +58,8 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
 
   const noChips = question.options.length === 0;
   const effectiveShowCustomInput = showCustomInput || noChips;
+  const chipGridClassName =
+    question.field === "copy_generation_mode" ? `${styles.chipGrid} ${styles.copyModeGrid}` : styles.chipGrid;
 
   return (
     <>
@@ -93,7 +102,7 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
       </section>
 
       <h2 className={styles.sectionTitle}>{question.question}</h2>
-      <div className={styles.chipGrid}>
+      <div className={chipGridClassName}>
         {question.options.map((option) => (
           <ChoiceChip
             key={`${question.field}-${option.id}`}
@@ -107,20 +116,20 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
       </div>
 
       {effectiveShowCustomInput ? (
-        <label className={`${styles.inputCard} ${styles.contextAnswerInputCard}`}>
-          <AutosizeTextarea
-            className={`${styles.input} ${styles.promptTextarea}`}
-            value={customText}
-            aria-label="직접 답변 입력"
-            placeholder="직접 입력"
-            disabled={state.isLoading}
-            onChange={(event) => setCustomText(event.target.value)}
-            onSubmit={submitCustomAnswer}
-          />
-          <button className={styles.sendButton} type="button" aria-label="직접 답변 보내기" disabled={state.isLoading} onClick={submitCustomAnswer}>
-            <Send size={18} aria-hidden="true" />
-          </button>
-        </label>
+        <SmartChatInput
+          className={styles.contextAnswerInputCard}
+          value={customText}
+          ariaLabel="직접 답변 입력"
+          placeholder="직접 입력"
+          disabled={state.isLoading}
+          onChange={setCustomText}
+          onSubmit={submitCustomAnswer}
+          rightControl={
+            <button className={styles.sendButton} type="button" aria-label="직접 답변 보내기" disabled={state.isLoading} onClick={submitCustomAnswer}>
+              <Send size={18} aria-hidden="true" />
+            </button>
+          }
+        />
       ) : selectedOption ? (
         <button className={styles.primaryButton} type="button" disabled={state.isLoading} onClick={submitSelectedOption}>
           선택 완료

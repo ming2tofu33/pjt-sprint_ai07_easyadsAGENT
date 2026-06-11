@@ -143,10 +143,50 @@ const archiveItemSchema = z.object({
   metadata: z.record(z.unknown()).optional()
 });
 
-async function proxyJson({ fetchImpl, url, body }) {
+const archiveItemUpdateSchema = z.object({
+  status: z.enum(["saved", "favorite"])
+});
+
+const assetPresignSchema = z.object({
+  kind: z.enum(["upload", "source", "reference"]),
+  filename: z.string().trim().min(1),
+  mimeType: z.enum(supportedPhotoMimeTypes),
+  sizeBytes: z.number().int().positive(),
+  workspaceId: z.string().trim().min(1).optional(),
+  threadId: z.string().trim().min(1).optional()
+});
+
+const adminReferenceSchema = z.object({
+  templateId: z.string().trim().min(1).optional(),
+  assetId: z.string().trim().min(1),
+  workspaceId: z.string().trim().min(1).optional(),
+  title: z.string().trim().min(1),
+  description: z.string().optional().nullable(),
+  category: z.string().trim().min(1),
+  subCategory: z.string().optional().nullable(),
+  tags: z.array(z.string()).optional(),
+  businessTypes: z.array(z.string()).optional(),
+  adFormats: z.array(z.string()).optional(),
+  platforms: z.array(z.string()).optional(),
+  aspectRatio: z.string().optional().nullable(),
+  styleKeywords: z.array(z.string()).optional(),
+  colorPalette: z.array(z.string()).optional(),
+  layoutHint: z.string().optional().nullable(),
+  typographyHint: z.string().optional().nullable(),
+  backgroundStyle: z.string().optional().nullable(),
+  popularityScore: z.number().min(0).optional(),
+  status: z.enum(["active", "inactive", "draft"]).optional(),
+  licenseNote: z.string().optional().nullable(),
+  copyrightStatus: z.string().optional(),
+  metadata: z.record(z.unknown()).optional()
+});
+
+const adminReferenceUpdateSchema = adminReferenceSchema.omit({ assetId: true, workspaceId: true }).partial();
+
+async function proxyJson({ fetchImpl, url, body, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
@@ -160,10 +200,27 @@ async function proxyJson({ fetchImpl, url, body }) {
   return payload;
 }
 
-async function proxyDeleteJson({ fetchImpl, url }) {
+async function proxyPatchJson({ fetchImpl, url, body, headers = {} }) {
+  const response = await fetchImpl(url, {
+    method: "PATCH",
+    headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
+    const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
+    error.statusCode = response.status;
+    error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
+    throw error;
+  }
+  return payload;
+}
+
+async function proxyDeleteJson({ fetchImpl, url, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "DELETE",
-    headers: { accept: "application/json" }
+    headers: { accept: "application/json", ...headers }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -176,10 +233,10 @@ async function proxyDeleteJson({ fetchImpl, url }) {
   return payload;
 }
 
-async function proxyGetJson({ fetchImpl, url }) {
+async function proxyGetJson({ fetchImpl, url, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "GET",
-    headers: { accept: "application/json" }
+    headers: { accept: "application/json", ...headers }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -192,7 +249,7 @@ async function proxyGetJson({ fetchImpl, url }) {
   return payload;
 }
 
-async function proxyBinary({ fetchImpl, url, reply }) {
+async function proxyBinary({ fetchImpl, url, reply, cacheControl }) {
   const response = await fetchImpl(url, {
     method: "GET"
   });
@@ -206,6 +263,10 @@ async function proxyBinary({ fetchImpl, url, reply }) {
   const contentType = response.headers.get("content-type");
   if (contentType) {
     reply.header("content-type", contentType);
+  }
+  const responseCacheControl = response.headers.get("cache-control") || cacheControl;
+  if (responseCacheControl) {
+    reply.header("cache-control", responseCacheControl);
   }
   return Buffer.from(await response.arrayBuffer());
 }
@@ -226,11 +287,31 @@ function appendQueryParam(url, key, value) {
     params.delete("userId");
     params.delete("user_id");
   }
+  if (key === "accountType" || key === "account_type") {
+    params.delete("accountType");
+    params.delete("account_type");
+  }
   if (value) {
     params.set(key, value);
   }
   const str = params.toString();
   return str ? `${base}?${str}` : base;
+}
+
+function appendPrincipalQueryParams(url, principal, { userKey = "user_id", accountKey = "account_type" } = {}) {
+  const withUser = appendQueryParam(url, userKey, principal?.userId ?? null);
+  return appendQueryParam(withUser, accountKey, principal?.accountType ?? null);
+}
+
+
+function verifiedPrincipalHeaders(principal) {
+  if (!principal?.userId) {
+    return {};
+  }
+  return {
+    "X-EasyAds-User-Id": principal.userId,
+    "X-EasyAds-Account-Type": principal.accountType
+  };
 }
 
 function normalizeBearerHeader(value) {
@@ -247,7 +328,7 @@ function normalizeBearerHeader(value) {
   return normalized;
 }
 
-async function resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey }) {
+async function resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey }) {
   const authorization = normalizeBearerHeader(request.headers.authorization);
   if (!authorization) {
     return null;
@@ -273,7 +354,18 @@ async function resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabase
   if (!payload?.id) {
     throw createHttpError(401, "invalid or expired session");
   }
-  return String(payload.id);
+  return {
+    userId: String(payload.id),
+    accountType: payload.is_anonymous ? "guest" : "user"
+  };
+}
+
+async function requireSupabaseUserId(args) {
+  const principal = await resolveSupabasePrincipal(args);
+  if (!principal?.userId || principal.accountType === "guest") {
+    throw createHttpError(401, "admin session required");
+  }
+  return principal.userId;
 }
 
 function extensionForMimeType(mimeType) {
@@ -354,7 +446,8 @@ export function buildApp(options = {}) {
     proxyBinary({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/references/temp-assets/${encodeURIComponent(request.params.removalGroup)}/${encodeURIComponent(request.params.filename)}`,
-      reply
+      reply,
+      cacheControl: "public, max-age=604800, immutable"
     })
   );
 
@@ -373,48 +466,134 @@ export function buildApp(options = {}) {
     })
   );
 
-  app.get("/api/chat-threads", async (request) => {
+
+  app.post("/api/assets/uploads/presign", async (request, reply) => {
+    const parsed = assetPresignSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/assets/uploads/presign`, principal),
+      body: parsed.data
+    });
+  });
+
+  app.post("/api/assets/uploads/:assetId/complete", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/assets/uploads/${encodeURIComponent(request.params.assetId)}/complete${queryString}`, principal),
+      body: {}
+    });
+  });
+
+  app.get("/api/assets/:assetId", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads${queryString}`, "userId", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/assets/${encodeURIComponent(request.params.assetId)}${queryString}`, principal)
+    });
+  });
+
+  app.get("/api/admin/references", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/admin/references${queryString}`
+    });
+  });
+
+  app.post("/api/admin/references", async (request, reply) => {
+    const parsed = adminReferenceSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+    const userId = await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/admin/references`, "user_id", userId),
+      body: parsed.data
+    });
+  });
+
+  app.patch("/api/admin/references/:templateId", async (request, reply) => {
+    const parsed = adminReferenceUpdateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+    await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyPatchJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/admin/references/${encodeURIComponent(request.params.templateId)}`,
+      body: parsed.data
+    });
+  });
+
+  app.post("/api/admin/references/:templateId/publish", async (request) => {
+    await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/admin/references/${encodeURIComponent(request.params.templateId)}/publish`,
+      body: {}
+    });
+  });
+
+  app.post("/api/admin/references/:templateId/unpublish", async (request) => {
+    await requireSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/admin/references/${encodeURIComponent(request.params.templateId)}/unpublish`,
+      body: {}
+    });
+  });
+
+  app.get("/api/chat-threads", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads${queryString}`, principal, { userKey: "userId", accountKey: "accountType" })
     });
   });
 
   app.get("/api/chat-threads/:threadId", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}${queryString}`, "userId", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}${queryString}`, principal, { userKey: "userId", accountKey: "accountType" })
     });
   });
 
   app.get("/api/chat-threads/:threadId/messages", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/messages${queryString}`, "userId", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/messages${queryString}`, principal, { userKey: "userId", accountKey: "accountType" })
     });
   });
 
   app.get("/api/chat-threads/:threadId/state", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/state${queryString}`, "userId", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/state${queryString}`, principal, { userKey: "userId", accountKey: "accountType" })
     });
   });
 
   app.post("/api/chat-threads/:threadId/archive", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/archive${queryString}`, "userId", userId),
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/archive${queryString}`, principal, { userKey: "userId", accountKey: "accountType" }),
       body: {}
     });
   });
@@ -496,7 +675,8 @@ export function buildApp(options = {}) {
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const userId = principal?.userId ?? null;
     const {
       userId: _clientUserId,
       user_id: _clientUserIdSnake,
@@ -506,6 +686,7 @@ export function buildApp(options = {}) {
     const body = {
       ...clientPayload,
       ...(userId ? { userId } : {}),
+      ...(principal?.accountType ? { accountType: principal.accountType } : {}),
       userInput: parsed.data.userInput ?? parsed.data.user_input,
       threadId: parsed.data.threadId ?? parsed.data.thread_id,
       selectedReferenceTemplateId: parsed.data.selectedReferenceTemplateId ?? parsed.data.selected_reference_template_id,
@@ -534,23 +715,27 @@ export function buildApp(options = {}) {
     return proxyJson({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/generation-jobs`,
-      body
+      body,
+      headers: verifiedPrincipalHeaders(principal)
     });
   });
 
-  app.get("/api/generation-jobs/:jobId", async (request) =>
-    proxyGetJson({
+  app.get("/api/generation-jobs/:jobId", async (request) => {
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
       fetchImpl,
-      url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}`
-    })
-  );
+      url: `${orchestratorBaseUrl}/api/v1/generation-jobs/${encodeURIComponent(request.params.jobId)}`,
+      headers: verifiedPrincipalHeaders(principal)
+    });
+  });
 
   app.post("/api/generation-jobs/:jobId/answer", async (request, reply) => {
     const parsed = generationJobAnswerSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const userId = principal?.userId ?? null;
     const {
       userId: _clientUserId,
       user_id: _clientUserIdSnake,
@@ -563,16 +748,17 @@ export function buildApp(options = {}) {
       body: {
         ...clientPayload,
         ...(userId ? { userId } : {})
-      }
+      },
+      headers: verifiedPrincipalHeaders(principal)
     });
   });
 
   app.get("/api/archive/items", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyGetJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/archive/items${queryString}`, "user_id", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/archive/items${queryString}`, principal)
     });
   });
 
@@ -582,24 +768,52 @@ export function buildApp(options = {}) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
 
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     const payload = await proxyJson({
       fetchImpl,
       url: `${orchestratorBaseUrl}/api/v1/archive/items`,
       body: {
         ...toArchiveItemPayload(parsed.data),
-        ...(userId ? { user_id: userId } : {})
+        ...(principal?.userId ? { user_id: principal.userId } : {}),
+        ...(principal?.accountType ? { account_type: principal.accountType } : {})
       }
     });
     return reply.code(201).send(payload);
   });
 
+  app.get("/api/archive/items/:archiveItemId", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyGetJson({
+      fetchImpl,
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`, principal)
+    });
+  });
+
+  app.patch("/api/archive/items/:archiveItemId", async (request, reply) => {
+    const parsed = archiveItemUpdateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
+    }
+
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyPatchJson({
+      fetchImpl,
+      url: `${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}`,
+      body: {
+        status: parsed.data.status,
+        ...(principal?.userId ? { user_id: principal.userId } : {}),
+        ...(principal?.accountType ? { account_type: principal.accountType } : {})
+      }
+    });
+  });
+
   app.delete("/api/archive/items/:archiveItemId", async (request) => {
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
-    const userId = await resolveSupabaseUserId({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyDeleteJson({
       fetchImpl,
-      url: appendQueryParam(`${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`, "user_id", userId)
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/archive/items/${encodeURIComponent(request.params.archiveItemId)}${queryString}`, principal)
     });
   });
 

@@ -137,6 +137,8 @@ def build_copy_generation_metadata(
     source = state or {}
     tone = _dict(source.get("tone_binding_output"))
     plan_policy = _dict(source.get("plan_policy"))
+    context = _dict(source.get("context"))
+    compliance_constraints = _build_compliance_constraints(context.get("business_type"))
     return build_metadata_payload(
         source,
         node_name=node_name,
@@ -160,6 +162,7 @@ def build_copy_generation_metadata(
             "channel_copy_rules": tone.get("channel_copy_rules", []),
             "copy_constraints": tone.get("copy_constraints", []),
             "preserve_custom_input": source.get("copy_generation_mode") == "custom_input",
+            **compliance_constraints,
         },
     )
 
@@ -538,3 +541,31 @@ def _reserved_text_areas_from_state(
         or image_prompt.get("reserved_text_areas")
         or []
     )
+
+
+def _build_compliance_constraints(business_type: str | None) -> dict[str, Any]:
+    if not business_type:
+        return {}
+    try:
+        from orchestrator.app.compliance.service import get_compliance_service
+        from orchestrator.app.compliance.industry_classifier import IndustryClassifier
+        svc = get_compliance_service()
+        classifier = IndustryClassifier()
+        domains = classifier.get_domains(business_type)
+        rules = svc.get_rules_for_domains(domains)
+        blocked_terms = [p for r in rules if r.severity == "block" for p in r.patterns][:10]
+        evidence_terms = [p for r in rules if r.severity == "evidence_required" for p in r.patterns][:5]
+        blocked_claims = [r.title for r in rules if r.severity == "block"][:5]
+        safe_hints = list({h for r in rules for h in r.safe_rewrite_hints})[:3]
+        return {
+            "compliance": {
+                "jurisdiction": "KR",
+                "domains": domains,
+                "blocked_terms": blocked_terms,
+                "evidence_required_terms": evidence_terms,
+                "blocked_claims": blocked_claims,
+                "safe_direction": safe_hints,
+            }
+        }
+    except Exception:
+        return {}

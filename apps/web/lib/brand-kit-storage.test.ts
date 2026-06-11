@@ -11,7 +11,7 @@ import {
 
 describe("brand-kit-storage", () => {
   beforeEach(() => {
-    window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
   it("returns an empty draft before a brand kit is saved", () => {
@@ -58,6 +58,6 @@ describe("brand-kit-storage", () => {
     expect(readSavedBrandKit()?.logoFileName).toBe("test-logo.png");
     expect(brandKitMeta(saved)).toBe("카페 · 연남동 · @test_cafe");
     expect(brandKitProducts(saved)).toBe("라떼, 케이크");
-    expect(window.sessionStorage.getItem(BRAND_KIT_STORAGE_KEY)).toContain("연남 테스트 카페");
+    expect(window.localStorage.getItem(BRAND_KIT_STORAGE_KEY)).toContain("연남 테스트 카페");
   });
 });
