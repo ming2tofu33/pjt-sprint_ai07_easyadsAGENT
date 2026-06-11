@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 import shutil
@@ -114,6 +115,23 @@ def run_macaron_case(*, args: argparse.Namespace, output_dir: Path) -> dict[str,
     valid_reused_background = source_bg.exists()
     if valid_reused_background:
         shutil.copyfile(source_bg, target_bg)
+    elif args.actual:
+        result = {
+            "case_id": "macaron_collection_001",
+            "status": "blocked",
+            "valid_reused_flux_background": False,
+            "actual_flux_generation": False,
+            "actual_typography_llm": False,
+            "actual_vlm_judge": False,
+            "mock_or_fixture_count": 0,
+            "failure_reasons": ["background_missing"],
+            "copy": MACARON_COPY,
+            "font_path_null": 0,
+            "fallback_font_count": 0,
+            "comparison_sheet_3way": None,
+        }
+        (case_dir / "result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
+        return result
     else:
         Image.new("RGB", (1024, 1024), "#F2E5D8").save(target_bg)
 
@@ -140,9 +158,26 @@ def run_macaron_case(*, args: argparse.Namespace, output_dir: Path) -> dict[str,
         failure_reasons.append(llm_selection.get("error_code") or "typography_llm_blocked")
     if args.actual and args.max_vlm_calls > 0 and not actual_vlm:
         failure_reasons.append(vlm_result.get("error_code") or "vlm_judge_failed")
+    image_hashes = {
+        "current": _sha256(case_dir / "current_renderer.png"),
+        "deterministic_v2": _sha256(case_dir / "deterministic_typography_v2.png"),
+        "llm_v2": _sha256(case_dir / "llm_typography_v2.png"),
+    }
+    images_verified = all(_image_verifies(case_dir / name) for name in ("current_renderer.png", "deterministic_typography_v2.png", "llm_typography_v2.png", "comparison_sheet_3way.png"))
+    identical_hash_count = len(image_hashes) - len(set(image_hashes.values()))
+    fallback_font_count = sum(1 for trace in [*current_trace, *deterministic_trace, *llm_trace] if trace.get("fallback_used"))
+    if args.actual and fallback_font_count:
+        failure_reasons.append("font_fallback")
+    if args.actual and not images_verified:
+        failure_reasons.append("image_verification_failed")
+    if args.actual and identical_hash_count:
+        failure_reasons.append("identical_comparison_hash")
+    status = "completed"
+    if args.actual and failure_reasons:
+        status = "invalid_comparison" if "identical_comparison_hash" in failure_reasons else "blocked"
     result = {
         "case_id": "macaron_collection_001",
-        "status": "completed",
+        "status": status,
         "valid_reused_flux_background": valid_reused_background,
         "actual_flux_generation": False,
         "actual_typography_llm": actual_llm,
@@ -158,7 +193,9 @@ def run_macaron_case(*, args: argparse.Namespace, output_dir: Path) -> dict[str,
             "cta": llm_direction_data.get("cta_family_id"),
         },
         "font_path_null": 0,
-        "fallback_font_count": sum(1 for trace in [*current_trace, *deterministic_trace, *llm_trace] if trace.get("fallback_used")),
+        "fallback_font_count": fallback_font_count,
+        "image_hashes": image_hashes,
+        "images_verified": images_verified,
         "comparison_sheet_3way": str(sheet),
         "typography_llm_error_code": llm_selection.get("error_code"),
         "typography_llm_model": llm_selection.get("model"),
@@ -171,6 +208,23 @@ def run_macaron_case(*, args: argparse.Namespace, output_dir: Path) -> dict[str,
     (case_dir / "vlm_typography_result.json").write_text(json.dumps({key: value for key, value in vlm_result.items() if key != "raw"}, ensure_ascii=True, indent=2), encoding="utf-8")
     (case_dir / "result.json").write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
     return result
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _image_verifies(path: Path) -> bool:
+    try:
+        with Image.open(path) as image:
+            image.verify()
+        return True
+    except Exception:
+        return False
 
 
 def call_openai_typography_selection(*, args: argparse.Namespace) -> dict[str, Any]:

@@ -93,6 +93,33 @@ def route_after_t2i_generation(state: MarketingState) -> str:
     return "background_ocr_gate"
 
 
+def route_after_final_validation(state: MarketingState) -> str:
+    report = state.get("final_composite_quality_report") or {}
+    if isinstance(report, dict) and report.get("status") == "revise":
+        return "final_composite_revision"
+    return "result"
+
+
+def route_after_text_layout_planner(state: MarketingState) -> str:
+    if state.get("final_composite_partial_rerun") and state.get("reuse_existing_background") and state.get("t2i_result"):
+        return "post_t2i_layout_refiner"
+    return "image_prompt_planner"
+
+
+def route_after_final_composite_revision(state: MarketingState) -> str:
+    plan = state.get("final_composite_revision_plan") or {}
+    rerun_from_node = plan.get("rerun_from_node") if isinstance(plan, dict) else None
+    if rerun_from_node in {
+        "final_copy_revision",
+        "copy_spec_parser",
+        "post_t2i_layout_refiner",
+        "adaptive_typography_refiner",
+        "image_prompt_planner",
+    }:
+        return rerun_from_node
+    return "result"
+
+
 def route_after_ocr_gate(state: MarketingState) -> str:
     decision = state.get("ocr_gate_decision")
     attempts = int(state.get("ocr_revision_attempts") or 0)
