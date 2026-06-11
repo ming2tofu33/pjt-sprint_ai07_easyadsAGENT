@@ -35,6 +35,7 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}) {
 describe("api-client photo generation", () => {
   afterEach(() => {
     vi.resetModules();
+    vi.doUnmock("./supabase/browser");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -395,6 +396,7 @@ describe("api-client photo generation", () => {
 describe("api-client backend contract routes", () => {
   afterEach(() => {
     vi.resetModules();
+    vi.doUnmock("./supabase/browser");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
