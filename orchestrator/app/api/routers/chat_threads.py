@@ -84,7 +84,15 @@ def _handle_service_error(exc: ChatThreadServiceError, thread_id: str) -> None:
     status_code=status.HTTP_201_CREATED,
 )
 def create_chat_thread_route(request: ChatThreadCreateRequest) -> ChatThreadCreateResponse:
-    thread = chat_service.create_chat_thread(request)
+    try:
+        thread = chat_service.create_chat_thread(request)
+    except ChatThreadServiceError as exc:
+        status_code = 409 if exc.error_code == "thread_limit_reached" else 400
+        raise_api_error(
+            status_code=status_code,
+            error_code=exc.error_code,
+            message=exc.message,
+        )
     return ChatThreadCreateResponse(thread=thread)
 
 

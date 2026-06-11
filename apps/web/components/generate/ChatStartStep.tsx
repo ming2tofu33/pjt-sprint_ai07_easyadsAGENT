@@ -9,6 +9,7 @@ import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { GenerationEngineSelector } from "./GenerationEngineSelector";
 import { MascotImage } from "./MascotImage";
+import { SmartChatInput } from "./SmartChatInput";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -172,35 +173,37 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome, onHistory }: ChatSta
       <h2 className={styles.sectionTitle}>이미지 생성 모델</h2>
       <GenerationEngineSelector value={imageGenerationEngine} onChange={setImageGenerationEngine} />
 
-      <div className={`${styles.inputCard} ${styles.startInputCard}`}>
-        <input
-          ref={referenceFileInputRef}
-          aria-label="레퍼런스 이미지 첨부"
-          accept="image/png,image/jpeg,image/webp"
-          className={styles.photoFileInput}
-          type="file"
-          onChange={handleReferenceImageChange}
-        />
-        <button
-          className={styles.inputIconButton}
-          type="button"
-          aria-label={referenceImageFile ? `첨부한 레퍼런스 이미지 ${referenceImageFile.name}` : "레퍼런스 이미지 선택"}
-          onClick={() => referenceFileInputRef.current?.click()}
-        >
-          <ImageIcon size={19} aria-hidden="true" />
-        </button>
-        <AutosizeTextarea
-          className={`${styles.input} ${styles.promptTextarea}`}
-          value={value}
-          aria-label="광고 요청 입력"
-          placeholder={promptPlaceholder}
-          onChange={(event) => setValue(event.target.value)}
-          onSubmit={submitPrompt}
-        />
-        <button className={styles.sendButton} type="button" aria-label="요청 보내기" disabled={!canSubmit} onClick={submitPrompt}>
-          <Send size={18} aria-hidden="true" />
-        </button>
-      </div>
+      <input
+        ref={referenceFileInputRef}
+        aria-label="레퍼런스 이미지 첨부"
+        accept="image/png,image/jpeg,image/webp"
+        className={styles.photoFileInput}
+        type="file"
+        onChange={handleReferenceImageChange}
+      />
+      <SmartChatInput
+        className={styles.startInputCard}
+        value={value}
+        ariaLabel="광고 요청 입력"
+        placeholder={promptPlaceholder}
+        onChange={setValue}
+        onSubmit={submitPrompt}
+        leftControl={
+          <button
+            className={styles.inputIconButton}
+            type="button"
+            aria-label={referenceImageFile ? `첨부한 레퍼런스 이미지 ${referenceImageFile.name}` : "레퍼런스 이미지 선택"}
+            onClick={() => referenceFileInputRef.current?.click()}
+          >
+            <ImageIcon size={19} aria-hidden="true" />
+          </button>
+        }
+        rightControl={
+          <button className={styles.sendButton} type="button" aria-label="요청 보내기" disabled={!canSubmit} onClick={submitPrompt}>
+            <Send size={18} aria-hidden="true" />
+          </button>
+        }
+      />
       {referenceImageFile ? <p className={styles.referenceAttachmentNote}>참고 이미지: {referenceImageFile.name}</p> : null}
       {referenceImageError ? <p className={styles.referenceAttachmentNote}>{referenceImageError}</p> : null}
       <p className={styles.helperText}>대충 써도 괜찮아요. AI가 찰떡같이 알아들을게요.</p>

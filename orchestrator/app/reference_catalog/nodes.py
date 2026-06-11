@@ -113,6 +113,8 @@ def reference_template_resolve_node(state: MarketingState) -> dict[str, Any]:
         current_brief["requested_ad_format"] = template_ad_format
     updates["selected_reference_template"] = template_dump
     updates["context"] = context
+    if selection.reference_asset_id:
+        updates["reference_asset_id"] = selection.reference_asset_id
     if selection.reference_image_path:
         updates["reference_image_path"] = selection.reference_image_path
     else:

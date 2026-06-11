@@ -131,6 +131,12 @@ class MarketingState(TypedDict, total=False):
     tone_binding_output: dict[str, Any] | ToneBindingOutput | None
     copy_mode_inference_output: dict[str, Any] | CopyModeInferenceOutput | None
     copy_selection: dict[str, Any] | None
+    input_compliance_risk: dict[str, Any] | None
+    copy_compliance: list[dict[str, Any]]
+    copy_compliance_status: str | None
+    copy_compliance_publication_ready: bool
+    copy_compliance_gate: dict[str, Any] | None
+    copy_compliance_resolution: dict[str, Any] | None
     custom_copy_input: dict[str, Any] | None
     copy_spec: dict[str, Any] | CopySpec | None
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
@@ -324,6 +330,12 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "tone_binding_output": None,
         "copy_mode_inference_output": None,
         "copy_selection": None,
+        "input_compliance_risk": None,
+        "copy_compliance": [],
+        "copy_compliance_status": None,
+        "copy_compliance_publication_ready": True,
+        "copy_compliance_gate": None,
+        "copy_compliance_resolution": None,
         "custom_copy_input": None,
         "copy_spec": None,
         "text_layout_spec": None,

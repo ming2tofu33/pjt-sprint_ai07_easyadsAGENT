@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildAdHref, type AdSaveStep } from "@/lib/ad-navigation";
 import { archiveItemToCreative } from "@/lib/archive-creative";
-import { listArchiveItems } from "@/lib/api-client";
+import { getArchiveItem } from "@/lib/api-client";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { readGeneratedCreatives } from "@/lib/generated-creative-storage";
 import { getAdCreativeById, resultCreatives, type MockCreative } from "@/lib/mock-dashboard-data";
@@ -70,16 +70,13 @@ export function AdSaveFlowStep({ creativeId, step }: AdSaveFlowStepProps) {
     }
 
     setSessionChecked(false);
-    void listArchiveItems({ limit: 100 })
-      .then((response) => {
+    void getArchiveItem(creativeId)
+      .then((item) => {
         if (!isActive) {
           return;
         }
 
-        const archiveCreative = response.items
-          .map(archiveItemToCreative)
-          .find((item) => item?.id === creativeId) ?? null;
-        setSessionCreative(archiveCreative);
+        setSessionCreative(archiveItemToCreative(item));
       })
       .catch(() => {
         if (isActive) {

@@ -126,6 +126,64 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+
+  it("proxies asset uploads and admin reference creation", async () => {
+    const fetchImpl = vi.fn(async (url, init) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "admin_user_1" });
+      }
+      if (String(url).endsWith("/assets/uploads/presign?user_id=admin_user_1")) {
+        return jsonResponse({ asset: { asset_id: "asset_abc", kind: "reference", status: "pending" }, upload: { method: "PUT", url: "https://r2.example.com/upload" } });
+      }
+      if (String(url).includes("/assets/uploads/asset_abc/complete")) {
+        return jsonResponse({ success: true, asset: { assetId: "asset_abc", kind: "reference", status: "ready" } });
+      }
+      return jsonResponse({
+        template: {
+          template_id: "ref_admin",
+          title: "관리자 샘플",
+          category: "cafe",
+          tags: [],
+          business_types: ["cafe"],
+          ad_formats: ["instagram_feed"],
+          platforms: ["instagram"],
+          style_keywords: [],
+          color_palette: [],
+          popularity_score: 0
+        }
+      });
+    });
+    const app = buildApp({
+      orchestratorBaseUrl: "http://orchestrator",
+      fetchImpl,
+      supabaseUrl: "https://supabase.example.com",
+      supabaseAnonKey: "anon_key"
+    });
+
+    await app.inject({
+      method: "POST",
+      url: "/api/assets/uploads/presign",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: { kind: "reference", filename: "ref.png", mimeType: "image/png", sizeBytes: 3 }
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/assets/uploads/asset_abc/complete",
+      headers: { authorization: "Bearer access_token_1" }
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/admin/references",
+      headers: { authorization: "Bearer access_token_1" },
+      payload: { assetId: "asset_abc", title: "관리자 샘플", category: "cafe", businessTypes: ["cafe"] }
+    });
+
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, "http://orchestrator/api/v1/assets/uploads/presign?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(4, "http://orchestrator/api/v1/assets/uploads/asset_abc/complete?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    expect(fetchImpl).toHaveBeenNthCalledWith(6, "http://orchestrator/api/v1/admin/references?user_id=admin_user_1", expect.objectContaining({ method: "POST" }));
+    await app.close();
+  });
+
   it("proxies archive item saves with normalized payload fields", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse(

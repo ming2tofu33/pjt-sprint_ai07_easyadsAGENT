@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildLoginHref } from "@/lib/auth-navigation";
 import { buildBrandKitHref } from "@/lib/brand-kit-navigation";
-import { brandKitMeta, brandKitProducts, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
+import { brandKitFromServerResponse, brandKitMeta, brandKitProducts, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
+import { getCurrentBrandKit } from "@/lib/api-client";
 import { buildDashboardHref } from "@/lib/dashboard-navigation";
 import { buildMyHref } from "@/lib/my-navigation";
 import { goBackOrPush } from "@/lib/navigation-history";
@@ -34,6 +35,23 @@ export function AccountInfoStep() {
       }
       setUserProfile(profile);
       setAuthState(profile ? "signedIn" : "guest");
+      if (!profile) {
+        return;
+      }
+      // Server brand kit wins over the local fallback for signed-in users.
+      void getCurrentBrandKit({ userId: profile.id })
+        .then((payload) => {
+          if (!isActive) {
+            return;
+          }
+          const serverBrandKit = brandKitFromServerResponse(payload);
+          if (serverBrandKit) {
+            setBrandKit(serverBrandKit);
+          }
+        })
+        .catch(() => {
+          // Keep the local fallback already set above.
+        });
     });
 
     return () => {

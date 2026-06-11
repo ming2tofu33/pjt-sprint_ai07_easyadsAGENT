@@ -464,10 +464,38 @@ def test_execute_generation_job_graph_receives_selected_ui_values(monkeypatch):
     assert executed.status == "done"
     assert received_payload["selected_copy_id"] == "copy_2"
     assert received_payload["selected_channel_id"] == "instagram-story"
+    assert received_payload["selected_ad_format"] == "instagram_story"
     assert received_payload["selected_tone"] == "상큼한"
     assert received_payload["custom_direction"] == "제품을 화면 중앙에 크게"
     assert received_payload["user_custom_headline"] == "오늘만 딸기라떼 반값"
     assert received_payload["user_custom_subcopy"] == "오후 2시부터 5시까지"
+    assert received_payload["current_brief"]["requested_ad_format"] == "instagram_story"
+    assert received_payload["current_brief"]["selected_tone"] == "상큼한"
+    assert received_payload["current_brief"]["custom_direction"] == "제품을 화면 중앙에 크게"
+    assert received_payload["context"]["brand_tone"] == "상큼한"
+    assert received_payload["context"]["extra"]["ad_format"] == "instagram_story"
+
+
+def test_suggest_candidates_create_clears_stale_copy_state():
+    state = {
+        "copy_generation_mode": "suggest_candidates",
+        "selected_copy_id": "copy_1",
+        "copy_selection": {"selected_copy_id": "copy_1"},
+        "marketing_copy": {"headline": "stale"},
+        "copy_candidates": [{"id": "copy_1", "headline": "stale"}],
+        "copywriting_output": {"recommended_candidate_id": "copy_1"},
+        "copy_candidate_origin": "rule_based",
+    }
+    request = GenerationJobCreateRequest(userInput="새 광고", copyGenerationMode="suggest_candidates", selectedCopyId=None)
+
+    execution._clear_stale_suggest_copy_state(state, request)
+
+    assert state["selected_copy_id"] is None
+    assert state["copy_selection"] is None
+    assert state["marketing_copy"] is None
+    assert state["copy_candidates"] == []
+    assert state["copywriting_output"] is None
+    assert state["copy_candidate_origin"] is None
 
 
 def test_execute_generation_job_graph_waiting_user_input(monkeypatch):

@@ -64,6 +64,27 @@ def test_generation_job_get_route_passes_workspace_scope(monkeypatch):
     assert captured == {"job_id": "job_scoped", "workspace_id": WORKSPACE_A, "user_id": "user_a"}
 
 
+def test_generation_job_get_route_resolves_workspace_from_user_header(monkeypatch):
+    # B1: HITL polling only carries the authenticated user (no workspace id).
+    # The route must resolve a workspace instead of raising "workspaceId is required.".
+    captured = {}
+
+    def fake_get_generation_job(job_id, *, workspace_id=None, user_id=None):
+        captured.update({"job_id": job_id, "workspace_id": workspace_id, "user_id": user_id})
+        return None
+
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
+
+    response = TestClient(create_app()).get(
+        "/api/v1/generation-jobs/job_scoped",
+        headers={"X-EasyAds-User-Id": "user_a"},
+    )
+
+    # Memory backend resolves to the shared mem workspace; no 400 workspace_required.
+    assert response.status_code == 404
+    assert captured == {"job_id": "job_scoped", "workspace_id": "mem_workspace", "user_id": "user_a"}
+
+
 def test_generation_job_get_route_returns_404_for_cross_workspace(monkeypatch):
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", lambda job_id, **kwargs: None)
 

@@ -28,7 +28,21 @@ const toneClassByCreativeTone: Record<CreativeTone, string> = {
   peach: "referenceTonecoral"
 };
 
-const filters = ["전체", "생성 중", "저장됨", "즐겨찾기"];
+const filters = ["전체", "생성 중", "저장됨", "즐겨찾기"] as const;
+type ArchiveFilter = (typeof filters)[number];
+
+function matchesArchiveFilter(creative: MockCreative, filter: ArchiveFilter) {
+  switch (filter) {
+    case "생성 중":
+      return creative.status === "generating" || typeof creative.progress === "number";
+    case "저장됨":
+      return creative.status === "saved" || creative.status === "favorite";
+    case "즐겨찾기":
+      return creative.status === "favorite";
+    default:
+      return true;
+  }
+}
 
 function matchesArchiveSearch(creative: MockCreative, query: string) {
   if (!query) {
@@ -64,11 +78,29 @@ export function RecentAdsStep({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeFilter, setActiveFilter] = useState<ArchiveFilter>("전체");
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  function toggleFavorite(id: string) {
+    setFavoriteIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   const filteredGeneratedCreatives = useMemo(
-    () => generatedCreatives.filter((creative) => matchesArchiveSearch(creative, normalizedSearchTerm)),
-    [generatedCreatives, normalizedSearchTerm]
+    () =>
+      generatedCreatives.filter(
+        (creative) =>
+          matchesArchiveFilter(creative, activeFilter) && matchesArchiveSearch(creative, normalizedSearchTerm)
+      ),
+    [generatedCreatives, activeFilter, normalizedSearchTerm]
   );
   const hasActiveSearch = normalizedSearchTerm.length > 0;
 
@@ -130,7 +162,13 @@ export function RecentAdsStep({
 
       <div className={styles.archiveFilterRow} aria-label="보관함 필터">
         {filters.map((filter) => (
-          <button className={filter === "전체" ? styles.categoryActive : undefined} key={filter} type="button">
+          <button
+            aria-pressed={filter === activeFilter}
+            className={filter === activeFilter ? styles.categoryActive : undefined}
+            key={filter}
+            type="button"
+            onClick={() => setActiveFilter(filter)}
+          >
             {filter}
           </button>
         ))}
@@ -148,6 +186,7 @@ export function RecentAdsStep({
                 <ArchiveCard
                   ad={ad}
                   key={ad.id}
+                  isFavorite={favoriteIds.has(ad.id) || ad.status === "favorite"}
                   menuOpen={openMenuId === ad.id}
                   onDelete={() => {
                     closeMenu();
@@ -156,6 +195,7 @@ export function RecentAdsStep({
                   onDownload={() => onDownloadGeneratedAd(ad.title)}
                   onOpen={() => onOpenGeneratedAd(ad.id)}
                   onRegenerate={onRegenerate}
+                  onToggleFavorite={() => toggleFavorite(ad.id)}
                   onToggleMenu={() => setOpenMenuId((current) => (current === ad.id ? null : ad.id))}
                 />
               ))}
@@ -213,19 +253,23 @@ export function RecentAdsStep({
 
 function ArchiveCard({
   ad,
+  isFavorite,
   menuOpen,
   onDelete,
   onDownload,
   onOpen,
   onRegenerate,
+  onToggleFavorite,
   onToggleMenu
 }: {
   ad: MockCreative;
+  isFavorite: boolean;
   menuOpen: boolean;
   onDelete: () => void;
   onDownload?: () => void;
   onOpen: () => void;
   onRegenerate: () => void;
+  onToggleFavorite: () => void;
   onToggleMenu: () => void;
 }) {
   const hasImage = Boolean(ad.imageUrl);
@@ -259,8 +303,13 @@ function ArchiveCard({
         <strong>{ad.title}</strong>
         <p>{ad.channel ?? ad.format} · {ad.date ?? "2024.05.29"}</p>
         <div className={styles.archiveInlineActions}>
-          <button aria-label={`${ad.title} 즐겨찾기`} type="button">
-            <Star size={16} aria-hidden="true" />
+          <button
+            aria-label={`${ad.title} 즐겨찾기`}
+            aria-pressed={isFavorite}
+            type="button"
+            onClick={onToggleFavorite}
+          >
+            <Star size={16} aria-hidden="true" fill={isFavorite ? "currentColor" : "none"} />
           </button>
           <button aria-expanded={menuOpen} aria-haspopup="menu" aria-label={`${ad.title} 더보기`} type="button" onClick={onToggleMenu}>
             <MoreHorizontal size={17} aria-hidden="true" />

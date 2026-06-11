@@ -15,6 +15,24 @@ export type GenerationJobCustomCopyField = {
   maxRecommendedChars?: number | null;
 };
 
+export type ComplianceAction = {
+  id: "use_suggestion" | "edit_manually" | "submit_claim" | "keep_original_draft" | "cancel" | string;
+  label: string;
+  available: boolean;
+};
+
+export type ComplianceFindingFE = {
+  finding_id?: string | null;
+  field?: string | null;
+  matched_text?: string | null;
+  severity?: "warn" | "evidence_required" | "block" | string | null;
+  reason?: string | null;
+  suggested_text?: string | null;
+  legal_basis?: { key?: string; law_name?: string; article?: string; summary?: string }[];
+  evidence_requirements?: string[];
+  hitl_question?: string | null;
+};
+
 export type ParsedGenerationJobInterrupt =
   | {
       type: "option_question";
@@ -31,6 +49,14 @@ export type ParsedGenerationJobInterrupt =
   | {
       type: "custom_copy_input";
       fields: GenerationJobCustomCopyField[];
+      raw: GenerationJobPendingInterrupt;
+    }
+  | {
+      type: "copy_compliance_review";
+      status: string;
+      summary: string;
+      findings: ComplianceFindingFE[];
+      actions: ComplianceAction[];
       raw: GenerationJobPendingInterrupt;
     }
   | {
@@ -158,6 +184,22 @@ export function parseGenerationJobInterrupt(raw: unknown): ParsedGenerationJobIn
     return {
       type: "custom_copy_input",
       fields,
+      raw: interrupt
+    };
+  }
+  if (interrupt.type === "copy_compliance_review") {
+    const findings: ComplianceFindingFE[] = Array.isArray(interrupt.findings)
+      ? (interrupt.findings as unknown[]).filter((f): f is ComplianceFindingFE => Boolean(f) && typeof f === "object")
+      : [];
+    const actions: ComplianceAction[] = Array.isArray(interrupt.actions)
+      ? (interrupt.actions as unknown[]).filter((a): a is ComplianceAction => Boolean(a) && typeof a === "object")
+      : [];
+    return {
+      type: "copy_compliance_review",
+      status: asString(interrupt.status) ?? "evidence_required",
+      summary: asString(interrupt.summary) ?? "광고 규제 확인이 필요합니다.",
+      findings,
+      actions,
       raw: interrupt
     };
   }

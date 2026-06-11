@@ -41,6 +41,85 @@ _EFFECTIVE_RUN_MODE_BY_ENGINE = {
     "flux2_klein_4b": "flux2_klein_4b",
 }
 
+_CHANNEL_TO_AD_FORMAT = {
+    "instagram-feed": "instagram_feed",
+    "instagram-story": "instagram_story",
+    "poster": "poster",
+    "flyer": "flyer",
+}
+_VALID_AD_FORMATS = {"instagram_feed", "instagram_story", "poster", "flyer", "banner", "product_detail"}
+
+
+def _clean_optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _canonical_ad_format(value: Any) -> str | None:
+    normalized = _clean_optional_text(value)
+    if not normalized:
+        return None
+    mapped = _CHANNEL_TO_AD_FORMAT.get(normalized, normalized)
+    if mapped in _VALID_AD_FORMATS:
+        return mapped
+    return mapped.replace("-", "_")
+
+
+def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobCreateRequest) -> None:
+    current_brief = dict(state.get("current_brief") or {})
+    context = dict(state.get("context") or {})
+    context_extra = dict(context.get("extra") or {})
+
+    selected_channel_id = _clean_optional_text(state.get("selected_channel_id") or request.selected_channel_id)
+    selected_ad_format = _canonical_ad_format(
+        request.ad_format
+        or selected_channel_id
+        or state.get("selected_ad_format")
+        or current_brief.get("requested_ad_format")
+        or context_extra.get("ad_format")
+    )
+    selected_tone = _clean_optional_text(state.get("selected_tone") or request.selected_tone)
+    custom_direction = _clean_optional_text(state.get("custom_direction") or request.custom_direction)
+
+    if selected_channel_id:
+        state["selected_channel_id"] = selected_channel_id
+        current_brief["selected_channel_id"] = selected_channel_id
+        context_extra["selected_channel_id"] = selected_channel_id
+    if selected_ad_format:
+        state["selected_ad_format"] = selected_ad_format
+        current_brief["requested_ad_format"] = selected_ad_format
+        context_extra["ad_format"] = selected_ad_format
+        context_extra["selected_ad_format"] = selected_ad_format
+    if selected_tone:
+        state["selected_tone"] = selected_tone
+        current_brief["selected_tone"] = selected_tone
+        context["brand_tone"] = selected_tone
+        context_extra["selected_tone"] = selected_tone
+    if custom_direction:
+        state["custom_direction"] = custom_direction
+        current_brief["custom_direction"] = custom_direction
+        context_extra["custom_direction"] = custom_direction
+
+    if current_brief:
+        state["current_brief"] = current_brief
+    if context_extra or context:
+        context["extra"] = context_extra
+        state["context"] = context
+
+
+def _clear_stale_suggest_copy_state(state: dict[str, Any], request: GenerationJobCreateRequest) -> None:
+    mode = request.copy_generation_mode or state.get("copy_generation_mode")
+    if mode != "suggest_candidates" or _clean_optional_text(request.selected_copy_id):
+        return
+    state["selected_copy_id"] = None
+    state["copy_selection"] = None
+    state["marketing_copy"] = None
+    state["copy_candidates"] = []
+    state["copywriting_output"] = None
+    state["copy_candidate_origin"] = None
+
 
 def _assistant_message_from_interrupt(result_state: dict, fallback: str) -> str:
     interrupts = result_state.get("__interrupt__") or []
@@ -345,6 +424,8 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
 
         if request.selected_reference_template_id is not None:
             initial_state["selected_reference_template_id"] = request.selected_reference_template_id
+        _seed_generation_job_ui_state(initial_state, request)
+        _clear_stale_suggest_copy_state(initial_state, request)
         regeneration_patch = (request.metadata or {}).get("regeneration_patch")
         if regeneration_patch:
             initial_state["regeneration_patch"] = regeneration_patch

@@ -27,6 +27,7 @@ from orchestrator.app.generation_jobs.service import (
     maybe_mark_stale_generation_job_failed,
     maybe_poll_generation_job_from_modal,
     maybe_submit_generation_job_to_modal,
+    resolve_scoped_workspace_id,
     should_route_generation_job_to_modal,
 )
 from orchestrator.app.db import settings as db_settings
@@ -91,7 +92,7 @@ def _reference_template_not_found(template_id: str) -> None:
 def _chat_thread_error(exc: ChatThreadServiceError) -> None:
     if exc.error_code == "chat_thread_not_found":
         status_code = 404
-    elif exc.error_code in {"chat_thread_archived", "chat_thread_has_active_job"}:
+    elif exc.error_code in {"chat_thread_archived", "chat_thread_has_active_job", "thread_limit_reached"}:
         status_code = 409
     else:
         status_code = 400
@@ -150,6 +151,7 @@ def get_generation_job_route(
     from orchestrator.app.generation_jobs.errors import GenerationJobError
     try:
         resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
+        resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
         job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     except GenerationJobError as exc:
         raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)
@@ -172,6 +174,7 @@ def answer_generation_job_route(
     from orchestrator.app.generation_jobs.errors import GenerationJobError
     try:
         resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
+        resolved_workspace_id = resolve_scoped_workspace_id(resolved_workspace_id, resolved_user_id)
         job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     except GenerationJobError as exc:
         raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)

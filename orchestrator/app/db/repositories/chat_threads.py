@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from orchestrator.app.chat_threads.errors import ChatThreadLimitReachedError
+from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.json import jsonb_param
 from orchestrator.app.db.session import db_transaction
 
@@ -28,8 +30,17 @@ def create_chat_thread(
     connection: object | None = None,
 ) -> dict:
     public_thread_id = f"thread_{uuid4().hex}"
+    max_threads = db_settings.get_max_threads_per_workspace()
     with db_transaction(connection) as conn:
         with conn.cursor() as cur:
+            # Serialize per-workspace creation so concurrent inserts can't both
+            # pass the count check. The advisory lock is released at tx end.
+            cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (str(workspace_id),))
+            existing = count_chat_threads(workspace_id, include_archived=False, connection=conn)
+            if existing >= max_threads:
+                raise ChatThreadLimitReachedError(
+                    f"Workspace already has the maximum of {max_threads} chat threads."
+                )
             cur.execute(
                 """
                 insert into chat_threads (

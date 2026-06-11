@@ -116,6 +116,12 @@ const CHAT_FLOW_BACK_TARGET_STORAGE_KEY = "easyads_chat_flow_back_target_v1";
 const GENERATION_JOB_POLL_INTERVAL_MS = 1800;
 const GENERATION_JOB_MAX_POLLS = 80;
 const CHAT_FLOW_BACK_TARGETS = new Set(["home", "studio", "reference", "ads", "my", "brand", "photo"]);
+const AD_FORMAT_BY_CHANNEL_ID: Record<string, string> = {
+  "instagram-feed": "instagram_feed",
+  "instagram-story": "instagram_story",
+  poster: "poster",
+  flyer: "flyer"
+};
 
 function mergeBriefRefinement(existingDirection: string, refinement: string): string {
   return [existingDirection.trim(), refinement.trim()].filter(Boolean).join("\n");
@@ -240,20 +246,38 @@ function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function toCanonicalAdFormat(value: string | null | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  return AD_FORMAT_BY_CHANNEL_ID[value] ?? value;
+}
+
 function buildGenerationJobUserInput(state: ChatFlowState) {
   return state.userInput;
 }
 
 function buildGenerationJobBriefMetadata(state: ChatFlowState) {
   const brief = buildBrief(state);
+  const isDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
   return {
     purpose: brief.purpose,
     item: brief.item,
-    copy: brief.copy,
+    copy: isDeferredCopySelection ? null : brief.copy,
+    copy_status: isDeferredCopySelection ? "pending_graph_interrupt" : "resolved",
     tone: brief.tone,
     channel: brief.channel,
     image_direction: brief.imageDirection
   };
+}
+
+function buildDeferredCopyBrief(state: ChatFlowState, customDirection = state.customDirection): ChatBrief {
+  return buildBrief({
+    ...state,
+    brief: null,
+    selectedCopyId: "",
+    customDirection
+  });
 }
 
 function toGenerationJobThreadId(threadId: string | null | undefined): string | undefined {
@@ -980,7 +1004,18 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           .map(archiveItemToCreative)
           .filter((creative): creative is MockCreative => Boolean(creative));
 
-        setGeneratedCreatives(archivedCreatives.length > 0 ? archivedCreatives : sessionCreatives);
+        // Show both local (this-device) and server-saved results instead of
+        // discarding either; dedupe by id (session ids are `generated-<jobId>`,
+        // archive ids are adIds, so overlap is rare but guarded).
+        const seen = new Set<string>();
+        const merged = [...sessionCreatives, ...archivedCreatives].filter((creative) => {
+          if (seen.has(creative.id)) {
+            return false;
+          }
+          seen.add(creative.id);
+          return true;
+        });
+        setGeneratedCreatives(merged);
       })
       .catch(() => {
         if (isActive) {
@@ -1512,7 +1547,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       copyCandidates: state.copyCandidates,
       copyCandidateSource: state.copyCandidateSource,
       copyCandidateOrigin: state.copyCandidateOrigin,
-      selectedCopyId: state.selectedCopyId,
+      selectedCopyId: state.copyGenerationMode === "suggest_candidates" ? "" : state.selectedCopyId,
       selectedChannelId: state.selectedChannelId,
       selectedTone: state.selectedTone,
       customDirection,
@@ -1537,6 +1572,17 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     dispatch({ type: "beginBriefRequest" });
+
+    if (state.copyGenerationMode === "suggest_candidates") {
+      const brief = buildDeferredCopyBrief(state);
+      const snapshot = buildChatFlowSnapshot(brief);
+      writeChatFlowSnapshot(snapshot);
+      clearChatTurnSnapshot();
+      dispatch({ type: "backendBriefSucceeded", brief });
+      dispatch({ type: "continueToBrief" });
+      return;
+    }
+
     try {
       const response = await createChatBrief({
         jobId: state.jobId,
@@ -1575,6 +1621,16 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     const nextCustomDirection = mergeBriefRefinement(state.customDirection, refinement);
     dispatch({ type: "submitBriefRefinement", message: refinement, customDirection: nextCustomDirection });
+
+    if (state.copyGenerationMode === "suggest_candidates") {
+      const brief = buildDeferredCopyBrief(state, nextCustomDirection);
+      const snapshot = buildChatFlowSnapshot(brief, nextCustomDirection);
+      writeChatFlowSnapshot(snapshot);
+      clearChatTurnSnapshot();
+      dispatch({ type: "briefRefinementSucceeded", brief });
+      dispatch({ type: "continueToBrief" });
+      return;
+    }
 
     try {
       const response = await createChatBrief({
@@ -1737,7 +1793,16 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     try {
       const shouldShowFinalGenerationProgress = isClientFinalImageGenerationJob(state.generationJob);
-      const response = await answerGenerationJob(jobId, { selectedCopyId: input.selectedCopyId, displayText: input.label });
+      const response = await answerGenerationJob(jobId, {
+        selectedCopyId: input.selectedCopyId,
+        displayText: input.label,
+        payload: {
+          selected_channel_id: state.selectedChannelId || undefined,
+          selected_ad_format: toCanonicalAdFormat(state.selectedChannelId),
+          selected_tone: state.selectedTone || undefined,
+          custom_direction: state.customDirection || undefined
+        }
+      });
       if (shouldShowFinalGenerationProgress) {
         setGenerationStage("generating");
         lastPrimedStageRef.current = "generating";
@@ -1793,18 +1858,55 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
   }
 
+  async function handleComplianceAction(action: { id: string; label: string; available: boolean }) {
+    const jobId = state.generationJob?.job_id;
+    if (!jobId) {
+      return;
+    }
+
+    if (action.id === "cancel") {
+      setGenerationStage("brief");
+      dispatch({ type: "back" });
+      return;
+    }
+
+    dispatch({ type: "submitGenerationJobAnswer", label: action.label });
+
+    try {
+      const shouldShowFinalGenerationProgress = isClientFinalImageGenerationJob(state.generationJob);
+      const response = await answerGenerationJob(jobId, {
+        action: action.id,
+        displayText: action.label
+      });
+      if (shouldShowFinalGenerationProgress) {
+        setGenerationStage("generating");
+        lastPrimedStageRef.current = "generating";
+        await pollGenerationJobUntilDoneOrQuestion(response.job);
+        return;
+      }
+      setGenerationStage("jobQuestion");
+      lastPrimedStageRef.current = "start";
+      await pollGenerationJobUntilDoneOrQuestion(response.job, createInitialChatIntakeFromState());
+    } catch (error) {
+      dispatch({
+        type: "generationJobFailed",
+        message: error instanceof Error ? error.message : "선택을 보내지 못했어요. 잠시 후 다시 시도해주세요."
+      });
+      setGenerationStage("jobQuestion");
+    }
+  }
+
   async function handleOpenGeneratedResult() {
     const engine = state.selectedImageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
     const engineOption = getGenerationEngineOption(engine);
     const backendEngine = resolveGenerationEnginePreference(engine);
+    const isDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
     const selectedCopy = state.copyCandidates.find((copy) => copy.id === state.selectedCopyId) ?? null;
-    const selectedCopySubcopy = [selectedCopy?.subcopy, selectedCopy?.cta].filter(Boolean).join(" · ");
-    const selectedBriefCopy = state.brief?.copy.trim() || "";
-    const fallbackSelectedHeadline = selectedCopy?.headline || selectedBriefCopy;
-    const shouldLockSelectedCopy = state.copyGenerationMode === "suggest_candidates" && Boolean(fallbackSelectedHeadline);
-    const finalCopyGenerationMode = shouldLockSelectedCopy ? "custom_input" : state.copyGenerationMode;
-    const finalUserCustomHeadline = state.userCustomHeadline || (shouldLockSelectedCopy ? fallbackSelectedHeadline : undefined);
-    const finalUserCustomSubcopy = state.userCustomSubcopy || (shouldLockSelectedCopy && selectedCopySubcopy ? selectedCopySubcopy : undefined);
+    const finalCopyGenerationMode = state.copyGenerationMode;
+    const finalSelectedCopyId = isDeferredCopySelection ? null : state.selectedCopyId || undefined;
+    const finalUserCustomHeadline = isDeferredCopySelection ? undefined : state.userCustomHeadline || undefined;
+    const finalUserCustomSubcopy = isDeferredCopySelection ? undefined : state.userCustomSubcopy || undefined;
+    const finalAdFormat = toCanonicalAdFormat(state.selectedChannelId) ?? "instagram_feed";
     const selectedReferenceTemplateId = state.selectedReferenceTemplateId || readGenerationDraftReferenceTemplateId() || undefined;
     const sourceImagePath = state.sourceImagePath || undefined;
     const referenceImagePath = state.referenceImagePath || undefined;
@@ -1822,12 +1924,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         threadId: toGenerationJobThreadId(state.threadId),
         entryMode: state.entryMode,
         copyGenerationMode: finalCopyGenerationMode,
-        adFormat: state.selectedChannelId,
+        adFormat: finalAdFormat,
         runMode: resolveGenerationRunMode(engine),
         selectedReferenceTemplateId,
         sourceImagePath,
         referenceImagePath,
-        selectedCopyId: state.selectedCopyId || undefined,
+        selectedCopyId: finalSelectedCopyId,
         selectedChannelId: state.selectedChannelId,
         selectedTone: state.selectedTone || undefined,
         customDirection: state.customDirection,
@@ -1841,8 +1943,11 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           requested_engine: backendEngine,
           t2i_engine: backendEngine,
           selected_engine_label: engineOption.modelName,
-          selected_copy_id: state.selectedCopyId || null,
+          selected_copy_id: finalSelectedCopyId ?? null,
+          legacy_preview_copy_id: isDeferredCopySelection ? state.selectedCopyId || null : null,
+          legacy_preview_copy_headline: isDeferredCopySelection ? selectedCopy?.headline ?? null : null,
           selected_channel_id: state.selectedChannelId,
+          selected_ad_format: finalAdFormat,
           selected_tone: state.selectedTone || null,
           copy_generation_mode: finalCopyGenerationMode,
           original_copy_generation_mode: state.copyGenerationMode,
@@ -2194,6 +2299,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onDelete={state.threadId || threadIdParam ? handleRequestCurrentThreadDelete : undefined}
           onSelectCopyCandidate={handleSelectGenerationJobCopyCandidate}
           onSubmitCustomCopy={handleSubmitGenerationJobCustomCopy}
+          onComplianceAction={handleComplianceAction}
         />
       ) : null}
 

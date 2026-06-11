@@ -86,6 +86,7 @@ class ReferenceTemplateSelection(BaseModel):
     template_id: str
     resolved_template: ReferenceTemplate | None = None
     reference_image_path: str | None = None
+    reference_asset_id: str | None = None
     style_profile_hint: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)

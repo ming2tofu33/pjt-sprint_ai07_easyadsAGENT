@@ -1,4 +1,4 @@
-﻿"""Conditional routers for the LLM/LangGraph intake mini graph."""
+"""Conditional routers for the LLM/LangGraph intake mini graph."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ def route_by_entry_mode(state: MarketingState) -> str:
 
 
 def route_after_input_assets(state: MarketingState) -> str:
-    if state.get("source_image_path"):
+    if state.get("source_asset_id") or state.get("source_image_path"):
         return "product_preprocess"
-    if state.get("reference_image_path"):
+    if state.get("reference_asset_id") or state.get("reference_image_path"):
         return "reference_preprocess"
     return "validator"
 
@@ -31,7 +31,7 @@ def route_after_reference_template_resolve(state: MarketingState) -> str:
 
 
 def route_after_product_preprocess(state: MarketingState) -> str:
-    if state.get("reference_image_path") and not state.get("reference_style_profile"):
+    if (state.get("reference_asset_id") or state.get("reference_image_path")) and not state.get("reference_style_profile"):
         return "reference_preprocess"
     return "validator"
 
@@ -138,6 +138,26 @@ def route_after_ocr_gate(state: MarketingState) -> str:
     if decision == "retry_layout":
         return "ocr_layout_revision"
     return "continue"
+
+
+def route_after_compliance_gate(state: MarketingState) -> str:
+    """pass / warn → copy_spec_parser로 투명 통과.
+    evidence_required / blocked → interrupt 발생."""
+    status = state.get("copy_compliance_status")
+    if status in {None, "pass", "warn", "rewritten_by_user_choice"}:
+        return "copy_spec_parser"
+    return "copy_compliance_interrupt"
+
+
+def route_after_compliance_resolution(state: MarketingState) -> str:
+    """사용자 결정 후 다음 노드 결정."""
+    gate = state.get("copy_compliance_gate") or {}
+    decision = gate.get("user_decision")
+    if decision == "cancel":
+        return END
+    if decision == "edit_manually":
+        return "custom_copy_input"
+    return "copy_spec_parser"
 
 
 route_after_validator = route_after_validator_for_intake
