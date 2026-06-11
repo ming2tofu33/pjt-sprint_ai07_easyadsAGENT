@@ -115,26 +115,27 @@ export function buildResultReviewItems(payload: ResultArtifactPayload | null | u
 
   const compliance = payload.compliance;
   const complianceStatus = safeString(compliance?.status);
+  const complianceSummary = safeString(compliance?.summary);
   if (complianceStatus && COMPLIANCE_BLOCKED_STATUSES.has(complianceStatus)) {
     items.push({
       id: "compliance",
       label: "광고 표현 확인",
       status: "fail",
-      message: compliance.summary || "광고 표현 기준을 통과하지 못했어요."
+      message: complianceSummary || "광고 표현 기준을 통과하지 못했어요."
     });
   } else if (complianceStatus && COMPLIANCE_WARNING_STATUSES.has(complianceStatus)) {
     items.push({
       id: "compliance",
       label: "광고 표현 확인",
       status: "warn",
-      message: compliance.summary || "일부 표현은 사용 전에 한 번 더 확인해주세요."
+      message: complianceSummary || "일부 표현은 사용 전에 한 번 더 확인해주세요."
     });
   } else if (complianceStatus === "pass") {
     items.push({
       id: "compliance",
       label: "광고 표현 확인",
       status: "pass",
-      message: compliance.summary || "광고 표현 기준을 통과했어요."
+      message: complianceSummary || "광고 표현 기준을 통과했어요."
     });
   }
 
