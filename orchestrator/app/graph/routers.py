@@ -36,6 +36,13 @@ def route_after_product_preprocess(state: MarketingState) -> str:
     return "validator"
 
 
+def route_after_product_understanding(state: MarketingState) -> str:
+    status = state.get("product_understanding_status")
+    if status in {"completed", "clarification_required"}:
+        return "validator"
+    return "result"
+
+
 def route_after_validator_for_intake(state: MarketingState) -> str:
     if state.get("missing_fields"):
         return "options"
