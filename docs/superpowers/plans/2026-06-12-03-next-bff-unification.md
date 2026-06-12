@@ -182,7 +182,7 @@ git commit -m "feat(bff): extend Next orchestrator proxy"
 **Files:**
 - Create: `apps/web/app/api/_schemas/generate.ts`
 
-- [ ] **Step 1: Create schema file**
+- [x] **Step 1: Create schema file**
 
 Create `apps/web/app/api/_schemas/generate.ts`:
 
@@ -282,7 +282,7 @@ export const archiveItemUpdateSchema = z.object({
 });
 ```
 
-- [ ] **Step 2: Run typecheck**
+- [x] **Step 2: Run typecheck**
 
 Run:
 
@@ -292,7 +292,7 @@ cd apps/web && npx tsc --noEmit
 
 Expected: PASS.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add apps/web/app/api/_schemas/generate.ts
