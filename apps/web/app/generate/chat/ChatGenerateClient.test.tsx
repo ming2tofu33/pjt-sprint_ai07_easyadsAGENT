@@ -2887,6 +2887,7 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="studio" />);
 
     await waitFor(() => expect(screen.getByText("딸기라떼 신메뉴 광고")).toBeTruthy());
+    expect(api.listChatThreads).toHaveBeenCalledWith({ limit: 5, includeTotal: false });
     fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
 
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?threadId=thread_strawberry");

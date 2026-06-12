@@ -1014,11 +1014,12 @@ export interface ChatThreadStateGetResponse {
   meta?: Record<string, unknown>;
 }
 
-export async function listChatThreads(params: { limit?: number; offset?: number } = {}): Promise<ChatThreadListResponse> {
+export async function listChatThreads(params: { limit?: number; offset?: number; includeTotal?: boolean } = {}): Promise<ChatThreadListResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   return getJson<ChatThreadListResponse>("/api/chat-threads", {
     limit: params.limit,
-    offset: params.offset
+    offset: params.offset,
+    include_total: params.includeTotal === false ? false : undefined
   }, authHeaders);
 }
 
