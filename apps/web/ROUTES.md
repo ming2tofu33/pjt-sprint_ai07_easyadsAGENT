@@ -19,8 +19,8 @@
 | Route | Screen | Notes |
 | --- | --- | --- |
 | `/studio` | 스튜디오 진입 | 제작 방식 선택 |
-| `/reference` | 샘플 갤러리 | 스타일 기반 제작 진입 |
-| `/reference/empty` | 샘플 빈 상태 | 예외 상태 UI |
+| `/reference` | 레퍼런스 갤러리 | API/R2에 등록된 스타일 기반 제작 진입 |
+| `/reference/empty` | 레퍼런스 빈 상태 | 예외 상태 UI |
 | `/ads` | 보관함 | 저장된 광고 시안 목록 |
 | `/ads/empty` | 보관함 빈 상태 | 예외 상태 UI |
 | `/brand` | 브랜드 홈 | 브랜드 파일 진입 |
@@ -32,17 +32,17 @@
 
 | Route | Screen | Notes |
 | --- | --- | --- |
-| `/generate/chat` | 대화로 시작하기 | BFF 연결 + fallback |
-| `/generate/chat/generating` | 광고 생성 중 | mock 진행 화면 |
-| `/generate/chat/complete` | 생성 완료 | mock 광고 결과 |
+| `/generate/chat` | 대화로 시작하기 | Next BFF를 통해 orchestrator 생성 플로우 연결 |
+| `/generate/chat/generating` | 광고 생성 중 | GenerationJob 진행 상태와 보관함 연결 상태 표시 |
+| `/generate/chat/complete` | 생성 완료 | 완성 결과의 보관함 확인/재요청 흐름 |
 | `/generate/chat/similar` | 비슷한 스타일 더보기 | 완료 화면과 왕복 |
 | `/generate/chat/failed` | 생성 실패 | 예외 상태 UI |
-| `/generate/photo` | 내 사진으로 만들기 | 사진 업로드형 mock 플로우 |
+| `/generate/photo` | 내 사진으로 만들기 | 업로드 이미지를 생성 요청에 연결하는 사진 기반 플로우 |
 | `/generate/photo/upload-failed` | 사진 업로드 실패 | 예외 상태 UI |
 
 ## Reference Style Flow
 
-동적 라우트의 mock id는 `lib/mock-dashboard-data.ts`에 정의된 샘플 id를 사용합니다.
+동적 라우트의 id는 레퍼런스 API가 내려주는 `templateId`를 우선 사용합니다. 아래 값은 로컬 QA용 예시입니다.
 
 | Route | Screen | Example |
 | --- | --- | --- |
@@ -51,7 +51,7 @@
 | `/reference/[creativeId]/similar` | 유사 스타일 추천 | `/reference/ref-strawberry-poster/similar` |
 | `/reference/[creativeId]/start` | 이 스타일로 시작하기 | `/reference/ref-strawberry-poster/start` |
 
-현재 확인 가능한 mock id:
+로컬 QA용 예시 id:
 
 ```text
 ref-strawberry-poster
@@ -62,7 +62,7 @@ ref-spring-sale
 
 ## Ads Save Flow
 
-동적 라우트의 mock id는 `lib/mock-dashboard-data.ts`에 정의된 광고 결과 id를 사용합니다.
+동적 라우트의 id는 보관함 API가 내려주는 광고 결과 id를 우선 사용합니다. 아래 값은 로컬 QA용 예시입니다.
 
 | Route | Screen | Example |
 | --- | --- | --- |
@@ -70,7 +70,7 @@ ref-spring-sale
 | `/ads/[creativeId]/save` | 저장 방식 선택 | `/ads/result-1/save` |
 | `/ads/[creativeId]/saved` | 저장 완료 | `/ads/result-1/saved` |
 
-현재 확인 가능한 mock id:
+로컬 QA용 예시 id:
 
 ```text
 result-1

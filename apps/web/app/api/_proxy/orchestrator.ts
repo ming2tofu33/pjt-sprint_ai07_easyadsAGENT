@@ -1,9 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 
-type ProxyMethod = "GET" | "POST" | "PATCH";
+type ProxyMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type PrincipalQueryKeys = {
+  userKey: string;
+  accountKey?: string;
+};
+type BodySchemaResult = { success: true; data?: unknown } | { success: false; error?: unknown };
+export type BodySchema = {
+  safeParse: (body: unknown) => BodySchemaResult;
+};
 type ProxyOptions = {
   injectVerifiedUserId?: boolean;
+  injectVerifiedUserIdSnakeBody?: boolean;
   injectVerifiedUserIdHeader?: boolean;
+  injectVerifiedUserIdQuery?: PrincipalQueryKeys;
+  requireNonGuestUser?: boolean;
+  bodySchema?: BodySchema;
+  successStatus?: number;
 };
 type ProxyError = Error & {
   statusCode?: number;
@@ -18,12 +31,24 @@ function getOrchestratorBaseUrl(): string {
   return process.env.ORCHESTRATOR_BASE_URL || "http://localhost:8000";
 }
 
-function buildTargetUrl(path: string, request: NextRequest): string {
+function buildTargetUrl(path: string, request: NextRequest): URL {
   const target = new URL(path, getOrchestratorBaseUrl());
   request.nextUrl.searchParams.forEach((value, key) => {
     target.searchParams.append(key, value);
   });
-  return target.toString();
+  return target;
+}
+
+function buildInternalHeaders(contentType?: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (contentType) {
+    headers["content-type"] = contentType;
+  }
+  const internalSecret = process.env.EASYADS_INTERNAL_API_SECRET;
+  if (internalSecret) {
+    headers["X-EasyAds-Internal-Secret"] = internalSecret;
+  }
+  return headers;
 }
 
 function proxyError(message: string, statusCode: number, errorCode: string): ProxyError {
@@ -81,6 +106,66 @@ async function resolveSupabasePrincipal(request: NextRequest): Promise<SupabaseP
   };
 }
 
+function unavailableResponse() {
+  return NextResponse.json(
+    {
+      success: false,
+      error_code: "orchestrator_unavailable",
+      message: "Orchestrator API is unavailable.",
+      detail: "Failed to reach the orchestrator backend from the BFF proxy."
+    },
+    { status: 502 }
+  );
+}
+
+function invalidRequestResponse(detail: unknown) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: "invalid_request",
+      error_code: "invalid_request",
+      message: "Invalid request body.",
+      detail
+    },
+    { status: 400 }
+  );
+}
+
+function injectPrincipalBodyFields(
+  payload: Record<string, unknown>,
+  principal: SupabasePrincipal | null,
+  useSnakeCase: boolean
+) {
+  delete payload.user_id;
+  delete payload.userId;
+  delete payload.account_type;
+  delete payload.accountType;
+  if (!principal) {
+    return;
+  }
+  if (useSnakeCase) {
+    payload.user_id = principal.userId;
+    payload.account_type = principal.accountType;
+    return;
+  }
+  payload.userId = principal.userId;
+  payload.accountType = principal.accountType;
+}
+
+function applyPrincipalQueryParams(targetUrl: URL, keys: PrincipalQueryKeys, principal: SupabasePrincipal | null) {
+  targetUrl.searchParams.delete(keys.userKey);
+  if (keys.accountKey) {
+    targetUrl.searchParams.delete(keys.accountKey);
+  }
+  if (!principal) {
+    return;
+  }
+  targetUrl.searchParams.set(keys.userKey, principal.userId);
+  if (keys.accountKey) {
+    targetUrl.searchParams.set(keys.accountKey, principal.accountType);
+  }
+}
+
 export async function proxyOrchestratorJson(
   request: NextRequest,
   method: ProxyMethod,
@@ -88,7 +173,7 @@ export async function proxyOrchestratorJson(
   bodyTransform?: (body: unknown) => unknown,
   options: ProxyOptions = {}
 ) {
-  const headers: Record<string, string> = { "content-type": "application/json" };
+  const headers = buildInternalHeaders("application/json");
   const init: RequestInit = {
     method,
     headers,
@@ -102,6 +187,13 @@ export async function proxyOrchestratorJson(
       return verifiedPrincipalPromise;
     };
 
+    if (options.requireNonGuestUser) {
+      const principal = await getVerifiedPrincipal();
+      if (!principal || principal.accountType === "guest") {
+        throw proxyError("Admin session required.", 401, "admin_session_required");
+      }
+    }
+
     if (options.injectVerifiedUserIdHeader) {
       const principal = await getVerifiedPrincipal();
       if (principal) {
@@ -111,30 +203,57 @@ export async function proxyOrchestratorJson(
     }
     if (method !== "GET") {
       const body = await request.text();
-      if (body) {
-        const rawPayload = bodyTransform ? bodyTransform(JSON.parse(body)) : JSON.parse(body);
-        const payload =
-          rawPayload && typeof rawPayload === "object" && !Array.isArray(rawPayload)
-            ? { ...(rawPayload as Record<string, unknown>) }
-            : rawPayload;
-        if (options.injectVerifiedUserId && payload && typeof payload === "object" && !Array.isArray(payload)) {
-          delete (payload as Record<string, unknown>).user_id;
-          delete (payload as Record<string, unknown>).userId;
-          delete (payload as Record<string, unknown>).account_type;
-          delete (payload as Record<string, unknown>).accountType;
-          const principal = await getVerifiedPrincipal();
-          if (principal) {
-            (payload as Record<string, unknown>).userId = principal.userId;
-            (payload as Record<string, unknown>).accountType = principal.accountType;
+      if (body || options.bodySchema) {
+        let parsedBody: unknown = undefined;
+        if (body) {
+          try {
+            parsedBody = JSON.parse(body);
+          } catch (error) {
+            return invalidRequestResponse({
+              reason: "malformed_json",
+              message: error instanceof Error ? error.message : "Request body must be valid JSON."
+            });
           }
+        }
+        const rawPayload = bodyTransform && body ? bodyTransform(parsedBody) : parsedBody;
+        const schemaResult = options.bodySchema?.safeParse(rawPayload);
+        if (schemaResult && !schemaResult.success) {
+          return invalidRequestResponse(schemaResult.error);
+        }
+        const validatedPayload =
+          schemaResult?.success && Object.prototype.hasOwnProperty.call(schemaResult, "data")
+            ? schemaResult.data
+            : rawPayload;
+        const payload =
+          validatedPayload && typeof validatedPayload === "object" && !Array.isArray(validatedPayload)
+            ? { ...(validatedPayload as Record<string, unknown>) }
+            : validatedPayload;
+        if (
+          (options.injectVerifiedUserId || options.injectVerifiedUserIdSnakeBody) &&
+          payload &&
+          typeof payload === "object" &&
+          !Array.isArray(payload)
+        ) {
+          const principal = await getVerifiedPrincipal();
+          injectPrincipalBodyFields(
+            payload as Record<string, unknown>,
+            principal,
+            Boolean(options.injectVerifiedUserIdSnakeBody)
+          );
         }
         init.body = JSON.stringify(payload);
       }
     }
 
-    const response = await fetch(buildTargetUrl(path, request), init);
+    const targetUrl = buildTargetUrl(path, request);
+    if (options.injectVerifiedUserIdQuery) {
+      const principal = await getVerifiedPrincipal();
+      applyPrincipalQueryParams(targetUrl, options.injectVerifiedUserIdQuery, principal);
+    }
+
+    const response = await fetch(targetUrl.toString(), init);
     const payload = await response.json().catch(() => ({}));
-    return NextResponse.json(payload, { status: response.status });
+    return NextResponse.json(payload, { status: response.ok && options.successStatus ? options.successStatus : response.status });
   } catch (error) {
     const statusCode = (error as ProxyError).statusCode;
     const errorCode = (error as ProxyError).errorCode;
@@ -148,14 +267,52 @@ export async function proxyOrchestratorJson(
         { status: statusCode }
       );
     }
-    return NextResponse.json(
-      {
-        success: false,
-        error_code: "orchestrator_unavailable",
-        message: "Orchestrator API is unavailable.",
-        detail: "Failed to reach the orchestrator backend from the BFF proxy."
-      },
-      { status: 502 }
-    );
+    return unavailableResponse();
+  }
+}
+
+export async function proxyOrchestratorBinary(request: NextRequest, path: string, cacheControl?: string) {
+  const headers = buildInternalHeaders();
+  const targetUrl = buildTargetUrl(path, request);
+
+  try {
+    const response = await fetch(targetUrl.toString(), {
+      method: "GET",
+      headers,
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      const contentType = response.headers.get("content-type");
+      const detail = contentType?.includes("application/json")
+        ? await response.json().catch(() => ({ content_type: contentType }))
+        : { content_type: contentType || null };
+      return NextResponse.json(
+        {
+          success: false,
+          error_code: "orchestrator_binary_proxy_error",
+          message: "Orchestrator binary request failed.",
+          detail
+        },
+        { status: response.status }
+      );
+    }
+
+    const responseHeaders = new Headers();
+    const contentType = response.headers.get("content-type");
+    const responseCacheControl = cacheControl || response.headers.get("cache-control");
+    if (contentType) {
+      responseHeaders.set("content-type", contentType);
+    }
+    if (responseCacheControl) {
+      responseHeaders.set("cache-control", responseCacheControl);
+    }
+
+    return new Response(await response.arrayBuffer(), {
+      status: response.status,
+      headers: responseHeaders
+    });
+  } catch {
+    return unavailableResponse();
   }
 }
