@@ -52,6 +52,8 @@ dependencies = [
     "psycopg[binary]==3.3.4",
     "boto3==1.43.22",
     "modal==1.4.3",
+    "langgraph-checkpoint-postgres>=3.1.0",
+    "psycopg-pool>=3.3.1",
 ]
 
 [dependency-groups]
