@@ -85,6 +85,26 @@ export function clearJsonSnapshot(key: string): void {
   }
 }
 
+function readStringSnapshot(key: string): string | null {
+  const storage = safeSessionStorage();
+  if (!storage) {
+    return null;
+  }
+  return storage.getItem(key);
+}
+
+function writeStringSnapshot(key: string, value: string): void {
+  const storage = safeSessionStorage();
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(key, value);
+  } catch {
+    // Navigation should still work if sessionStorage is unavailable.
+  }
+}
+
 export function readChatFlowSnapshot(): ChatFlowSnapshot | null {
   return readJsonSnapshot<ChatFlowSnapshot>(CHAT_FLOW_SNAPSHOT_STORAGE_KEY);
 }
@@ -126,7 +146,7 @@ export function isChatFlowBackTarget(value: string | null | undefined): value is
 }
 
 export function readChatFlowBackTarget(): DashboardSurface | null {
-  const raw = readJsonSnapshot<string>(CHAT_FLOW_BACK_TARGET_STORAGE_KEY);
+  const raw = readStringSnapshot(CHAT_FLOW_BACK_TARGET_STORAGE_KEY);
   return isChatFlowBackTarget(raw) ? raw : null;
 }
 
@@ -134,5 +154,5 @@ export function writeChatFlowBackTarget(surface: DashboardSurface): void {
   if (!isChatFlowBackTarget(surface)) {
     return;
   }
-  writeJsonSnapshot(CHAT_FLOW_BACK_TARGET_STORAGE_KEY, surface);
+  writeStringSnapshot(CHAT_FLOW_BACK_TARGET_STORAGE_KEY, surface);
 }

@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  CHAT_FLOW_BACK_TARGET_STORAGE_KEY,
   CHAT_TURN_SNAPSHOT_STORAGE_KEY,
   clearJsonSnapshot,
+  readChatFlowBackTarget,
   readJsonSnapshot,
+  writeChatFlowBackTarget,
   writeJsonSnapshot
 } from "./chat-snapshots";
 
@@ -32,5 +35,18 @@ describe("chat-snapshots", () => {
     clearJsonSnapshot(CHAT_TURN_SNAPSHOT_STORAGE_KEY);
 
     expect(readJsonSnapshot(CHAT_TURN_SNAPSHOT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("keeps the chat flow back target in the legacy raw string format", () => {
+    writeChatFlowBackTarget("studio");
+
+    expect(window.sessionStorage.getItem(CHAT_FLOW_BACK_TARGET_STORAGE_KEY)).toBe("studio");
+    expect(readChatFlowBackTarget()).toBe("studio");
+  });
+
+  it("reads existing raw chat flow back targets", () => {
+    window.sessionStorage.setItem(CHAT_FLOW_BACK_TARGET_STORAGE_KEY, "reference");
+
+    expect(readChatFlowBackTarget()).toBe("reference");
   });
 });
