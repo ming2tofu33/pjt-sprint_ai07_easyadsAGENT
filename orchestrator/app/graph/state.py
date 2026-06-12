@@ -150,6 +150,12 @@ class MarketingState(TypedDict, total=False):
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
     text_style_spec: dict[str, Any] | TextStyleSpec | None
     copy_visual_intent: dict[str, Any] | None
+    product_copy_context: dict[str, Any] | None
+    copy_presence_plan: dict[str, Any] | None
+    language_policy: dict[str, Any] | None
+    interaction_copy_plan: dict[str, Any] | None
+    minimal_copy_candidates: list[dict[str, Any]]
+    selected_minimal_copy_candidate_id: str | None
     typography_art_direction: dict[str, Any] | None
     font_catalog_summary: list[dict[str, Any]]
     adaptive_typography_report: dict[str, Any] | None
@@ -349,6 +355,12 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "text_layout_spec": None,
         "text_style_spec": None,
         "copy_visual_intent": None,
+        "product_copy_context": None,
+        "copy_presence_plan": None,
+        "language_policy": None,
+        "interaction_copy_plan": None,
+        "minimal_copy_candidates": [],
+        "selected_minimal_copy_candidate_id": None,
         "image_layout_analysis": None,
         "layout_candidate_scores": [],
         "layout_refinement_result": None,
