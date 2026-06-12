@@ -286,7 +286,7 @@ cd apps/web && npx vitest run app/generate/chat/useChatRouteRestore.test.tsx app
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/web/app/generate/chat/useChatRouteRestore.ts apps/web/app/generate/chat/useChatRouteRestore.test.tsx apps/web/app/generate/chat/ChatGenerateClient.tsx
@@ -300,7 +300,7 @@ git commit -m "refactor(chat): isolate route restoration guard"
 - Modify: `apps/web/app/ads/page.tsx`
 - Test: `apps/web/app/generate/AdsSurfacePage.test.tsx`
 
-- [ ] **Step 1: Write surface test**
+- [x] **Step 1: Write surface test**
 
 Create `apps/web/app/generate/AdsSurfacePage.test.tsx`:
 
@@ -318,7 +318,7 @@ describe("AdsSurfacePage", () => {
 });
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -328,23 +328,23 @@ cd apps/web && npx vitest run app/generate/AdsSurfacePage.test.tsx
 
 Expected: FAIL because the page component does not exist.
 
-- [ ] **Step 3: Implement a thin page wrapper**
+- [x] **Step 3: Implement a thin page wrapper**
 
 Create `apps/web/app/generate/AdsSurfacePage.tsx`:
 
 ```tsx
-"use client";
+import React from "react";
 
-import ChatGenerateClient from "./chat/ChatGenerateClient";
+import { ChatGeneratePage } from "./ChatGeneratePage";
 
 export function AdsSurfacePage() {
-  return <ChatGenerateClient initialSurface="ads" />;
+  return <ChatGeneratePage initialSurface="ads" />;
 }
 ```
 
 This first commit intentionally keeps behavior identical. Later commits move the ads branch internals out of `ChatGenerateClient`.
 
-- [ ] **Step 4: Wire the route**
+- [x] **Step 4: Wire the route**
 
 Change `apps/web/app/ads/page.tsx`:
 
@@ -356,7 +356,7 @@ export default function AdsPage() {
 }
 ```
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
