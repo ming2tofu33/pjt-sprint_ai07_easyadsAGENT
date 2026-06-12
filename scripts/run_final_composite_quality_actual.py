@@ -79,6 +79,7 @@ def main() -> int:
     parser.add_argument("--reuse-text-only-background-as-source", action="store_true")
     parser.add_argument("--max-openai-calls", type=int, default=6)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--render-all-variants", action="store_true")
     args = parser.parse_args()
 
     env_report = load_env_file(args.env_file)
@@ -504,7 +505,7 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
                 },
             }
 
-        def evaluate_final_composite(self, *, request: Any, image_path: str, copy: dict[str, Any], model: str) -> dict[str, Any]:
+        def evaluate_final_composite(self, *, request: Any, image_path: str, copy: dict[str, Any], model: str, evaluation_context: dict[str, Any] | None = None) -> dict[str, Any]:
             started = time.perf_counter()
             encoded = base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
             response = self.client.responses.create(
@@ -513,7 +514,17 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "input_text", "text": "Evaluate the final ad composite. Return JSON only with product_match_score, copy_product_grounding_score, copy_readability_score, copy_visual_fit_score, product_obstruction_score, wrong_domain_detected, unsupported_claim_detected, commercial_viability_score, failure_reasons, recommended_action, confidence, and detected_text."},
+                            {
+                                "type": "input_text",
+                                "text": (
+                                    "Evaluate the final ad composite. Return JSON only with product_match_score, "
+                                    "copy_product_grounding_score, copy_readability_score, copy_visual_fit_score, "
+                                    "product_obstruction_score, wrong_domain_detected, unsupported_claim_detected, "
+                                    "commercial_viability_score, failure_reasons, recommended_action, confidence, and detected_text. "
+                                    f"Evaluation context: {json.dumps(evaluation_context or {}, ensure_ascii=False)}. "
+                                    "Respect copy_presence_plan and selected_variant_type. For image_only, do not fail for missing ad copy, CTA, branding, headline hierarchy, or expected OCR text."
+                                ),
+                            },
                             {"type": "input_image", "image_url": f"data:image/png;base64,{encoded}"},
                         ],
                     }
@@ -539,6 +550,7 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
         vision_adapter=OpenAIAdapter(client),
         flux_engine=get_t2i_engine("flux2_klein_4b"),
         call_budget=ActualCallBudget(max_openai_calls=args.max_openai_calls, max_flux_generations=args.max_flux_generations),
+        render_all_variants=bool(getattr(args, "render_all_variants", False)),
     )
 
 

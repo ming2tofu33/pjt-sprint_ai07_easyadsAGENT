@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
+from orchestrator.app.llm.product_copy_context_service import build_dynamic_product_copy_context
 from scripts import _actual_creative_pipeline as pipeline
 
 
@@ -234,7 +235,7 @@ def test_image_only_visual_signal_allows_no_text_plan():
         "unknown_fields": [],
     }
 
-    context = pipeline.build_dynamic_product_copy_context(
+    context = build_dynamic_product_copy_context(
         {},
         {"product_name": "Cheesecake", "normalized_product_type": "cheesecake", "broad_category": "food_and_beverage", "category_path": ["food_and_beverage", "cheesecake"]},
         evidence,
@@ -243,6 +244,29 @@ def test_image_only_visual_signal_allows_no_text_plan():
     assert context.copy_presence_plan.mode == "image_only"
     assert context.copy_presence_plan.allowed_roles == []
     assert context.copy_presence_plan.no_text_allowed is True
+
+
+def test_minimal_copy_candidates_skip_missing_support_and_closing():
+    data = pipeline._hydrate_copy_payload(
+        {
+            "product_understanding": {
+                "product_name": "딸기라떼",
+                "normalized_product_type": "strawberry_latte",
+                "broad_category": "food_and_beverage",
+                "category_path": ["food_and_beverage", "strawberry_latte"],
+            },
+            "product_copy_context": {},
+            "selected_copy": {"headline": "새로 만나는 딸기라떼", "supporting_copy": None, "closing_copy": None, "cta": None},
+        },
+        {"input_mode": "text_only", "explicit_product_mentions": ["딸기라떼"], "explicit_user_facts": []},
+    )
+
+    variants = data["minimal_copy_candidates"]
+
+    assert [item["variant_type"] for item in variants] == ["image_only", "headline_only", "headline_plus_closing"]
+    for item in variants:
+        actual_roles = sum(1 for key in ("headline", "supporting_copy", "closing_copy", "action_cta") if item.get(key))
+        assert item["text_block_count"] == actual_roles
 
 
 def test_vlm_validation_accepts_string_detected_text():
