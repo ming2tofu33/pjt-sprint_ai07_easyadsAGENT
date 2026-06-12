@@ -406,7 +406,7 @@ async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams
   return payload as TResponse;
 }
 
-function compactPayload(payload: Record<string, unknown>): Record<string, unknown> {
+function compactPayload(payload: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined && value !== null));
 }
 
@@ -838,7 +838,7 @@ export function updateBrandKit(brandKitId: string, payload: BrandKitPayload): Pr
 
 export async function createGenerationJob(payload: GenerationJobCreateInput): Promise<GenerationJobResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
-  return postJson<GenerationJobResponse>("/api/generation-jobs", payload, authHeaders);
+  return postJson<GenerationJobResponse>("/api/generation-jobs", compactPayload(payload), authHeaders);
 }
 
 export async function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
@@ -1014,11 +1014,12 @@ export interface ChatThreadStateGetResponse {
   meta?: Record<string, unknown>;
 }
 
-export async function listChatThreads(params: { limit?: number; offset?: number } = {}): Promise<ChatThreadListResponse> {
+export async function listChatThreads(params: { limit?: number; offset?: number; includeTotal?: boolean } = {}): Promise<ChatThreadListResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   return getJson<ChatThreadListResponse>("/api/chat-threads", {
     limit: params.limit,
-    offset: params.offset
+    offset: params.offset,
+    include_total: params.includeTotal === false ? false : undefined
   }, authHeaders);
 }
 

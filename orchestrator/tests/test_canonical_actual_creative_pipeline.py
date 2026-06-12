@@ -112,6 +112,14 @@ def test_run_actual_creative_case_uses_shared_provider_flux_and_renderer(monkeyp
     assert result.status == "completed"
     assert calls == {"normalize": 1, "copy": 1, "vision": 1, "flux": 1, "renderer": 1}
     assert result.mock_or_fixture_count == 0
+    assert [item["variant_type"] for item in result.minimal_copy_candidates] == [
+        "image_only",
+        "headline_only",
+        "headline_plus_support",
+        "headline_plus_closing",
+    ]
+    assert [item["status"] for item in result.variant_results].count("selected") == 1
+    assert any(item["status"] == "not_rendered" for item in result.variant_results)
 
 
 def test_renderer_rejects_missing_product_context(tmp_path):
@@ -159,6 +167,68 @@ def test_validate_actual_result_rejects_missing_detected_text(tmp_path):
 
     assert checked.status == "failed"
     assert "ocr detected_text unavailable" in checked.failure_reasons
+
+
+def test_validate_actual_result_allows_image_only_missing_copy_feedback(tmp_path):
+    background = tmp_path / "background.png"
+    Image.new("RGB", (32, 32), "#ffffff").save(background)
+    result = pipeline.ActualCreativeResult(
+        case_id="case",
+        input_mode="image_only",
+        status="completed",
+        copy_presence_plan={"mode": "image_only"},
+        background_image_path=str(background),
+        final_composite_path=str(background),
+        background_sha256=pipeline._sha256(background),
+        final_composite_sha256=pipeline._sha256(background),
+        copy_provider_metadata={"provider": "openai", "model": "gpt-5.4", "fallback_used": False, "token_usage": {"input_tokens": 1, "output_tokens": 1}},
+        vision_provider_metadata={"provider": "openai", "model": "gpt-5.4", "fallback_used": False, "token_usage": {"input_tokens": 1, "output_tokens": 1}},
+        renderer_metadata={"rendered_slot_count": 0},
+        vlm_result={
+            "detected_text": [],
+            "failure_reasons": ["No advertising copy or branding present", "Product identity is not explicitly labeled", "Minimal commercial context"],
+            "recommended_action": "add_copy",
+            "product_obstruction_score": 0.1,
+            "provider_metadata": {"provider": "openai", "model": "gpt-5.4", "fallback_used": False, "token_usage": {"input_tokens": 1, "output_tokens": 1}},
+        },
+    )
+
+    checked = pipeline.validate_actual_result(result, SimpleNamespace(evaluated_image_sha256=pipeline._sha256(background)))
+
+    assert checked.status == "completed"
+    assert checked.failure_reasons == []
+
+
+def test_validate_actual_result_ignores_false_positive_exact_text_failure(tmp_path):
+    background = tmp_path / "background.png"
+    final = tmp_path / "final.png"
+    Image.new("RGB", (32, 32), "#ffffff").save(background)
+    Image.new("RGB", (32, 32), "#000000").save(final)
+    result = pipeline.ActualCreativeResult(
+        case_id="case",
+        input_mode="text_only",
+        status="completed",
+        selected_copy={"headline": "구수하게 끓여낸 한 그릇", "variant_type": "headline_only"},
+        background_image_path=str(background),
+        final_composite_path=str(final),
+        background_sha256=pipeline._sha256(background),
+        final_composite_sha256=pipeline._sha256(final),
+        copy_provider_metadata={"provider": "openai", "model": "gpt-5.4", "fallback_used": False, "token_usage": {"input_tokens": 1, "output_tokens": 1}},
+        flux_metadata={"engine": "flux2_klein_4b"},
+        renderer_metadata={"rendered_slot_count": 1},
+        vlm_result={
+            "detected_text": ["구수하게 끓여낸 한 그릇"],
+            "failure_reasons": ["Headline text does not exactly match expected text: detected '구수하게 끓여낸 한 그릇' vs expected '구수하게 끓여낸 한 그릇'."],
+            "recommended_action": "approve",
+            "product_obstruction_score": 0.1,
+            "provider_metadata": {"provider": "openai", "model": "gpt-5.4", "fallback_used": False, "token_usage": {"input_tokens": 1, "output_tokens": 1}},
+        },
+    )
+
+    checked = pipeline.validate_actual_result(result, SimpleNamespace(evaluated_image_sha256=pipeline._sha256(final)))
+
+    assert checked.status == "completed"
+    assert checked.failure_reasons == []
 
 
 def test_call_budget_blocks_provider_before_call(tmp_path):

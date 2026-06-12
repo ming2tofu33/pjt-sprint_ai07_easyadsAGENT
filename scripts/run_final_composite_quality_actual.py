@@ -40,7 +40,7 @@ from orchestrator.app.quality_gate.final_composite_service import evaluate_final
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from scripts._actual_env import load_env_file
-from scripts._actual_creative_pipeline import ActualCallBudget, ActualCreativeInput, ActualCreativeRuntime, run_actual_creative_case
+from scripts._actual_creative_pipeline import ActualCallBudget, ActualCreativeInput, ActualCreativeRuntime, run_actual_creative_case, run_input_evidence_normalizer, run_product_understanding
 
 
 REQUIRED_ACTUAL_ENV = {
@@ -59,7 +59,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--actual", action="store_true")
     parser.add_argument("--env-file")
-    parser.add_argument("--case", default="macaron_collection_001")
+    parser.add_argument("--case", default="open_domain_product_001")
     parser.add_argument("--seed", type=int, default=62)
     parser.add_argument("--force-flux-generation", action="store_true")
     parser.add_argument("--copy-model", default="gpt-5.4")
@@ -71,10 +71,15 @@ def main() -> int:
     parser.add_argument("--output-dir", default="data/outputs/final_composite_quality_actual_gpt54")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--canonical-smoke", action="store_true")
+    parser.add_argument("--product-understanding-benchmark", action="store_true")
+    parser.add_argument("--composite-benchmark", action="store_true")
+    parser.add_argument("--benchmark-manifest")
+    parser.add_argument("--stop-after", choices=["product_understanding"])
     parser.add_argument("--source-image")
     parser.add_argument("--reuse-text-only-background-as-source", action="store_true")
     parser.add_argument("--max-openai-calls", type=int, default=6)
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--render-all-variants", action="store_true")
     args = parser.parse_args()
 
     env_report = load_env_file(args.env_file)
@@ -98,6 +103,16 @@ def main() -> int:
         _write_summary(output_dir, summary)
         return 0
 
+    if args.product_understanding_benchmark:
+        summary.update(run_product_understanding_benchmark(args=args, output_dir=output_dir))
+        _write_summary(output_dir, summary)
+        return 0
+
+    if args.composite_benchmark:
+        summary.update(run_composite_benchmark(args=args, output_dir=output_dir))
+        _write_summary(output_dir, summary)
+        return 0
+
     case_dir = output_dir / args.case
     case_dir.mkdir(parents=True, exist_ok=True)
     result = run_actual_case(args=args, output_dir=output_dir, case_dir=case_dir)
@@ -113,17 +128,15 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
     runtime = _canonical_runtime(args)
     cases = [
         ActualCreativeInput(
-            case_id="cheesecake_text_only",
+            case_id="product_text_only",
             input_mode="text_only",
-            user_text="치즈케이크를 홍보하고 싶어",
+            user_text="Create a natural product introduction ad.",
             placement="instagram_feed_static",
             promotion_goal="brand_awareness",
             seed=81,
             output_dir=str(output_dir),
         )
     ]
-    cases[0] = cases[0].model_copy(update={"user_text": "치즈케이크를 홍보하고 싶어"})
-    cases[0] = cases[0].model_copy(update={"user_text": "\uce58\uc988\ucf00\uc774\ud06c\ub97c \ud64d\ubcf4\ud558\uace0 \uc2f6\uc5b4"})
     runs = [_run_or_resume_canonical_case(cases[0], runtime, resume=bool(args.resume))]
     source_image = args.source_image if _is_clean_background_source(args.source_image) else None
     if (
@@ -139,7 +152,7 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
         cases.extend(
             [
                 ActualCreativeInput(
-                    case_id="cheesecake_image_only",
+                    case_id="product_image_only",
                     input_mode="image_only",
                     source_image_path=source_image,
                     source_provenance="actual_generated_reuse" if source_image == runs[0].get("background_image_path") else "user_uploaded",
@@ -149,20 +162,18 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
                     output_dir=str(output_dir),
                 ),
                 ActualCreativeInput(
-                    case_id="cheesecake_text_and_image",
+                    case_id="product_text_and_image",
                     input_mode="text_and_image",
-                    user_text="카페 신메뉴 치즈케이크를 인스타 피드로 홍보하고 싶어",
+                    user_text="Create an Instagram feed ad centered on the product in the image.",
                     source_image_path=source_image,
                     source_provenance="actual_generated_reuse" if source_image == runs[0].get("background_image_path") else "user_uploaded",
                     placement="instagram_feed_static",
-                    promotion_goal="menu_discovery",
+                    promotion_goal="product_introduction",
                     seed=83,
                     output_dir=str(output_dir),
                 ),
             ]
         )
-        cases[-1] = cases[-1].model_copy(update={"user_text": "카페 신메뉴 치즈케이크를 인스타 피드로 홍보하고 싶어"})
-        cases[-1] = cases[-1].model_copy(update={"user_text": "\uce74\ud398 \uc2e0\uba54\ub274 \uce58\uc988\ucf00\uc774\ud06c\ub97c \uc778\uc2a4\ud0c0 \ud53c\ub4dc\ub85c \ud64d\ubcf4\ud558\uace0 \uc2f6\uc5b4"})
         for case in cases[1:]:
             runs.append(_run_or_resume_canonical_case(case, runtime, resume=bool(args.resume)))
 
@@ -214,6 +225,151 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
     }
 
 
+def run_product_understanding_benchmark(*, args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
+    if not args.benchmark_manifest:
+        return {"status": "blocked", "missing_requirements": ["--benchmark-manifest"], "runs": []}
+    manifest = json.loads(Path(args.benchmark_manifest).read_text(encoding="utf-8"))
+    runtime = _canonical_runtime(args)
+    results: list[dict[str, Any]] = []
+    for case in manifest.get("cases", []):
+        case_dir = output_dir / "cases" / str(case["case_id"])
+        case_dir.mkdir(parents=True, exist_ok=True)
+        source_image_path = case.get("source_image_path")
+        synthetic_count = 0
+        if source_image_path and not Path(source_image_path).exists():
+            results.append({"case_id": case.get("case_id"), "status": "failed", "error_code": "missing_actual_source_image"})
+            continue
+        try:
+            request = ActualCreativeInput(
+                case_id=str(case["case_id"]),
+                input_mode=case.get("input_mode") or "text_only",
+                user_text=case.get("user_text"),
+                source_image_path=source_image_path,
+                placement=case.get("placement") or "instagram_feed_static",
+                promotion_goal=case.get("promotion_goal") or "brand_awareness",
+                seed=int(case.get("seed") or args.seed),
+                output_dir=str(output_dir / "cases"),
+                source_provenance="benchmark_manifest",
+            )
+            bundle = run_input_evidence_normalizer(request, runtime=runtime, case_dir=case_dir)
+            evidence = bundle.model_dump()
+            product = run_product_understanding(request, runtime, evidence)
+            result = _product_understanding_case_result(case, evidence, product)
+            result["status"] = "completed" if _product_understanding_case_passes(result) else "failed"
+            (case_dir / "input_evidence.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
+            (case_dir / "product_understanding.json").write_text(json.dumps(product, ensure_ascii=False, indent=2), encoding="utf-8")
+            (case_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+            results.append(result)
+        except Exception as exc:
+            results.append({"case_id": case.get("case_id"), "status": "failed", "error_message": str(exc)[:500]})
+    (output_dir / "benchmark_results.json").write_text(json.dumps({"cases": results}, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output_dir / "category_consistency_report.json").write_text(
+        json.dumps({"cases": [{"case_id": item.get("case_id"), "broad_category": item.get("broad_category"), "category_path": item.get("category_path"), "status": item.get("status")} for item in results]}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "evidence_integrity_report.json").write_text(
+        json.dumps({"cases": [{"case_id": item.get("case_id"), "evidence_integrity_ok": item.get("evidence_integrity_ok"), "status": item.get("status")} for item in results]}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    (output_dir / "unsupported_claim_report.json").write_text(
+        json.dumps({"cases": [{"case_id": item.get("case_id"), "unsupported_claim_categories": item.get("unsupported_claim_categories", []), "status": item.get("status")} for item in results]}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return {
+        "status": "completed" if results and all(item.get("status") == "completed" for item in results) else "partial",
+        "runs": results,
+        "actual_api_calls": any((item.get("provider_metadata") or {}).get("provider") == "openai" for item in results),
+        "image_generation_performed": False,
+        "actual_source_image_count": sum(1 for item in manifest.get("cases", []) if item.get("source_image_path") and Path(str(item.get("source_image_path"))).exists()),
+        "synthetic_source_image_count": 0,
+        "mock_or_fixture_count": 0,
+        "stop_after": args.stop_after,
+    }
+
+
+def run_composite_benchmark(*, args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
+    if not args.benchmark_manifest:
+        return {"status": "blocked", "missing_requirements": ["--benchmark-manifest"], "runs": []}
+    manifest = json.loads(Path(args.benchmark_manifest).read_text(encoding="utf-8"))
+    runtime = _canonical_runtime(args)
+    runs: list[dict[str, Any]] = []
+    synthetic_source_count = 0
+    for case in manifest.get("cases", []):
+        source = case.get("source_image_path")
+        if case.get("input_mode") in {"image_only", "text_and_image"} and (not source or not Path(source).exists()):
+            runs.append({"case_id": case.get("case_id"), "status": "failed", "error_code": "missing_actual_source_image"})
+            continue
+        request = ActualCreativeInput(
+            case_id=str(case["case_id"]),
+            input_mode=case.get("input_mode") or "text_only",
+            user_text=case.get("user_text"),
+            source_image_path=source,
+            placement=case.get("placement") or "instagram_feed_static",
+            promotion_goal=case.get("promotion_goal") or "brand_awareness",
+            seed=int(case.get("seed") or args.seed),
+            output_dir=str(output_dir),
+            source_provenance=case.get("source_provenance") or ("user_uploaded" if source else None),
+        )
+        runs.append(run_actual_creative_case(request, runtime).model_dump())
+    comparison_path = _build_canonical_comparison(output_dir, runs)
+    return {
+        "schema_version": "open_domain_product_understanding_composite_v1",
+        "status": _canonical_summary_status(runs),
+        "runs": runs,
+        "actual_api_calls": any(_has_provider_usage(run.get("copy_provider_metadata")) or _has_provider_usage((run.get("vlm_result") or {}).get("provider_metadata") or run.get("vlm_result")) for run in runs),
+        "image_generation_performed": any(bool(run.get("flux_metadata")) for run in runs),
+        "mock_or_fixture_count": sum(int(run.get("mock_or_fixture_count") or 0) for run in runs),
+        "synthetic_source_image_count": synthetic_source_count,
+        "comparison_sheet_path": str(comparison_path) if comparison_path else None,
+    }
+
+
+def _product_understanding_case_result(case: dict[str, Any], evidence: dict[str, Any], product: dict[str, Any]) -> dict[str, Any]:
+    category_path = product.get("category_path") or []
+    expected_prefix = case.get("expected_category_prefix") or []
+    evidence_ids = {
+        item.get("evidence_id")
+        for group in ("explicit_user_facts", "visual_observations", "asset_metadata_evidence", "brand_profile_evidence", "reference_evidence")
+        for item in evidence.get(group, [])
+    }
+    name_ids = product.get("product_name_evidence_ids") or []
+    return {
+        "case_id": case.get("case_id"),
+        "input_mode": case.get("input_mode"),
+        "product_name": product.get("product_name"),
+        "normalized_product_type": product.get("normalized_product_type"),
+        "broad_category": product.get("broad_category"),
+        "category_path": category_path,
+        "unsupported_claim_categories": product.get("unsupported_claim_categories") or [],
+        "provider_metadata": product.get("provider_metadata") or {},
+        "schema_valid": product.get("schema_version") == "product_understanding_v1",
+        "broad_category_ok": product.get("broad_category") == case.get("expected_broad_category"),
+        "category_prefix_ok": category_path[: len(expected_prefix)] == expected_prefix,
+        "evidence_integrity_ok": all(item in evidence_ids for item in name_ids),
+        "identity_ok": bool(product.get("product_name")) and product.get("product_name") != "unknown product" and bool(name_ids),
+        "confidence_ok": float(product.get("confidence") or 0.0) >= float(case.get("min_confidence") or 0.70),
+        "review_ok": not product.get("manual_review_required") and not product.get("clarification_required"),
+        "normalized_type_ok": product.get("normalized_product_type") is None or any(ch.isalpha() for ch in str(product.get("normalized_product_type"))),
+        "category_depth_ok": len(category_path) >= (2 if product.get("normalized_product_type") else 1),
+    }
+
+
+def _product_understanding_case_passes(result: dict[str, Any]) -> bool:
+    return all(
+        bool(result.get(key))
+        for key in (
+            "schema_valid",
+            "broad_category_ok",
+            "category_prefix_ok",
+            "evidence_integrity_ok",
+            "identity_ok",
+            "confidence_ok",
+            "review_ok",
+            "normalized_type_ok",
+            "category_depth_ok",
+        )
+    )
+
 def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
     from openai import OpenAI  # type: ignore
     from orchestrator.app.t2i.engines.registry import get_t2i_engine
@@ -260,22 +416,52 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
             payload["provider_metadata"] = {"vision": metadata} if request.input_mode in {"image_only", "text_and_image"} else {"normalizer": metadata}
             return payload
 
-        def generate_product_copy(self, *, request: Any, evidence: dict[str, Any], model: str) -> dict[str, Any]:
+        def understand_product(self, *, request: Any, evidence: dict[str, Any], model: str) -> dict[str, Any]:
             started = time.perf_counter()
             prompt = (
-                "Return JSON only with product_understanding, product_copy_context, copy_candidates, "
-                "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review. "
-                "product_understanding must include product_name, broad_category, explicit_product_candidate, normalized_product_candidate, product_identity_confidence. "
-                "product_copy_context must include brand_tone. Generate grounded advertising copy only from the supplied InputEvidenceBundle. "
-                "Do not use source image bytes or raw visual assumptions outside the bundle. "
+                "Return JSON only with product_understanding. You receive a canonical InputEvidenceBundle. "
+                "Generate ProductUnderstanding only. Do not generate advertising copy, headline, CTA, slogan, offer, or visual style. "
+                "Keep verified facts separate from visual observations and inferences. Every verified fact must reference an evidence item that already exists in InputEvidenceBundle. "
+                "Do not invent price, discount, ingredients, origin, manufacturing method, certification, efficacy, health effects, beauty effects, numeric claims, scarcity, or social proof. "
+                "normalized_product_type must be a valid English snake_case product type when the product identity is known, including for non-English product names. "
+                "category_path is open vocabulary. broad_category must be one of the provided top-level taxonomy values. "
+                "If an explicit product mention exists and there is no identity conflict, classify it into the top-level taxonomy using general category knowledge. "
+                "Do not return broad_category='other' for a clearly named food, beverage, beauty, fashion, home, technology, education, hospitality, automotive, or local service product. "
+                "If evidence is insufficient, preserve unknown fields and mark clarification/manual review instead of guessing. "
                 f"Request metadata: {request.model_dump_json()} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
+            )
+            response = self.client.responses.create(model=model, input=prompt, temperature=0)
+            payload = json.loads(getattr(response, "output_text", "") or "{}")
+            return {
+                "product_understanding": payload.get("product_understanding") or payload,
+                "provider_metadata": {
+                    "provider": "openai",
+                    "model": model,
+                    "fallback_used": False,
+                    "task": "product_understanding_v1",
+                    "token_usage": _usage_dict(response),
+                    "latency_ms": int((time.perf_counter() - started) * 1000),
+                },
+            }
+
+        def generate_product_copy(self, *, request: Any, evidence: dict[str, Any], product_understanding: dict[str, Any] | None = None, model: str) -> dict[str, Any]:
+            started = time.perf_counter()
+            prompt = (
+                "Return JSON only with product_copy_context, copy_candidates, "
+                "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review. "
+                "Do not generate or revise ProductUnderstanding. product_copy_context must include brand_tone, message_territories, language_policy, copy_presence_plan, interaction_plan, supported_claims, unsupported_claims. "
+                "Generate grounded advertising copy only from the supplied InputEvidenceBundle and ProductUnderstanding. Prefer visual-first minimal copy: image-only, headline-only, headline+support, or headline+closing. "
+                "Do not create generic action CTAs unless a verified destination exists. Hard block Learn More, Discover More, Shop Now, 지금 확인하기, 자세히 보기, 메뉴 보기, 지금 만나보세요 when no destination is verified. "
+                "For Korean local food/menu products, use Korean headline by default and do not romanize product names unless explicitly requested. "
+                "Do not use source image bytes or raw visual assumptions outside the bundle. "
+                f"Request metadata: {request.model_dump_json()} ProductUnderstanding: {json.dumps(product_understanding or {}, ensure_ascii=False)} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
             )
             response = self.client.responses.create(model=model, input=prompt, temperature=0)
             payload = json.loads(getattr(response, "output_text", "") or "{}")
             candidates = payload.get("copy_candidates") or []
             selected = next((item for item in candidates if item.get("id") == payload.get("recommended_candidate_id")), None) or (candidates[0] if candidates else None)
             return {
-                "product_understanding": payload.get("product_understanding") or {},
+                "product_understanding": product_understanding or {},
                 "product_copy_context": payload.get("product_copy_context") or {},
                 "copy_candidates": candidates,
                 "recommended_candidate_id": payload.get("recommended_candidate_id"),
@@ -319,7 +505,7 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
                 },
             }
 
-        def evaluate_final_composite(self, *, request: Any, image_path: str, copy: dict[str, Any], model: str) -> dict[str, Any]:
+        def evaluate_final_composite(self, *, request: Any, image_path: str, copy: dict[str, Any], model: str, evaluation_context: dict[str, Any] | None = None) -> dict[str, Any]:
             started = time.perf_counter()
             encoded = base64.b64encode(Path(image_path).read_bytes()).decode("ascii")
             response = self.client.responses.create(
@@ -328,7 +514,17 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "input_text", "text": "Evaluate the final ad composite. Return JSON only with product_match_score, copy_product_grounding_score, copy_readability_score, copy_visual_fit_score, product_obstruction_score, wrong_domain_detected, unsupported_claim_detected, commercial_viability_score, failure_reasons, recommended_action, confidence, and detected_text."},
+                            {
+                                "type": "input_text",
+                                "text": (
+                                    "Evaluate the final ad composite. Return JSON only with product_match_score, "
+                                    "copy_product_grounding_score, copy_readability_score, copy_visual_fit_score, "
+                                    "product_obstruction_score, wrong_domain_detected, unsupported_claim_detected, "
+                                    "commercial_viability_score, failure_reasons, recommended_action, confidence, and detected_text. "
+                                    f"Evaluation context: {json.dumps(evaluation_context or {}, ensure_ascii=False)}. "
+                                    "Respect copy_presence_plan and selected_variant_type. For image_only, do not fail for missing ad copy, CTA, branding, headline hierarchy, or expected OCR text."
+                                ),
+                            },
                             {"type": "input_image", "image_url": f"data:image/png;base64,{encoded}"},
                         ],
                     }
@@ -354,6 +550,7 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
         vision_adapter=OpenAIAdapter(client),
         flux_engine=get_t2i_engine("flux2_klein_4b"),
         call_budget=ActualCallBudget(max_openai_calls=args.max_openai_calls, max_flux_generations=args.max_flux_generations),
+        render_all_variants=bool(getattr(args, "render_all_variants", False)),
     )
 
 
@@ -555,8 +752,8 @@ def generate_gpt54_copy_candidates(args: argparse.Namespace) -> dict[str, Any]:
 
         client = OpenAI(timeout=90)
         prompt = (
-            "Return JSON only. Generate exactly 3 ad copy candidates for macaron_collection_001. "
-            "Context: dessert cafe, French macaron collection, menu discovery, premium/editorial/warm. "
+            "Return JSON only. Generate exactly 3 ad copy candidates for the supplied open-domain product. "
+            "Context: product introduction, visual-first commercial post, premium/editorial/warm. "
             "Angles: product-first, emotion-first, editorial/collection-first. English headline allowed; Korean body and CTA preferred; CTA optional. "
             "Avoid AI/smart/consulting/expert/technology/service innovation/best/freshest/free/price/guaranteed claims. "
             "Schema: {\"copy_candidates\":[{\"id\":\"copy_1\",\"angle\":\"...\",\"headline\":\"...\",\"subcopy\":\"...\",\"cta\":\"\",\"grounding\":{},\"score\":{}}],\"selected_copy\":{\"headline\":\"...\",\"subcopy\":\"...\",\"cta\":\"...\"},\"selection_reason\":\"...\"}"
@@ -585,8 +782,8 @@ def generate_flux2_background(args: argparse.Namespace, case_dir: Path) -> dict[
     try:
         engine = get_t2i_engine("flux2_klein_4b")
         prompt = (
-            "Premium editorial commercial photography background for a French macaron collection, "
-            "clean blank negative space for later copy overlay, warm dessert cafe mood, no text, no signage, no logo."
+            "Premium editorial commercial photography background for an open-domain product advertisement, "
+            "clean blank negative space for later copy overlay, warm commercial mood, no text, no signage, no logo."
         )
         output = engine.generate(
             T2IGenerationInput(
@@ -630,9 +827,9 @@ def build_initial_state(*, args: argparse.Namespace, copy_result: dict[str, Any]
         "thread_id": f"final-composite-{args.case}",
         "user_plan": "premium",
         "context": {
-            "business_type": "dessert cafe",
-            "item_or_service": "French macaron collection",
-            "promotion_goal": "menu_discovery",
+            "business_type": "open_domain_product",
+            "item_or_service": "product",
+            "promotion_goal": "product_introduction",
             "brand_tone": "premium/editorial/warm",
         },
         "ad_format_spec": {"ad_format": "instagram_feed", "width": 1024, "height": 1024},
@@ -809,14 +1006,18 @@ def build_comparison(case_dir: Path, initial_path: Path, repaired_path: Path | N
 
 
 def _missing_actual_requirements(args: argparse.Namespace) -> list[str]:
-    missing = [name for name, expected in REQUIRED_ACTUAL_ENV.items() if str(os.getenv(name, "")).strip().lower() != expected.lower()]
+    required_env = dict(REQUIRED_ACTUAL_ENV)
+    if getattr(args, "product_understanding_benchmark", False) and getattr(args, "stop_after", None) == "product_understanding":
+        required_env.pop("EASYADS_FLUX2_KLEIN_ACTUAL", None)
+        required_env.pop("EASYADS_ENABLE_FLUX2_KLEIN_LOCAL", None)
+    missing = [name for name, expected in required_env.items() if str(os.getenv(name, "")).strip().lower() != expected.lower()]
     if not os.getenv("OPENAI_API_KEY"):
         missing.append("OPENAI_API_KEY")
     if args.copy_model != "gpt-5.4":
         missing.append("copy_model_must_be_gpt-5.4")
     if args.vlm_model != "gpt-5.4":
         missing.append("vlm_model_must_be_gpt-5.4")
-    if not args.force_flux_generation and not getattr(args, "canonical_smoke", False):
+    if not args.force_flux_generation and not getattr(args, "canonical_smoke", False) and not (getattr(args, "product_understanding_benchmark", False) and getattr(args, "stop_after", None) == "product_understanding"):
         missing.append("force_flux_generation_required")
     return missing
 

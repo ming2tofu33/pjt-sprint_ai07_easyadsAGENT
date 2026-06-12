@@ -661,6 +661,10 @@
   line-height: 1.45;
 }
 
+.copyModeGrid + .primaryButton {
+  margin-top: 32px;
+}
+
 @media (max-width: 360px) {
   .copyModeGrid {
     gap: 12px;
@@ -1438,6 +1442,10 @@
 .copyCardSelected {
   border-color: var(--color-purple);
   background: var(--color-purple-soft);
+}
+
+.copyCandidateManualButton {
+  margin-top: 10px;
 }
 
 .copyNumber {

@@ -37,6 +37,24 @@ from orchestrator.app.reference_catalog.service import get_reference_template
 
 router = APIRouter()
 
+# run_mode aliases -> t2i engine. Non-t2i modes (mock_immediate, graph_job,
+# modal routing) are handled explicitly in create_generation_job_route.
+T2I_RUN_MODE_TO_ENGINE: dict[str, str] = {
+    "gpt_image_1_actual": "gpt_image_1",
+    "gpt_image_1_smoke": "gpt_image_1",
+    "gpt_image_2_actual": "gpt_image_2",
+    "gpt_image_2_smoke": "gpt_image_2",
+    "sd35_local": "sd35_large",
+    "sd35_local_smoke": "sd35_large",
+    "sd35_large_real": "sd35_large",
+    "flux2_klein_4b": "flux2_klein_4b",
+    "flux_local": "flux2_klein_4b",
+    "flux_local_smoke": "flux2_klein_4b",
+    "flux_schnell_real": "flux2_klein_4b",
+    "flux": "flux2_klein_4b",
+    "flux_smoke": "flux2_klein_4b",
+}
+
 
 @dataclass(frozen=True)
 class RequestPrincipal:
@@ -145,16 +163,8 @@ def create_generation_job_route(
         job = execute_generation_job_immediate(job.job_id, request)
     elif request.run_mode == "graph_job":
         background_tasks.add_task(execute_generation_job_graph, job.job_id, request)
-    elif request.run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke"}:
-        job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_1")
-    elif request.run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
-        job = execute_generation_job_t2i(job.job_id, request, engine_name="gpt_image_2")
-    elif request.run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
-        job = execute_generation_job_t2i(job.job_id, request, engine_name="sd35_large")
-    elif request.run_mode == "flux2_klein_4b":
-        job = execute_generation_job_t2i(job.job_id, request, engine_name="flux2_klein_4b")
-    elif request.run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
-        job = execute_generation_job_t2i(job.job_id, request, engine_name="flux2_klein_4b")
+    elif request.run_mode in T2I_RUN_MODE_TO_ENGINE:
+        job = execute_generation_job_t2i(job.job_id, request, engine_name=T2I_RUN_MODE_TO_ENGINE[request.run_mode])
     return GenerationJobCreateResponse(job=job)
 
 

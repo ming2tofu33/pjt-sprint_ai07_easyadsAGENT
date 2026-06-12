@@ -820,6 +820,7 @@ export function buildApp(options = {}) {
   app.setErrorHandler((error, _request, reply) => {
     reply.code(error.statusCode || 502).send({
       error: error.errorCode ?? "upstream_error",
+      error_code: error.errorCode ?? "upstream_error",
       message: error.message
     });
   });
