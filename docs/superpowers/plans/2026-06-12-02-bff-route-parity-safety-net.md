@@ -21,7 +21,7 @@
 **Files:**
 - Create: `apps/web/app/api/_proxy/route-parity.test.ts`
 
-- [ ] **Step 1: Write the route parity test**
+- [x] **Step 1: Write the route parity test**
 
 Create `apps/web/app/api/_proxy/route-parity.test.ts`:
 
@@ -74,7 +74,7 @@ describe("Next BFF route parity", () => {
 });
 ```
 
-- [ ] **Step 2: Run and confirm the expected red state**
+- [x] **Step 2: Run and confirm the expected red state**
 
 Run:
 
@@ -84,7 +84,7 @@ cd apps/web && npx vitest run app/api/_proxy/route-parity.test.ts
 
 Expected: FAIL. Missing routes should include at least `generate/chat/start`, `generate/photo/upload`, `chat-threads`, `archive/items`, and admin references. This red test is the migration checklist.
 
-- [ ] **Step 3: Commit the red guard as explicit migration debt**
+- [x] **Step 3: Commit the red guard as explicit migration debt**
 
 ```bash
 git add apps/web/app/api/_proxy/route-parity.test.ts
@@ -96,7 +96,7 @@ git commit -m "test(bff): add Next route parity guard"
 **Files:**
 - Create: `docs/2026-06-12-bff-route-parity-inventory.md`
 
-- [ ] **Step 1: Generate current Next route list**
+- [x] **Step 1: Generate current Next route list**
 
 Run:
 
@@ -106,7 +106,7 @@ find apps/web/app/api -path '*/route.ts' -type f | sort
 
 Expected: output includes current Next routes such as `apps/web/app/api/generation-jobs/route.ts` and does not include Fastify-only paths like `apps/web/app/api/generate/chat/start/route.ts`.
 
-- [ ] **Step 2: Write the inventory document**
+- [x] **Step 2: Write the inventory document**
 
 Create `docs/2026-06-12-bff-route-parity-inventory.md`:
 
@@ -161,7 +161,7 @@ This document tracks the migration from the Fastify BFF (`apps/bff`) to Next Rou
 Do not change `NEXT_PUBLIC_BFF_BASE_URL` to same-origin until `apps/web/app/api/_proxy/route-parity.test.ts` is green.
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/2026-06-12-bff-route-parity-inventory.md
