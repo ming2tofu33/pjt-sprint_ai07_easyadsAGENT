@@ -104,6 +104,7 @@ import type {
   PartialInferredContext
 } from "@/types/marketing";
 import styles from "@/components/generate/generate.module.css";
+import { useChatRouteRestore } from "./useChatRouteRestore";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing" | "jobQuestion";
 type ArchiveLoadState = "idle" | "loading" | "ready" | "error";
@@ -117,6 +118,8 @@ const ARCHIVE_CREATIVES_CACHE_STORAGE_KEY = "easyads_archive_creatives_cache_v1"
 const ARCHIVE_CREATIVES_CACHE_LIMIT = 20;
 const GENERATION_JOB_POLL_INTERVAL_MS = 1800;
 const GENERATION_JOB_MAX_POLLS = 80;
+const ignoreRouteJobRestore = (_jobId: string) => {};
+const ignoreRouteThreadRestore = (_threadId: string) => {};
 const AD_FORMAT_BY_CHANNEL_ID: Record<string, string> = {
   "instagram-feed": "instagram_feed",
   "instagram-story": "instagram_story",
@@ -722,10 +725,23 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [isCurrentThreadDeleteOpen, setCurrentThreadDeleteOpen] = useState(false);
   const [isDeletingCurrentThread, setDeletingCurrentThread] = useState(false);
   const [currentThreadDeleteError, setCurrentThreadDeleteError] = useState<string | null>(null);
-  const lastPrimedStageRef = useRef<DashboardStage | null>(null);
   const activeThreadRef = useRef({ threadId: "", conversationMessageCount: 0 });
   const finalGenerationJobIdsRef = useRef<Set<string>>(new Set());
   const appSurface = optimisticSurface ?? initialSurface;
+  const prepareMissingGeneratingRoute = useCallback(() => {
+    dispatch({ type: "reset" });
+    dispatch({ type: "showResultShell" });
+  }, []);
+  const lastPrimedStageRef = useChatRouteRestore({
+    appSurface,
+    initialStage,
+    jobIdParam,
+    threadIdParam,
+    setGenerationStage,
+    restoreJob: ignoreRouteJobRestore,
+    restoreThread: ignoreRouteThreadRestore,
+    prepareMissingGeneratingRoute
+  });
   const currentGenerationJobInterrupt = getPendingGenerationJobParsedInterrupt(state.generationJob);
 
   function isClientFinalImageGenerationJob(job: GenerationJob | null | undefined): boolean {

@@ -161,7 +161,7 @@ git commit -m "refactor(chat): extract snapshot storage helpers"
 - Modify: `apps/web/app/generate/chat/ChatGenerateClient.tsx`
 - Test: `apps/web/app/generate/chat/useChatRouteRestore.test.tsx`
 
-- [ ] **Step 1: Write hook regression test**
+- [x] **Step 1: Write hook regression test**
 
 Create `apps/web/app/generate/chat/useChatRouteRestore.test.tsx`:
 
@@ -190,7 +190,7 @@ describe("useChatRouteRestore", () => {
 });
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -200,7 +200,7 @@ cd apps/web && npx vitest run app/generate/chat/useChatRouteRestore.test.tsx
 
 Expected: FAIL because the hook does not exist.
 
-- [ ] **Step 3: Implement hook skeleton**
+- [x] **Step 3: Implement hook skeleton**
 
 Create `apps/web/app/generate/chat/useChatRouteRestore.ts`:
 
@@ -259,7 +259,7 @@ export function useChatRouteRestore(input: UseChatRouteRestoreInput): void {
 }
 ```
 
-- [ ] **Step 4: Replace the mega-effect gradually**
+- [x] **Step 4: Replace the mega-effect gradually**
 
 In `ChatGenerateClient.tsx`, keep existing `restoreJob` and `restoreThread` bodies as local callbacks first, then call:
 
@@ -276,7 +276,7 @@ useChatRouteRestore({
 
 Remove only the duplicated stage-priming portion in the first pass. Do not remove server fetch restoration logic until the tests are green.
 
-- [ ] **Step 5: Run regression tests**
+- [x] **Step 5: Run regression tests**
 
 Run:
 
