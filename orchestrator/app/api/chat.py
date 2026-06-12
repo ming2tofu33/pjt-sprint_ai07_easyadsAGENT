@@ -8,11 +8,10 @@ from fastapi import APIRouter, HTTPException
 from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
-from orchestrator.app.api.marketing_graph import MARKETING_GRAPH
+from orchestrator.app.api.marketing_graph import get_marketing_graph
 from orchestrator.app.llm.option_registry import option_label_for_value
 
 router = APIRouter(prefix="/v1/marketing/chat", tags=["marketing-chat"])
-_GRAPH = MARKETING_GRAPH
 
 
 BUSINESS_LABELS = {
@@ -377,7 +376,7 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
             }
         },
     }
-    result = _GRAPH.invoke(state, config=_thread_config(thread_id))
+    result = get_marketing_graph().invoke(state, config=_thread_config(thread_id))
     interrupt = _interrupt_value(result)
 
     if interrupt and interrupt.get("type") == "option_question":
@@ -399,7 +398,7 @@ def answer_chat_question(request: ChatAnswerRequest) -> ChatStartResponse | Chat
     if request.custom_text:
         resume_payload["custom_text"] = request.custom_text
 
-    result = _GRAPH.invoke(Command(resume=resume_payload), config=_thread_config(request.thread_id))
+    result = get_marketing_graph().invoke(Command(resume=resume_payload), config=_thread_config(request.thread_id))
     interrupt = _interrupt_value(result)
     if interrupt and interrupt.get("type") == "option_question":
         return _option_question_response(result, interrupt)
@@ -417,7 +416,7 @@ def answer_chat_question(request: ChatAnswerRequest) -> ChatStartResponse | Chat
 
 @router.post("/brief", response_model=ChatBriefResponse, response_model_by_alias=True)
 def create_brief(request: ChatBriefRequest) -> ChatBriefResponse:
-    result = _GRAPH.invoke(Command(resume=_brief_resume_payload(request)), config=_thread_config(request.thread_id))
+    result = get_marketing_graph().invoke(Command(resume=_brief_resume_payload(request)), config=_thread_config(request.thread_id))
     if result.get("status") == "failed":
         raise HTTPException(status_code=422, detail=result.get("error_message") or "graph failed")
 

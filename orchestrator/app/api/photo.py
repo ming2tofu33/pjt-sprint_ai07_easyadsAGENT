@@ -21,10 +21,9 @@ from orchestrator.app.api.chat import (
     _thread_config,
     BRIEF_READY_COPY_MODES,
 )
-from orchestrator.app.api.marketing_graph import MARKETING_GRAPH
+from orchestrator.app.api.marketing_graph import get_marketing_graph
 
 router = APIRouter(prefix="/v1/marketing/photo", tags=["marketing-photo"])
-_GRAPH = MARKETING_GRAPH
 
 
 class PhotoStartRequest(CamelModel):
@@ -79,7 +78,7 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
             }
         },
     }
-    result = _GRAPH.invoke(state, config=_thread_config(thread_id))
+    result = get_marketing_graph().invoke(state, config=_thread_config(thread_id))
     interrupt = _interrupt_value(result)
 
     if interrupt and interrupt.get("type") == "option_question":
