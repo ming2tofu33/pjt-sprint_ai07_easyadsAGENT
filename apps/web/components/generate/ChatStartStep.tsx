@@ -1,14 +1,14 @@
 "use client";
 
-import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, PenLine, Send, Sparkles, Utensils } from "lucide-react";
+import { Coffee, Gift, Image as ImageIcon, Megaphone, MessageCircle, Send, Utensils } from "lucide-react";
 import { type ChangeEvent, useRef, useState } from "react";
-import type { CopyGenerationMode, CustomCopyFields, ReferenceImageFields } from "@/types/marketing";
+import type { ReferenceImageFields } from "@/types/marketing";
 import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "@/lib/generation-engine";
 import { readGenerationDraftPrompt, readGenerationRequestContext } from "@/lib/generation-request-context";
-import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { GenerationEngineSelector } from "./GenerationEngineSelector";
 import { MascotImage } from "./MascotImage";
+import { SmartChatInput } from "./SmartChatInput";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -31,46 +31,43 @@ const acceptedReferenceMimeTypes = new Set(["image/png", "image/jpeg", "image/we
 type ChatStartStepProps = {
   onSubmit: (
     prompt: string,
-    options?: CustomCopyFields & ReferenceImageFields & { copyGenerationMode?: CopyGenerationMode; imageGenerationEngine?: ImageGenerationEngine }
+    options?: ReferenceImageFields & { imageGenerationEngine?: ImageGenerationEngine }
   ) => void;
   onBack: () => void;
   onGoHome: () => void;
   onHistory?: () => void;
+  errorMessage?: string | null;
+  initialPrompt?: string;
 };
 
-export function ChatStartStep({ onSubmit, onBack, onGoHome, onHistory }: ChatStartStepProps) {
+export function ChatStartStep({ onSubmit, onBack, onGoHome, onHistory, errorMessage = null, initialPrompt = "" }: ChatStartStepProps) {
   const referenceFileInputRef = useRef<HTMLInputElement | null>(null);
   const [referenceTemplateTitle] = useState(() => readGenerationRequestContext()?.selectedReferenceTemplateTitle ?? "");
   const [value, setValue] = useState(() => {
+    const initialPromptValue = initialPrompt.trim();
+    if (initialPromptValue) {
+      return initialPromptValue;
+    }
     const requestContext = readGenerationRequestContext();
     if (requestContext?.source === "reference_gallery") {
       return "";
     }
     return readGenerationDraftPrompt();
   });
-  const [copyGenerationMode, setCopyGenerationMode] = useState<CopyGenerationMode>("suggest_candidates");
   const [imageGenerationEngine, setImageGenerationEngine] = useState<ImageGenerationEngine>(DEFAULT_IMAGE_GENERATION_ENGINE);
   const [referenceImageFile, setReferenceImageFile] = useState<File | null>(null);
   const [referenceImageError, setReferenceImageError] = useState("");
-  const [customHeadline, setCustomHeadline] = useState("");
-  const [customSubcopy, setCustomSubcopy] = useState("");
-  const usesCustomCopy = copyGenerationMode === "custom_input";
-  const customHeadlineText = customHeadline.trim();
-  const customSubcopyText = customSubcopy.trim();
-  const canSubmit = value.trim().length > 0 && (!usesCustomCopy || customHeadlineText.length > 0);
+  const canSubmit = value.trim().length > 0;
   const promptPlaceholder = referenceTemplateTitle
     ? `${referenceTemplateTitle} 스타일을 참고해 어떤 광고를 만들지 적어주세요`
     : "AI와 대화로 이미지를 생성하세요";
 
   function submitPrompt() {
     const prompt = value.trim();
-    if (prompt.length > 0 && (!usesCustomCopy || customHeadlineText.length > 0)) {
+    if (prompt.length > 0) {
       onSubmit(prompt, {
-        copyGenerationMode,
         imageGenerationEngine,
-        referenceImageFile,
-        userCustomHeadline: usesCustomCopy ? customHeadlineText : undefined,
-        userCustomSubcopy: usesCustomCopy && customSubcopyText ? customSubcopyText : undefined
+        referenceImageFile
       });
     }
   }
@@ -122,88 +119,47 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome, onHistory }: ChatSta
         ))}
       </div>
 
-      <h2 className={styles.sectionTitle}>문구 포함 여부</h2>
-      <div className={`${styles.chipGrid} ${styles.copyModeGrid}`}>
-        <ChoiceChip selected={copyGenerationMode === "suggest_candidates"} onClick={() => setCopyGenerationMode("suggest_candidates")}>
-          <MessageCircle size={16} aria-hidden="true" />
-          <span>문구도 추천</span>
-        </ChoiceChip>
-        <ChoiceChip selected={copyGenerationMode === "auto_pilot"} onClick={() => setCopyGenerationMode("auto_pilot")}>
-          <Sparkles size={16} aria-hidden="true" />
-          <span>AI 자동 완성</span>
-        </ChoiceChip>
-        <ChoiceChip selected={copyGenerationMode === "no_copy"} onClick={() => setCopyGenerationMode("no_copy")}>
-          <ImageIcon size={16} aria-hidden="true" />
-          <span>이미지만 생성</span>
-        </ChoiceChip>
-        <ChoiceChip selected={copyGenerationMode === "custom_input"} onClick={() => setCopyGenerationMode("custom_input")}>
-          <PenLine size={16} aria-hidden="true" />
-          <span>직접 문구</span>
-        </ChoiceChip>
-      </div>
-
-      {usesCustomCopy ? (
-        <div className={styles.customCopyFields}>
-          <label className={styles.customCopyField}>
-            <span>메인 문구</span>
-            <AutosizeTextarea
-              className={styles.customCopyTextarea}
-              value={customHeadline}
-              aria-label="직접 메인 문구 입력"
-              placeholder="광고에 넣을 메인 문구"
-              onChange={(event) => setCustomHeadline(event.target.value)}
-              onSubmit={submitPrompt}
-            />
-          </label>
-          <label className={styles.customCopyField}>
-            <span>보조 문구</span>
-            <AutosizeTextarea
-              className={styles.customCopyTextarea}
-              value={customSubcopy}
-              aria-label="직접 보조 문구 입력"
-              placeholder="이벤트 상세나 안내 문구"
-              onChange={(event) => setCustomSubcopy(event.target.value)}
-              onSubmit={submitPrompt}
-            />
-          </label>
-        </div>
-      ) : null}
-
       <h2 className={styles.sectionTitle}>이미지 생성 모델</h2>
       <GenerationEngineSelector value={imageGenerationEngine} onChange={setImageGenerationEngine} />
 
-      <div className={`${styles.inputCard} ${styles.startInputCard}`}>
-        <input
-          ref={referenceFileInputRef}
-          aria-label="레퍼런스 이미지 첨부"
-          accept="image/png,image/jpeg,image/webp"
-          className={styles.photoFileInput}
-          type="file"
-          onChange={handleReferenceImageChange}
-        />
-        <button
-          className={styles.inputIconButton}
-          type="button"
-          aria-label={referenceImageFile ? `첨부한 레퍼런스 이미지 ${referenceImageFile.name}` : "레퍼런스 이미지 선택"}
-          onClick={() => referenceFileInputRef.current?.click()}
-        >
-          <ImageIcon size={19} aria-hidden="true" />
-        </button>
-        <AutosizeTextarea
-          className={`${styles.input} ${styles.promptTextarea}`}
-          value={value}
-          aria-label="광고 요청 입력"
-          placeholder={promptPlaceholder}
-          onChange={(event) => setValue(event.target.value)}
-          onSubmit={submitPrompt}
-        />
-        <button className={styles.sendButton} type="button" aria-label="요청 보내기" disabled={!canSubmit} onClick={submitPrompt}>
-          <Send size={18} aria-hidden="true" />
-        </button>
-      </div>
+      <input
+        ref={referenceFileInputRef}
+        aria-label="레퍼런스 이미지 첨부"
+        accept="image/png,image/jpeg,image/webp"
+        className={styles.photoFileInput}
+        type="file"
+        onChange={handleReferenceImageChange}
+      />
+      <SmartChatInput
+        className={styles.startInputCard}
+        value={value}
+        ariaLabel="광고 요청 입력"
+        placeholder={promptPlaceholder}
+        onChange={setValue}
+        onSubmit={submitPrompt}
+        leftControl={
+          <button
+            className={styles.inputIconButton}
+            type="button"
+            aria-label={referenceImageFile ? `첨부한 레퍼런스 이미지 ${referenceImageFile.name}` : "레퍼런스 이미지 선택"}
+            onClick={() => referenceFileInputRef.current?.click()}
+          >
+            <ImageIcon size={19} aria-hidden="true" />
+          </button>
+        }
+        rightControl={
+          <button className={styles.sendButton} type="button" aria-label="요청 보내기" disabled={!canSubmit} onClick={submitPrompt}>
+            <Send size={18} aria-hidden="true" />
+          </button>
+        }
+      />
       {referenceImageFile ? <p className={styles.referenceAttachmentNote}>참고 이미지: {referenceImageFile.name}</p> : null}
       {referenceImageError ? <p className={styles.referenceAttachmentNote}>{referenceImageError}</p> : null}
-      <p className={styles.helperText}>대충 써도 괜찮아요. AI가 찰떡같이 알아들을게요.</p>
+      {errorMessage ? (
+        <p className={styles.helperText} role="alert">{errorMessage}</p>
+      ) : (
+        <p className={styles.helperText}>대충 써도 괜찮아요. AI가 찰떡같이 알아들을게요.</p>
+      )}
     </>
   );
 }

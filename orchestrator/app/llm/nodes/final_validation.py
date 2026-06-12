@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.metadata_builders import build_final_validation_metadata
+from orchestrator.app.quality_gate.final_composite_service import evaluate_final_composite
 from orchestrator.app.schemas.text_layout import FinalValidationReport
 
 
-def final_validation_node(state: MarketingState) -> dict[str, Any]:
+def final_validation_node(state: dict[str, Any]) -> dict[str, Any]:
     vlm_metadata_contract = build_final_validation_metadata(state)
     background = state.get("background_validation_report") or {}
     safe_area = state.get("safe_area_report") or {}
@@ -36,8 +37,11 @@ def final_validation_node(state: MarketingState) -> dict[str, Any]:
     elif not no_copy and readability_pass is False:
         issues.append("readability validation failed")
 
+    composite_report = evaluate_final_composite(state)
+    composite_enforced = bool(state.get("render_result"))
+    composite_pass = composite_report.status == "pass" or no_copy or not composite_enforced
     report = FinalValidationReport(
-        overall_pass=background_pass and safe_area_pass and (True if no_copy else bool(readability_pass)),
+        overall_pass=background_pass and safe_area_pass and (True if no_copy else bool(readability_pass)) and composite_pass,
         background_pass=background_pass,
         safe_area_pass=safe_area_pass,
         readability_pass=readability_pass,
@@ -46,10 +50,15 @@ def final_validation_node(state: MarketingState) -> dict[str, Any]:
         issues=issues,
         metadata={
             "source_node": "final_validation",
-            "ocr_or_vlm_called": False,
-            "vlm_call_allowed": False,
+            "ocr_or_vlm_called": bool(state.get("final_ocr_gate") or state.get("final_composite_vlm_result")),
+            "vlm_call_allowed": str(os.getenv("EASYADS_VLM_ACTUAL", "")).strip().lower() in {"1", "true", "yes", "on"},
             "vlm_metadata_contract": vlm_metadata_contract,
             "validation_questions": vlm_metadata_contract["available_state"].get("validation_questions", []),
+            "final_composite_quality": composite_report.public_summary,
         },
     )
-    return {"final_validation_report": report.model_dump(), "status": "final_validating"}
+    return {
+        "final_validation_report": report.model_dump(),
+        "final_composite_quality_report": composite_report.model_dump(),
+        "status": "final_validating",
+    }

@@ -8,6 +8,7 @@ import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { GenerationEngineSelector } from "./GenerationEngineSelector";
 import { MascotImage } from "./MascotImage";
+import { SmartChatInput } from "./SmartChatInput";
 import { StepHeader } from "./StepHeader";
 import styles from "./generate.module.css";
 
@@ -228,25 +229,25 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
           이미지 없이 대화로 시작하기
         </button>
 
-        <div className={`${styles.inputCard} ${styles.startInputCard} ${styles.photoInputCard}`}>
-          <FileImage size={19} aria-hidden="true" />
-          <AutosizeTextarea
-            className={`${styles.input} ${styles.promptTextarea}`}
-            aria-label="사진 광고 요청 입력"
-            placeholder="AI와 대화로 이미지를 생성하세요"
-            value={prompt}
-            onChange={(event) => {
-              setPrompt(event.target.value);
-              if (errorMessage) {
-                setErrorMessage(null);
-              }
-            }}
-            onSubmit={() => formRef.current?.requestSubmit()}
-          />
-          <button className={styles.sendButton} type="submit" aria-label={isSubmitting ? "사진을 보내는 중" : "사진 기반 생성 시작"} disabled={!canSubmit}>
-            {isSubmitting ? <Sparkles size={18} aria-hidden="true" /> : <Send size={18} aria-hidden="true" />}
-          </button>
-        </div>
+        <SmartChatInput
+          className={`${styles.startInputCard} ${styles.photoInputCard}`}
+          value={prompt}
+          ariaLabel="사진 광고 요청 입력"
+          placeholder="AI와 대화로 이미지를 생성하세요"
+          onChange={(nextPrompt) => {
+            setPrompt(nextPrompt);
+            if (errorMessage) {
+              setErrorMessage(null);
+            }
+          }}
+          onSubmit={() => formRef.current?.requestSubmit()}
+          leftControl={<FileImage size={19} aria-hidden="true" />}
+          rightControl={
+            <button className={styles.sendButton} type="submit" aria-label={isSubmitting ? "사진을 보내는 중" : "사진 기반 생성 시작"} disabled={!canSubmit}>
+              {isSubmitting ? <Sparkles size={18} aria-hidden="true" /> : <Send size={18} aria-hidden="true" />}
+            </button>
+          }
+        />
       </form>
     </>
   );

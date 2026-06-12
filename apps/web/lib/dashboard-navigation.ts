@@ -16,8 +16,11 @@ export function buildDashboardHref(surface: DashboardSurface, stage?: DashboardS
     if (surface === "photo") {
       return "/generate/photo";
     }
-    if (surface === "my" || surface === "brand") {
+    if (surface === "my") {
       return "/my";
+    }
+    if (surface === "brand") {
+      return "/brand/kit";
     }
     return `/${surface}`;
   }

@@ -11,9 +11,13 @@ UserPlan = Literal["free", "economic", "premium", "internal_benchmark"]
 ModelClass = Literal["local_fast", "local_quality", "api_nano", "api_mini", "api_full", "api_vision", "mock"]
 NodeModelName = Literal[
     "validator",
+    "product_understanding",
     "copy_mode_inference",
     "tone_binding",
     "copy_candidate_generation",
+    "copy_generation_v2_actual",
+    "copy_candidate_rank_v2",
+    "copy_visual_intent",
     "auto_pilot_copywriting",
     "custom_copy_validation",
     "copy_spec_parser",
@@ -22,6 +26,7 @@ NodeModelName = Literal[
     "background_validation",
     "final_validation",
     "revision_intent_classifier",
+    "option_suggester",
 ]
 RiskLevel = Literal["low", "medium", "high"]
 LatencyBudget = Literal["interactive", "standard", "batch"]

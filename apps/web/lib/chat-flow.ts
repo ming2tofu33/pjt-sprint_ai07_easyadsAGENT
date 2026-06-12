@@ -72,7 +72,8 @@ export function createInitialChatFlowState(): ChatFlowState {
     currentQuestion: null,
     conversationMessages: [],
     isLoading: false,
-    errorMessage: null
+    errorMessage: null,
+    errorCode: null
   };
 }
 
@@ -135,7 +136,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         contextSource: "empty",
         conversationMessages: applyUserPromptToTranscript(state.conversationMessages, action.prompt, action.transcriptMode),
         isLoading: true,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     case "backendQuestionReceived":
       return {
@@ -156,14 +158,16 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         currentQuestion: action.question,
         conversationMessages: appendAssistantMessageOnce(state.conversationMessages, action.question.question),
         isLoading: false,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     case "submitQuestionAnswer":
       return {
         ...state,
         conversationMessages: [...state.conversationMessages, { role: "user", text: action.label }],
         isLoading: true,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     case "backendStartSucceeded": {
       const hasBackendCopyCandidates = action.copyCandidates.length > 0;
@@ -193,20 +197,34 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
           { role: "assistant", text: "좋아요. 필요한 정보를 모았어요. 이제 광고 문구와 분위기를 정리해볼게요." }
         ],
         isLoading: false,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     }
     case "backendRequestFailed":
+      if (action.recoverToStart) {
+        return {
+          ...state,
+          step: 1,
+          progress: { current: 0, total: 4, label: "대화 시작" },
+          currentQuestion: null,
+          isLoading: false,
+          errorMessage: action.message,
+          errorCode: action.errorCode ?? null
+        };
+      }
       return {
         ...state,
         isLoading: false,
-        errorMessage: action.message
+        errorMessage: action.message,
+        errorCode: action.errorCode ?? null
       };
     case "beginBriefRequest":
       return {
         ...state,
         isLoading: true,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     case "selectTone":
       return {
@@ -250,14 +268,16 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         customDirection: action.customDirection,
         conversationMessages: [...state.conversationMessages, { role: "user", text: action.message }],
         isLoading: true,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     case "backendBriefSucceeded":
       return {
         ...state,
         brief: action.brief,
         isLoading: false,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     case "briefRefinementSucceeded":
       return {
@@ -268,7 +288,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
           { role: "assistant", text: "좋아요. 요청을 반영해서 브리프를 다시 정리했어요." }
         ],
         isLoading: false,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     case "requestContextLoaded":
       return {
@@ -334,7 +355,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
               ? [{ role: "user", text: action.prompt }]
               : state.conversationMessages,
         isLoading: false,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     case "showResultShell":
       return {
@@ -343,7 +365,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         progress: { current: 4, total: 4, label: "결과 확인" },
         isLoading: false,
         currentQuestion: null,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
     case "showGenerationFailure":
       return {
@@ -356,7 +379,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         generationJob: null,
         isLoading: false,
         currentQuestion: null,
-        errorMessage: action.message
+        errorMessage: action.message,
+        errorCode: null
       };
     case "back":
       return {
@@ -369,7 +393,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         isLoading: true,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
 
     case "generationJobUpdated":
@@ -391,7 +416,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         generationJob: action.generationJob,
         currentQuestion: action.generationJob.status === "waiting_user_input" ? state.currentQuestion : null,
         isLoading: shouldKeepInitialAnalysisPending || shouldKeepAnswerPending,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
 
     case "generationJobQuestionReceived":
@@ -411,7 +437,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         currentQuestion: action.question,
         conversationMessages: appendAssistantMessageOnce(state.conversationMessages, action.question.question),
         isLoading: false,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
 
     case "generationJobInterruptReceived":
@@ -422,7 +449,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         generationJob: action.generationJob,
         currentQuestion: null,
         isLoading: false,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
 
     case "submitGenerationJobAnswer":
@@ -430,14 +458,16 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         ...state,
         conversationMessages: [...state.conversationMessages, { role: "user", text: action.label }],
         isLoading: true,
-        errorMessage: null
+        errorMessage: null,
+        errorCode: null
       };
 
     case "generationJobFailed":
       return {
         ...state,
         isLoading: false,
-        errorMessage: action.message
+        errorMessage: action.message,
+        errorCode: null
       };
   }
 }

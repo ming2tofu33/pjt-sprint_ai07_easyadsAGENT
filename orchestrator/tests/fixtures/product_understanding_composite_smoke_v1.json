@@ -1,0 +1,27 @@
+{
+    "schema_version":  "product_understanding_composite_smoke_v1",
+    "cases":  [
+                  {
+                      "case_id":  "doenjang_jjigae_text_only",
+                      "input_mode":  "text_only",
+                      "user_text":  "doenjang jjigae",
+                      "expected_broad_category":  "food_and_beverage"
+                  },
+                  {
+                      "case_id":  "facial_serum_text_and_image",
+                      "input_mode":  "text_and_image",
+                      "user_text":  "Introduce a facial serum with 5% niacinamide.",
+                      "source_image_path":  "data/outputs/ad_format_copy_presence_actual/serum_story_information_design/background_flux2.png",
+                      "source_provenance":  "actual_generated_clean_background",
+                      "expected_broad_category":  "beauty_and_personal_care"
+                  },
+                  {
+                      "case_id":  "sneakers_text_and_image",
+                      "input_mode":  "text_and_image",
+                      "user_text":  "Promote running shoes for a seasonal campaign.",
+                      "source_image_path":  "data/outputs/ad_format_copy_presence_actual/seasonal_sale_poster/background_flux2.png",
+                      "source_provenance":  "actual_generated_clean_background",
+                      "expected_broad_category":  "fashion_and_lifestyle"
+                  }
+              ]
+}

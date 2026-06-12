@@ -153,7 +153,7 @@ def test_postgres_backend_create_uses_authenticated_user_workspace(monkeypatch):
     monkeypatch.setattr(
         service.workspace_repo,
         "ensure_user_workspace",
-        lambda user_id, connection=None: {"id": f"workspace_{user_id}"},
+        lambda user_id, account_type="user", connection=None: {"id": f"workspace_{user_id}"},
     )
     monkeypatch.setattr(
         service.workspace_repo,
@@ -182,6 +182,89 @@ def test_postgres_backend_create_uses_authenticated_user_workspace(monkeypatch):
 
     assert job.user_id == "user_a"
     assert captured["workspace_id"] == "workspace_user_a"
+
+
+def test_postgres_backend_create_marks_guest_workspace_and_job(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
+    _patch_noop_side_effects(monkeypatch)
+    captured_workspace = {}
+    monkeypatch.setattr(
+        service.workspace_repo,
+        "ensure_user_workspace",
+        lambda user_id, account_type="user", connection=None: captured_workspace.setdefault(
+            "value",
+            {"id": "workspace_guest", "user_id": user_id, "account_type": account_type},
+        ),
+    )
+    monkeypatch.setattr(
+        service.chat_thread_repo,
+        "create_chat_thread",
+        lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_guest"},
+    )
+
+    captured_job = {}
+
+    def fake_create_generation_job_row(**kwargs):
+        captured_job.update(kwargs)
+        metadata = dict(kwargs["metadata"])
+        metadata["public_thread_id"] = "thread_guest"
+        return _row(public_job_id=kwargs["public_job_id"], metadata=metadata)
+
+    monkeypatch.setattr(service.generation_job_repo, "create_generation_job_row", fake_create_generation_job_row)
+
+    job = service.create_generation_job(
+        GenerationJobCreateRequest(
+            user_id="guest_uuid_1",
+            accountType="guest",
+            user_input="Create an ad",
+            run_mode="queued_only",
+        )
+    )
+
+    assert captured_workspace["value"]["user_id"] == "guest_uuid_1"
+    assert captured_workspace["value"]["account_type"] == "guest"
+    assert captured_job["requested_by"] == "guest_uuid_1"
+    assert captured_job["metadata"]["account_type"] == "guest"
+    assert job.thread_id == "thread_guest"
+
+
+def test_postgres_backend_create_does_not_allow_metadata_account_type_override(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(service, "db_transaction", fake_db_transaction)
+    _patch_noop_side_effects(monkeypatch)
+    monkeypatch.setattr(
+        service.workspace_repo,
+        "ensure_user_workspace",
+        lambda user_id, account_type="user", connection=None: {"id": "workspace_guest"},
+    )
+    monkeypatch.setattr(
+        service.chat_thread_repo,
+        "create_chat_thread",
+        lambda **kwargs: {"id": "thread_uuid", "public_thread_id": "thread_guest"},
+    )
+
+    captured_job = {}
+
+    def fake_create_generation_job_row(**kwargs):
+        captured_job.update(kwargs)
+        metadata = dict(kwargs["metadata"])
+        metadata["public_thread_id"] = "thread_guest"
+        return _row(public_job_id=kwargs["public_job_id"], metadata=metadata)
+
+    monkeypatch.setattr(service.generation_job_repo, "create_generation_job_row", fake_create_generation_job_row)
+
+    service.create_generation_job(
+        GenerationJobCreateRequest(
+            user_id="guest_uuid_1",
+            accountType="guest",
+            user_input="Create an ad",
+            run_mode="queued_only",
+            metadata={"account_type": "user"},
+        )
+    )
+
+    assert captured_job["metadata"]["account_type"] == "guest"
 
 
 def test_postgres_backend_sanitizes_nested_metadata(monkeypatch):

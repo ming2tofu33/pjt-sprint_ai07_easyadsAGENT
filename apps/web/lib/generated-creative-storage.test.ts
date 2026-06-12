@@ -3,7 +3,7 @@ import { addGeneratedCreativeSnapshot, readGeneratedCreatives, removeGeneratedCr
 
 describe("generated creative storage", () => {
   beforeEach(() => {
-    window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
   it("stores generated chat results as archive creatives", () => {

@@ -79,3 +79,36 @@ def test_fallback_matrix_has_no_generic_meta_phrases_for_core_cases():
         output = build_deterministic_copy_output_v2({"context": context})
         assert output.recommended_candidate_id
         assert all(not contains_generic_meta_phrase(" ".join([candidate.headline, candidate.subcopy or "", candidate.cta or ""])) for candidate in output.candidates)
+
+
+def test_all_overlength_candidates_require_regeneration():
+    long_text = "마카롱 컬렉션을 너무 길고 장황하게 설명하는 헤드라인입니다"
+    candidates = [
+        CopyCandidate(id="copy_1", headline=long_text, subcopy="다채로운 맛과 색을 아주 길게 계속 설명하는 문장입니다 문장입니다", cta="컬렉션 보기", angle="product_first"),
+        CopyCandidate(id="copy_2", headline=long_text, subcopy="다채로운 맛과 색을 아주 길게 계속 설명하는 문장입니다 문장입니다", cta="컬렉션 보기", angle="emotion_first"),
+        CopyCandidate(id="copy_3", headline=long_text, subcopy="다채로운 맛과 색을 아주 길게 계속 설명하는 문장입니다 문장입니다", cta="컬렉션 보기", angle="benefit_action_first"),
+    ]
+
+    ranking = rank_copy_candidates(candidates, state={"context": MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery").model_dump()})
+
+    assert ranking.recommended_candidate_id is None
+    assert ranking.requires_regeneration is True
+    assert all(card.hard_blocked for card in ranking.scorecards)
+
+
+def test_business_fit_cannot_be_perfect_with_product_drift():
+    candidate = CopyCandidate(id="copy_1", headline="마카롱 컬렉션", subcopy="고기와 식사 메뉴처럼 든든하게", cta="컬렉션 보기", angle="product_first")
+
+    ranking = rank_copy_candidates([candidate], state={"context": MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery").model_dump()})
+
+    assert ranking.scorecards[0].business_fit_score < 1.0
+    assert ranking.scorecards[0].hard_blocked is True
+
+
+def test_valid_short_macaron_editorial_copy_passes():
+    candidate = CopyCandidate(id="copy_1", headline="마카롱 컬렉션", subcopy="다채로운 맛과 색으로 고르는 오늘의 디저트", cta="컬렉션 보기", angle="product_first")
+
+    ranking = rank_copy_candidates([candidate], state={"context": MarketingContext(business_type="macaron", item_or_service="마카롱 컬렉션", promotion_goal="menu_discovery").model_dump()})
+
+    assert ranking.recommended_candidate_id == "copy_1"
+    assert ranking.scorecards[0].hard_blocked is False

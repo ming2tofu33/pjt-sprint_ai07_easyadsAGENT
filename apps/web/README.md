@@ -166,6 +166,20 @@ set email = excluded.email,
 
 관리자 권한 테이블은 `supabase/migrations/20260605_admin_users.sql`에 정의되어 있습니다.
 
+### Guest Generation
+
+비로그인 사용자는 Supabase anonymous user로 시작합니다. 첫 생성/보관함/작업방 API 호출에서 브라우저가 anonymous session을 만들고, 이후 BFF는 일반 로그인 사용자와 동일하게 Supabase `/auth/v1/user`로 토큰을 검증합니다.
+
+운영 Supabase 프로젝트에서 다음 설정이 필요합니다.
+
+1. Authentication → Sign In / Providers → Anonymous Sign-Ins 활성화.
+2. Google provider 활성화.
+3. `/auth/callback` redirect URL 등록.
+
+게스트가 Google 로그인 버튼을 누르면 `linkIdentity({ provider: "google" })`를 사용해 anonymous user에 Google identity를 연결합니다. 이때 Supabase `user.id`가 유지되므로 게스트 workspace, generation jobs, chat threads, archive items가 로그인 후에도 이어집니다.
+
+`EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK=true`는 로컬/테스트용 공유 fallback입니다. 운영 게스트 기능에는 사용하지 않습니다.
+
 백엔드까지 연결해서 실행할 때는 터미널 3개를 사용합니다.
 
 터미널 1: orchestrator 실행

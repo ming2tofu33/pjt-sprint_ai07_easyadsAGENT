@@ -47,12 +47,22 @@ export type ToneOption = {
   icon: "heart" | "leaf" | "diamond" | "smile" | "sparkles" | "star";
 };
 
+export type CopyComplianceBadge = {
+  status?: string | null;
+  finding_count?: number | null;
+  disabled?: boolean | null;
+};
+
 export type CopyOption = {
   id: string;
   headline: string;
   subcopy?: string | null;
   cta?: string | null;
   selectedByDefault?: boolean;
+  metadata?: {
+    compliance?: CopyComplianceBadge | null;
+    [key: string]: unknown;
+  } | null;
 };
 
 export type CopyCandidateSource = "empty" | "sample" | "backend";
@@ -124,6 +134,7 @@ export type ChatFlowState = {
   conversationMessages: ChatTranscriptMessage[];
   isLoading: boolean;
   errorMessage: string | null;
+  errorCode?: string | null;
 };
 
 export type ChatFlowAction =
@@ -167,7 +178,7 @@ export type ChatFlowAction =
       referenceImagePath?: string | null;
     }
   | { type: "submitQuestionAnswer"; label: string }
-  | { type: "backendRequestFailed"; message: string }
+  | { type: "backendRequestFailed"; message: string; errorCode?: string; recoverToStart?: boolean }
   | { type: "beginBriefRequest" }
   | { type: "selectTone"; tone: string }
   | { type: "setCopyGenerationMode"; copyGenerationMode: CopyGenerationMode }

@@ -4,10 +4,10 @@ import { Gift, Heart, Megaphone, Package, Send, Sparkles, Star } from "lucide-re
 import { useState } from "react";
 import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
-import { AutosizeTextarea } from "./AutosizeTextarea";
 import { BriefRow } from "./BriefRow";
 import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
+import { SmartChatInput } from "./SmartChatInput";
 import styles from "./generate.module.css";
 
 type BriefConfirmStepProps = {
@@ -31,6 +31,7 @@ type BriefConfirmCardProps = Omit<BriefConfirmStepProps, "onBack" | "onDelete">;
 export function BriefConfirmCard({ state, onGenerate, onRefineBrief }: BriefConfirmCardProps) {
   const [refinementText, setRefinementText] = useState("");
   const brief = buildBrief(state);
+  const usesDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
 
   async function submitRefinement() {
     if (state.isLoading) {
@@ -64,7 +65,11 @@ export function BriefConfirmCard({ state, onGenerate, onRefineBrief }: BriefConf
         </div>
         <BriefRow icon={Megaphone} label="광고 목적" value={brief.purpose} />
         <BriefRow icon={Gift} label="상품/서비스" value={brief.item} />
-        <BriefRow icon={Heart} label="선택한 문구" value={brief.copy} />
+        {usesDeferredCopySelection ? (
+          <BriefRow icon={Heart} label="문구 선택" value="다음 단계에서 선택" />
+        ) : (
+          <BriefRow icon={Heart} label="선택한 문구" value={brief.copy} />
+        )}
         <BriefRow icon={Star} label="분위기" value={brief.tone} />
         <BriefRow icon={Package} label="사용 채널" value={brief.channel} />
         <div className={styles.imageGuide}>
@@ -75,26 +80,26 @@ export function BriefConfirmCard({ state, onGenerate, onRefineBrief }: BriefConf
 
       <section className={styles.briefRefinementArea} aria-label="브리프 추가 요청">
         <h3 className={styles.briefRefinementTitle}>더 반영할 내용이 있나요?</h3>
-        <label className={`${styles.inputCard} ${styles.briefRefinementInputCard}`}>
-          <AutosizeTextarea
-            className={`${styles.input} ${styles.promptTextarea}`}
-            value={refinementText}
-            aria-label="브리프 추가 요청 입력"
-            placeholder="예: 네일아트 사진을 더 크게 보여줘"
-            disabled={state.isLoading}
-            onChange={(event) => setRefinementText(event.target.value)}
-            onSubmit={submitRefinement}
-          />
-          <button
-            className={styles.sendButton}
-            type="button"
-            aria-label="브리프 추가 요청 보내기"
-            disabled={state.isLoading || refinementText.trim().length === 0}
-            onClick={submitRefinement}
-          >
-            <Send size={18} aria-hidden="true" />
-          </button>
-        </label>
+        <SmartChatInput
+          className={styles.briefRefinementInputCard}
+          value={refinementText}
+          ariaLabel="브리프 추가 요청 입력"
+          placeholder="예: 네일아트 사진을 더 크게 보여줘"
+          disabled={state.isLoading}
+          onChange={setRefinementText}
+          onSubmit={submitRefinement}
+          rightControl={
+            <button
+              className={styles.sendButton}
+              type="button"
+              aria-label="브리프 추가 요청 보내기"
+              disabled={state.isLoading || refinementText.trim().length === 0}
+              onClick={submitRefinement}
+            >
+              <Send size={18} aria-hidden="true" />
+            </button>
+          }
+        />
         {state.errorMessage ? <p className={styles.helperText}>{state.errorMessage}</p> : null}
       </section>
 

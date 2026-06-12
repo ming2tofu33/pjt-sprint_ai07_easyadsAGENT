@@ -93,9 +93,13 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
     if plan == "free":
         return {
             "validator": "local_fast",
+            "product_understanding": "local_fast",
             "copy_mode_inference": "local_fast",
             "tone_binding": "mock",
             "copy_candidate_generation": "local_quality",
+            "copy_generation_v2_actual": "local_quality",
+            "copy_candidate_rank_v2": "local_quality",
+            "copy_visual_intent": "local_fast",
             "auto_pilot_copywriting": "local_quality",
             "custom_copy_validation": "local_fast",
             "copy_spec_parser": "local_fast",
@@ -104,13 +108,18 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "background_validation": "mock",
             "final_validation": "mock",
             "revision_intent_classifier": "local_fast",
+            "option_suggester": "local_fast",
         }
     if plan == "economic":
         return {
             "validator": "local_fast",
+            "product_understanding": "api_nano",
             "copy_mode_inference": "local_fast",
             "tone_binding": "local_fast",
             "copy_candidate_generation": "api_nano",
+            "copy_generation_v2_actual": "api_mini",
+            "copy_candidate_rank_v2": "api_mini",
+            "copy_visual_intent": "api_nano",
             "auto_pilot_copywriting": "api_nano",
             "custom_copy_validation": "local_fast",
             "copy_spec_parser": "local_fast",
@@ -119,13 +128,19 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "background_validation": "mock",
             "final_validation": "api_nano",
             "revision_intent_classifier": "api_nano",
+            "option_suggester": "api_nano",
         }
     if plan == "premium":
         return {
             "validator": "api_nano",
+            "product_understanding": "api_full",
+            "option_suggester": "api_nano",
             "copy_mode_inference": "api_mini",
             "tone_binding": "api_nano",
             "copy_candidate_generation": "api_mini",
+            "copy_generation_v2_actual": "api_mini",
+            "copy_candidate_rank_v2": "api_mini",
+            "copy_visual_intent": "api_mini",
             "auto_pilot_copywriting": "api_mini",
             "custom_copy_validation": "api_mini",
             "copy_spec_parser": "api_nano",
@@ -137,9 +152,14 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
         }
     return {
         "validator": "api_full",
+        "product_understanding": "api_full",
         "copy_mode_inference": "api_full",
+        "option_suggester": "api_mini",
         "tone_binding": "api_mini",
         "copy_candidate_generation": "api_full",
+        "copy_generation_v2_actual": "api_mini",
+        "copy_candidate_rank_v2": "api_mini",
+        "copy_visual_intent": "api_mini",
         "auto_pilot_copywriting": "api_full",
         "custom_copy_validation": "api_mini",
         "copy_spec_parser": "api_mini",

@@ -30,9 +30,10 @@ def _handle_asset_error(exc: Exception):
 def presign_asset_upload(
     req: AssetPresignRequest,
     user_id: str | None = None,
+    account_type: str | None = None,
 ) -> Any:
     try:
-        return service.presign_asset_upload(req, user_id=user_id)
+        return service.presign_asset_upload(req, user_id=user_id, account_type=account_type)
     except Exception as exc:
         _handle_asset_error(exc)
 
@@ -42,12 +43,14 @@ def complete_asset_upload(
     asset_id: str = Path(pattern=PUBLIC_ASSET_ID_PATTERN),
     workspace_id: str | None = None,
     user_id: str | None = None,
+    account_type: str | None = None,
 ) -> Any:
     try:
         res = service.complete_asset_upload(
             public_asset_id=asset_id,
             workspace_id=workspace_id,
             user_id=user_id,
+            account_type=account_type,
         )
         return AssetCompleteResponse(asset=res)
     except Exception as exc:
@@ -59,12 +62,14 @@ def get_asset(
     asset_id: str = Path(pattern=PUBLIC_ASSET_ID_PATTERN),
     workspace_id: str | None = None,
     user_id: str | None = None,
+    account_type: str | None = None,
 ) -> Any:
     try:
         res = service.get_asset_response(
             public_asset_id=asset_id,
             workspace_id=workspace_id,
             user_id=user_id,
+            account_type=account_type,
         )
         return AssetGetResponse(asset=res)
     except Exception as exc:

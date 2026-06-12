@@ -98,3 +98,9 @@ diffusers = { git = "https://github.com/huggingface/diffusers.git", rev = "41875
 name = "pytorch-cu118"
 url = "https://download.pytorch.org/whl/cu118"
 explicit = true
+
+[tool.pytest.ini_options]
+# Always isolate tests from .env / docs/api_key.env (real key sets enable_api_call=true,
+# breaking disabled-path tests). Plugin lives in eval/ to avoid git-pull conflict with
+# develop's tests/conftest.py. Makefile passes the same -p explicitly.
+addopts = "-p orchestrator.eval.dotenv_isolation"

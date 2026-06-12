@@ -35,7 +35,7 @@ export function getLoginMethodFromUser(user: Pick<User, "app_metadata" | "identi
 }
 
 export function buildAppUserProfile(user: User | null): AppUserProfile | null {
-  if (!user) {
+  if (!user || user.is_anonymous) {
     return null;
   }
 

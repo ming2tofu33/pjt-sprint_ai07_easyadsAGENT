@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from orchestrator.app.api.schemas.archive import ArchiveItemCreateRequest, ArchiveItemResponse
+from orchestrator.app.api.schemas.archive import ArchiveItemCreateRequest, ArchiveItemResponse, ArchiveItemUpdateRequest
 from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.errors import DatabaseConfigurationError
 from orchestrator.app.db.repositories import archive_items as archive_item_repo
@@ -48,9 +48,11 @@ def _ensure_postgres_enabled() -> None:
         raise ArchivePersistenceUnavailable("Postgres DB backend is not enabled.")
 
 
-def _resolve_workspace_id(workspace_id: str | None, user_id: str | None = None) -> str:
+def _resolve_workspace_id(workspace_id: str | None, user_id: str | None = None, account_type: str | None = None) -> str:
     from orchestrator.app.db.workspace_scope import resolve_workspace_scope, WorkspaceScopeRequired, WorkspaceScopeForbidden
     try:
+        if account_type:
+            return resolve_workspace_scope(workspace_id, user_id, account_type=account_type)
         return resolve_workspace_scope(workspace_id, user_id)
     except WorkspaceScopeRequired as exc:
         raise ArchiveWorkspaceRequired(str(exc)) from exc
@@ -116,7 +118,7 @@ def archive_item_from_row(row: dict) -> ArchiveItemResponse:
 def create_archive_item(request: ArchiveItemCreateRequest) -> ArchiveItemResponse:
     _ensure_postgres_enabled()
     user_id = _resolve_user_id(request.user_id)
-    workspace_id = _resolve_workspace_id(request.workspace_id, user_id=user_id)
+    workspace_id = _resolve_workspace_id(request.workspace_id, user_id=user_id, account_type=request.account_type)
     
     if request.source == "generated":
         if not request.public_job_id:
@@ -144,24 +146,43 @@ def create_archive_item(request: ArchiveItemCreateRequest) -> ArchiveItemRespons
     return archive_item_from_row(row)
 
 
-def list_archive_items(*, workspace_id: str | None = None, user_id: str | None = None, limit: int = 50, offset: int = 0) -> tuple[list[ArchiveItemResponse], int]:
+def list_archive_items(
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+    account_type: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    include_total: bool = True,
+) -> tuple[list[ArchiveItemResponse], int]:
     _ensure_postgres_enabled()
     resolved_user_id = _resolve_user_id(user_id)
-    resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
+    resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id, account_type=account_type)
+    fetch_limit = limit + 1 if not include_total else limit
     rows = archive_item_repo.list_archive_item_rows(
         workspace_id=resolved_workspace_id,
         created_by=resolved_user_id,
-        limit=limit,
+        limit=fetch_limit,
         offset=offset,
     )
-    total = archive_item_repo.count_archive_item_rows(workspace_id=resolved_workspace_id, created_by=resolved_user_id)
-    return [archive_item_from_row(r) for r in rows], total
+    visible_rows = rows[:limit]
+    if include_total:
+        total = archive_item_repo.count_archive_item_rows(workspace_id=resolved_workspace_id, created_by=resolved_user_id)
+    else:
+        total = offset + len(visible_rows) + (1 if len(rows) > limit else 0)
+    return [archive_item_from_row(r) for r in visible_rows], total
 
 
-def get_archive_item(*, archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveItemResponse:
+def get_archive_item(
+    *,
+    archive_item_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+    account_type: str | None = None,
+) -> ArchiveItemResponse:
     _ensure_postgres_enabled()
     resolved_user_id = _resolve_user_id(user_id)
-    resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
+    resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id, account_type=account_type)
     
     row = archive_item_repo.get_archive_item_row(
         public_archive_id=archive_item_id,
@@ -173,10 +194,36 @@ def get_archive_item(*, archive_item_id: str, workspace_id: str | None = None, u
     return archive_item_from_row(row)
 
 
-def delete_archive_item(*, archive_item_id: str, workspace_id: str | None = None, user_id: str | None = None) -> ArchiveItemResponse:
+def update_archive_item(*, archive_item_id: str, request: ArchiveItemUpdateRequest) -> ArchiveItemResponse:
+    _ensure_postgres_enabled()
+    resolved_user_id = _resolve_user_id(request.user_id)
+    resolved_workspace_id = _resolve_workspace_id(request.workspace_id, user_id=resolved_user_id, account_type=request.account_type)
+    row = archive_item_repo.update_archive_item_status_row(
+        archive_item_id=archive_item_id,
+        workspace_id=resolved_workspace_id,
+        created_by=resolved_user_id,
+        status=request.status,
+    )
+    if not row:
+        raise ArchiveItemNotFound(f"archive_item_id={archive_item_id}")
+    joined = archive_item_repo.get_archive_item_row(
+        public_archive_id=row["public_archive_id"],
+        workspace_id=resolved_workspace_id,
+        created_by=resolved_user_id,
+    )
+    return archive_item_from_row(joined or row)
+
+
+def delete_archive_item(
+    *,
+    archive_item_id: str,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+    account_type: str | None = None,
+) -> ArchiveItemResponse:
     _ensure_postgres_enabled()
     resolved_user_id = _resolve_user_id(user_id)
-    resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id)
+    resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id, account_type=account_type)
     row = archive_item_repo.soft_delete_archive_item_row(
         archive_item_id=archive_item_id,
         workspace_id=resolved_workspace_id,

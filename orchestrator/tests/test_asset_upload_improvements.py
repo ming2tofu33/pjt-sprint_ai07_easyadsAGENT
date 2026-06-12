@@ -63,7 +63,7 @@ def test_complete_records_failed_status(monkeypatch):
             
     mock_repo = MockRepo()
     monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", mock_repo)
-    monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, user_id: "ws1")
+    monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, user_id=None, account_type=None: "ws1")
     monkeypatch.setattr("orchestrator.app.assets.service.db_transaction", lambda *a, **k: __import__("contextlib").nullcontext())
     
     from orchestrator.app.storage.errors import R2StorageUnavailableError

@@ -43,6 +43,7 @@ export async function GET(request: Request) {
         email: user.email ?? null,
         display_name: getDisplayNameFromUser(user),
         metadata: {
+          account_type: user.is_anonymous ? "guest" : "user",
           avatar_url: user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? null,
           provider: user.app_metadata?.provider ?? user.identities?.[0]?.provider ?? null
         },

@@ -59,8 +59,15 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
         metadata={**output.metadata, "source_node": "copy_candidate_generation", "llm_metadata": llm_metadata},
     )
     candidate_origin = classify_copy_candidate_origin(output.metadata, llm_metadata)
+    serialized = [candidate.model_dump() for candidate in candidates]
+    serialized, compliance_records, compliance_status, compliance_ready = _attach_compliance_badges(
+        serialized, state
+    )
     return {
-        "copy_candidates": [candidate.model_dump() for candidate in candidates],
+        "copy_candidates": serialized,
+        "copy_compliance": compliance_records,
+        "copy_compliance_status": compliance_status,
+        "copy_compliance_publication_ready": compliance_ready,
         "copy_candidate_origin": candidate_origin,
         "copywriting_output": output.model_dump(),
         "copy_generation_mode": "suggest_candidates",
@@ -427,11 +434,41 @@ def state_update_selected_copy_node(state: MarketingState) -> dict[str, Any]:
     selection.setdefault("selected_ad_format", state.get("selected_ad_format"))
     selection.setdefault("selected_tone", state.get("selected_tone"))
     selection.setdefault("custom_direction", state.get("custom_direction"))
+    selection.setdefault("user_custom_headline", state.get("user_custom_headline"))
+    selection.setdefault("user_custom_subcopy", state.get("user_custom_subcopy"))
     recommended_id = _recommended_candidate_id_from_state(state)
     selected_id = selection.get("selected_copy_id") or recommended_id
     candidates = list(state.get("copy_candidates", []))
     candidate = next((item for item in candidates if item.get("id") == selected_id), None)
     warnings: list[str] = []
+    custom_headline = clean_optional_text(selection.get("user_custom_headline"))
+    custom_subcopy = clean_optional_text(selection.get("user_custom_subcopy"))
+    if custom_headline:
+        if candidate is None and selected_id:
+            warnings.append("Invalid selected_copy_id; custom copy applied without a matching base candidate.")
+        copy = apply_copy_quality_policy(MarketingCopy(
+            headline=custom_headline,
+            subcopy=custom_subcopy,
+            cta=None,
+            hashtags=[],
+            metadata={
+                "selected_copy_id": selected_id,
+                "copy_resolution": "manual_edit",
+                "warnings": warnings,
+                "source_node": "state_update_selected_copy",
+            },
+        ))
+        selection_update = build_frontend_selection_state_update(state, selection)
+        return {
+            "marketing_copy": copy.model_dump(),
+            "selected_copy_id": selected_id,
+            "user_custom_headline": custom_headline,
+            "user_custom_subcopy": custom_subcopy,
+            **selection_update,
+            "copy_required": True,
+            "text_overlay_pending": True,
+            "status": "applying_selected_copy",
+        }
     if candidate is None:
         candidate = next((item for item in candidates if item.get("id") == recommended_id), None)
         selected_id = recommended_id
@@ -519,3 +556,56 @@ def clean_optional_text(value: Any) -> str | None:
         return None
     stripped = str(value).strip()
     return stripped or None
+
+
+_COMPLIANCE_STATUS_RANK: dict[str, int] = {
+    "pass": 0,
+    "warn": 1,
+    "evidence_required": 2,
+    "blocked": 3,
+}
+
+
+def _attach_compliance_badges(
+    candidates: list[dict[str, Any]],
+    state: MarketingState,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, bool]:
+    """각 후보 dict에 metadata.compliance 배지를 삽입하고 집계 상태를 반환한다.
+
+    Returns:
+        (updated_candidates, compliance_records, worst_status, all_publication_ready)
+    """
+    from orchestrator.app.compliance.service import get_compliance_service
+
+    context = context_to_model(state.get("context"))
+    svc = get_compliance_service()
+
+    compliance_records: list[dict[str, Any]] = []
+    worst_status = "pass"
+    all_publication_ready = True
+
+    for candidate in candidates:
+        copy_dict: dict[str, Any] = {
+            "headline": candidate.get("headline") or "",
+            "subcopy": candidate.get("subcopy") or "",
+            "cta": candidate.get("cta") or "",
+        }
+        result = svc.check_copy(copy_dict, context.business_type)
+        candidate.setdefault("metadata", {})["compliance"] = {
+            "status": result.status,
+            "finding_count": len(result.findings),
+            "disabled": not result.publication_ready,
+        }
+        compliance_records.append({
+            "candidate_id": candidate.get("id"),
+            "status": result.status,
+            "finding_count": len(result.findings),
+            "publication_ready": result.publication_ready,
+            "findings": [f.model_dump() for f in result.findings],
+        })
+        if _COMPLIANCE_STATUS_RANK.get(result.status, 0) > _COMPLIANCE_STATUS_RANK.get(worst_status, 0):
+            worst_status = result.status
+        if not result.publication_ready:
+            all_publication_ready = False
+
+    return candidates, compliance_records, worst_status, all_publication_ready

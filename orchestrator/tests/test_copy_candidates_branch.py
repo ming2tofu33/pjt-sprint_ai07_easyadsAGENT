@@ -122,3 +122,22 @@ def test_selected_copy_persists_frontend_choices_in_graph_state():
     assert update["ad_format_spec"]["ad_format"] == "instagram_story"
     assert update["ad_format_spec"]["height"] == 1920
     assert update["layout_spec"]["layout_type"] == "story_vertical"
+
+
+def test_selected_copy_node_prefers_custom_copy_from_candidate_selection_resume():
+    state = _state()
+    state.update(copy_candidate_generation_node(state))
+    state["copy_selection"] = {
+        "selected_copy_id": "copy_2",
+        "user_custom_headline": "내가 고친 삼겹살 문구",
+        "user_custom_subcopy": "오늘 저녁 예약 가능",
+    }
+
+    update = state_update_selected_copy_node(state)
+
+    assert update["selected_copy_id"] == "copy_2"
+    assert update["user_custom_headline"] == "내가 고친 삼겹살 문구"
+    assert update["user_custom_subcopy"] == "오늘 저녁 예약 가능"
+    assert update["marketing_copy"]["headline"] == "내가 고친 삼겹살 문구"
+    assert update["marketing_copy"]["subcopy"] == "오늘 저녁 예약 가능"
+    assert update["marketing_copy"]["metadata"]["copy_resolution"] == "manual_edit"

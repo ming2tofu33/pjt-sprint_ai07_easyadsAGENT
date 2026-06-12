@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from orchestrator.app.db import settings as db_settings
 from orchestrator.app.reference_catalog.seed_templates import SEED_REFERENCE_TEMPLATES
 from orchestrator.app.schemas.reference_catalog import (
     ReferenceTemplate,
@@ -15,7 +16,10 @@ from orchestrator.app.schemas.reference_catalog import (
     ReferenceTemplateSearchResult,
     ReferenceTemplateSelection,
 )
+from orchestrator.app.storage import settings as storage_settings
+from orchestrator.app.storage.r2_client import create_r2_client
 from orchestrator.app.storage.url_policy import build_public_r2_url
+from orchestrator.app.storage.url_policy import generate_signed_get_url
 
 
 PERMANENT_REFERENCE_MANIFEST_ENV = "EASYADS_PERMANENT_REFERENCE_MANIFEST"
@@ -76,14 +80,72 @@ def permanent_reference_manifest_path(path: str | Path | None = None) -> Path:
 def load_reference_templates(
     include_temporary: bool | None = None,
     include_permanent: bool = True,
+    include_db: bool = True,
 ) -> list[ReferenceTemplate]:
     templates = [ReferenceTemplate(**item) for item in SEED_REFERENCE_TEMPLATES]
     if include_permanent:
         templates.extend(load_permanent_reference_templates())
+    if include_db:
+        templates.extend(load_db_reference_templates(active_only=True))
     should_include_temporary = temporary_references_enabled() if include_temporary is None else include_temporary
     if should_include_temporary:
         templates.extend(load_temporary_reference_templates())
     return unique_templates_by_id(templates)
+
+
+def load_db_reference_templates(active_only: bool = True) -> list[ReferenceTemplate]:
+    try:
+        if not db_settings.is_postgres_enabled():
+            return []
+        from orchestrator.app.db.repositories import reference_templates as reference_repo
+
+        return [db_reference_template_from_row(row) for row in reference_repo.list_reference_templates(active_only=active_only)]
+    except Exception:
+        return []
+
+
+def db_reference_template_from_row(row: dict) -> ReferenceTemplate:
+    metadata = dict(row.get("metadata") or {})
+    metadata.setdefault("permanent", True)
+    metadata.setdefault("storage_provider", "r2")
+    metadata.setdefault("copyright_status", "owned_or_licensed")
+    if row.get("asset_public_id"):
+        metadata.setdefault("reference_asset_id", row.get("asset_public_id"))
+
+    source_image_path = row.get("source_image_path")
+    preview_path = row.get("preview_url") or source_image_path
+    thumbnail_path = row.get("thumbnail_url") or preview_path
+    assets = {
+        "thumbnail_path": thumbnail_path,
+        "preview_path": preview_path,
+        "source_image_path": source_image_path or preview_path or thumbnail_path,
+    }
+
+    return ReferenceTemplate(
+        template_id=str(row.get("template_id")),
+        title=str(row.get("title")),
+        description=row.get("description"),
+        category=str(row.get("category")),
+        sub_category=row.get("sub_category"),
+        tags=list(row.get("tags") or []),
+        business_types=list(row.get("business_types") or []),
+        ad_formats=list(row.get("ad_formats") or []),
+        platforms=list(row.get("platforms") or []),
+        aspect_ratio=row.get("aspect_ratio"),
+        width=row.get("width"),
+        height=row.get("height"),
+        assets=assets,
+        style_keywords=list(row.get("style_keywords") or []),
+        color_palette=list(row.get("color_palette") or []),
+        layout_hint=row.get("layout_hint"),
+        typography_hint=row.get("typography_hint"),
+        background_style=row.get("background_style"),
+        popularity_score=float(row.get("popularity_score") or 0),
+        status=row.get("status") or "draft",
+        source=row.get("source") or "admin_upload",
+        license_note=row.get("license_note"),
+        metadata=metadata,
+    )
 
 
 def load_permanent_reference_templates(manifest_path: str | Path | None = None) -> list[ReferenceTemplate]:
@@ -227,14 +289,34 @@ def permanent_reference_asset_url(template: ReferenceTemplate, asset_kind: str) 
     if value.startswith(("http://", "https://")):
         return value
     if value.startswith(R2_REFERENCE_ASSET_PREFIX):
-        return build_public_r2_url(value.removeprefix(R2_REFERENCE_ASSET_PREFIX))
+        return r2_reference_asset_url(value.removeprefix(R2_REFERENCE_ASSET_PREFIX))
     if template.metadata.get("storage_provider") == "r2":
-        return build_public_r2_url(value)
+        return r2_reference_asset_url(value)
     return None
 
 
 def reference_template_asset_url(template: ReferenceTemplate, asset_kind: str) -> str | None:
     return temporary_reference_asset_url(template, asset_kind) or permanent_reference_asset_url(template, asset_kind)
+
+
+def r2_reference_asset_url(object_key: str) -> str | None:
+    public_url = build_public_r2_url(object_key)
+    if public_url:
+        return public_url
+    if storage_settings.get_r2_url_mode() != "signed":
+        return None
+    bucket = storage_settings.get_r2_bucket()
+    if not (bucket and storage_settings.get_r2_endpoint_url() and storage_settings.get_r2_access_key_id() and storage_settings.get_r2_secret_access_key()):
+        return None
+    try:
+        return generate_signed_get_url(
+            client=create_r2_client(),
+            bucket=bucket,
+            object_key=object_key,
+            expires_in=storage_settings.get_r2_signed_url_ttl_seconds(),
+        )
+    except Exception:
+        return None
 
 
 def temporary_reference_asset_path(removal_group: str, filename: str, root: str | Path | None = None) -> Path | None:
@@ -315,10 +397,12 @@ def resolve_reference_template_selection(template_id: str) -> ReferenceTemplateS
     warnings: list[str] = []
     if not template.assets.source_image_path:
         warnings.append("reference_template_has_no_source_image_path")
+    reference_asset_id = template.metadata.get("reference_asset_id") or template.metadata.get("asset_public_id")
     return ReferenceTemplateSelection(
         template_id=template_id,
         resolved_template=template,
         reference_image_path=template.assets.source_image_path,
+        reference_asset_id=str(reference_asset_id) if reference_asset_id else None,
         style_profile_hint=style_hint,
         warnings=warnings,
         metadata={"source": "seed", "deterministic": True},

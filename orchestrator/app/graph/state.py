@@ -98,6 +98,14 @@ class MarketingState(TypedDict, total=False):
     reference_asset_id: str | None
     source_image_path: str | None
     reference_image_path: str | None
+    input_evidence_bundle: dict[str, Any] | None
+    input_normalization_status: str | None
+    input_conflicts: list[dict[str, Any]]
+    unresolved_questions: list[str]
+    product_understanding: dict[str, Any] | None
+    product_understanding_status: str | None
+    product_understanding_confidence: float | None
+    product_understanding_provider_metadata: dict[str, Any] | None
     vision_preprocess_mode: str | None
     selected_reference_template_id: str | None
     selected_reference_template: dict[str, Any] | None
@@ -131,10 +139,31 @@ class MarketingState(TypedDict, total=False):
     tone_binding_output: dict[str, Any] | ToneBindingOutput | None
     copy_mode_inference_output: dict[str, Any] | CopyModeInferenceOutput | None
     copy_selection: dict[str, Any] | None
+    input_compliance_risk: dict[str, Any] | None
+    copy_compliance: list[dict[str, Any]]
+    copy_compliance_status: str | None
+    copy_compliance_publication_ready: bool
+    copy_compliance_gate: dict[str, Any] | None
+    copy_compliance_resolution: dict[str, Any] | None
     custom_copy_input: dict[str, Any] | None
     copy_spec: dict[str, Any] | CopySpec | None
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
     text_style_spec: dict[str, Any] | TextStyleSpec | None
+    copy_visual_intent: dict[str, Any] | None
+    product_copy_context: dict[str, Any] | None
+    copy_presence_plan: dict[str, Any] | None
+    language_policy: dict[str, Any] | None
+    interaction_copy_plan: dict[str, Any] | None
+    minimal_copy_candidates: list[dict[str, Any]]
+    selected_minimal_copy_candidate_id: str | None
+    typography_art_direction: dict[str, Any] | None
+    font_catalog_summary: list[dict[str, Any]]
+    adaptive_typography_report: dict[str, Any] | None
+    image_layout_analysis: dict[str, Any] | None
+    layout_candidate_scores: list[dict[str, Any]]
+    layout_refinement_result: dict[str, Any] | None
+    layout_copy_fit_report: dict[str, Any] | None
+    layout_revision_attempts: int
     image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
     image_prompt: dict[str, Any] | ImagePrompt | None
     prompt_optimization_output: dict[str, Any] | PromptOptimizationOutput | None
@@ -165,6 +194,19 @@ class MarketingState(TypedDict, total=False):
     text_overlay_config: dict[str, Any] | TextOverlayConfig | None
     final_image_path: str | None
     final_validation_report: dict[str, Any] | FinalValidationReport | None
+    final_composite_quality_report: dict[str, Any] | None
+    final_composite_revision_plan: dict[str, Any] | None
+    final_composite_revision_patch: dict[str, Any] | None
+    final_composite_retry_feedback: list[str]
+    final_composite_partial_rerun: bool
+    final_composite_rerun_action: str | None
+    reuse_existing_background: bool
+    final_copy_revision_result: dict[str, Any] | None
+    final_composite_attempts: int
+    final_copy_revision_attempts: int
+    final_layout_revision_attempts: int
+    final_style_revision_attempts: int
+    final_background_regeneration_attempts: int
     validation_report: dict[str, Any] | ValidationReport | None
     result_payload: dict[str, Any] | ResultPayload | None
     artifact_refs: list[dict[str, Any] | ArtifactRef]
@@ -222,6 +264,10 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "requested_ad_format": request.requested_ad_format,
         "requested_platform": request.requested_platform,
         "copy_generation_mode": request.copy_generation_mode,
+        # Confirmed only when the user explicitly supplied a mode up front. Heuristic/LLM
+        # inference in the validator must NOT flip this true; otherwise the 4-mode question
+        # is never asked.
+        "copy_generation_mode_confirmed": request.copy_generation_mode is not None,
         "user_custom_headline": request.user_custom_headline,
         "user_custom_subcopy": request.user_custom_subcopy,
         "source_asset_id": request.source_asset_id,
@@ -298,10 +344,28 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "tone_binding_output": None,
         "copy_mode_inference_output": None,
         "copy_selection": None,
+        "input_compliance_risk": None,
+        "copy_compliance": [],
+        "copy_compliance_status": None,
+        "copy_compliance_publication_ready": True,
+        "copy_compliance_gate": None,
+        "copy_compliance_resolution": None,
         "custom_copy_input": None,
         "copy_spec": None,
         "text_layout_spec": None,
         "text_style_spec": None,
+        "copy_visual_intent": None,
+        "product_copy_context": None,
+        "copy_presence_plan": None,
+        "language_policy": None,
+        "interaction_copy_plan": None,
+        "minimal_copy_candidates": [],
+        "selected_minimal_copy_candidate_id": None,
+        "image_layout_analysis": None,
+        "layout_candidate_scores": [],
+        "layout_refinement_result": None,
+        "layout_copy_fit_report": None,
+        "layout_revision_attempts": 0,
         "image_prompt_spec": None,
         "image_prompt": None,
         "prompt_optimization_output": None,
@@ -331,6 +395,19 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "text_overlay_config": None,
         "final_image_path": None,
         "final_validation_report": None,
+        "final_composite_quality_report": None,
+        "final_composite_revision_plan": None,
+        "final_composite_revision_patch": None,
+        "final_composite_retry_feedback": [],
+        "final_composite_partial_rerun": False,
+        "final_composite_rerun_action": None,
+        "reuse_existing_background": False,
+        "final_copy_revision_result": None,
+        "final_composite_attempts": 0,
+        "final_copy_revision_attempts": 0,
+        "final_layout_revision_attempts": 0,
+        "final_style_revision_attempts": 0,
+        "final_background_regeneration_attempts": 0,
         "validation_report": None,
         "result_payload": None,
         "artifact_refs": [],

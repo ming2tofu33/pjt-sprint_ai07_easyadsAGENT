@@ -51,6 +51,15 @@ def build_message_strategy(context: Any) -> CopyMessageStrategy:
     brand_voice = _get(context, "brand_tone")
     theme = resolve_copy_theme(_get(context, "business_type"))
     desire = _goal_to_desire(promotion_goal)
+    conversion_goal = _conversion_goal(promotion_goal)
+    cta_intent = _cta_intent(promotion_goal)
+    proof_or_detail = _proof_or_detail(theme.key)
+    if promotion_goal == "menu_discovery":
+        conversion_goal = "menu_discovery"
+        cta_intent = "explore_menu"
+        desire = "메뉴와 맛 구성을 가볍게 둘러보고 싶음"
+        if theme.key == "macaron":
+            proof_or_detail = "다양한 맛과 색의 마카롱 컬렉션"
     return CopyMessageStrategy(
         target_persona=target,
         product_truths=[str(item)],
@@ -60,11 +69,11 @@ def build_message_strategy(context: Any) -> CopyMessageStrategy:
         primary_value=item,
         customer_desire=desire,
         emotional_hook=_emotional_hook(theme.key),
-        proof_or_detail=_proof_or_detail(theme.key),
-        conversion_goal=_conversion_goal(promotion_goal),
+        proof_or_detail=proof_or_detail,
+        conversion_goal=conversion_goal,
         headline_angle="product/emotion/action",
-        cta_intent=_cta_intent(promotion_goal),
-        supported_facts=[str(item), str(promotion_goal or "")],
+        cta_intent=cta_intent,
+        supported_facts=[str(item)],
         message_angles=list(ANGLES),
         forbidden_claims=["invented price", "invented discount", "invented phone", "guaranteed effect"],
         strategy_summary=f"{theme.key}: {item} 중심의 3-angle 광고 카피",
@@ -80,15 +89,18 @@ def generate_fallback_candidates(context: Any, max_candidates: int = 3) -> list[
     product_subcopy = theme.product_subcopy
     emotion_headline = theme.emotion_headline
     emotion_subcopy = theme.emotion_subcopy
+    ctas = theme.ctas
+    if theme.key == "macaron" and _get(context, "promotion_goal") == "menu_discovery":
+        ctas = ("컬렉션 보기", "오늘의 맛 보기", "")
     if theme.key == "restaurant_bbq" and item == "예약 서비스":
         product_headline = "{item} 안내"
         product_subcopy = "방문 전 필요한 내용을 편하게 확인하세요"
         emotion_headline = "오늘 일정, 미리 잡아두세요"
         emotion_subcopy = "기다림을 줄이고 편하게 방문하세요"
     templates = (
-        ("product_first", product_headline, product_subcopy, theme.ctas[0], "product"),
-        ("emotion_first", emotion_headline, emotion_subcopy, theme.ctas[1], "emotion"),
-        ("benefit_action_first", theme.action_headline, theme.action_subcopy, theme.ctas[2], "action"),
+        ("product_first", product_headline, product_subcopy, ctas[0], "product"),
+        ("emotion_first", emotion_headline, emotion_subcopy, ctas[1], "emotion"),
+        ("benefit_action_first", theme.action_headline, theme.action_subcopy, ctas[2], "action"),
     )
     candidates: list[CopyCandidate] = []
     for index, (angle, headline, subcopy, cta, tone) in enumerate(templates[: max(1, max_candidates)], start=1):

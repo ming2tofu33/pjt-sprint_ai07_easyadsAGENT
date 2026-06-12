@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState, context_to_model
-from orchestrator.app.schemas.text_layout import StyleProfile, TextStyleSpec, TypographyRule
+from orchestrator.app.llm.copy_visual_intent import resolve_copy_visual_intent
+from orchestrator.app.llm.nodes.typography_art_director import select_typography_art_direction
+from orchestrator.app.schemas.llm_marketing import MarketingContext
+from orchestrator.app.schemas.text_layout import CopyVisualIntent, StyleProfile, TextStyleSpec, TypographyRoleStyle, TypographyRule
 
 
 TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
@@ -105,14 +107,117 @@ TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
 }
 
 
-def text_style_binder_node(state: MarketingState) -> dict[str, Any]:
-    context = context_to_model(state.get("context"))
-    profile = infer_style_profile(context.brand_tone, context.promotion_goal)
-    spec = TextStyleSpec(profile=profile, typography=TYPOGRAPHY_BY_PROFILE[profile])
+def text_style_binder_node(state: dict[str, Any]) -> dict[str, Any]:
+    context = _context_to_model(state.get("context"))
+    intent = CopyVisualIntent(**(state.get("copy_visual_intent") or resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template")).model_dump()))
+    profile = profile_for_intent(intent, infer_style_profile(context.brand_tone, context.promotion_goal))
+    typography = TYPOGRAPHY_BY_PROFILE[profile].model_copy(deep=True)
+    if intent.plate_policy == "none":
+        typography.use_text_plate = False
+        typography.default_overlay = "plain"
+    elif intent.plate_policy == "cta_only":
+        typography.use_text_plate = False
+        typography.default_overlay = "drop_shadow"
+    if intent.typography_mood in {"premium_serif", "editorial_mixed"}:
+        typography.headline_font = "RIDIBatang"
+        typography.body_font = "MaruBuri"
+    typography = apply_intent_typography(typography, intent)
+    art_direction = state.get("typography_art_direction") or select_typography_art_direction({**state, "copy_visual_intent": intent.model_dump(), "context": context.model_dump()}).model_dump()
+    role_styles = build_role_styles(art_direction)
+    spec = TextStyleSpec(
+        profile=profile,
+        typography=typography,
+        headline_style=role_styles["headline"],
+        body_style=role_styles["body"],
+        cta_style=role_styles["cta"],
+        label_style=role_styles["label"],
+        price_style=role_styles["price"],
+        disclaimer_style=role_styles["disclaimer"],
+        font_pair_id=art_direction.get("preset_id"),
+        typography_art_direction=art_direction,
+        role_styles={
+            "cta": {"visibility": intent.cta_visibility, "style": intent.cta_style, "plate_policy": intent.plate_policy},
+            "reference_layout_hint": intent.reference_layout_hint,
+            "reference_typography_hint": intent.reference_typography_hint,
+            "typography_art_direction": art_direction,
+        },
+    )
     return {
         "text_style_spec": spec.model_dump(),
+        "copy_visual_intent": intent.model_dump(),
         "current_brief": {**state.get("current_brief", {}), "text_style_ready": True},
         "status": "planning_format",
+    }
+
+
+def _context_to_model(context: dict[str, Any] | MarketingContext | None) -> MarketingContext:
+    if isinstance(context, MarketingContext):
+        return context
+    if isinstance(context, dict):
+        return MarketingContext(**context)
+    return MarketingContext()
+
+
+def profile_for_intent(intent: CopyVisualIntent, fallback: StyleProfile) -> StyleProfile:
+    if intent.typography_mood in {"premium_serif", "editorial_mixed"}:
+        return "premium"
+    if intent.typography_mood == "rounded_friendly":
+        return "cute"
+    if intent.typography_mood == "bold_promo":
+        return "event"
+    return fallback if fallback in {"clean", "premium", "cute", "event", "trendy", "emotional"} else "clean"
+
+
+def apply_intent_typography(typography: TypographyRule, intent: CopyVisualIntent) -> TypographyRule:
+    hint = (intent.reference_typography_hint or "").lower()
+    if "serif" in hint:
+        typography.headline_font = "RIDIBatang"
+        typography.body_font = "MaruBuri"
+    elif "rounded" in hint:
+        typography.headline_font = "BMJUA"
+        typography.body_font = "Pretendard"
+    elif "bold" in hint:
+        typography.headline_weight = max(typography.headline_weight, 850)
+    elif "sans" in hint:
+        typography.headline_font = "Pretendard"
+        typography.body_font = "Pretendard"
+
+    if intent.headline_emphasis == "large_elegant":
+        typography.headline_size_ratio = max(typography.headline_size_ratio, 0.064)
+        typography.headline_weight = min(max(typography.headline_weight, 600), 760)
+    elif intent.headline_emphasis == "large_bold":
+        typography.headline_size_ratio = max(typography.headline_size_ratio, 0.074)
+        typography.headline_weight = max(typography.headline_weight, 850)
+    elif intent.headline_emphasis == "minimal":
+        typography.headline_size_ratio = min(typography.headline_size_ratio, 0.052)
+        typography.headline_weight = min(typography.headline_weight, 650)
+    return typography
+
+
+def build_role_styles(direction: dict[str, Any]) -> dict[str, TypographyRoleStyle]:
+    headline_scale = str(direction.get("headline_scale") or "headline_large")
+    body_scale = str(direction.get("body_scale") or "body_medium")
+    cta_treatment = str(direction.get("cta_treatment") or "text_link")
+    headline_ratio = {"display_large": 0.078, "display_medium": 0.068, "headline_large": 0.062, "headline_medium": 0.052}.get(headline_scale, 0.062)
+    body_ratio = {"body_small": 0.030, "body_medium": 0.035}.get(body_scale, 0.034)
+    cta_ratio = max(0.024, min(0.030, headline_ratio / 1.8))
+    headline_tracking = {"tight": -0.01, "normal": 0.0, "open": 0.025}.get(str(direction.get("headline_tracking")), 0.0)
+    body_tracking = 0.015 if direction.get("body_tracking") == "open" else 0.0
+    headline_leading = 1.05 if direction.get("headline_leading") == "compact" else 1.14
+    body_leading = 1.24 if direction.get("body_leading") == "relaxed" else 1.15
+    overlay = "editorial_underline" if cta_treatment == "editorial_underline" else ("small_chip" if cta_treatment == "small_chip" else "none")
+    if cta_treatment == "button":
+        overlay = "small_chip"
+    headline_family = direction.get("headline_family_id") or "noto_sans_kr"
+    body_family = direction.get("body_family_id") or "noto_sans_kr"
+    cta_family = direction.get("cta_family_id") or body_family
+    return {
+        "headline": TypographyRoleStyle(role="headline", family_id=headline_family, weight=int(direction.get("headline_weight") or 700), size_ratio=headline_ratio, min_size_ratio=headline_ratio * 0.72, max_size_ratio=headline_ratio * 1.10, letter_spacing_em=headline_tracking, line_height_em=headline_leading, text_color="#4A3A31", alignment="left", max_lines=2, overlay_treatment="none"),
+        "body": TypographyRoleStyle(role="body", family_id=body_family, weight=int(direction.get("body_weight") or 400), size_ratio=body_ratio, min_size_ratio=body_ratio * 0.75, max_size_ratio=body_ratio * 1.10, letter_spacing_em=body_tracking, line_height_em=body_leading, text_color="#514941", alignment="left", max_lines=3, overlay_treatment="none"),
+        "cta": TypographyRoleStyle(role="cta", family_id=cta_family, weight=int(direction.get("cta_weight") or 500), size_ratio=cta_ratio, min_size_ratio=cta_ratio * 0.80, max_size_ratio=cta_ratio * 1.10, letter_spacing_em=0.01, line_height_em=1.12, text_color="#514941", alignment="left", max_lines=1, overlay_treatment=overlay),
+        "label": TypographyRoleStyle(role="brand_label", family_id=body_family, weight=500, size_ratio=0.020, min_size_ratio=0.016, max_size_ratio=0.024, letter_spacing_em=0.04, line_height_em=1.10, text_color="#514941", alignment="left", max_lines=1, overlay_treatment="none"),
+        "price": TypographyRoleStyle(role="price", family_id=body_family, weight=500, size_ratio=0.034, min_size_ratio=0.026, max_size_ratio=0.040, letter_spacing_em=0.0, line_height_em=1.10, text_color="#514941", alignment="left", max_lines=1, overlay_treatment="none"),
+        "disclaimer": TypographyRoleStyle(role="disclaimer", family_id=body_family, weight=400, size_ratio=0.018, min_size_ratio=0.014, max_size_ratio=0.022, letter_spacing_em=0.0, line_height_em=1.15, text_color="#514941", alignment="left", max_lines=2, overlay_treatment="none"),
     }
 
 

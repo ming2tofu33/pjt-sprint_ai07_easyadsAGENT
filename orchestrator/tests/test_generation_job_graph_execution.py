@@ -464,10 +464,38 @@ def test_execute_generation_job_graph_receives_selected_ui_values(monkeypatch):
     assert executed.status == "done"
     assert received_payload["selected_copy_id"] == "copy_2"
     assert received_payload["selected_channel_id"] == "instagram-story"
+    assert received_payload["selected_ad_format"] == "instagram_story"
     assert received_payload["selected_tone"] == "상큼한"
     assert received_payload["custom_direction"] == "제품을 화면 중앙에 크게"
     assert received_payload["user_custom_headline"] == "오늘만 딸기라떼 반값"
     assert received_payload["user_custom_subcopy"] == "오후 2시부터 5시까지"
+    assert received_payload["current_brief"]["requested_ad_format"] == "instagram_story"
+    assert received_payload["current_brief"]["selected_tone"] == "상큼한"
+    assert received_payload["current_brief"]["custom_direction"] == "제품을 화면 중앙에 크게"
+    assert received_payload["context"]["brand_tone"] == "상큼한"
+    assert received_payload["context"]["extra"]["ad_format"] == "instagram_story"
+
+
+def test_suggest_candidates_create_clears_stale_copy_state():
+    state = {
+        "copy_generation_mode": "suggest_candidates",
+        "selected_copy_id": "copy_1",
+        "copy_selection": {"selected_copy_id": "copy_1"},
+        "marketing_copy": {"headline": "stale"},
+        "copy_candidates": [{"id": "copy_1", "headline": "stale"}],
+        "copywriting_output": {"recommended_candidate_id": "copy_1"},
+        "copy_candidate_origin": "rule_based",
+    }
+    request = GenerationJobCreateRequest(userInput="새 광고", copyGenerationMode="suggest_candidates", selectedCopyId=None)
+
+    execution._clear_stale_suggest_copy_state(state, request)
+
+    assert state["selected_copy_id"] is None
+    assert state["copy_selection"] is None
+    assert state["marketing_copy"] is None
+    assert state["copy_candidates"] == []
+    assert state["copywriting_output"] is None
+    assert state["copy_candidate_origin"] is None
 
 
 def test_execute_generation_job_graph_waiting_user_input(monkeypatch):
@@ -645,6 +673,68 @@ def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
         "카페",
     ]
 
+
+def test_resume_generation_job_graph_passes_scope_to_next_interrupt_waiting_update(monkeypatch):
+    captured = {}
+    job = _graph_job_response(
+        job_id="job_waiting",
+        thread_id="thread_waiting",
+        user_id="user_a",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning"),
+    )
+
+    class MockGraph:
+        def invoke(self, payload, config: dict | None = None) -> dict:
+            return {
+                "job_id": "job_waiting",
+                "thread_id": "thread_waiting",
+                "status": "waiting_user_input",
+                "__interrupt__": [
+                    FakeInterrupt(
+                        {
+                            "type": "option_question",
+                            "job_id": "job_waiting",
+                            "thread_id": "thread_waiting",
+                            "option_question": {
+                                "field": "item_or_service",
+                                "question": "홍보할 상품이나 서비스는 무엇인가요?",
+                                "options": [{"id": 1, "label": "대표 메뉴", "value": "대표 메뉴"}],
+                            },
+                        }
+                    )
+                ],
+                "messages": [{"role": "assistant", "content": "홍보할 상품이나 서비스는 무엇인가요?"}],
+            }
+
+    def mark_waiting(*args, **kwargs):
+        captured.update(kwargs)
+        return _graph_job_response(
+            job_id="job_waiting",
+            thread_id="thread_waiting",
+            user_id="user_a",
+            status="waiting_user_input",
+            progress=GenerationProgress(progress_percent=50, current_stage="waiting_user_input"),
+        )
+
+    monkeypatch.setattr(execution, "get_generation_job", lambda job_id, **kwargs: job)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.mark_generation_job_running", lambda *args, **kwargs: job)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.append_generation_job_user_answer_message", lambda *args, **kwargs: None)
+    monkeypatch.setattr("orchestrator.app.generation_jobs.service.mark_generation_job_waiting_user_input", mark_waiting)
+
+    answer = GenerationJobAnswerRequest(field="business_type", value="cafe", display_text="카페")
+    resumed = resume_generation_job_graph(
+        "job_waiting",
+        answer,
+        allow_running=True,
+        workspace_id="11111111-1111-1111-1111-111111111111",
+        user_id="user_a",
+    )
+
+    assert resumed.status == "waiting_user_input"
+    assert captured["workspace_id"] == "11111111-1111-1111-1111-111111111111"
+    assert captured["user_id"] == "user_a"
 
 def test_resume_generation_job_graph_marks_failed_when_graph_raises(monkeypatch):
     calls = []

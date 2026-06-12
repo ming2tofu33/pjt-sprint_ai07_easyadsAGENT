@@ -19,7 +19,11 @@ from orchestrator.app.db.repositories import chat_messages as chat_message_repo
 from orchestrator.app.db.repositories import chat_threads as chat_thread_repo
 from orchestrator.app.db.repositories import workspaces as workspace_repo
 from orchestrator.app.db.session import db_transaction
-from orchestrator.app.chat_threads.errors import ChatThreadArchivedError, ChatThreadHasActiveJobError
+from orchestrator.app.chat_threads.errors import (
+    ChatThreadArchivedError,
+    ChatThreadHasActiveJobError,
+    ChatThreadLimitReachedError,
+)
 from orchestrator.app.chat_threads.sanitization import sanitize_chat_payload
 
 # ---------------------------------------------------------------------------
@@ -106,9 +110,15 @@ def _authenticated_user_id(user_id: str | None) -> str | None:
     return normalized or None
 
 
-def _ensure_workspace_for_user(user_id: str | None, connection: object | None = None) -> dict:
+def _ensure_workspace_for_user(user_id: str | None, connection: object | None = None, account_type: str | None = None) -> dict:
     authenticated_user_id = _authenticated_user_id(user_id)
     if authenticated_user_id:
+        if account_type:
+            return workspace_repo.ensure_user_workspace(
+                user_id=authenticated_user_id,
+                account_type=account_type,
+                connection=connection,
+            )
         return workspace_repo.ensure_user_workspace(user_id=authenticated_user_id, connection=connection)
     return workspace_repo.ensure_demo_workspace(user_id=_effective_user_id(user_id), connection=connection)
 
@@ -174,37 +184,53 @@ def create_chat_thread(request: ChatThreadCreateRequest) -> ChatThreadResponse:
     return _create_chat_thread_memory(request)
 
 
-def get_chat_thread(thread_id: str, user_id: str | None = None) -> ChatThreadResponse | None:
+def get_chat_thread(thread_id: str, user_id: str | None = None, account_type: str | None = None) -> ChatThreadResponse | None:
     if _use_postgres():
-        return _get_chat_thread_db(thread_id, user_id=user_id)
+        return _get_chat_thread_db(thread_id, user_id=user_id, account_type=account_type)
     return _get_chat_thread_memory(thread_id, user_id=user_id)
 
 
 def list_chat_threads(
     user_id: str | None = None,
+    account_type: str | None = None,
     include_archived: bool = False,
+    include_total: bool = True,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[ChatThreadResponse], int]:
     """(threads, total) 반환."""
     if _use_postgres():
-        return _list_chat_threads_db(user_id=user_id, include_archived=include_archived, limit=limit, offset=offset)
-    return _list_chat_threads_memory(user_id=user_id, include_archived=include_archived, limit=limit, offset=offset)
+        return _list_chat_threads_db(
+            user_id=user_id,
+            account_type=account_type,
+            include_archived=include_archived,
+            include_total=include_total,
+            limit=limit,
+            offset=offset,
+        )
+    return _list_chat_threads_memory(
+        user_id=user_id,
+        include_archived=include_archived,
+        include_total=include_total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def update_chat_thread(
     thread_id: str,
     request: ChatThreadUpdateRequest,
     user_id: str | None = None,
+    account_type: str | None = None,
 ) -> ChatThreadResponse | None:
     if _use_postgres():
-        return _update_chat_thread_db(thread_id, request, user_id=user_id)
+        return _update_chat_thread_db(thread_id, request, user_id=user_id, account_type=account_type)
     return _update_chat_thread_memory(thread_id, request, user_id=user_id)
 
 
-def archive_chat_thread(thread_id: str, user_id: str | None = None) -> ChatThreadResponse | None:
+def archive_chat_thread(thread_id: str, user_id: str | None = None, account_type: str | None = None) -> ChatThreadResponse | None:
     if _use_postgres():
-        return _archive_chat_thread_db(thread_id, user_id=user_id)
+        return _archive_chat_thread_db(thread_id, user_id=user_id, account_type=account_type)
     return _archive_chat_thread_memory(thread_id, user_id=user_id)
 
 
@@ -212,21 +238,23 @@ def append_chat_message(
     thread_id: str,
     request: ChatMessageCreateRequest,
     user_id: str | None = None,
+    account_type: str | None = None,
 ) -> ChatMessageResponse | None:
     if _use_postgres():
-        return _append_chat_message_db(thread_id, request, user_id=user_id)
+        return _append_chat_message_db(thread_id, request, user_id=user_id, account_type=account_type)
     return _append_chat_message_memory(thread_id, request, user_id=user_id)
 
 
 def list_chat_messages(
     thread_id: str,
     user_id: str | None = None,
+    account_type: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[list[ChatMessageResponse], int]:
     """(messages, total) 반환."""
     if _use_postgres():
-        return _list_chat_messages_db(thread_id, user_id=user_id, limit=limit, offset=offset)
+        return _list_chat_messages_db(thread_id, user_id=user_id, account_type=account_type, limit=limit, offset=offset)
     return _list_chat_messages_memory(thread_id, user_id=user_id, limit=limit, offset=offset)
 
 
@@ -291,6 +319,17 @@ def clear_thread_active_job(
 
 def _create_chat_thread_memory(request: ChatThreadCreateRequest) -> ChatThreadResponse:
     with _STORE_LOCK:
+        # Mirror the postgres per-workspace guard: cap non-archived threads per owner.
+        max_threads = db_settings.get_max_threads_per_workspace()
+        existing = sum(
+            1
+            for t in _CHAT_THREADS.values()
+            if _owner_matches(t, request.user_id) and not t.get("archived_at")
+        )
+        if existing >= max_threads:
+            raise ChatThreadLimitReachedError(
+                f"Workspace already has the maximum of {max_threads} active chat threads."
+            )
         now = _now_iso()
         tid = f"thread_{uuid4().hex}"
         thread = ChatThreadResponse(
@@ -345,14 +384,21 @@ def _get_chat_thread_memory(thread_id: str, user_id: str | None = None) -> ChatT
         return ChatThreadResponse(**data)
 
 
-def _list_chat_threads_memory(user_id: str | None = None, include_archived: bool = False, limit: int = 50, offset: int = 0) -> tuple[list[ChatThreadResponse], int]:
+def _list_chat_threads_memory(
+    user_id: str | None = None,
+    include_archived: bool = False,
+    include_total: bool = True,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[ChatThreadResponse], int]:
     with _STORE_LOCK:
         items = [t for t in _CHAT_THREADS.values() if _owner_matches(t, user_id)]
         if not include_archived:
             items = [t for t in items if not t.get("archived_at")]
         items.sort(key=lambda t: t.get("last_message_at") or "", reverse=True)
         page = items[offset: offset + limit]
-        return [ChatThreadResponse(**t) for t in page], len(items)
+        total = len(items) if include_total else offset + len(page)
+        return [ChatThreadResponse(**t) for t in page], total
 
 
 def _update_chat_thread_memory(thread_id: str, request: ChatThreadUpdateRequest, user_id: str | None = None) -> ChatThreadResponse | None:
@@ -519,7 +565,7 @@ def append_generation_job_chat_event_memory(
 def _create_chat_thread_db(request: ChatThreadCreateRequest) -> ChatThreadResponse:
     user_id = request.user_id or db_settings.get_demo_user_id()
     with db_transaction() as conn:
-        ws = _ensure_workspace_for_user(request.user_id, connection=conn)
+        ws = _ensure_workspace_for_user(request.user_id, connection=conn, account_type=request.account_type)
         row = chat_thread_repo.create_chat_thread(
             workspace_id=str(ws["id"]),
             created_by=user_id,
@@ -544,17 +590,25 @@ def _create_chat_thread_db(request: ChatThreadCreateRequest) -> ChatThreadRespon
 
 
 
-def _get_demo_workspace(user_id: str | None = None) -> dict:
+def _get_demo_workspace(user_id: str | None = None, account_type: str | None = None) -> dict:
     with db_transaction() as conn:
-        return _ensure_workspace_for_user(user_id, connection=conn)
+        return _ensure_workspace_for_user(user_id, connection=conn, account_type=account_type)
 
 
-def _get_demo_workspace_id(user_id: str | None = None) -> str:
+def _get_demo_workspace_id(user_id: str | None = None, account_type: str | None = None) -> str:
+    if account_type:
+        return str(_get_demo_workspace(user_id, account_type=account_type)["id"])
     return str(_get_demo_workspace(user_id)["id"])
 
 
-def _get_chat_thread_db(thread_id: str, user_id: str | None = None) -> ChatThreadResponse | None:
-    workspace_id = _get_demo_workspace_id(user_id)
+def _get_workspace_id_for_user(user_id: str | None = None, account_type: str | None = None) -> str:
+    if account_type:
+        return _get_demo_workspace_id(user_id, account_type=account_type)
+    return _get_demo_workspace_id(user_id)
+
+
+def _get_chat_thread_db(thread_id: str, user_id: str | None = None, account_type: str | None = None) -> ChatThreadResponse | None:
+    workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     row = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
     return _thread_row_to_response(row) if row else None
 
@@ -562,12 +616,13 @@ def _get_chat_thread_db(thread_id: str, user_id: str | None = None) -> ChatThrea
 def get_chat_thread_with_workspace(
     thread_id: str,
     user_id: str | None = None,
+    account_type: str | None = None,
 ) -> tuple[ChatThreadResponse, str] | None:
     if not _use_postgres():
         thread = get_chat_thread(thread_id, user_id=user_id)
         return (thread, "memory_workspace") if thread else None
 
-    workspace_id = _get_demo_workspace_id(user_id)
+    workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     row = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
 
     if not row and user_id is None:
@@ -579,20 +634,36 @@ def get_chat_thread_with_workspace(
     return _thread_row_to_response(row), str(row["workspace_id"])
 
 
-def _list_chat_threads_db(user_id: str | None = None, include_archived: bool = False, limit: int = 50, offset: int = 0) -> tuple[list[ChatThreadResponse], int]:
-    workspace_id = _get_demo_workspace_id(user_id)
+def _list_chat_threads_db(
+    user_id: str | None = None,
+    account_type: str | None = None,
+    include_archived: bool = False,
+    include_total: bool = True,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[ChatThreadResponse], int]:
+    workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     rows = chat_thread_repo.list_chat_threads(
         workspace_id=workspace_id,
         include_archived=include_archived,
         limit=limit,
         offset=offset,
     )
-    total = chat_thread_repo.count_chat_threads(workspace_id=workspace_id, include_archived=include_archived)
+    total = (
+        chat_thread_repo.count_chat_threads(workspace_id=workspace_id, include_archived=include_archived)
+        if include_total
+        else offset + len(rows)
+    )
     return [_thread_row_to_response(r) for r in rows], total
 
 
-def _update_chat_thread_db(thread_id: str, request: ChatThreadUpdateRequest, user_id: str | None = None) -> ChatThreadResponse | None:
-    workspace_id = _get_demo_workspace_id(user_id)
+def _update_chat_thread_db(
+    thread_id: str,
+    request: ChatThreadUpdateRequest,
+    user_id: str | None = None,
+    account_type: str | None = None,
+) -> ChatThreadResponse | None:
+    workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     existing = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
     if not existing:
         return None
@@ -616,8 +687,8 @@ def _update_chat_thread_db(thread_id: str, request: ChatThreadUpdateRequest, use
     return _thread_row_to_response(row)
 
 
-def _archive_chat_thread_db(thread_id: str, user_id: str | None = None) -> ChatThreadResponse | None:
-    workspace_id = _get_demo_workspace_id(user_id)
+def _archive_chat_thread_db(thread_id: str, user_id: str | None = None, account_type: str | None = None) -> ChatThreadResponse | None:
+    workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     existing = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
     if not existing:
         return None
@@ -629,8 +700,13 @@ def _archive_chat_thread_db(thread_id: str, user_id: str | None = None) -> ChatT
     return _thread_row_to_response(row) if row else None
 
 
-def _append_chat_message_db(thread_id: str, request: ChatMessageCreateRequest, user_id: str | None = None) -> ChatMessageResponse | None:
-    workspace_id = _get_demo_workspace_id(user_id)
+def _append_chat_message_db(
+    thread_id: str,
+    request: ChatMessageCreateRequest,
+    user_id: str | None = None,
+    account_type: str | None = None,
+) -> ChatMessageResponse | None:
+    workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     existing = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
     if not existing:
         return None
@@ -647,8 +723,14 @@ def _append_chat_message_db(thread_id: str, request: ChatMessageCreateRequest, u
     return _msg_row_to_response(row, thread_id)
 
 
-def _list_chat_messages_db(thread_id: str, user_id: str | None = None, limit: int = 100, offset: int = 0) -> tuple[list[ChatMessageResponse], int]:
-    workspace_id = _get_demo_workspace_id(user_id)
+def _list_chat_messages_db(
+    thread_id: str,
+    user_id: str | None = None,
+    account_type: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[ChatMessageResponse], int]:
+    workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     rows = chat_message_repo.list_chat_messages(thread_id, workspace_id=workspace_id, limit=limit, offset=offset)
     total = chat_message_repo.count_chat_messages(thread_id, workspace_id=workspace_id)
     return [_msg_row_to_response(r, thread_id) for r in rows], total

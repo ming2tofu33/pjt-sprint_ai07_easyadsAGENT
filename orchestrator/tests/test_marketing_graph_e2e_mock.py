@@ -77,18 +77,24 @@ def test_marketing_graph_resume_continues_to_mock_t2i():
         },
         config=config,
     )
-    payload = interrupted["__interrupt__"][0].value
-    resumed = graph.invoke(
-        Command(
-            resume={
-                "job_id": payload["job_id"],
-                "thread_id": payload["thread_id"],
-                "field": payload["option_question"]["field"],
-                "value": "reservation_cta",
-            }
-        ),
-        config=config,
-    )
+    # copy_generation_mode is now an explicit HITL choice, so the graph may interrupt for
+    # more than one field. Answer each asked field until it proceeds to completion.
+    resumed = interrupted
+    while "__interrupt__" in resumed:
+        payload = resumed["__interrupt__"][0].value
+        field = payload["option_question"]["field"]
+        value = "auto_pilot" if field == "copy_generation_mode" else "reservation_cta"
+        resumed = graph.invoke(
+            Command(
+                resume={
+                    "job_id": payload["job_id"],
+                    "thread_id": payload["thread_id"],
+                    "field": field,
+                    "value": value,
+                }
+            ),
+            config=config,
+        )
 
     assert resumed["status"] == "done"
     assert resumed["t2i_result"]["engine"] == "mock"

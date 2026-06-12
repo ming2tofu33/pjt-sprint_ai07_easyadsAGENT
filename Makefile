@@ -1,5 +1,5 @@
 # .PHONY는 파일 이름과 타겟 이름이 겹쳐서 충돌하는 것을 방지하는 방어막입니다.
-.PHONY: help up orchestrator-gpu down logs shell sync lint rag-test test port gpu dev-api dev-bff dev-web ad-gen ad-answer ad-brief eval-compile eval-test eval-sample eval-run eval-query eval-nodes eval-gates eval-trend eval-cost eval-logs eval-delete eval-judge eval-pending eval-llm eval-vlm eval-human eval-human-pending eval-ensemble eval-calibrate eval-calibrate-vlm eval-notebook eval-notebook-down
+.PHONY: help up orchestrator-gpu down logs shell sync lint rag-test test port gpu dev-api dev-bff dev-web ad-gen ad-answer ad-brief eval-compile eval-test eval-sample eval-sample-judge eval-run eval-query eval-nodes eval-gates eval-trend eval-cost eval-logs eval-delete eval-judge eval-pending eval-llm eval-vlm eval-human eval-human-pending eval-ensemble eval-calibrate eval-calibrate-vlm eval-notebook eval-notebook-down
 
 # JUDGE 기본값을 변수로 둠 — $(or ...)는 쉼표를 인자 구분자로 처리해 "llm,vlm"을 쪼개므로
 # 직접 쓸 수 없다. ?= 는 커맨드라인 JUDGE=... 지정 시 덮어쓰기 가능.
@@ -49,6 +49,7 @@ help:
 	@echo "  eval-sample  : ①LOG 무작위 총 N건(카테고리별 ≥1)."
 	@echo "               make eval-sample [N=10] [SEED=<int>] [SCENARIO=all|relevant|edge|copymode|nsfw|<name>] [RENDER=premium_api|fast|balanced] [PLAN=free|economic|premium|internal_benchmark]"
 	@echo "               RENDER: premium_api=gpt-image / fast=mock / balanced=로컬 SD3.5(자동). PLAN: free=결정론 폴백 / premium=실 GPT. \$$0 스모크=RENDER=fast PLAN=free."
+	@echo "  eval-sample-judge : ①LOG+②JUDGE 한 방. sample N건 로깅(auto 게이트 포함) 후 같은 N건 LLM+VLM 판정. 옵션은 eval-sample와 동일 + [JUDGE=llm,vlm]."
 	@echo "  eval-pending : ②JUDGE 핵심) 미채점 최근 N건 자동 LLM+VLM 판정(멱등). make eval-pending [N=10] [JUDGE=llm,vlm] [RETRY_FAILED=1]"
 	@echo "  eval-judge   : ②JUDGE 한 job LLM+VLM. make eval-judge JOB_ID=<id> [JUDGE=llm,vlm] [FORCE=1] [RETRY_FAILED=1]"
 	@echo "  eval-llm     : ②JUDGE 한 job LLM-as-Judge만(11항목). make eval-llm JOB_ID=<id>"
@@ -232,6 +233,15 @@ eval-sample:
 	#         make eval-sample RENDER=balanced                    (실 SD3.5 로컬 렌더 — SD35 플래그 불필요)
 	HOST_UID=$$(id -u) docker compose exec -e EVAL_RENDER_PROFILE=$(RENDER) -e EVAL_USER_PLAN=$(PLAN) -e EVAL_SAMPLE_N=$(or $(N),10) -e EVAL_SAMPLE_SEED=$(SEED) -e EASYADS_ENABLE_SD35_LOCAL=$(if $(filter balanced,$(RENDER)),true,false) -e EASYADS_FREE_USE_LOCAL=$(if $(filter free,$(PLAN)),1,0) -e EASYADS_SD35_RELEASE_AFTER_RENDER=$(if $(and $(filter free,$(PLAN)),$(filter balanced,$(RENDER))),1,0) -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True orchestrator \
 	  uv run python -m orchestrator.eval.scenario $(or $(SCENARIO),all)
+
+eval-sample-judge:
+	# [①LOG + ②JUDGE 한 방] sample로 N건 로깅(auto 게이트 $0 포함) → 같은 N건 LLM+VLM 판정(eval-pending).
+	# eval-sample은 이미 auto 게이트를 인라인 실행하므로 eval-run 따로 필요 없음. 유료 판정만 이어 붙임.
+	# 옵션은 eval-sample와 동일(N/SEED/SCENARIO/RENDER/PLAN) + JUDGE(기본 llm,vlm). LLM_ENABLE_API_CALL=true 필요(JUDGE 단계 실 과금).
+	# 사용법: make eval-sample-judge N=4 RENDER=fast PLAN=premium
+	#         make eval-sample-judge N=10 SCENARIO=relevant RENDER=balanced
+	$(MAKE) eval-sample N=$(or $(N),10) SEED=$(SEED) SCENARIO=$(SCENARIO) RENDER=$(RENDER) PLAN=$(PLAN)
+	$(MAKE) eval-pending N=$(or $(N),10) JUDGE=$(JUDGE)
 
 eval-run:
 	# 이미 로깅된 job에 자동 게이트 5종 + 점수 산출. JOB_ID만 필수(thread_id 자동 해석).

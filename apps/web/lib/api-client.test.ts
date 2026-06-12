@@ -11,13 +11,19 @@ import {
   getBrandKit,
   getCurrentBrandKit,
   getGenerationJob,
+  getArchiveItem,
+  listChatThreads,
   listReferenceTemplates,
   listArchiveItems,
   saveArchiveItem,
   startChatGeneration,
   startPhotoGeneration,
+  updateArchiveItem,
   updateBrandKit,
-  uploadPhotoAsset
+  uploadPhotoAsset,
+  uploadReferenceImageToR2,
+  createAdminReferenceTemplate,
+  listAdminReferenceTemplates
 } from "./api-client";
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
@@ -29,6 +35,8 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}) {
 
 describe("api-client photo generation", () => {
   afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("./supabase/browser");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -388,6 +396,8 @@ describe("api-client photo generation", () => {
 
 describe("api-client backend contract routes", () => {
   afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("./supabase/browser");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -477,6 +487,35 @@ describe("api-client backend contract routes", () => {
     expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
   });
 
+  it("strips null top-level fields from generation job creation but keeps metadata nulls", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "queued",
+          progress: { progress_percent: 0, current_stage: "queued" }
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createGenerationJob({
+      userInput: "Create an ad",
+      selectedCopyId: null,
+      customDirection: null,
+      selectedChannelId: null,
+      metadata: { selected_copy_id: null, source: "web_generation_flow" }
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body).not.toHaveProperty("selectedCopyId");
+    expect(body).not.toHaveProperty("customDirection");
+    expect(body).not.toHaveProperty("selectedChannelId");
+    expect(body.userInput).toBe("Create an ad");
+    expect(body.metadata).toEqual({ selected_copy_id: null, source: "web_generation_flow" });
+  });
+
   it("answers generation job questions through the BFF", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
@@ -538,6 +577,51 @@ describe("api-client backend contract routes", () => {
     );
   });
 
+  it("creates an anonymous Supabase session before creating a generation job", async () => {
+    const signInAnonymously = vi.fn(async () => ({
+      data: { session: { access_token: "anon_access_token_1" } },
+      error: null
+    }));
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: null } }),
+          signInAnonymously
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_guest_1",
+          thread_id: "thread_guest_1",
+          status: "queued",
+          progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+          metadata: {}
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createGenerationJob({
+      userInput: "비로그인 네일샵 광고",
+      runMode: "queued_only"
+    });
+
+    expect(signInAnonymously).toHaveBeenCalledWith({
+      options: {
+        data: {
+          account_type: "guest",
+          source: "easyads_web"
+        }
+      }
+    });
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer anon_access_token_1" })
+    );
+  });
+
   it("calls archive endpoints through the BFF and maps response fields", async () => {
     vi.doMock("./supabase/browser", () => ({
       createSupabaseBrowserClient: () => ({
@@ -565,6 +649,17 @@ describe("api-client backend contract routes", () => {
           }
         });
       }
+      if (init?.method === "PATCH") {
+        return jsonResponse({
+          success: true,
+          item: {
+            ad_id: "archive_1",
+            title: "봄을 닮은 한 잔",
+            status: "favorite",
+            source: "generated"
+          }
+        });
+      }
       if (init?.method === "DELETE") {
         return jsonResponse({
           success: true,
@@ -574,6 +669,27 @@ describe("api-client backend contract routes", () => {
             status: "saved",
             source: "generated"
           }
+        });
+      }
+      if (String(input).includes("/api/archive/items/archive_1")) {
+        return jsonResponse({
+          ad_id: "archive_1",
+          job_id: "job_1",
+          output_id: "output_1",
+          title: "봄을 닮은 한 잔",
+          image_url: null,
+          thumbnail_url: null,
+          download_url: "https://cdn.example.com/archive_1.png",
+          status: "saved",
+          ad_format: "1:1",
+          platform: "인스타 피드",
+          source: "generated",
+          storage_provider: "r2",
+          mime_type: "image/png",
+          width: 1200,
+          height: 1200,
+          saved_at: "2026-06-04T00:00:00+00:00",
+          metadata: { tags: ["카페"] }
         });
       }
       return jsonResponse({
@@ -601,6 +717,8 @@ describe("api-client backend contract routes", () => {
       metadata: { tags: ["카페"] }
     });
     const listed = await listArchiveItems({ limit: 20 });
+    const detailed = await getArchiveItem("archive_1");
+    const updated = await updateArchiveItem("archive_1", { status: "favorite" });
     const deleted = await deleteArchiveItem("archive_1");
 
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items");
@@ -613,6 +731,10 @@ describe("api-client backend contract routes", () => {
     });
     expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
     expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
+    expect(String(fetchMock.mock.calls[3][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
+    expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({ method: "PATCH" }));
+    expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({ status: "favorite" });
+    expect(String(fetchMock.mock.calls[4][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
     expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
       expect.objectContaining({ authorization: "Bearer access_token_1" })
     );
@@ -622,13 +744,218 @@ describe("api-client backend contract routes", () => {
     expect(fetchMock.mock.calls[2][1]?.headers).toEqual(
       expect.objectContaining({ authorization: "Bearer access_token_1" })
     );
+    expect(fetchMock.mock.calls[3][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
+    expect(fetchMock.mock.calls[4][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer access_token_1" })
+    );
     expect(saved.item.adId).toBe("archive_1");
     expect(saved.item.savedAt).toBe("2026-06-04T00:00:00+00:00");
     expect(listed.items[0].jobId).toBe("job_1");
+    expect(detailed.outputId).toBe("output_1");
+    expect(detailed.downloadUrl).toBe("https://cdn.example.com/archive_1.png");
+    expect(detailed.storageProvider).toBe("r2");
+    expect(detailed.width).toBe(1200);
+    expect(updated.item.status).toBe("favorite");
     expect(deleted.item.adId).toBe("archive_1");
   });
 
+  it("uses the anonymous session for archive list requests", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "anon_access_token_1" } } }),
+          signInAnonymously: vi.fn()
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        items: [],
+        pagination: { limit: 20, offset: 0, total: 0, has_more: false }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listArchiveItems({ limit: 20 });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer anon_access_token_1" })
+    );
+  });
+
+  it("can skip exact archive totals for faster archive list requests", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        items: [],
+        pagination: { limit: 20, offset: 0, total: 0, has_more: false }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listArchiveItems({ limit: 20, includeTotal: false });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items?limit=20&include_total=false");
+  });
+
+  it("can skip exact chat thread totals for faster workspace list requests", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        success: true,
+        threads: [],
+        total: 0
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listChatThreads({ limit: 5, includeTotal: false });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/chat-threads?limit=5&include_total=false");
+  });
+
+
+  it("uploads reference images through presign, R2 PUT, and complete", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/assets/uploads/presign")) {
+        return jsonResponse({
+          asset: { asset_id: "asset_abc", kind: "reference", status: "pending" },
+          upload: { method: "PUT", url: "https://r2.example.com/upload", headers: { "Content-Type": "image/png" } }
+        });
+      }
+      if (url === "https://r2.example.com/upload") {
+        return new Response(null, { status: 200 });
+      }
+      return jsonResponse({
+        success: true,
+        asset: {
+          assetId: "asset_abc",
+          kind: "reference",
+          status: "ready",
+          imageUrl: "https://cdn.example.com/reference.png",
+          mimeType: "image/png",
+          sizeBytes: 3,
+          width: 1200,
+          height: 900,
+          storageProvider: "r2"
+        }
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "reference.png", { type: "image/png" });
+    const result = await uploadReferenceImageToR2(file);
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/assets/uploads/presign");
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(expect.objectContaining({ authorization: "Bearer access_token_1" }));
+    expect(fetchMock.mock.calls[1]).toEqual([
+      "https://r2.example.com/upload",
+      expect.objectContaining({ method: "PUT", body: file })
+    ]);
+    expect(fetchMock.mock.calls[2][0]).toBe("http://127.0.0.1:4000/api/assets/uploads/asset_abc/complete");
+    expect(result.status).toBe("ready");
+    expect(result.width).toBe(1200);
+  });
+
+  it("lists and creates admin reference templates with auth", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return jsonResponse({
+          template: {
+            template_id: "ref_cafe_admin",
+            title: "관리자 카페 샘플",
+            category: "cafe",
+            tags: ["음료"],
+            business_types: ["cafe"],
+            ad_formats: ["instagram_feed"],
+            platforms: ["instagram"],
+            thumbnail_url: "https://cdn.example.com/ref.png",
+            preview_url: "https://cdn.example.com/ref.png",
+            style_keywords: ["clean"],
+            color_palette: ["#FFFFFF"],
+            popularity_score: 0,
+            status: "draft"
+          }
+        });
+      }
+      return jsonResponse({
+        success: true,
+        items: [
+          {
+            template_id: "ref_cafe_admin",
+            title: "관리자 카페 샘플",
+            category: "cafe",
+            tags: ["음료"],
+            business_types: ["cafe"],
+            ad_formats: ["instagram_feed"],
+            platforms: ["instagram"],
+            style_keywords: ["clean"],
+            color_palette: ["#FFFFFF"],
+            popularity_score: 0,
+            status: "draft"
+          }
+        ]
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const listed = await listAdminReferenceTemplates();
+    const created = await createAdminReferenceTemplate({ assetId: "asset_abc", title: "관리자 카페 샘플", category: "cafe" });
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/admin/references");
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(expect.objectContaining({ authorization: "Bearer access_token_1" }));
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ assetId: "asset_abc", title: "관리자 카페 샘플" });
+    expect(listed[0].status).toBe("draft");
+    expect(created.templateId).toBe("ref_cafe_admin");
+  });
+
+  it("does not create anonymous sessions for admin reference APIs", async () => {
+    const signInAnonymously = vi.fn();
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: null } }),
+          signInAnonymously
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({ success: true, items: [] })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listAdminReferenceTemplates();
+
+    expect(signInAnonymously).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toEqual(
+      expect.objectContaining({ authorization: expect.any(String) })
+    );
+  });
+
   it("archives chat threads through the BFF", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         success: true,
