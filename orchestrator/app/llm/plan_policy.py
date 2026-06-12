@@ -93,6 +93,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
     if plan == "free":
         return {
             "validator": "local_fast",
+            "product_understanding": "local_fast",
             "copy_mode_inference": "local_fast",
             "tone_binding": "mock",
             "copy_candidate_generation": "local_quality",
@@ -112,6 +113,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
     if plan == "economic":
         return {
             "validator": "local_fast",
+            "product_understanding": "api_nano",
             "copy_mode_inference": "local_fast",
             "tone_binding": "local_fast",
             "copy_candidate_generation": "api_nano",
@@ -131,6 +133,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
     if plan == "premium":
         return {
             "validator": "api_nano",
+            "product_understanding": "api_full",
             "option_suggester": "api_nano",
             "copy_mode_inference": "api_mini",
             "tone_binding": "api_nano",
@@ -149,6 +152,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
         }
     return {
         "validator": "api_full",
+        "product_understanding": "api_full",
         "copy_mode_inference": "api_full",
         "option_suggester": "api_mini",
         "tone_binding": "api_mini",

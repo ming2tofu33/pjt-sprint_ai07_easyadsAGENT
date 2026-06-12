@@ -145,8 +145,55 @@ def test_visual_product_signal_hydrates_copy_without_user_facts():
     )
 
     assert evidence["explicit_user_facts"] == []
-    assert data["product_understanding"]["product_name"] == "치즈케이크"
-    assert data["selected_copy"]["headline"] == "치즈케이크 신메뉴"
+    assert data["product_understanding"]["product_name"] == "Cheesecake"
+    assert data["selected_copy"]["headline"] == "Baked Dessert Menu"
+    assert data["selected_copy"]["subcopy"] == "A simple cafe dessert to discover today."
+    assert data["selected_copy"]["cta"] == "View menu"
+
+
+def test_copy_hydration_does_not_insert_generic_cta_or_subcopy():
+    data = pipeline._hydrate_copy_payload(
+        {
+            "product_understanding": {"product_name": "doenjang jjigae"},
+            "product_copy_context": {},
+            "selected_copy": {"headline": "Doenjang Jjigae", "primary_text": "Warm stew, simply presented.", "cta": None},
+        },
+        {"explicit_product_mentions": ["doenjang jjigae"], "explicit_user_facts": []},
+    )
+
+    assert data["selected_copy"]["headline"] == "Doenjang Jjigae"
+    assert data["selected_copy"]["subcopy"] == "Warm stew, simply presented."
+    assert data["selected_copy"]["cta"] is None
+    assert "A focused introduction to" not in str(data["selected_copy"])
+    assert "Learn More" not in str(data["selected_copy"])
+
+
+def test_vlm_validation_accepts_string_detected_text():
+    data = pipeline._validated_vlm_result(
+        {
+            "product_match_score": 0.9,
+            "copy_product_grounding_score": 0.9,
+            "copy_readability_score": 0.9,
+            "copy_visual_fit_score": 0.9,
+            "product_obstruction_score": 0.1,
+            "wrong_domain_detected": False,
+            "unsupported_claim_detected": False,
+            "commercial_viability_score": 0.9,
+            "failure_reasons": [],
+            "recommended_action": "none",
+            "confidence": 0.9,
+            "detected_text": "Doenjang Jjigae",
+            "provider_metadata": {
+                "provider": "openai",
+                "model": "gpt-5.4",
+                "fallback_used": False,
+                "token_usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+        },
+        "gpt-5.4",
+    )
+
+    assert data["detected_text"] == ["Doenjang Jjigae"]
 
 
 def test_vlm_revision_action_blocks_completed_status(tmp_path):
