@@ -25,6 +25,34 @@ export const channelOptions: ChannelOption[] = [
   { id: "flyer", label: "전단지", ratio: "A4" }
 ];
 
+const CHAT_ERROR_MESSAGE_BY_CODE: Partial<Record<string, string>> = {
+  thread_limit_reached:
+    "비로그인 상태에서는 작업방을 3개까지 만들 수 있어요. 기존 작업방을 삭제하거나 로그인하면 계속 만들 수 있어요.",
+  workspace_required: "작업방을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
+  archive_workspace_required: "보관함을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
+  usage_workspace_required: "사용량 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+  invalid_or_expired_session: "로그인이 만료됐어요. 다시 로그인한 뒤 이어서 진행해 주세요.",
+  supabase_auth_configuration_missing: "로그인 설정을 확인해야 해요. 관리자에게 문의해 주세요."
+};
+
+const CHAT_FALLBACK_ERROR_MESSAGE = "요청 처리 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.";
+
+export type ChatFailureLike = {
+  errorCode?: string | null;
+  message?: string | null;
+};
+
+export function chatFailureFromError(error: ChatFailureLike): { message: string; errorCode: string | null } {
+  const errorCode = error.errorCode ?? null;
+  const mappedMessage = errorCode ? CHAT_ERROR_MESSAGE_BY_CODE[errorCode] : undefined;
+  const fallbackMessage = error.message?.trim() ? error.message : CHAT_FALLBACK_ERROR_MESSAGE;
+
+  return {
+    message: mappedMessage ?? fallbackMessage,
+    errorCode
+  };
+}
+
 export function inferContextFromPrompt(prompt: string): InferredContext {
   const normalized = prompt.replace(/\s+/g, "");
   const businessType = normalized.includes("카페") ? "카페" : "카페";
@@ -202,6 +230,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       };
     }
     case "backendRequestFailed":
+      const backendFailure = chatFailureFromError(action);
       if (action.recoverToStart) {
         return {
           ...state,
@@ -209,15 +238,15 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
           progress: { current: 0, total: 4, label: "대화 시작" },
           currentQuestion: null,
           isLoading: false,
-          errorMessage: action.message,
-          errorCode: action.errorCode ?? null
+          errorMessage: backendFailure.message,
+          errorCode: backendFailure.errorCode
         };
       }
       return {
         ...state,
         isLoading: false,
-        errorMessage: action.message,
-        errorCode: action.errorCode ?? null
+        errorMessage: backendFailure.message,
+        errorCode: backendFailure.errorCode
       };
     case "beginBriefRequest":
       return {
@@ -369,6 +398,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         errorCode: null
       };
     case "showGenerationFailure":
+      const generationFailure = chatFailureFromError(action);
       return {
         ...state,
         step: 4,
@@ -379,8 +409,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         generationJob: null,
         isLoading: false,
         currentQuestion: null,
-        errorMessage: action.message,
-        errorCode: null
+        errorMessage: generationFailure.message,
+        errorCode: generationFailure.errorCode
       };
     case "back":
       return {
@@ -463,11 +493,12 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       };
 
     case "generationJobFailed":
+      const generationJobFailure = chatFailureFromError(action);
       return {
         ...state,
         isLoading: false,
-        errorMessage: action.message,
-        errorCode: null
+        errorMessage: generationJobFailure.message,
+        errorCode: generationJobFailure.errorCode
       };
   }
 }
