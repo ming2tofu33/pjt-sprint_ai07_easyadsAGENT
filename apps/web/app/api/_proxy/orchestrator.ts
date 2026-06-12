@@ -89,6 +89,10 @@ export async function proxyOrchestratorJson(
   options: ProxyOptions = {}
 ) {
   const headers: Record<string, string> = { "content-type": "application/json" };
+  const internalSecret = process.env.EASYADS_INTERNAL_API_SECRET;
+  if (internalSecret) {
+    headers["X-EasyAds-Internal-Secret"] = internalSecret;
+  }
   const init: RequestInit = {
     method,
     headers,

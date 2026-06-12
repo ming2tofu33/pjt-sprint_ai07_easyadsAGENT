@@ -183,10 +183,15 @@ const adminReferenceSchema = z.object({
 
 const adminReferenceUpdateSchema = adminReferenceSchema.omit({ assetId: true, workspaceId: true }).partial();
 
+function internalSecretHeaders() {
+  const secret = process.env.EASYADS_INTERNAL_API_SECRET;
+  return secret ? { "X-EasyAds-Internal-Secret": secret } : {};
+}
+
 async function proxyJson({ fetchImpl, url, body, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "POST",
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json", ...internalSecretHeaders(), ...headers },
     body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
@@ -203,7 +208,7 @@ async function proxyJson({ fetchImpl, url, body, headers = {} }) {
 async function proxyPatchJson({ fetchImpl, url, body, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "PATCH",
-    headers: { "content-type": "application/json", ...headers },
+    headers: { "content-type": "application/json", ...internalSecretHeaders(), ...headers },
     body: JSON.stringify(body)
   });
   const payload = await response.json().catch(() => ({}));
@@ -220,7 +225,7 @@ async function proxyPatchJson({ fetchImpl, url, body, headers = {} }) {
 async function proxyDeleteJson({ fetchImpl, url, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "DELETE",
-    headers: { accept: "application/json", ...headers }
+    headers: { accept: "application/json", ...internalSecretHeaders(), ...headers }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -236,7 +241,7 @@ async function proxyDeleteJson({ fetchImpl, url, headers = {} }) {
 async function proxyGetJson({ fetchImpl, url, headers = {} }) {
   const response = await fetchImpl(url, {
     method: "GET",
-    headers: { accept: "application/json", ...headers }
+    headers: { accept: "application/json", ...internalSecretHeaders(), ...headers }
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -251,7 +256,8 @@ async function proxyGetJson({ fetchImpl, url, headers = {} }) {
 
 async function proxyBinary({ fetchImpl, url, reply, cacheControl }) {
   const response = await fetchImpl(url, {
-    method: "GET"
+    method: "GET",
+    headers: internalSecretHeaders()
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
