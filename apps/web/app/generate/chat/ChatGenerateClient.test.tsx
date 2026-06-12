@@ -1157,6 +1157,11 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
+    expect(api.createGenerationJob).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        adFormat: "instagram_feed"
+      })
+    );
     expect(screen.getByText("요청 분석")).toBeTruthy();
     expect(screen.getByText(/요청에 대한 분석 결과/)).toBeTruthy();
     await waitFor(() => expect(screen.getByText("딸기라떼")).toBeTruthy());
