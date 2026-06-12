@@ -1422,7 +1422,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const response = await createGenerationJob({
         userInput: appendSavedBrandKitContext(prompt),
         threadId: activeThreadId,
-        adFormat: options.adFormat ?? "instagram_feed",
+        ...(options.adFormat ? { adFormat: options.adFormat } : {}),
         runMode: "graph_job",
         copyGenerationMode: options.copyGenerationMode ?? undefined,
         selectedReferenceTemplateId: selectedReferenceTemplateId ?? undefined,

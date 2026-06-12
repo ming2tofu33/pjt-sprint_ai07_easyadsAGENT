@@ -31,6 +31,7 @@ from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from orchestrator.app.t2i.execution import TEXT_FREE_NEGATIVE_PROMPT, build_generation_job_prompt, prompt_summary
 from orchestrator.app.t2i.settings import T2IEngineNotEnabledError, T2IEngineUnavailableError
+from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 
 _EFFECTIVE_RUN_MODE_BY_ENGINE = {
     "gpt_image_1": "gpt_image_1_actual",
@@ -72,10 +73,13 @@ def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobC
     context = dict(state.get("context") or {})
     context_extra = dict(context.get("extra") or {})
 
-    selected_channel_id = _clean_optional_text(state.get("selected_channel_id") or request.selected_channel_id)
+    request_selected_channel_id = _clean_optional_text(request.selected_channel_id)
+    state_selected_channel_id = _clean_optional_text(state.get("selected_channel_id"))
+    selected_channel_id = request_selected_channel_id or state_selected_channel_id
     selected_ad_format = _canonical_ad_format(
-        request.ad_format
-        or selected_channel_id
+        request_selected_channel_id
+        or request.ad_format
+        or state_selected_channel_id
         or state.get("selected_ad_format")
         or current_brief.get("requested_ad_format")
         or context_extra.get("ad_format")
@@ -89,6 +93,7 @@ def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobC
         context_extra["selected_channel_id"] = selected_channel_id
     if selected_ad_format:
         state["selected_ad_format"] = selected_ad_format
+        state["ad_format_spec"] = build_ad_format_spec(selected_ad_format).model_dump()
         current_brief["requested_ad_format"] = selected_ad_format
         context_extra["ad_format"] = selected_ad_format
         context_extra["selected_ad_format"] = selected_ad_format
