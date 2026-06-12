@@ -436,11 +436,41 @@ def state_update_selected_copy_node(state: MarketingState) -> dict[str, Any]:
     selection.setdefault("selected_ad_format", state.get("selected_ad_format"))
     selection.setdefault("selected_tone", state.get("selected_tone"))
     selection.setdefault("custom_direction", state.get("custom_direction"))
+    selection.setdefault("user_custom_headline", state.get("user_custom_headline"))
+    selection.setdefault("user_custom_subcopy", state.get("user_custom_subcopy"))
     recommended_id = _recommended_candidate_id_from_state(state)
     selected_id = selection.get("selected_copy_id") or recommended_id
     candidates = list(state.get("copy_candidates", []))
     candidate = next((item for item in candidates if item.get("id") == selected_id), None)
     warnings: list[str] = []
+    custom_headline = clean_optional_text(selection.get("user_custom_headline"))
+    custom_subcopy = clean_optional_text(selection.get("user_custom_subcopy"))
+    if custom_headline:
+        if candidate is None and selected_id:
+            warnings.append("Invalid selected_copy_id; custom copy applied without a matching base candidate.")
+        copy = apply_copy_quality_policy(MarketingCopy(
+            headline=custom_headline,
+            subcopy=custom_subcopy,
+            cta=None,
+            hashtags=[],
+            metadata={
+                "selected_copy_id": selected_id,
+                "copy_resolution": "manual_edit",
+                "warnings": warnings,
+                "source_node": "state_update_selected_copy",
+            },
+        ))
+        selection_update = build_frontend_selection_state_update(state, selection)
+        return {
+            "marketing_copy": copy.model_dump(),
+            "selected_copy_id": selected_id,
+            "user_custom_headline": custom_headline,
+            "user_custom_subcopy": custom_subcopy,
+            **selection_update,
+            "copy_required": True,
+            "text_overlay_pending": True,
+            "status": "applying_selected_copy",
+        }
     if candidate is None:
         candidate = next((item for item in candidates if item.get("id") == recommended_id), None)
         selected_id = recommended_id

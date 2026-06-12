@@ -1916,10 +1916,21 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     try {
       const shouldShowFinalGenerationProgress = isClientFinalImageGenerationJob(state.generationJob);
+      const pendingInterrupt = getPendingGenerationJobParsedInterrupt(state.generationJob);
+      const candidateSelectionPayload =
+        pendingInterrupt?.type === "copy_candidate_selection"
+          ? {
+              selected_channel_id: state.selectedChannelId || undefined,
+              selected_ad_format: toCanonicalAdFormat(state.selectedChannelId),
+              selected_tone: state.selectedTone || undefined,
+              custom_direction: state.customDirection || undefined
+            }
+          : undefined;
       const response = await answerGenerationJob(jobId, {
         displayText: input.label,
         userCustomHeadline: input.userCustomHeadline,
-        ...(input.userCustomSubcopy ? { userCustomSubcopy: input.userCustomSubcopy } : {})
+        ...(input.userCustomSubcopy ? { userCustomSubcopy: input.userCustomSubcopy } : {}),
+        ...(candidateSelectionPayload ? { payload: candidateSelectionPayload } : {})
       });
       if (shouldShowFinalGenerationProgress) {
         setGenerationStage("generating");
