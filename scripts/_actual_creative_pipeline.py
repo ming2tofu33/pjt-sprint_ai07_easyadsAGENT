@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from pydantic import BaseModel, Field, model_validator
 
 from orchestrator.app.llm.nodes.input_evidence_normalizer import build_input_evidence_bundle
@@ -109,7 +109,12 @@ class ActualSourceImageAnalysis(BaseModel):
 class ActualProductCopyOutput(BaseModel):
     product_understanding: dict[str, Any]
     product_copy_context: dict[str, Any]
+    copy_presence_plan: dict[str, Any] = Field(default_factory=dict)
+    language_policy: dict[str, Any] = Field(default_factory=dict)
+    interaction_copy_plan: dict[str, Any] = Field(default_factory=dict)
     copy_candidates: list[dict[str, Any]]
+    minimal_copy_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    selected_variant_id: str | None = None
     recommended_candidate_id: str | None = None
     selected_copy: dict[str, Any] | None = None
     input_conflicts: list[dict[str, Any]] = Field(default_factory=list)
@@ -138,6 +143,81 @@ class ActualCreativeVLMResult(BaseModel):
     provider_metadata: dict[str, Any]
 
 
+class MessageTerritory(BaseModel):
+    territory_id: str
+    label: str
+    rationale: str
+    supporting_evidence_keys: list[str] = Field(default_factory=list)
+    suitability_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    visual_fit_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    risk_level: Literal["low", "medium", "high"] = "low"
+
+
+class DynamicLanguagePolicy(BaseModel):
+    primary_language: Literal["korean", "english", "mixed"] = "korean"
+    headline_language: Literal["korean", "english", "mixed"] = "korean"
+    supporting_copy_language: Literal["korean", "english", "mixed"] = "korean"
+    english_headline_allowed: bool = False
+    bilingual_allowed: bool = False
+    romanization_allowed: bool = False
+    rationale: str
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class MinimalCopyPresencePlan(BaseModel):
+    mode: Literal["image_only", "brand_only", "headline_only", "headline_plus_support", "headline_plus_closing"]
+    allowed_roles: list[Literal["brand_label", "headline", "supporting_copy", "closing_copy", "embedded_action_cta"]]
+    max_text_blocks: int = Field(ge=0, le=2)
+    max_total_characters: int = Field(ge=0, le=80)
+    max_text_area_ratio: float = Field(ge=0.0, le=0.12)
+    no_text_allowed: bool
+    rationale: list[str] = Field(default_factory=list)
+
+
+class InteractionCopyPlan(BaseModel):
+    interaction_mode: Literal["non_interactive_image", "platform_interactive", "landing_page", "offline_with_action"] = "non_interactive_image"
+    action_cta_allowed: bool = False
+    selected_role: Literal["none", "platform_only", "embedded_action_cta", "closing_copy", "tagline", "proof_line", "offer_line"] = "none"
+    action_destination_verified: bool = False
+    rationale: list[str] = Field(default_factory=list)
+
+
+class ProductCopyContext(BaseModel):
+    product_name: str
+    normalized_product_type: str | None = None
+    broad_category: str = "other"
+    category_path: list[str] = Field(default_factory=list)
+    message_territories: list[MessageTerritory] = Field(default_factory=list)
+    sensory_vocabulary: list[str] = Field(default_factory=list)
+    emotional_vocabulary: list[str] = Field(default_factory=list)
+    functional_vocabulary: list[str] = Field(default_factory=list)
+    contextual_vocabulary: list[str] = Field(default_factory=list)
+    product_entities: list[str] = Field(default_factory=list)
+    adjacent_entities: list[str] = Field(default_factory=list)
+    excluded_territories: list[str] = Field(default_factory=list)
+    customer_moments: list[str] = Field(default_factory=list)
+    language_policy: DynamicLanguagePolicy
+    copy_presence_plan: MinimalCopyPresencePlan
+    interaction_plan: InteractionCopyPlan
+    supported_claims: list[str] = Field(default_factory=list)
+    unsupported_claims: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.75, ge=0.0, le=1.0)
+
+
+class MinimalCopyCandidate(BaseModel):
+    candidate_id: str
+    variant_type: Literal["image_only", "headline_only", "headline_plus_support", "headline_plus_closing"]
+    territory_id: str | None = None
+    headline: str | None = None
+    supporting_copy: str | None = None
+    closing_copy: str | None = None
+    action_cta: str | None = None
+    language_mode: Literal["korean", "english", "mixed"] = "korean"
+    supporting_evidence_keys: list[str] = Field(default_factory=list)
+    text_block_count: int = Field(ge=0, le=2)
+    estimated_text_area_ratio: float = Field(ge=0.0, le=0.12)
+
+
 class ImageUsePlan(BaseModel):
     mode: ImageUsePlanMode
     reason_codes: list[str] = Field(default_factory=list)
@@ -151,8 +231,14 @@ class ActualCreativeResult(BaseModel):
     input_evidence: dict[str, Any] = Field(default_factory=dict)
     product_understanding: dict[str, Any] = Field(default_factory=dict)
     product_copy_context: dict[str, Any] = Field(default_factory=dict)
+    copy_presence_plan: dict[str, Any] = Field(default_factory=dict)
+    language_policy: dict[str, Any] = Field(default_factory=dict)
+    interaction_copy_plan: dict[str, Any] = Field(default_factory=dict)
     image_use_plan: dict[str, Any] = Field(default_factory=dict)
     copy_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    minimal_copy_candidates: list[dict[str, Any]] = Field(default_factory=list)
+    variant_results: list[dict[str, Any]] = Field(default_factory=list)
+    selected_variant_id: str | None = None
     selected_copy: dict[str, Any] | None = None
     source_image_path: str | None = None
     background_image_path: str = ""
@@ -183,6 +269,9 @@ def run_actual_creative_case(request: ActualCreativeInput, runtime: ActualCreati
         _write_json(case_dir / "product_understanding.json", product_understanding)
         copy_output = generate_grounded_copy(request, runtime, evidence, product_understanding)
         _write_json(case_dir / "product_copy_context.json", copy_output.get("product_copy_context") or {})
+        _write_json(case_dir / "copy_presence_plan.json", copy_output.get("copy_presence_plan") or {})
+        _write_json(case_dir / "language_policy.json", copy_output.get("language_policy") or {})
+        _write_json(case_dir / "interaction_copy_plan.json", copy_output.get("interaction_copy_plan") or {})
         _write_json(case_dir / "copy_candidates.json", copy_output.get("copy_candidates") or [])
         if not _strict_provider_metadata(copy_output.get("provider_metadata"), runtime.copy_model):
             return _result(request, "failed", evidence, copy_output, failure="copy_provider_not_actual")
@@ -193,10 +282,32 @@ def run_actual_creative_case(request: ActualCreativeInput, runtime: ActualCreati
             return _result(request, "manual_review", evidence, copy_output, image_use_plan=image_plan, failure="input_requires_manual_review")
 
         background, flux_metadata = prepare_or_generate_background(request, runtime, image_plan, case_dir, copy_output)
-        state = execute_production_renderer(request, copy_output, background, case_dir)
+        variant_results = render_minimal_copy_variants(request, copy_output, background, case_dir)
+        _write_json(case_dir / "variant_results.json", variant_results)
+        selected_variant = select_minimal_variant(copy_output, variant_results)
+        if selected_variant:
+            copy_output["selected_variant_id"] = selected_variant.get("candidate_id")
+            copy_output["selected_copy"] = _copy_from_minimal_candidate(selected_variant)
+            if selected_variant.get("variant_type") == "image_only":
+                final_target = case_dir / "final_composite.png"
+                shutil.copyfile(background, final_target)
+                state = {
+                    "render_result": {
+                        "background_image_path": str(background),
+                        "final_image_path": str(final_target),
+                        "rendered_slot_count": 0,
+                        "metadata": {"source_node": "minimal_copy_variant", "has_text_overlay": False, "copy_presence_mode": "image_only"},
+                    },
+                    "final_image_path": str(final_target),
+                }
+            else:
+                state = execute_production_renderer(request, copy_output, background, case_dir)
+        else:
+            state = execute_production_renderer(request, copy_output, background, case_dir)
         final_path = Path(state.get("render_result", {}).get("final_image_path") or "")
         vlm = evaluate_final_composite_actual(request, runtime, final_path, copy_output.get("selected_copy") or {})
         _write_json(case_dir / "final_vlm_result.json", vlm)
+        _write_json(case_dir / "final_vlm_results.json", {"selected_variant_id": copy_output.get("selected_variant_id"), "selected": vlm})
         state["final_composite_vlm_result"] = vlm
         state["final_ocr_gate"] = _ocr_from_vlm(vlm, copy_output.get("selected_copy") or {})
         report = evaluate_final_composite(state)
@@ -209,8 +320,14 @@ def run_actual_creative_case(request: ActualCreativeInput, runtime: ActualCreati
             input_evidence=evidence,
             product_understanding=copy_output.get("product_understanding") or {},
             product_copy_context=copy_output.get("product_copy_context") or {},
+            copy_presence_plan=copy_output.get("copy_presence_plan") or {},
+            language_policy=copy_output.get("language_policy") or {},
+            interaction_copy_plan=copy_output.get("interaction_copy_plan") or {},
             image_use_plan=image_plan.model_dump(),
             copy_candidates=copy_output.get("copy_candidates") or [],
+            minimal_copy_candidates=copy_output.get("minimal_copy_candidates") or [],
+            variant_results=variant_results,
+            selected_variant_id=copy_output.get("selected_variant_id"),
             selected_copy=copy_output.get("selected_copy"),
             source_image_path=request.source_image_path,
             background_image_path=str(background),
@@ -594,10 +711,15 @@ def run_product_understanding(request: ActualCreativeInput, runtime: ActualCreat
 
 def _coerce_product_understanding_candidate(candidate: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
     data = dict(candidate or {})
-    product_name = _nested_string(data, ("product_name", "product", "primary_product", "product_identity", "name")) or _product_from_evidence(evidence)
+    evidence_product = _product_from_evidence(evidence)
+    product_name = _nested_string(data, ("product_name", "product", "primary_product", "product_identity", "name")) or evidence_product
+    if product_name and not any(ch.isalpha() for ch in str(product_name)):
+        product_name = evidence_product or product_name
     normalized_type = _normalize_product_type(
         _nested_string(data, ("normalized_product_type", "normalized_product_candidate", "product_type", "type")) or product_name
     )
+    if normalized_type and not any(ch.isalpha() for ch in normalized_type):
+        normalized_type = _normalize_product_type(product_name)
     raw_path = data.get("category_path")
     broad = _normalize_broad_category(" ".join(str(item) for item in [_nested_string(data, ("broad_category", "category", "domain")) or "", product_name or "", raw_path or ""]))
     category_path = _normalize_category_path(raw_path if isinstance(raw_path, list) else [], broad, normalized_type)
@@ -654,7 +776,7 @@ def _normalize_broad_category(value: str) -> str:
         return slug
     if any(token in slug for token in ("food", "beverage", "dessert", "drink", "meal", "menu", "stew", "jjigae", "restaurant", "cafe")):
         return "food_and_beverage"
-    if any(token in slug for token in ("beauty", "personal_care", "skincare", "cosmetic", "fragrance")):
+    if any(token in slug for token in ("beauty", "personal_care", "skincare", "cosmetic", "fragrance", "serum", "niacinamide")):
         return "beauty_and_personal_care"
     if any(token in slug for token in ("fashion", "lifestyle", "footwear", "apparel")):
         return "fashion_and_lifestyle"
@@ -736,6 +858,10 @@ def generate_grounded_copy(request: ActualCreativeInput, runtime: ActualCreative
     prompt = (
         "Return JSON only with product_understanding, product_copy_context, copy_candidates, "
         "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review. Generate grounded ad copy only from the supplied InputEvidenceBundle. "
+        "product_copy_context should include message territories, sensory/emotional/functional/contextual vocabulary, language_policy, copy_presence_plan, and interaction_plan. "
+        "Prefer visual-first minimal copy: image-only, headline-only, headline+support, or headline+closing. Do not create generic action CTAs unless a verified destination exists. "
+        "Hard block Learn More, Discover More, Shop Now, 지금 확인하기, 자세히 보기, 메뉴 보기, 지금 만나보세요 when no destination is verified. "
+        "For Korean local food/menu products, use Korean headline by default and do not romanize product names unless explicitly requested. "
         "Do not infer unknown fields and do not use raw source image content outside the bundle. "
         f"Request metadata: {request.model_dump_json()} ProductUnderstanding: {json.dumps(product_understanding or {}, ensure_ascii=False)} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
     )
@@ -771,10 +897,255 @@ def _hydrate_copy_payload(payload: dict[str, Any], evidence: dict[str, Any], pro
     selected = data.get("selected_copy") or _select_copy(candidates, data.get("recommended_candidate_id"))
     if selected:
         normalized = normalize_selected_copy(selected)
-        data["selected_copy"] = {**selected, **normalized}
+        data["selected_copy"] = sanitize_selected_copy({**selected, **normalized})
     data["product_understanding"] = understanding
-    data["product_copy_context"] = context
+    dynamic_context = build_dynamic_product_copy_context(context, understanding, evidence)
+    minimal_candidates = build_minimal_copy_candidates(data, dynamic_context)
+    selected_candidate = select_minimal_candidate_for_plan(dynamic_context.copy_presence_plan, minimal_candidates)
+    data["product_copy_context"] = dynamic_context.model_dump()
+    data["copy_presence_plan"] = dynamic_context.copy_presence_plan.model_dump()
+    data["language_policy"] = dynamic_context.language_policy.model_dump()
+    data["interaction_copy_plan"] = dynamic_context.interaction_plan.model_dump()
+    data["minimal_copy_candidates"] = [item.model_dump() for item in minimal_candidates]
+    if selected_candidate:
+        data["selected_variant_id"] = selected_candidate.candidate_id
+        data["selected_copy"] = _copy_from_minimal_candidate(selected_candidate.model_dump())
+    if dynamic_context.copy_presence_plan.mode == "image_only" and not evidence.get("input_conflicts"):
+        data["requires_manual_review"] = False
     return data
+
+
+GENERIC_CTA_TERMS = {
+    "learn more",
+    "discover more",
+    "find out more",
+    "shop now",
+    "view menu",
+    "menu",
+    "meet",
+    "discover",
+    "지금 확인하기",
+    "자세히 보기",
+    "메뉴 보기",
+    "지금 만나보세요",
+    "지금 만나보기",
+}
+
+
+def build_dynamic_product_copy_context(context: dict[str, Any], understanding: dict[str, Any], evidence: dict[str, Any]) -> ProductCopyContext:
+    product_name = str(understanding.get("product_name") or _product_from_evidence(evidence) or "product")
+    normalized_type = str(understanding.get("normalized_product_type") or understanding.get("normalized_product_candidate") or "").strip() or None
+    broad_category = str(understanding.get("broad_category") or "other")
+    category_path = list(understanding.get("category_path") or [broad_category])
+    territory = _message_territory_for_product(product_name, normalized_type, broad_category, evidence)
+    language_policy = _dynamic_language_policy(product_name, normalized_type, broad_category, evidence)
+    interaction_plan = _interaction_copy_plan(evidence)
+    presence_plan = _minimal_copy_presence_plan(evidence, broad_category, interaction_plan)
+    vocabulary = _vocabulary_for_product(product_name, normalized_type, broad_category)
+    return ProductCopyContext(
+        product_name=product_name,
+        normalized_product_type=normalized_type,
+        broad_category=broad_category,
+        category_path=category_path,
+        message_territories=[territory],
+        sensory_vocabulary=vocabulary["sensory"],
+        emotional_vocabulary=vocabulary["emotional"],
+        functional_vocabulary=vocabulary["functional"],
+        contextual_vocabulary=vocabulary["contextual"],
+        product_entities=[product_name, *(category_path[-1:] if category_path else [])],
+        adjacent_entities=vocabulary["adjacent"],
+        excluded_territories=_excluded_territories(evidence, broad_category),
+        customer_moments=vocabulary["moments"],
+        language_policy=language_policy,
+        copy_presence_plan=presence_plan,
+        interaction_plan=interaction_plan,
+        supported_claims=_supported_claims(evidence),
+        unsupported_claims=list(understanding.get("unsupported_claim_categories") or UNSUPPORTED_CLAIM_CATEGORIES),
+        confidence=float(understanding.get("confidence") or 0.75),
+    )
+
+
+def _message_territory_for_product(product_name: str, normalized_type: str | None, broad_category: str, evidence: dict[str, Any]) -> MessageTerritory:
+    slug = normalized_type or normalize_slug(product_name) or "product"
+    if broad_category == "food_and_beverage":
+        label = "Warm product moment" if "jjigae" in slug else "Quiet taste moment"
+        territory_id = "warm_meal_moment" if "jjigae" in slug else "minimal_cafe_moment"
+    elif broad_category == "beauty_and_personal_care":
+        label = "Calm daily routine"
+        territory_id = "calm_daily_routine"
+    elif broad_category == "fashion_and_lifestyle":
+        label = "Seasonal style moment"
+        territory_id = "seasonal_style_moment"
+    else:
+        label = "Simple product presence"
+        territory_id = "simple_product_presence"
+    return MessageTerritory(
+        territory_id=territory_id,
+        label=label,
+        rationale="Derived from ProductUnderstanding category and verified product evidence.",
+        supporting_evidence_keys=[item.get("evidence_id") for item in evidence.get("explicit_user_facts", []) if item.get("evidence_id")],
+        suitability_score=0.82,
+        visual_fit_score=0.76,
+        risk_level="low",
+    )
+
+
+def _dynamic_language_policy(product_name: str, normalized_type: str | None, broad_category: str, evidence: dict[str, Any]) -> DynamicLanguagePolicy:
+    text = " ".join([product_name, evidence.get("user_text") or "", normalized_type or ""]).lower()
+    korean_local = bool(any("\uac00" <= ch <= "\ud7a3" for ch in product_name)) or any(token in text for token in ("jjigae", "kimchi", "korean"))
+    if korean_local:
+        return DynamicLanguagePolicy(
+            primary_language="korean",
+            headline_language="korean",
+            supporting_copy_language="korean",
+            english_headline_allowed=False,
+            bilingual_allowed=False,
+            romanization_allowed=False,
+            rationale="Korean local food/product context should preserve Korean headline by default.",
+            confidence=0.9,
+        )
+    if broad_category in {"beauty_and_personal_care", "fashion_and_lifestyle"}:
+        return DynamicLanguagePolicy(
+            primary_language="mixed",
+            headline_language="korean",
+            supporting_copy_language="korean",
+            english_headline_allowed=True,
+            bilingual_allowed=True,
+            romanization_allowed=True,
+            rationale="Editorial beauty/fashion copy may allow restrained bilingual naming when supported by context.",
+            confidence=0.76,
+        )
+    return DynamicLanguagePolicy(rationale="Default Korean-first visual advertising policy.", confidence=0.78)
+
+
+def _interaction_copy_plan(evidence: dict[str, Any]) -> InteractionCopyPlan:
+    verified = " ".join(str(item.get("key") or "") + " " + str(item.get("value") or "") for item in evidence.get("explicit_user_facts", []))
+    has_destination = any(token in verified.lower() for token in ("url", "phone", "reservation", "order", "qr", "예약", "주문", "전화"))
+    return InteractionCopyPlan(
+        interaction_mode="offline_with_action" if has_destination else "non_interactive_image",
+        action_cta_allowed=has_destination,
+        selected_role="embedded_action_cta" if has_destination else "closing_copy",
+        action_destination_verified=has_destination,
+        rationale=["Action CTA requires verified destination." if not has_destination else "Verified action destination is present."],
+    )
+
+
+def _minimal_copy_presence_plan(evidence: dict[str, Any], broad_category: str, interaction_plan: InteractionCopyPlan) -> MinimalCopyPresencePlan:
+    has_promo = any(str(item.get("key") or "") in {"price", "promotion_detail"} for item in evidence.get("explicit_user_facts", []))
+    image_only_possible = evidence.get("input_mode") == "image_only" and _has_product_visual_signal(evidence.get("visual_observations") or []) and not has_promo
+    if image_only_possible:
+        return MinimalCopyPresencePlan(mode="image_only", allowed_roles=[], max_text_blocks=0, max_total_characters=0, max_text_area_ratio=0.0, no_text_allowed=True, rationale=["Product image can carry the message without extra copy."])
+    if has_promo or interaction_plan.action_cta_allowed:
+        return MinimalCopyPresencePlan(mode="headline_plus_support", allowed_roles=["headline", "supporting_copy"], max_text_blocks=2, max_total_characters=64, max_text_area_ratio=0.12, no_text_allowed=False, rationale=["Verified promotional/action context benefits from one support line."])
+    return MinimalCopyPresencePlan(mode="headline_only", allowed_roles=["headline"], max_text_blocks=1, max_total_characters=24, max_text_area_ratio=0.08, no_text_allowed=True, rationale=["Visual-first creative; one grounded headline is enough."])
+
+
+def _vocabulary_for_product(product_name: str, normalized_type: str | None, broad_category: str) -> dict[str, list[str]]:
+    slug = normalized_type or normalize_slug(product_name) or ""
+    if "jjigae" in slug:
+        return {
+            "sensory": ["구수한", "따뜻한", "깊은"],
+            "emotional": ["편안한", "익숙한"],
+            "functional": ["한 그릇", "식사"],
+            "contextual": ["오늘의 식탁", "저녁 한 끼"],
+            "adjacent": ["밥", "상차림"],
+            "moments": ["warm_meal_moment", "familiar_table"],
+        }
+    if broad_category == "food_and_beverage":
+        return {"sensory": ["부드러운", "산뜻한"], "emotional": ["조용한", "달콤한"], "functional": ["메뉴"], "contextual": ["카페 시간"], "adjacent": ["디저트"], "moments": ["quiet_dessert_pause"]}
+    if broad_category == "beauty_and_personal_care":
+        return {"sensory": ["가벼운", "맑은"], "emotional": ["차분한", "깨끗한"], "functional": ["루틴", "케어"], "contextual": ["매일의 루틴"], "adjacent": ["피부", "텍스처"], "moments": ["calm_daily_routine"]}
+    return {"sensory": [], "emotional": ["담백한"], "functional": [], "contextual": ["일상의 장면"], "adjacent": [], "moments": ["simple_product_presence"]}
+
+
+def _excluded_territories(evidence: dict[str, Any], broad_category: str) -> list[str]:
+    excluded = ["generic_action_cta", "discount_without_evidence", "price_without_evidence"]
+    if broad_category == "beauty_and_personal_care":
+        excluded.extend(["medical_effect", "guaranteed_result"])
+    return excluded
+
+
+def _supported_claims(evidence: dict[str, Any]) -> list[str]:
+    return [str(item.get("key")) for item in evidence.get("explicit_user_facts", []) if item.get("key")]
+
+
+def build_minimal_copy_candidates(data: dict[str, Any], context: ProductCopyContext) -> list[MinimalCopyCandidate]:
+    selected = sanitize_selected_copy(normalize_selected_copy(data.get("selected_copy") or {}))
+    headline = _minimal_headline(selected.get("headline"), context)
+    support = _minimal_support(selected.get("subcopy"), context)
+    closing = _minimal_closing(selected.get("closing_copy") or selected.get("cta"), context)
+    territory = context.message_territories[0].territory_id if context.message_territories else None
+    evidence_keys = [item for territory_item in context.message_territories for item in territory_item.supporting_evidence_keys]
+    language = context.language_policy.headline_language
+    return [
+        MinimalCopyCandidate(candidate_id="variant_image_only", variant_type="image_only", territory_id=None, headline=None, supporting_copy=None, closing_copy=None, action_cta=None, language_mode=context.language_policy.primary_language, supporting_evidence_keys=[], text_block_count=0, estimated_text_area_ratio=0.0),
+        MinimalCopyCandidate(candidate_id="variant_headline_only", variant_type="headline_only", territory_id=territory, headline=headline, language_mode=language, supporting_evidence_keys=evidence_keys, text_block_count=1, estimated_text_area_ratio=0.06),
+        MinimalCopyCandidate(candidate_id="variant_headline_plus_support", variant_type="headline_plus_support", territory_id=territory, headline=headline, supporting_copy=support, language_mode=context.language_policy.primary_language, supporting_evidence_keys=evidence_keys, text_block_count=2, estimated_text_area_ratio=0.10),
+        MinimalCopyCandidate(candidate_id="variant_headline_plus_closing", variant_type="headline_plus_closing", territory_id=territory, headline=headline, closing_copy=closing, action_cta=None, language_mode=context.language_policy.primary_language, supporting_evidence_keys=evidence_keys, text_block_count=2, estimated_text_area_ratio=0.09),
+    ]
+
+
+def select_minimal_candidate_for_plan(plan: MinimalCopyPresencePlan, candidates: list[MinimalCopyCandidate]) -> MinimalCopyCandidate | None:
+    preferred = {
+        "image_only": "image_only",
+        "brand_only": "headline_only",
+        "headline_only": "headline_only",
+        "headline_plus_support": "headline_plus_support",
+        "headline_plus_closing": "headline_plus_closing",
+    }.get(plan.mode)
+    return next((item for item in candidates if item.variant_type == preferred), None) or (candidates[0] if candidates else None)
+
+
+def sanitize_selected_copy(selected: dict[str, Any]) -> dict[str, Any]:
+    cleaned = dict(selected or {})
+    cta = cleaned.get("cta")
+    if _is_generic_cta(cta):
+        cleaned["cta"] = None
+    return cleaned
+
+
+def _is_generic_cta(value: object) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return False
+    return text in GENERIC_CTA_TERMS or any(text.startswith(f"{term} ") for term in GENERIC_CTA_TERMS if term.isascii())
+
+
+def _minimal_headline(value: str | None, context: ProductCopyContext) -> str:
+    product = context.product_name
+    if value and not _is_generic_cta(value):
+        return _truncate_copy(value, 24 if context.language_policy.headline_language == "korean" else 48)
+    slug = context.normalized_product_type or ""
+    if "jjigae" in slug:
+        return "구수하게 끓여낸 한 그릇"
+    if context.broad_category == "food_and_beverage":
+        return f"{product}의 조용한 순간"
+    if context.broad_category == "beauty_and_personal_care":
+        return "차분하게 채우는 루틴"
+    return product
+
+
+def _minimal_support(value: str | None, context: ProductCopyContext) -> str | None:
+    if value and not _is_generic_cta(value):
+        return _truncate_copy(value, 40)
+    if context.copy_presence_plan.mode == "headline_plus_support":
+        return "검증된 정보 안에서 담백하게 전합니다"
+    return None
+
+
+def _minimal_closing(value: str | None, context: ProductCopyContext) -> str | None:
+    if value and not _is_generic_cta(value):
+        return _truncate_copy(value, 24)
+    if context.interaction_plan.action_cta_allowed:
+        return None
+    if context.normalized_product_type and "jjigae" in context.normalized_product_type:
+        return "오늘의 식탁에 구수함을"
+    return "기억에 남는 한 장면"
+
+
+def _truncate_copy(value: str, limit: int) -> str:
+    text = str(value or "").strip()
+    return text if len(text) <= limit else text[:limit].rstrip()
 
 
 def _product_from_evidence(evidence: dict[str, Any]) -> str | None:
@@ -840,7 +1211,11 @@ def prepare_or_generate_background(
         T2IGenerationInput(
             job_id=f"canonical_actual_{request.case_id}",
             prompt=prompt,
-            negative_prompt="visible writing, logo, watermark, signage, poster text",
+            negative_prompt=(
+                "visible writing, logo, watermark, signage, poster text, no text, no letters, no words, "
+                "no typography, no captions, no pseudo text, no UI, no poster copy, advertisement typography, "
+                "Korean headline, product information list, benefit cards, price text, discount badge with text, menu wording, brand slogan"
+            ),
             width=1024,
             height=1024,
             num_images=1,
@@ -871,6 +1246,100 @@ def prepare_or_generate_background(
     return target, metadata
 
 
+def render_minimal_copy_variants(request: ActualCreativeInput, copy_output: dict[str, Any], background_path: Path, case_dir: Path) -> list[dict[str, Any]]:
+    variants_dir = case_dir / "variants"
+    variants_dir.mkdir(parents=True, exist_ok=True)
+    results: list[dict[str, Any]] = []
+    for candidate in copy_output.get("minimal_copy_candidates") or []:
+        candidate_id = str(candidate.get("candidate_id") or candidate.get("variant_type") or "variant")
+        variant_type = str(candidate.get("variant_type") or candidate_id)
+        target = variants_dir / f"{variant_type}.png"
+        if variant_type == "image_only":
+            shutil.copyfile(background_path, target)
+            results.append(
+                {
+                    **candidate,
+                    "image_path": str(target),
+                    "status": "completed",
+                    "rendered_slot_count": 0,
+                    "background_sha256": _sha256(background_path),
+                    "final_sha256": _sha256(target),
+                    "has_text_overlay": False,
+                }
+            )
+            continue
+        variant_output = {**copy_output, "selected_copy": _copy_from_minimal_candidate(candidate)}
+        try:
+            state = execute_production_renderer(request, variant_output, background_path, case_dir)
+            rendered = Path(state.get("render_result", {}).get("final_image_path") or "")
+            _verify_image(rendered)
+            shutil.copyfile(rendered, target)
+            results.append(
+                {
+                    **candidate,
+                    "image_path": str(target),
+                    "status": "completed",
+                    "rendered_slot_count": (state.get("render_result") or {}).get("rendered_slot_count"),
+                    "background_sha256": _sha256(background_path),
+                    "final_sha256": _sha256(target),
+                    "has_text_overlay": bool(((state.get("render_result") or {}).get("metadata") or {}).get("has_text_overlay")),
+                    "render_warnings": (state.get("render_result") or {}).get("warnings") or [],
+                }
+            )
+        except Exception as exc:
+            results.append({**candidate, "image_path": str(target), "status": "failed", "error_message": str(exc)[:300]})
+    _build_variant_comparison_sheet(variants_dir.parent / "comparison_sheet.png", results)
+    return results
+
+
+def select_minimal_variant(copy_output: dict[str, Any], variant_results: list[dict[str, Any]]) -> dict[str, Any] | None:
+    plan = copy_output.get("copy_presence_plan") or {}
+    mode = plan.get("mode") or "headline_only"
+    preferred = {
+        "image_only": "image_only",
+        "brand_only": "headline_only",
+        "headline_only": "headline_only",
+        "headline_plus_support": "headline_plus_support",
+        "headline_plus_closing": "headline_plus_closing",
+    }.get(mode, "headline_only")
+    successful = [item for item in variant_results if item.get("status") == "completed"]
+    return next((item for item in successful if item.get("variant_type") == preferred), None) or next((item for item in successful if item.get("variant_type") == "headline_only"), None) or (successful[0] if successful else None)
+
+
+def _copy_from_minimal_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    return sanitize_selected_copy(
+        {
+            "headline": candidate.get("headline"),
+            "subcopy": candidate.get("supporting_copy") or candidate.get("closing_copy"),
+            "cta": candidate.get("action_cta"),
+            "closing_copy": candidate.get("closing_copy"),
+            "variant_type": candidate.get("variant_type"),
+            "candidate_id": candidate.get("candidate_id"),
+        }
+    )
+
+
+def _build_variant_comparison_sheet(output_path: Path, results: list[dict[str, Any]]) -> None:
+    images: list[tuple[dict[str, Any], Image.Image]] = []
+    for item in results:
+        path = Path(str(item.get("image_path") or ""))
+        if path.exists():
+            images.append((item, Image.open(path).convert("RGB")))
+    if not images:
+        return
+    thumb_size = 256
+    label_h = 44
+    sheet = Image.new("RGB", (thumb_size * len(images), thumb_size + label_h), "white")
+    draw = ImageDraw.Draw(sheet)
+    for index, (item, image) in enumerate(images):
+        image.thumbnail((thumb_size, thumb_size))
+        x = index * thumb_size + (thumb_size - image.width) // 2
+        sheet.paste(image, (x, 0))
+        draw.text((index * thumb_size + 8, thumb_size + 6), f"{item.get('variant_type')}\\n{item.get('status')}", fill=(20, 20, 20))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    sheet.save(output_path)
+
+
 def execute_production_renderer(request: ActualCreativeInput, copy_output: dict[str, Any], background_path: Path, case_dir: Path) -> dict[str, Any]:
     from orchestrator.app.llm.nodes.adaptive_typography_refiner import adaptive_typography_refiner_node
     from orchestrator.app.llm.nodes.copy_spec_parser import copy_spec_parser_node
@@ -887,7 +1356,7 @@ def execute_production_renderer(request: ActualCreativeInput, copy_output: dict[
     product_copy_context = copy_output.get("product_copy_context") or {}
     business_type = _required_text(product_understanding, "broad_category")
     item_or_service = _required_text(product_understanding, "product_name")
-    brand_tone = _required_text(product_copy_context, "brand_tone")
+    brand_tone = str(product_copy_context.get("brand_tone") or "premium")
     headline = _required_text(selected, "headline")
     state: dict[str, Any] = {
         "job_id": f"canonical-{request.case_id}",
@@ -973,6 +1442,7 @@ def evaluate_final_composite_actual(request: ActualCreativeInput, runtime: Actua
 
 def validate_actual_result(result: ActualCreativeResult, report: Any) -> ActualCreativeResult:
     failures = list(result.failure_reasons)
+    copy_presence_mode = (result.copy_presence_plan or {}).get("mode")
     copy_meta = result.copy_provider_metadata
     vlm_meta = (result.vlm_result or {}).get("provider_metadata") or result.vlm_result
     if not _strict_provider_metadata(copy_meta, "gpt-5.4"):
@@ -985,12 +1455,12 @@ def validate_actual_result(result: ActualCreativeResult, report: Any) -> ActualC
         failures.append("text_only missing FLUX generation")
     if not result.final_composite_path or not Path(result.final_composite_path).exists():
         failures.append("final composite missing")
-    if result.background_sha256 and result.background_sha256 == result.final_composite_sha256:
+    if copy_presence_mode != "image_only" and result.background_sha256 and result.background_sha256 == result.final_composite_sha256:
         failures.append("background and final composite hashes match")
-    if int(result.renderer_metadata.get("rendered_slot_count") or 0) <= 0:
+    if copy_presence_mode != "image_only" and int(result.renderer_metadata.get("rendered_slot_count") or 0) <= 0:
         failures.append("production renderer rendered no slots")
     ocr = (result.vlm_result or {}).get("detected_text")
-    if not isinstance(ocr, list) or not ocr:
+    if copy_presence_mode != "image_only" and (not isinstance(ocr, list) or not ocr):
         failures.append("ocr detected_text unavailable")
     vlm_failures = (result.vlm_result or {}).get("failure_reasons") or []
     if vlm_failures:
@@ -1018,8 +1488,13 @@ def _result(request: ActualCreativeInput, status: ActualStatus, evidence: dict[s
         input_evidence=evidence,
         product_understanding=copy_output.get("product_understanding") or {},
         product_copy_context=copy_output.get("product_copy_context") or {},
+        copy_presence_plan=copy_output.get("copy_presence_plan") or {},
+        language_policy=copy_output.get("language_policy") or {},
+        interaction_copy_plan=copy_output.get("interaction_copy_plan") or {},
         image_use_plan=(image_use_plan.model_dump() if image_use_plan else {}),
         copy_candidates=copy_output.get("copy_candidates") or [],
+        minimal_copy_candidates=copy_output.get("minimal_copy_candidates") or [],
+        selected_variant_id=copy_output.get("selected_variant_id"),
         selected_copy=copy_output.get("selected_copy"),
         source_image_path=request.source_image_path,
         source_image_sha256=evidence.get("source_image_sha256"),
@@ -1214,11 +1689,12 @@ def _select_copy(candidates: list[dict[str, Any]], selected_id: str | None) -> d
 def _background_prompt(request: ActualCreativeInput, copy_output: dict[str, Any]) -> str:
     product = _required_text(copy_output.get("product_understanding") or {}, "product_name")
     category = _required_text(copy_output.get("product_understanding") or {}, "broad_category")
-    tone = _required_text(copy_output.get("product_copy_context") or {}, "brand_tone")
+    tone = str((copy_output.get("product_copy_context") or {}).get("brand_tone") or "premium")
     return (
         "Premium realistic commercial photography background for a verified product advertisement. "
         f"Product: {product}. Category: {category}. Brand tone: {tone}. Placement: {request.placement}. "
-        "Clean reserved negative space for later copy overlay. No visible writing, signage, logo, or watermark."
+        "Create only the product image, background, lighting, composition, and clean negative space for later copy overlay. "
+        "Do not create a poster, advertisement typography, Korean headline, menu wording, brand slogan, price text, discount badge, UI, captions, visible writing, signage, logo, watermark, letters, words, or pseudo text."
     )
 
 

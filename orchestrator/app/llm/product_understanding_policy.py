@@ -22,6 +22,9 @@ _UNICODE_SLUG_REPLACEMENTS = {
     "커피": "coffee",
     "라떼": "latte",
     "디저트": "dessert",
+    "딸기": "strawberry",
+    "세럼": "serum",
+    "나이아신아마이드": "niacinamide",
 }
 
 

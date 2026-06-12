@@ -448,7 +448,10 @@ def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
             prompt = (
                 "Return JSON only with product_copy_context, copy_candidates, "
                 "recommended_candidate_id, selected_copy, input_conflicts, requires_manual_review. "
-                "Do not generate or revise ProductUnderstanding. product_copy_context must include brand_tone. Generate grounded advertising copy only from the supplied InputEvidenceBundle and ProductUnderstanding. "
+                "Do not generate or revise ProductUnderstanding. product_copy_context must include brand_tone, message_territories, language_policy, copy_presence_plan, interaction_plan, supported_claims, unsupported_claims. "
+                "Generate grounded advertising copy only from the supplied InputEvidenceBundle and ProductUnderstanding. Prefer visual-first minimal copy: image-only, headline-only, headline+support, or headline+closing. "
+                "Do not create generic action CTAs unless a verified destination exists. Hard block Learn More, Discover More, Shop Now, 지금 확인하기, 자세히 보기, 메뉴 보기, 지금 만나보세요 when no destination is verified. "
+                "For Korean local food/menu products, use Korean headline by default and do not romanize product names unless explicitly requested. "
                 "Do not use source image bytes or raw visual assumptions outside the bundle. "
                 f"Request metadata: {request.model_dump_json()} ProductUnderstanding: {json.dumps(product_understanding or {}, ensure_ascii=False)} InputEvidenceBundle: {json.dumps(evidence, ensure_ascii=False)}"
             )

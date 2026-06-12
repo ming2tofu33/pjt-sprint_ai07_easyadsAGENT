@@ -110,8 +110,14 @@ def test_run_actual_creative_case_uses_shared_provider_flux_and_renderer(monkeyp
     result = pipeline.run_actual_creative_case(request, runtime)
 
     assert result.status == "completed"
-    assert calls == {"normalize": 1, "copy": 1, "vision": 1, "flux": 1, "renderer": 1}
+    assert calls == {"normalize": 1, "copy": 1, "vision": 1, "flux": 1, "renderer": 4}
     assert result.mock_or_fixture_count == 0
+    assert [item["variant_type"] for item in result.minimal_copy_candidates] == [
+        "image_only",
+        "headline_only",
+        "headline_plus_support",
+        "headline_plus_closing",
+    ]
 
 
 def test_renderer_rejects_missing_product_context(tmp_path):
