@@ -865,7 +865,7 @@ git commit -m "feat(bff): port archive and upload routes to Next"
 - Create: `apps/web/app/api/admin/references/[templateId]/unpublish/route.ts`
 - Test: `apps/web/app/api/admin/references/routes.test.ts`
 
-- [ ] **Step 1: Write failing route tests**
+- [x] **Step 1: Write failing route tests**
 
 Create `apps/web/app/api/admin/references/routes.test.ts`:
 
@@ -903,7 +903,7 @@ describe("admin reference Next routes", () => {
 });
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -913,7 +913,7 @@ cd apps/web && npx vitest run app/api/admin/references/routes.test.ts
 
 Expected: FAIL because admin reference routes do not exist.
 
-- [ ] **Step 3: Implement binary route handlers**
+- [x] **Step 3: Implement binary route handlers**
 
 Create `apps/web/app/api/assets/[assetId]/route.ts`:
 
@@ -952,7 +952,7 @@ export function GET(
 }
 ```
 
-- [ ] **Step 4: Implement admin reference route handlers**
+- [x] **Step 4: Implement admin reference route handlers**
 
 Create `apps/web/app/api/admin/references/route.ts`:
 
@@ -1016,7 +1016,7 @@ export function POST(request: NextRequest, { params }: { params: { templateId: s
 }
 ```
 
-- [ ] **Step 5: Run route parity**
+- [x] **Step 5: Run route parity**
 
 Run:
 
@@ -1026,7 +1026,7 @@ cd apps/web && npx vitest run app/api/admin/references/routes.test.ts app/api/_p
 
 Expected: admin route tests PASS and route parity PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/web/app/api/assets/[assetId] apps/web/app/api/references/temp-assets apps/web/app/api/admin

@@ -426,6 +426,47 @@ describe("proxyOrchestratorJson", () => {
       })
     );
   });
+
+  it("rejects routes that require a non-guest user when no bearer token is present", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/admin/references");
+    const response = await proxyOrchestratorJson(request, "GET", "/api/v1/admin/references", undefined, {
+      requireNonGuestUser: true
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.error_code).toBe("admin_session_required");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects routes that require a non-guest user when the session is anonymous", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://supabase.example.com");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon_key");
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_uuid_1", is_anonymous: true });
+      }
+      return jsonResponse({ success: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/admin/references", {
+      headers: { authorization: "Bearer guest_token_1" }
+    });
+    const response = await proxyOrchestratorJson(request, "GET", "/api/v1/admin/references", undefined, {
+      requireNonGuestUser: true
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.error_code).toBe("admin_session_required");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("proxyOrchestratorBinary", () => {

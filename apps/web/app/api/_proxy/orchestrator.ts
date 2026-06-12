@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 type ProxyMethod = "GET" | "POST" | "PATCH" | "DELETE";
 export type PrincipalQueryKeys = {
   userKey: string;
-  accountKey: string;
+  accountKey?: string;
 };
 type BodySchemaResult = { success: true; data?: unknown } | { success: false; error?: unknown };
 export type BodySchema = {
@@ -14,6 +14,7 @@ type ProxyOptions = {
   injectVerifiedUserIdSnakeBody?: boolean;
   injectVerifiedUserIdHeader?: boolean;
   injectVerifiedUserIdQuery?: PrincipalQueryKeys;
+  requireNonGuestUser?: boolean;
   bodySchema?: BodySchema;
   successStatus?: number;
 };
@@ -153,12 +154,16 @@ function injectPrincipalBodyFields(
 
 function applyPrincipalQueryParams(targetUrl: URL, keys: PrincipalQueryKeys, principal: SupabasePrincipal | null) {
   targetUrl.searchParams.delete(keys.userKey);
-  targetUrl.searchParams.delete(keys.accountKey);
+  if (keys.accountKey) {
+    targetUrl.searchParams.delete(keys.accountKey);
+  }
   if (!principal) {
     return;
   }
   targetUrl.searchParams.set(keys.userKey, principal.userId);
-  targetUrl.searchParams.set(keys.accountKey, principal.accountType);
+  if (keys.accountKey) {
+    targetUrl.searchParams.set(keys.accountKey, principal.accountType);
+  }
 }
 
 export async function proxyOrchestratorJson(
@@ -181,6 +186,13 @@ export async function proxyOrchestratorJson(
       verifiedPrincipalPromise ??= resolveSupabasePrincipal(request);
       return verifiedPrincipalPromise;
     };
+
+    if (options.requireNonGuestUser) {
+      const principal = await getVerifiedPrincipal();
+      if (!principal || principal.accountType === "guest") {
+        throw proxyError("Admin session required.", 401, "admin_session_required");
+      }
+    }
 
     if (options.injectVerifiedUserIdHeader) {
       const principal = await getVerifiedPrincipal();
