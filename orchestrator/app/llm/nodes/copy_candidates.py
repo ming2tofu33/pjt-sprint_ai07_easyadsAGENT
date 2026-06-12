@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from typing import Any
 
 from langgraph.types import interrupt
@@ -158,14 +160,10 @@ def hallucinated_fact_reason(candidate: CopyCandidate, state: MarketingState) ->
 
 
 def re_search_phone(text: str) -> bool:
-    import re
-
     return bool(re.search(r"0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}", text or ""))
 
 
 def re_search_price(text: str) -> bool:
-    import re
-
     return bool(re.search(r"(₩\s*\d|[0-9][0-9,]*\s*원)", text or ""))
 
 
