@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from PIL import Image
 
+from orchestrator.app.llm.product_copy_context_service import build_dynamic_product_copy_context
 from scripts import _actual_creative_pipeline as pipeline
 
 
@@ -146,9 +147,10 @@ def test_visual_product_signal_hydrates_copy_without_user_facts():
 
     assert evidence["explicit_user_facts"] == []
     assert data["product_understanding"]["product_name"] == "Cheesecake"
-    assert data["selected_copy"]["headline"] == "Baked Dessert Menu"
-    assert data["selected_copy"]["subcopy"] == "A simple cafe dessert to discover today."
-    assert data["selected_copy"]["cta"] == "View menu"
+    assert data["copy_presence_plan"]["mode"] == "image_only"
+    assert data["selected_copy"]["headline"] is None
+    assert data["selected_copy"]["subcopy"] is None
+    assert data["selected_copy"]["cta"] is None
 
 
 def test_copy_hydration_does_not_insert_generic_cta_or_subcopy():
@@ -162,10 +164,109 @@ def test_copy_hydration_does_not_insert_generic_cta_or_subcopy():
     )
 
     assert data["selected_copy"]["headline"] == "Doenjang Jjigae"
-    assert data["selected_copy"]["subcopy"] == "Warm stew, simply presented."
+    assert data["copy_presence_plan"]["mode"] == "headline_only"
+    assert data["selected_copy"]["subcopy"] is None
     assert data["selected_copy"]["cta"] is None
     assert "A focused introduction to" not in str(data["selected_copy"])
     assert "Learn More" not in str(data["selected_copy"])
+
+
+def test_dynamic_copy_context_blocks_generic_cta_for_korean_food():
+    evidence = {
+        "input_mode": "text_only",
+        "user_text": "된장찌개 메뉴를 홍보하고 싶어",
+        "explicit_product_mentions": ["된장찌개 메뉴"],
+        "explicit_user_facts": [
+            {
+                "evidence_id": "evidence_food",
+                "key": "product_name",
+                "value": "된장찌개 메뉴",
+                "normalized_value": "된장찌개 메뉴",
+                "source": "user_text",
+                "evidence_class": "verified_fact",
+                "confidence": 1.0,
+                "usable_for_copy": True,
+            }
+        ],
+        "visual_observations": [],
+        "unknown_fields": [],
+    }
+    data = pipeline._hydrate_copy_payload(
+        {
+            "product_understanding": {
+                "product_name": "된장찌개 메뉴",
+                "normalized_product_type": "doenjang_jjigae",
+                "broad_category": "food_and_beverage",
+                "category_path": ["food_and_beverage", "doenjang_jjigae"],
+            },
+            "product_copy_context": {},
+            "selected_copy": {"headline": "Discover Doenjang Jjigae", "supporting_copy": "A focused introduction to doenjang jjigae", "cta": "Learn More"},
+        },
+        evidence,
+    )
+
+    assert data["language_policy"]["primary_language"] == "korean"
+    assert data["language_policy"]["english_headline_allowed"] is False
+    assert data["interaction_copy_plan"]["action_cta_allowed"] is False
+    assert data["selected_copy"]["cta"] is None
+    assert data["copy_presence_plan"]["max_text_blocks"] <= 2
+    assert data["copy_presence_plan"]["max_text_area_ratio"] <= 0.12
+    assert [item["variant_type"] for item in data["minimal_copy_candidates"]] == [
+        "image_only",
+        "headline_only",
+        "headline_plus_support",
+        "headline_plus_closing",
+    ]
+
+
+def test_image_only_visual_signal_allows_no_text_plan():
+    evidence = {
+        "input_mode": "image_only",
+        "explicit_user_facts": [],
+        "visual_observations": [
+            {
+                "evidence_id": "visual_1",
+                "key": "product_identity",
+                "value": "clear cheesecake dessert product",
+                "confidence": 0.9,
+                "usable_for_copy": True,
+            }
+        ],
+        "unknown_fields": [],
+    }
+
+    context = build_dynamic_product_copy_context(
+        {},
+        {"product_name": "Cheesecake", "normalized_product_type": "cheesecake", "broad_category": "food_and_beverage", "category_path": ["food_and_beverage", "cheesecake"]},
+        evidence,
+    )
+
+    assert context.copy_presence_plan.mode == "image_only"
+    assert context.copy_presence_plan.allowed_roles == []
+    assert context.copy_presence_plan.no_text_allowed is True
+
+
+def test_minimal_copy_candidates_skip_missing_support_and_closing():
+    data = pipeline._hydrate_copy_payload(
+        {
+            "product_understanding": {
+                "product_name": "딸기라떼",
+                "normalized_product_type": "strawberry_latte",
+                "broad_category": "food_and_beverage",
+                "category_path": ["food_and_beverage", "strawberry_latte"],
+            },
+            "product_copy_context": {},
+            "selected_copy": {"headline": "새로 만나는 딸기라떼", "supporting_copy": None, "closing_copy": None, "cta": None},
+        },
+        {"input_mode": "text_only", "explicit_product_mentions": ["딸기라떼"], "explicit_user_facts": []},
+    )
+
+    variants = data["minimal_copy_candidates"]
+
+    assert [item["variant_type"] for item in variants] == ["image_only", "headline_only", "headline_plus_closing"]
+    for item in variants:
+        actual_roles = sum(1 for key in ("headline", "supporting_copy", "closing_copy", "action_cta") if item.get(key))
+        assert item["text_block_count"] == actual_roles
 
 
 def test_vlm_validation_accepts_string_detected_text():

@@ -74,6 +74,7 @@ import {
   readGenerationDraftReferenceTemplateId,
   readGenerationRequestContext,
   saveGenerationRequestContext,
+  writeGenerationDraftPrompt,
   writeGenerationDraftReferenceTemplateId
 } from "@/lib/generation-request-context";
 import { buildNotificationHref } from "@/lib/notification-navigation";
@@ -1513,13 +1514,15 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
          router.replace(`?threadId=${response.job.thread_id}`);
       }
     } catch (error) {
+      writeGenerationDraftPrompt(prompt);
       if (selectedReferenceTemplateId) {
         writeGenerationDraftReferenceTemplateId(selectedReferenceTemplateId);
       }
       dispatch({
         type: "backendRequestFailed",
         message: error instanceof Error ? error.message : "생성 요청에 실패했습니다. 잠시 후 다시 시도해주세요.",
-        errorCode: error instanceof ApiError ? error.errorCode : undefined
+        errorCode: error instanceof ApiError ? error.errorCode : undefined,
+        recoverToStart: true
       });
     }
   }
@@ -2000,6 +2003,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     clearGenerationFailureSnapshot();
     dispatch({ type: "generationJobRequested" });
+    // 생성 잡 생성 전에는 URL을 바꾸지 않음. navigateTo("chat","generating")는 jobId 없는
+    // `?stage=generating`로 push해 복원 useEffect를 jobId 부재 상태로 재실행시키고,
+    // initialStage/jobIdParam 비동기 갱신 틈에 fallback 분기가 stage="complete"를
+    // 잠깐 렌더(생성실패 플래시)하게 만들었음. surface/stage는 로컬 state로만 전환하고
+    // URL은 jobId가 생긴 뒤(router.replace) 한 번만 갱신함.
+    setOptimisticSurface("chat");
     setGenerationStage("generating");
     lastPrimedStageRef.current = "generating";
 
@@ -2044,7 +2053,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       });
 
       finalGenerationJobIdsRef.current.add(created.job.job_id);
-      setOptimisticSurface("chat");
       router.replace(buildChatStageHrefForJob("generating", created.job));
       await pollGenerationJobUntilDoneOrQuestion(created.job);
     } catch (error) {
@@ -2332,6 +2340,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           onBack={handleBackToFlowEntry}
           onGoHome={() => navigateTo("home")}
           onHistory={() => setShowHistory(true)}
+          errorMessage={displayState.errorMessage}
+          initialPrompt={state.userInput}
         />
       ) : null}
 

@@ -740,6 +740,31 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("surfaces orchestrator thread_limit_reached error_code to the client", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(
+        {
+          detail: {
+            error_code: "thread_limit_reached",
+            message: "Workspace already has the maximum of 3 active chat threads."
+          }
+        },
+        { status: 409 }
+      )
+    );
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs",
+      payload: { userInput: "네 번째 작업방", runMode: "queued_only" }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().error_code).toBe("thread_limit_reached");
+    await app.close();
+  });
+
   it("verifies Supabase sessions before forwarding generation job reads", async () => {
     const fetchImpl = vi.fn(async (url) => {
       if (String(url).includes("/auth/v1/user")) {

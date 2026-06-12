@@ -63,3 +63,28 @@ def test_node_runner_invalid_structured_output_falls_back(monkeypatch):
 
     assert output.copy_generation_mode == "suggest_candidates"
     assert metadata["fallback_reason"] == "structured_output_validation_failed"
+
+
+def test_validate_output_rejects_non_mapping_with_clear_error():
+    import pytest
+    from pydantic import BaseModel
+
+    from orchestrator.app.llm.node_runner import validate_output
+
+    class _Out(BaseModel):
+        value: int = 0
+
+    with pytest.raises(ValueError, match="must be a mapping"):
+        validate_output(_Out, ["not", "a", "mapping"])
+
+
+def test_validate_output_accepts_none_and_mapping():
+    from pydantic import BaseModel
+
+    from orchestrator.app.llm.node_runner import validate_output
+
+    class _Out(BaseModel):
+        value: int = 0
+
+    assert validate_output(_Out, None).value == 0
+    assert validate_output(_Out, {"value": 3}).value == 3

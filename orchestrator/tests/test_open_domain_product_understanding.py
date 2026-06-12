@@ -68,3 +68,71 @@ def test_korean_food_product_type_uses_general_taxonomy_not_other():
     assert data["broad_category"] == "food_and_beverage"
     assert data["category_path"] == ["food_and_beverage", "doenjang_jjigae"]
     assert data["product_name_evidence_ids"] == ["evidence_food"]
+
+
+def test_korean_food_product_name_separates_campaign_modifier():
+    evidence = {
+        "explicit_product_mentions": ["된장찌개 메뉴"],
+        "explicit_user_facts": [
+            {
+                "evidence_id": "evidence_food",
+                "key": "product_name",
+                "value": "된장찌개 메뉴",
+                "normalized_value": "된장찌개 메뉴",
+                "source": "user_text",
+                "evidence_class": "verified_fact",
+                "confidence": 1.0,
+                "usable_for_copy": True,
+            }
+        ],
+        "visual_observations": [],
+        "asset_metadata_evidence": [],
+        "brand_profile_evidence": [],
+        "reference_evidence": [],
+        "creative_inferences": [],
+        "input_conflicts": [],
+        "unknown_fields": [],
+    }
+
+    data = pipeline._coerce_product_understanding_candidate(
+        {"product_name": "된장찌개 메뉴", "broad_category": "other"},
+        evidence,
+    )
+
+    assert data["product_name"] == "된장찌개"
+    assert data["campaign_modifiers"] == ["메뉴 홍보"]
+    assert data["normalized_product_type"] == "doenjang_jjigae"
+
+
+def test_korean_serum_product_type_does_not_collapse_to_numeric():
+    evidence = {
+        "explicit_product_mentions": ["나이아신아마이드 5% 세럼"],
+        "explicit_user_facts": [
+            {
+                "evidence_id": "evidence_serum",
+                "key": "product_name",
+                "value": "나이아신아마이드 5% 세럼",
+                "normalized_value": "나이아신아마이드 5% 세럼",
+                "source": "user_text",
+                "evidence_class": "verified_fact",
+                "confidence": 1.0,
+                "usable_for_copy": True,
+            }
+        ],
+        "visual_observations": [],
+        "asset_metadata_evidence": [],
+        "brand_profile_evidence": [],
+        "reference_evidence": [],
+        "creative_inferences": [],
+        "input_conflicts": [],
+        "unknown_fields": [],
+    }
+
+    data = pipeline._coerce_product_understanding_candidate(
+        {"product_name": "5", "normalized_product_type": "5", "broad_category": "other"},
+        evidence,
+    )
+
+    assert data["product_name"] == "나이아신아마이드 5% 세럼"
+    assert data["normalized_product_type"] == "niacinamide_5_serum"
+    assert data["broad_category"] == "beauty_and_personal_care"
