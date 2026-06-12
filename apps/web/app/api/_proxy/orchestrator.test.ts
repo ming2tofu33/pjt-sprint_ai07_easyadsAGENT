@@ -140,8 +140,10 @@ describe("proxyOrchestratorJson", () => {
     vi.stubEnv("SUPABASE_ANON_KEY", "anon");
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ id: "guest_uuid_1", is_anonymous: true }))
-      .mockResolvedValueOnce(jsonResponse({ success: true, job: { job_id: "job_1", status: "queued", progress: {} } }));
+      .mockImplementation(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        jsonResponse({ success: true, job: { job_id: "job_1", status: "queued", progress: {} } })
+      );
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: "guest_uuid_1", is_anonymous: true }));
     vi.stubGlobal("fetch", fetchMock);
 
     const request = new NextRequest("http://localhost/api/generation-jobs/job_1", {
@@ -232,7 +234,7 @@ describe("proxyOrchestratorJson", () => {
   it("attaches the internal secret header to orchestrator requests when configured", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
     vi.stubEnv("EASYADS_INTERNAL_API_SECRET", "internal_secret_1");
-    const fetchMock = vi.fn(async () => jsonResponse({ success: true }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({ success: true }));
     vi.stubGlobal("fetch", fetchMock);
 
     const request = new NextRequest("http://localhost/api/usage", { method: "GET" });
@@ -244,7 +246,7 @@ describe("proxyOrchestratorJson", () => {
 
   it("omits the internal secret header when not configured", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
-    const fetchMock = vi.fn(async () => jsonResponse({ success: true }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({ success: true }));
     vi.stubGlobal("fetch", fetchMock);
 
     const request = new NextRequest("http://localhost/api/usage", { method: "GET" });

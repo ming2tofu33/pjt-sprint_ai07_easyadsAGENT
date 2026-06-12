@@ -524,7 +524,7 @@ describe("api-client backend contract routes", () => {
         }
       })
     }));
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         success: true,
         job: {
@@ -798,7 +798,7 @@ describe("api-client backend contract routes", () => {
         }
       })
     }));
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         items: [],
         pagination: { limit: 20, offset: 0, total: 0, has_more: false }
@@ -815,7 +815,7 @@ describe("api-client backend contract routes", () => {
   });
 
   it("can skip exact archive totals for faster archive list requests", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         items: [],
         pagination: { limit: 20, offset: 0, total: 0, has_more: false }
@@ -829,7 +829,7 @@ describe("api-client backend contract routes", () => {
   });
 
   it("can skip exact chat thread totals for faster workspace list requests", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         success: true,
         threads: [],
