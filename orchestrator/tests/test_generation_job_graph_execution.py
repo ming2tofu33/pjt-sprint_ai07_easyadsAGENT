@@ -712,6 +712,92 @@ def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
     ]
 
 
+def test_resume_generation_job_graph_persists_canonical_final_brief(monkeypatch):
+    calls = []
+    expected_job_id = None
+    expected_thread_id = None
+
+    class MockSharedGraph:
+        def invoke(self, payload, config: dict | None = None) -> dict:
+            nonlocal expected_job_id, expected_thread_id
+            calls.append(payload)
+            if len(calls) == 1:
+                state = dict(payload)
+                expected_job_id = state["job_id"]
+                expected_thread_id = state["thread_id"]
+                state["__interrupt__"] = [
+                    FakeInterrupt(
+                        {
+                            "type": "copy_candidate_selection",
+                            "job_id": state["job_id"],
+                            "thread_id": state["thread_id"],
+                            "candidates": [
+                                {"id": "copy_1", "headline": "오늘 저녁 딸기라떼 한 잔"},
+                                {"id": "copy_2", "headline": "오늘만 더 달콤한 신메뉴"},
+                            ],
+                            "recommended_candidate_id": "copy_1",
+                        }
+                    )
+                ]
+                state["status"] = "waiting_user_input"
+                return state
+
+            return {
+                "job_id": expected_job_id,
+                "thread_id": expected_thread_id,
+                "status": "done",
+                "context": {
+                    "business_type": "cafe",
+                    "item_or_service": "딸기라떼",
+                    "promotion_goal": "new_launch",
+                    "brand_tone": "상큼한",
+                },
+                "marketing_copy": {
+                    "headline": "오늘만 더 달콤한 신메뉴",
+                    "subcopy": "딸기라떼 신메뉴를 만나보세요",
+                    "cta": "지금 확인하기",
+                },
+                "selected_channel_id": "instagram-story",
+                "selected_ad_format": "instagram_story",
+                "selected_tone": "상큼한",
+                "custom_direction": "딸기라떼를 화면 중앙에 크게",
+                "current_brief": {
+                    "selected_channel_id": "instagram-story",
+                    "requested_ad_format": "instagram_story",
+                    "selected_tone": "상큼한",
+                    "custom_direction": "딸기라떼를 화면 중앙에 크게",
+                },
+                "result_payload": {"final_image_path": "/fake/final.png"},
+                "final_image_path": "/fake/final.png",
+            }
+
+    shared_graph = MockSharedGraph()
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: shared_graph)
+
+    request = GenerationJobCreateRequest(
+        user_input="우리 카페 딸기라떼 신메뉴 광고 만들어줘",
+        run_mode="graph_job",
+        copy_generation_mode="suggest_candidates",
+    )
+    job = create_generation_job(request)
+    job = execute_generation_job_graph(job.job_id, request)
+    assert job.status == "waiting_user_input"
+
+    answer = GenerationJobAnswerRequest(selectedCopyId="copy_2", displayText="오늘만 더 달콤한 신메뉴")
+    resumed = resume_generation_job_graph(job.job_id, answer)
+
+    assert resumed.status == "done"
+    assert resumed.result_payload["final_brief"] == {
+        "purpose": "신메뉴 출시",
+        "item": "딸기라떼",
+        "copy": "오늘만 더 달콤한 신메뉴",
+        "tone": "상큼한",
+        "channel": "인스타 스토리 (9:16)",
+        "image_direction": "딸기라떼를 화면 중앙에 크게",
+        "final_image_path": "/fake/final.png",
+    }
+
+
 def test_resume_generation_job_graph_passes_scope_to_next_interrupt_waiting_update(monkeypatch):
     captured = {}
     job = _graph_job_response(
