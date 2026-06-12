@@ -34,6 +34,8 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}) {
 
 describe("api-client photo generation", () => {
   afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("./supabase/browser");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -393,6 +395,8 @@ describe("api-client photo generation", () => {
 
 describe("api-client backend contract routes", () => {
   afterEach(() => {
+    vi.resetModules();
+    vi.doUnmock("./supabase/browser");
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -543,6 +547,51 @@ describe("api-client backend contract routes", () => {
     );
   });
 
+  it("creates an anonymous Supabase session before creating a generation job", async () => {
+    const signInAnonymously = vi.fn(async () => ({
+      data: { session: { access_token: "anon_access_token_1" } },
+      error: null
+    }));
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: null } }),
+          signInAnonymously
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_guest_1",
+          thread_id: "thread_guest_1",
+          status: "queued",
+          progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+          metadata: {}
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createGenerationJob({
+      userInput: "비로그인 네일샵 광고",
+      runMode: "queued_only"
+    });
+
+    expect(signInAnonymously).toHaveBeenCalledWith({
+      options: {
+        data: {
+          account_type: "guest",
+          source: "easyads_web"
+        }
+      }
+    });
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer anon_access_token_1" })
+    );
+  });
+
   it("calls archive endpoints through the BFF and maps response fields", async () => {
     vi.doMock("./supabase/browser", () => ({
       createSupabaseBrowserClient: () => ({
@@ -682,6 +731,45 @@ describe("api-client backend contract routes", () => {
     expect(deleted.item.adId).toBe("archive_1");
   });
 
+  it("uses the anonymous session for archive list requests", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "anon_access_token_1" } } }),
+          signInAnonymously: vi.fn()
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        items: [],
+        pagination: { limit: 20, offset: 0, total: 0, has_more: false }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listArchiveItems({ limit: 20 });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer anon_access_token_1" })
+    );
+  });
+
+  it("can skip exact archive totals for faster archive list requests", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        items: [],
+        pagination: { limit: 20, offset: 0, total: 0, has_more: false }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listArchiveItems({ limit: 20, includeTotal: false });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items?limit=20&include_total=false");
+  });
+
 
   it("uploads reference images through presign, R2 PUT, and complete", async () => {
     vi.doMock("./supabase/browser", () => ({
@@ -792,7 +880,37 @@ describe("api-client backend contract routes", () => {
     expect(created.templateId).toBe("ref_cafe_admin");
   });
 
+  it("does not create anonymous sessions for admin reference APIs", async () => {
+    const signInAnonymously = vi.fn();
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: null } }),
+          signInAnonymously
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({ success: true, items: [] })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listAdminReferenceTemplates();
+
+    expect(signInAnonymously).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls[0][1]?.headers).not.toEqual(
+      expect.objectContaining({ authorization: expect.any(String) })
+    );
+  });
+
   it("archives chat threads through the BFF", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         success: true,

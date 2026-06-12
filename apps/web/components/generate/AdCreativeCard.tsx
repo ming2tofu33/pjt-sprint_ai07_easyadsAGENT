@@ -2,6 +2,7 @@
 
 import { Bookmark } from "lucide-react";
 import Image from "next/image";
+import { shouldUseNextImageOptimization } from "@/lib/image-optimization";
 import type { MockCreative } from "@/lib/mock-dashboard-data";
 import styles from "./generate.module.css";
 
@@ -38,7 +39,7 @@ export function AdCreativeCard({
       fill
       sizes={compact ? "96px" : openOnImage ? "190px" : "160px"}
       src={creative.imageUrl}
-      unoptimized
+      unoptimized={!shouldUseNextImageOptimization(creative.imageUrl)}
     />
   ) : showPlaceholderArt ? (
     <>

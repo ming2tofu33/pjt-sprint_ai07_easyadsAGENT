@@ -43,6 +43,7 @@ from orchestrator.app.llm.nodes.design_recommendation_node import design_recomme
 from orchestrator.app.llm.nodes.adaptive_typography_refiner import adaptive_typography_refiner_node
 from orchestrator.app.llm.nodes.image_prompt_planner import image_prompt_planner_node
 from orchestrator.app.llm.nodes.image_layout_analyzer import image_layout_analyzer_node
+from orchestrator.app.llm.nodes.input_evidence_normalizer import input_evidence_normalizer_node
 from orchestrator.app.llm.nodes.copy_compliance import (
     copy_compliance_gate_node,
     copy_compliance_interrupt_node,
@@ -75,15 +76,17 @@ from orchestrator.app.vision.nodes import product_preprocess_node, reference_pre
 def build_intake_graph(checkpointer=None):
     graph = StateGraph(MarketingState)
     graph.add_node("input", input_node)
+    graph.add_node("input_evidence_normalizer", input_evidence_normalizer_node)
     graph.add_node("validator", validator_node)
     graph.add_node("options", options_node)
     graph.add_node("state_update", state_update_node)
 
     graph.set_entry_point("input")
-    graph.add_edge("input", "validator")
+    graph.add_edge("input", "input_evidence_normalizer")
+    graph.add_edge("input_evidence_normalizer", "validator")
     graph.add_conditional_edges("validator", route_after_validator_for_intake, {"options": "options", END: END})
     graph.add_edge("options", "state_update")
-    graph.add_edge("state_update", "validator")
+    graph.add_edge("state_update", "input_evidence_normalizer")
 
     return graph.compile(checkpointer=checkpointer or InMemorySaver())
 
@@ -94,6 +97,7 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("reference_template_resolve", reference_template_resolve_node)
     graph.add_node("product_preprocess", product_preprocess_node)
     graph.add_node("reference_preprocess", reference_preprocess_node)
+    graph.add_node("input_evidence_normalizer", input_evidence_normalizer_node)
     graph.add_node("validator", validator_node)
     graph.add_node("options", options_node)
     graph.add_node("state_update", state_update_node)
@@ -148,20 +152,21 @@ def build_marketing_graph(checkpointer=None):
             "reference_template_resolve": "reference_template_resolve",
             "product_preprocess": "product_preprocess",
             "reference_preprocess": "reference_preprocess",
-            "validator": "validator",
+            "validator": "input_evidence_normalizer",
         },
     )
     graph.add_conditional_edges(
         "reference_template_resolve",
         route_after_reference_template_resolve,
-        {"product_preprocess": "product_preprocess", "reference_preprocess": "reference_preprocess", "validator": "validator"},
+        {"product_preprocess": "product_preprocess", "reference_preprocess": "reference_preprocess", "validator": "input_evidence_normalizer"},
     )
     graph.add_conditional_edges(
         "product_preprocess",
         route_after_product_preprocess,
-        {"reference_preprocess": "reference_preprocess", "validator": "validator"},
+        {"reference_preprocess": "reference_preprocess", "validator": "input_evidence_normalizer"},
     )
-    graph.add_edge("reference_preprocess", "validator")
+    graph.add_edge("reference_preprocess", "input_evidence_normalizer")
+    graph.add_edge("input_evidence_normalizer", "validator")
     graph.add_conditional_edges(
         "validator",
         route_after_validator_for_marketing,
@@ -169,7 +174,7 @@ def build_marketing_graph(checkpointer=None):
     )
     graph.add_edge("input_compliance_precheck", "format_planner")
     graph.add_edge("options", "state_update")
-    graph.add_edge("state_update", "validator")
+    graph.add_edge("state_update", "input_evidence_normalizer")
     graph.add_edge("format_planner", "tone_binding")
     graph.add_conditional_edges(
         "tone_binding",

@@ -22,19 +22,29 @@ export function LoginClient({ nextPath }: { nextPath: string }) {
     setIsPending(true);
 
     const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo,
-        queryParams: {
-          access_type: "offline",
-          prompt: "consent"
-        }
+    const oauthOptions = {
+      redirectTo,
+      queryParams: {
+        access_type: "offline",
+        prompt: "consent"
       }
-    });
+    };
 
-    if (error) {
-      setErrorMessage(error.message);
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    const authResult = user?.is_anonymous
+      ? await supabase.auth.linkIdentity({
+          provider: "google",
+          options: oauthOptions
+        })
+      : await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: oauthOptions
+        });
+
+    if (authResult.error) {
+      setErrorMessage(authResult.error.message);
       setIsPending(false);
     }
   }
