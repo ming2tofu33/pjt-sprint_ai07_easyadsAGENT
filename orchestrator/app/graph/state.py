@@ -372,21 +372,46 @@ def update_current_brief(state: MarketingState, updates: dict[str, Any]) -> None
     state["updated_at"] = now_iso()
 
 
+# Declarative dirty-field propagation: (trigger fields, fields invalidated when
+# any trigger changes). Single-pass and non-transitive by design — derived
+# fields appearing as triggers (e.g. marketing_copy) only fire when explicitly
+# listed in changed_fields, mirroring the legacy if-chain.
+DIRTY_PROPAGATION_RULES: tuple[tuple[frozenset[str], frozenset[str]], ...] = (
+    (
+        frozenset({"brand_tone", "target_persona", "promotion_goal", "usp", "item_or_service"}),
+        frozenset({"marketing_copy", "copywriting_output"}),
+    ),
+    (
+        frozenset({"business_type", "brand_tone", "ad_format", "usp"}),
+        frozenset({"image_prompt", "prompt_render_output"}),
+    ),
+    (
+        frozenset({"ad_format"}),
+        frozenset({"ad_format_spec", "layout_spec"}),
+    ),
+    (
+        frozenset({"marketing_copy", "copywriting_output", "item_or_service", "promotion_goal", "price_or_discount"}),
+        frozenset({"copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"}),
+    ),
+    (
+        frozenset({"brand_tone", "target_persona", "region_type", "usp"}),
+        frozenset({"text_style_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"}),
+    ),
+    (
+        frozenset({"ad_format", "layout_spec", "ad_format_spec"}),
+        frozenset({"text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"}),
+    ),
+    (
+        frozenset({"copy_generation_mode", "user_custom_headline", "user_custom_subcopy"}),
+        frozenset({"marketing_copy", "copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"}),
+    ),
+)
+
+
 def calculate_dirty_fields(state: MarketingState, changed_fields: list[str] | None = None) -> list[str]:
     changed = set(changed_fields or [])
     dirty: set[str] = set(changed)
-    if changed & {"brand_tone", "target_persona", "promotion_goal", "usp", "item_or_service"}:
-        dirty.update({"marketing_copy", "copywriting_output"})
-    if changed & {"business_type", "brand_tone", "ad_format", "usp"}:
-        dirty.update({"image_prompt", "prompt_render_output"})
-    if changed & {"ad_format"}:
-        dirty.update({"ad_format_spec", "layout_spec"})
-    if changed & {"marketing_copy", "copywriting_output", "item_or_service", "promotion_goal", "price_or_discount"}:
-        dirty.update({"copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"})
-    if changed & {"brand_tone", "target_persona", "region_type", "usp"}:
-        dirty.update({"text_style_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"})
-    if changed & {"ad_format", "layout_spec", "ad_format_spec"}:
-        dirty.update({"text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"})
-    if changed & {"copy_generation_mode", "user_custom_headline", "user_custom_subcopy"}:
-        dirty.update({"marketing_copy", "copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"})
+    for triggers, outputs in DIRTY_PROPAGATION_RULES:
+        if changed & triggers:
+            dirty.update(outputs)
     return sorted(dirty)
