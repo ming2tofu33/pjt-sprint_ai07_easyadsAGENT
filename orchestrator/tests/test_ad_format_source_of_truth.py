@@ -57,3 +57,34 @@ def test_set_overwrites_divergent_mirrors():
     set_requested_ad_format(brief, extra, "kakao_feed")
     assert brief["requested_ad_format"] == "kakao_feed"
     assert extra["ad_format"] == "kakao_feed"
+
+
+def test_backfill_prefers_existing_value_over_template_default():
+    from orchestrator.app.graph.state import backfill_requested_ad_format
+
+    # brief already confirmed instagram_feed; extra is empty; template says naver_blog.
+    brief = {"requested_ad_format": "instagram_feed"}
+    extra: dict = {}
+    backfill_requested_ad_format(brief, extra, "naver_blog")
+    assert brief["requested_ad_format"] == "instagram_feed"
+    assert extra["ad_format"] == "instagram_feed"  # backfilled from brief, NOT the template
+
+
+def test_backfill_uses_template_when_both_missing():
+    from orchestrator.app.graph.state import backfill_requested_ad_format
+
+    brief: dict = {}
+    extra: dict = {}
+    backfill_requested_ad_format(brief, extra, "naver_blog")
+    assert brief["requested_ad_format"] == "naver_blog"
+    assert extra["ad_format"] == "naver_blog"
+
+
+def test_backfill_noop_when_no_value_available():
+    from orchestrator.app.graph.state import backfill_requested_ad_format
+
+    brief: dict = {}
+    extra: dict = {}
+    backfill_requested_ad_format(brief, extra, None)
+    assert brief == {}
+    assert extra == {}
