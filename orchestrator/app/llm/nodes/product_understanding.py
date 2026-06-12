@@ -8,6 +8,21 @@ from orchestrator.app.llm.product_understanding_policy import normalize_slug, va
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 
+FOOD_AND_BEVERAGE_SLUG_HINTS = {
+    "cafe",
+    "coffee",
+    "dessert",
+    "doenjang",
+    "food",
+    "jjigae",
+    "kimchi",
+    "latte",
+    "meat",
+    "menu",
+    "restaurant",
+    "strawberry",
+}
+
 
 def product_understanding_node(state: dict[str, Any]) -> dict[str, Any]:
     raw_bundle = state.get("input_evidence_bundle")
@@ -99,6 +114,10 @@ def _broad_category_from_bundle(bundle: InputEvidenceBundle) -> str:
                 "other",
             }:
                 return slug
+    product_name, _ = _product_identity(bundle)
+    product_slug = normalize_slug(product_name)
+    if product_slug and any(part in FOOD_AND_BEVERAGE_SLUG_HINTS for part in product_slug.split("_")):
+        return "food_and_beverage"
     return "other"
 
 

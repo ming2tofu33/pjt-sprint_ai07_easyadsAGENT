@@ -747,6 +747,8 @@ def _coerce_product_understanding_candidate(candidate: dict[str, Any], evidence:
     normalized_type = _normalize_product_type(
         _nested_string(data, ("normalized_product_type", "normalized_product_candidate", "product_type", "type")) or product_name
     )
+    if not normalized_type:
+        normalized_type = _normalize_product_type(product_name)
     if normalized_type and not any(ch.isalpha() for ch in normalized_type):
         normalized_type = _normalize_product_type(product_name)
     raw_path = data.get("category_path")
