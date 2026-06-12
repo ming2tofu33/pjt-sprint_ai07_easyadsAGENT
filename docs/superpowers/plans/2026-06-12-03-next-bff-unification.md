@@ -445,7 +445,7 @@ git commit -m "feat(bff): port chat and photo start routes to Next"
 - Create: `apps/web/app/api/chat-threads/[threadId]/archive/route.ts`
 - Test: `apps/web/app/api/chat-threads/routes.test.ts`
 
-- [ ] **Step 1: Write failing route tests**
+- [x] **Step 1: Write failing route tests**
 
 Create `apps/web/app/api/chat-threads/routes.test.ts`:
 
@@ -503,7 +503,7 @@ describe("chat thread Next routes", () => {
 });
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -513,7 +513,7 @@ cd apps/web && npx vitest run app/api/chat-threads/routes.test.ts
 
 Expected: FAIL because the Next chat-thread routes do not exist.
 
-- [ ] **Step 3: Implement route handlers**
+- [x] **Step 3: Implement route handlers**
 
 Create `apps/web/app/api/chat-threads/route.ts`:
 
@@ -607,7 +607,7 @@ export function POST(request: NextRequest, { params }: { params: { threadId: str
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -617,7 +617,7 @@ cd apps/web && npx vitest run app/api/chat-threads/routes.test.ts app/api/_proxy
 
 Expected: chat-thread route tests PASS; parity still FAILS only for routes not ported yet.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/app/api/chat-threads
