@@ -42,7 +42,7 @@ def run_structured_node(
         vision_required=vision_required,
         plan_policy=state.get("plan_policy"),
     )
-    append_model_selection(state, selection)
+    append_model_selection_safe(state, selection)
 
     # TEMPORARY (free → local Gemma for eval). Normally free returns the deterministic
     # fallback here (decision step 1). When EASYADS_FREE_USE_LOCAL=1 AND the router picked
@@ -70,7 +70,7 @@ def run_structured_node(
     adapter = get_llm_adapter_safe(selection.provider, settings, allow_mock_fallback=True)
     result = adapter.invoke_structured(output_schema, prompt, selection, metadata=safe_metadata(metadata))
     record_llm_usage_from_result(state, result)
-    append_llm_call_result(state, result)
+    append_llm_call_result_safe(state, result)
     if result.success:
         try:
             output = validate_output(output_schema, result.output)
@@ -105,7 +105,7 @@ def fallback_with_result(
         metadata={**safe_metadata(metadata), "fallback_used": True, "fallback_reason": reason},
     )
     if attempted_result is None:
-        append_llm_call_result(state, result)
+        append_llm_call_result_safe(state, result)
     return fallback_with_metadata(selection, fallback_fn, reason, result)
 
 
@@ -143,12 +143,12 @@ def safe_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
     return sanitized if isinstance(sanitized, dict) else {}
 
 
-def append_model_selection(state: dict[str, Any], selection: Any) -> None:
+def append_model_selection_safe(state: dict[str, Any], selection: Any) -> None:
     state.setdefault("model_selections", [])
     state["model_selections"].append(selection.model_dump() if hasattr(selection, "model_dump") else selection)
 
 
-def append_llm_call_result(state: dict[str, Any], result: Any) -> None:
+def append_llm_call_result_safe(state: dict[str, Any], result: Any) -> None:
     state.setdefault("llm_call_results", [])
     state["llm_call_results"].append(safe_llm_call_result(result))
 
