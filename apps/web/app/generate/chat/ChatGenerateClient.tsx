@@ -474,12 +474,13 @@ function extractGenerationJobContext(payload: Record<string, unknown>, metadata:
 function normalizeChatBrief(
   brief: Record<string, unknown>,
   context: InferredContext,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  copyGenerationMode?: CopyGenerationMode
 ): ChatBrief {
   const copy =
     getPayloadString(brief, "copy", "copy_text", "headline", "user_custom_headline") ??
     getPayloadString(payload, "copy", "copy_text", "headline", "user_custom_headline") ??
-    "";
+    (copyGenerationMode === "no_copy" ? "문구 없이 이미지로만" : "");
   const imageDirection =
     getPayloadString(brief, "imageDirection", "image_direction", "prompt_text", "visual_direction") ??
     getPayloadString(payload, "imageDirection", "image_direction", "prompt_text", "visual_direction") ??
@@ -495,6 +496,22 @@ function normalizeChatBrief(
     imageDirection,
     finalImagePath
   };
+}
+
+function hasBriefText(value: string | null | undefined): boolean {
+  return Boolean(value?.trim());
+}
+
+function assertUsableChatBrief(brief: ChatBrief, copyGenerationMode?: CopyGenerationMode): void {
+  const hasRequiredCopy = copyGenerationMode === "no_copy" || hasBriefText(brief.copy);
+  if (
+    !hasBriefText(brief.purpose) ||
+    !hasBriefText(brief.item) ||
+    !hasRequiredCopy ||
+    !hasBriefText(brief.imageDirection)
+  ) {
+    throw new Error("완성된 광고 브리프 정보가 비어 있어요. 다시 시도해주세요.");
+  }
 }
 
 function fallbackQuestionForMissingFields(missingFields: string[]): OptionQuestion {
@@ -563,7 +580,7 @@ function fallbackQuestionForMissingFields(missingFields: string[]): OptionQuesti
   return fallbackQuestions[field] ?? fallbackQuestions.custom_request;
 }
 
-function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerationMode?: CopyGenerationMode): ChatTurnResponse {
+export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerationMode?: CopyGenerationMode): ChatTurnResponse {
   const payload = asRecord(job.result_payload);
   const metadata = asRecord(job.metadata);
   const context = extractGenerationJobContext(payload, metadata);
@@ -635,7 +652,11 @@ function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerat
     };
   }
 
+  const payloadCopyGenerationMode = getPayloadString(payload, "copyGenerationMode", "copy_generation_mode") as CopyGenerationMode | null;
+  const copyGenerationMode = fallbackCopyGenerationMode ?? payloadCopyGenerationMode ?? "no_copy";
   const brief = asRecord(payload.brief ?? payload.final_brief ?? payload.current_brief ?? metadata.brief ?? metadata.final_brief ?? metadata.current_brief);
+  const normalizedBrief = normalizeChatBrief(brief, normalizedContext, payload, copyGenerationMode);
+  assertUsableChatBrief(normalizedBrief, copyGenerationMode);
 
   return {
     type: "brief_ready",
@@ -643,8 +664,8 @@ function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopyGenerat
     threadId,
     status: job.status,
     context: normalizedContext,
-    brief: normalizeChatBrief(brief, normalizedContext, payload),
-    copyGenerationMode: fallbackCopyGenerationMode ?? "no_copy"
+    brief: normalizedBrief,
+    copyGenerationMode
   };
 }
 
@@ -1176,7 +1197,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
               : undefined;
             // 라이브 job의 pending_interrupt로 stage 결정 — 스냅샷 currentQuestion 의존 제거.
             // option_question / copy_candidate_selection / custom_copy_input 모두 단일 디사이더로 처리.
-            if (stopForGenerationJobInterrupt(job, restoreIntake)) {
+            if (stopForGenerationJobWaitingState(job, restoreIntake)) {
               lastPrimedStageRef.current = isRouteFinalImageGeneration ? "generating" : "start";
               return;
             }
@@ -1775,11 +1796,38 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     return true;
   }
 
+  function stopForGenerationJobWaitingState(job: GenerationJob, initialChatIntake?: InitialChatIntakeContext): boolean {
+    if (stopForGenerationJobInterrupt(job, initialChatIntake)) {
+      return true;
+    }
+    if (job.status !== "waiting_user_input") {
+      return false;
+    }
+
+    const turnResponse = generationJobToChatTurnResponse(job, initialChatIntake?.copyGenerationMode ?? state.copyGenerationMode);
+    if (!isQuestionResponse(turnResponse)) {
+      return false;
+    }
+
+    dispatch({
+      type: "generationJobQuestionReceived",
+      generationJob: job,
+      question: turnResponse.question,
+      context: turnResponse.context,
+      sourceImagePath: initialChatIntake?.sourceImagePath ?? null,
+      referenceImagePath: initialChatIntake?.referenceImagePath ?? null
+    });
+    setGenerationStage("jobQuestion");
+    lastPrimedStageRef.current = "start";
+    setOptimisticSurface("chat");
+    return true;
+  }
+
   async function pollGenerationJobUntilDoneOrQuestion(initialJob: GenerationJob, initialChatIntake?: InitialChatIntakeContext): Promise<GenerationJob> {
     let currentJob = initialJob;
     dispatch({ type: "generationJobUpdated", generationJob: currentJob });
 
-    if (stopForGenerationJobInterrupt(currentJob, initialChatIntake)) {
+    if (stopForGenerationJobWaitingState(currentJob, initialChatIntake)) {
       return currentJob;
     }
 
@@ -1791,7 +1839,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       currentJob = response.job;
       dispatch({ type: "generationJobUpdated", generationJob: currentJob });
 
-      if (stopForGenerationJobInterrupt(currentJob, initialChatIntake)) {
+      if (stopForGenerationJobWaitingState(currentJob, initialChatIntake)) {
         return currentJob;
       }
     }

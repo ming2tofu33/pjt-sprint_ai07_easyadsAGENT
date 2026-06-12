@@ -1,5 +1,16 @@
 const GENERATED_OUTPUT_MARKER = "data/outputs/";
 
+function isLocalGeneratedAssetServingEnabled(): boolean {
+  const explicit = process.env.NEXT_PUBLIC_ENABLE_LOCAL_GENERATED_ASSETS?.trim().toLowerCase();
+  if (explicit === "true") {
+    return true;
+  }
+  if (explicit === "false") {
+    return false;
+  }
+  return process.env.NODE_ENV !== "production";
+}
+
 export function normalizeGeneratedOutputPath(path: string | null | undefined): string | null {
   if (!path) {
     return null;
@@ -21,7 +32,7 @@ export function normalizeGeneratedOutputPath(path: string | null | undefined): s
 
 export function buildGeneratedAssetUrl(path: string | null | undefined): string | null {
   const outputPath = normalizeGeneratedOutputPath(path);
-  if (!outputPath) {
+  if (!outputPath || !isLocalGeneratedAssetServingEnabled()) {
     return null;
   }
 
