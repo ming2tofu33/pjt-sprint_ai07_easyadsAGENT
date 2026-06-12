@@ -384,7 +384,9 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 function isFinalImageGenerationJob(job: GenerationJob | null | undefined): boolean {
-  return asRecord(job?.metadata).source === "web_generation_flow";
+  const metadata = asRecord(job?.metadata);
+  const finalBrief = asRecord(metadata.final_brief ?? metadata.finalBrief);
+  return metadata.source === "web_generation_flow" || Object.keys(finalBrief).length > 0;
 }
 
 function getPayloadArray<T = unknown>(payload: Record<string, unknown>, ...keys: string[]): T[] {
