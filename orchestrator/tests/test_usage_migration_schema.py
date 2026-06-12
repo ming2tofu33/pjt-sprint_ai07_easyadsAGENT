@@ -20,3 +20,5 @@ def test_usage_tracking_migration_adds_idempotency_and_indexes():
     assert "usage_events_event_type_chk" in sql
     assert "usage_events_unit_chk" in sql
     assert "usage_events_plan_chk" in sql
+    assert "where event_type = 'modal_gpu_seconds'" in sql
+    assert "where unit = 'seconds'" in sql
