@@ -33,7 +33,7 @@
 - Read: `docs/superpowers/plans/2026-06-12-postgres-checkpointer.md`
 - Test: `orchestrator/tests/test_graph_checkpointer.py`
 
-- [ ] **Step 1: Check whether checkpointer files exist**
+- [x] **Step 1: Check whether checkpointer files exist**
 
 Run:
 
@@ -44,7 +44,7 @@ test -f orchestrator/tests/test_graph_checkpointer.py && echo "checkpointer test
 
 Expected: either both exist or both missing. Mixed state means finish the existing checkpointer plan before continuing.
 
-- [ ] **Step 2: Run checkpointer tests if present**
+- [x] **Step 2: Run checkpointer tests if present**
 
 Run:
 
@@ -54,7 +54,7 @@ EASYADS_DB_BACKEND=memory uv run python -m pytest orchestrator/tests/test_graph_
 
 Expected: PASS if the checkpointer plan has been implemented. If file is missing, execute `docs/superpowers/plans/2026-06-12-postgres-checkpointer.md` first.
 
-- [ ] **Step 3: Commit only if this task adds missing checkpointer code**
+- [x] **Step 3: Commit only if this task adds missing checkpointer code**
 
 If no code was changed, do not commit. If missing checkpointer code was implemented from the existing plan:
 
@@ -69,7 +69,7 @@ git commit -m "feat(graph): enable postgres checkpointer factory"
 - Modify: `orchestrator/app/api/app.py`
 - Create: `orchestrator/tests/test_api_prefix_aliases.py`
 
-- [ ] **Step 1: Write failing alias tests**
+- [x] **Step 1: Write failing alias tests**
 
 Create `orchestrator/tests/test_api_prefix_aliases.py`:
 
@@ -93,7 +93,7 @@ def test_legacy_marketing_chat_start_prefix_still_exists():
     assert response.status_code != 404
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -103,7 +103,7 @@ EASYADS_DB_BACKEND=memory uv run python -m pytest orchestrator/tests/test_api_pr
 
 Expected: first test FAILS with 404 until alias is mounted. Legacy test should pass.
 
-- [ ] **Step 3: Implement alias mount**
+- [x] **Step 3: Implement alias mount**
 
 In `orchestrator/app/api/app.py`, find where marketing chat/photo routers are included. Keep existing includes and add aliases:
 
@@ -116,7 +116,7 @@ app.include_router(photo_router, prefix="/api")
 
 This works when the routers themselves already include `/v1/marketing/...` prefixes. Do not remove legacy routes in this PR.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -126,7 +126,7 @@ EASYADS_DB_BACKEND=memory uv run python -m pytest orchestrator/tests/test_api_pr
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add orchestrator/app/api/app.py orchestrator/tests/test_api_prefix_aliases.py
