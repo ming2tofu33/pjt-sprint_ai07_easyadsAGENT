@@ -44,3 +44,19 @@ def test_calculate_dirty_fields_propagates_tlfp_specs():
     assert "image_prompt_spec" in dirty
     assert "prompt_render_output" in dirty
     assert "t2i_request" in dirty
+
+
+def test_initial_state_carries_asset_ids():
+    from orchestrator.app.graph.state import create_initial_marketing_state
+    from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest
+
+    request = InitialMarketingRequest(
+        user_input="카페 신메뉴 홍보",
+        source_asset_id="asset-src-1",
+        reference_asset_id="asset-ref-1",
+    )
+    state = create_initial_marketing_state(request)
+    assert state["source_asset_id"] == "asset-src-1"
+    assert state["reference_asset_id"] == "asset-ref-1"
+    assert state["current_brief"]["source_asset_id"] == "asset-src-1"
+    assert state["current_brief"]["reference_asset_id"] == "asset-ref-1"
