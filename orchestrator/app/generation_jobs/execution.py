@@ -27,6 +27,7 @@ from orchestrator.app.generation_jobs.service import (
     mark_generation_job_modal_running,
     mark_generation_job_running,
 )
+from orchestrator.app.graph.state import resolve_requested_ad_format, set_requested_ad_format
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from orchestrator.app.t2i.execution import TEXT_FREE_NEGATIVE_PROMPT, build_generation_job_prompt, prompt_summary
@@ -76,9 +77,7 @@ def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobC
     selected_ad_format = _canonical_ad_format(
         request.ad_format
         or selected_channel_id
-        or state.get("selected_ad_format")
-        or current_brief.get("requested_ad_format")
-        or context_extra.get("ad_format")
+        or resolve_requested_ad_format(state)
     )
     selected_tone = _clean_optional_text(state.get("selected_tone") or request.selected_tone)
     custom_direction = _clean_optional_text(state.get("custom_direction") or request.custom_direction)
