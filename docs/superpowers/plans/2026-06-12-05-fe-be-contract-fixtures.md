@@ -129,7 +129,7 @@ git commit -m "test(contract): pin generation stage names"
 - Create: `apps/web/lib/generation-job-interrupt.contract.test.ts`
 - Create: `orchestrator/tests/test_generation_interrupt_contract.py`
 
-- [ ] **Step 1: Create interrupt fixture**
+- [x] **Step 1: Create interrupt fixture**
 
 Create `apps/web/types/contracts/generation-job-interrupt.fixtures.json`:
 
@@ -164,7 +164,7 @@ Create `apps/web/types/contracts/generation-job-interrupt.fixtures.json`:
 }
 ```
 
-- [ ] **Step 2: Add FE parser test**
+- [x] **Step 2: Add FE parser test**
 
 Create `apps/web/lib/generation-job-interrupt.contract.test.ts`:
 
@@ -191,7 +191,7 @@ describe("generation job interrupt contract", () => {
 });
 ```
 
-- [ ] **Step 3: Add BE fixture-shape test**
+- [x] **Step 3: Add BE fixture-shape test**
 
 Create `orchestrator/tests/test_generation_interrupt_contract.py`:
 
@@ -216,7 +216,7 @@ def test_interrupt_contract_fixture_has_required_fields():
     assert copy_selection["options"][0]["id"] == "copy_1"
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -228,7 +228,7 @@ EASYADS_DB_BACKEND=memory uv run python -m pytest orchestrator/tests/test_genera
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/types/contracts/generation-job-interrupt.fixtures.json apps/web/lib/generation-job-interrupt.contract.test.ts orchestrator/tests/test_generation_interrupt_contract.py
