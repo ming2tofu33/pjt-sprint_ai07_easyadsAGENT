@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Callable
 
 from pydantic import BaseModel
@@ -125,6 +126,12 @@ def validate_output(output_schema: Any, output: Any) -> Any:
     if isinstance(output_schema, type) and issubclass(output_schema, BaseModel):
         if isinstance(output, output_schema):
             return output
+        if output is not None and not isinstance(output, Mapping):
+            # Intentionally raised so the caller's except-path records a clear
+            # fallback_reason instead of an opaque TypeError from ** unpacking.
+            raise ValueError(
+                f"LLM output for {output_schema.__name__} must be a mapping, got {type(output).__name__}"
+            )
         return output_schema(**(output or {}))
     return output
 
