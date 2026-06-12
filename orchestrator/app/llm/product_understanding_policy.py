@@ -11,6 +11,8 @@ from orchestrator.app.schemas.product_understanding import ProductUnderstanding,
 _SNAKE_CASE_RE = re.compile(r"^(?=.*[a-z])[a-z0-9]+(?:_[a-z0-9]+)*$")
 ROOT_ALIASES = {"food_beverage", "beauty_personal_care", "fashion_lifestyle", "home_living"}
 _UNICODE_SLUG_REPLACEMENTS = {
+    "고깃집": "meat restaurant",
+    "고기": "meat",
     "된장찌개": "doenjang jjigae",
     "김치찌개": "kimchi jjigae",
     "부대찌개": "budae jjigae",
@@ -35,7 +37,9 @@ def normalize_slug(value: str | None) -> str | None:
     for source, replacement in _UNICODE_SLUG_REPLACEMENTS.items():
         text = text.replace(source, f" {replacement} ")
     slug = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
-    return slug or None
+    if not slug or not re.search(r"[a-z]", slug):
+        return None
+    return slug
 
 
 def validate_product_understanding(

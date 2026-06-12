@@ -22,6 +22,7 @@ from orchestrator.app.generation_jobs.execution import (
 from orchestrator.app.generation_jobs.service import (
     create_generation_job,
     get_generation_job,
+    get_generation_job_internal_with_scope,
     get_generation_job_scoped,
     mark_generation_job_running,
     maybe_mark_stale_generation_job_failed,
@@ -177,14 +178,26 @@ def get_generation_job_route(
     from orchestrator.app.generation_jobs.errors import GenerationJobError
     try:
         resolved_workspace_id, resolved_user_id = _route_scope(workspace_id, principal)
-        if not resolved_workspace_id and not resolved_user_id:
-            resolved_workspace_id, resolved_user_id = resolve_generation_job_scope_from_existing_job(job_id)
-        resolved_workspace_id = resolve_scoped_workspace_id(
-            resolved_workspace_id,
-            resolved_user_id,
-            account_type=principal.account_type,
-        )
-        job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
+        job = None
+        reused_existing_scope = False
+        if db_settings.get_db_backend() == "postgres" and not workspace_id:
+            job, existing_workspace_id, existing_user_id = get_generation_job_internal_with_scope(job_id)
+            if job:
+                reused_existing_scope = True
+            if job and principal.user_id and existing_user_id and existing_user_id != principal.user_id:
+                job = None
+            elif job:
+                resolved_workspace_id = existing_workspace_id
+                resolved_user_id = existing_user_id or resolved_user_id
+        if not reused_existing_scope:
+            if not resolved_workspace_id and not resolved_user_id:
+                resolved_workspace_id, resolved_user_id = resolve_generation_job_scope_from_existing_job(job_id)
+            resolved_workspace_id = resolve_scoped_workspace_id(
+                resolved_workspace_id,
+                resolved_user_id,
+                account_type=principal.account_type,
+            )
+            job = get_generation_job_scoped(job_id, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     except GenerationJobError as exc:
         raise_api_error(status_code=exc.status_code, error_code=exc.error_code, message=exc.message)
     if not job:

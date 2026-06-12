@@ -36,9 +36,9 @@ def test_generation_job_get_route_does_not_trust_query_user_id(monkeypatch):
 def test_generation_job_get_route_recovers_scope_from_existing_job_without_header(monkeypatch):
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false")
-    captured = {}
     stale_scope = {}
     modal_scope = {}
+    calls = {"internal_with_scope": 0, "scoped": 0}
     job = GenerationJobResponse(
         job_id="job_polling",
         thread_id="thread_polling",
@@ -50,8 +50,58 @@ def test_generation_job_get_route_recovers_scope_from_existing_job_without_heade
         metadata={},
     )
 
-    def fake_get_generation_job(job_id, *, workspace_id=None, user_id=None):
-        captured.update({"job_id": job_id, "workspace_id": workspace_id, "user_id": user_id})
+    def fake_get_internal_with_scope(job_id):
+        calls["internal_with_scope"] += 1
+        return job, WORKSPACE_A, "user_a"
+
+    def fake_get_generation_job(*args, **kwargs):
+        calls["scoped"] += 1
+        return job
+
+    def fake_mark_stale(current_job, **kwargs):
+        stale_scope.update(kwargs)
+        return current_job
+
+    def fake_poll_modal(current_job, **kwargs):
+        modal_scope.update(kwargs)
+        return current_job
+
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_internal_with_scope", fake_get_internal_with_scope)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_mark_stale_generation_job_failed", fake_mark_stale)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_poll_generation_job_from_modal", fake_poll_modal)
+
+    response = TestClient(create_app()).get("/api/v1/generation-jobs/job_polling")
+
+    assert response.status_code == 200
+    assert calls == {"internal_with_scope": 1, "scoped": 0}
+    assert stale_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
+    assert modal_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
+
+
+def test_generation_job_get_route_reuses_existing_job_scope_without_extra_lookup(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false")
+    stale_scope = {}
+    modal_scope = {}
+    calls = {"internal_with_scope": 0, "scoped": 0}
+    job = GenerationJobResponse(
+        job_id="job_polling",
+        thread_id="thread_polling",
+        user_id="user_a",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="brief_interpretation", stage_order=[]),
+        created_at="2026-06-09T00:00:00+00:00",
+        updated_at="2026-06-09T00:00:00+00:00",
+        metadata={},
+    )
+
+    def fake_get_internal_with_scope(job_id):
+        calls["internal_with_scope"] += 1
+        return job, WORKSPACE_A, "user_a"
+
+    def fake_get_scoped(*args, **kwargs):
+        calls["scoped"] += 1
         return job
 
     def fake_mark_stale(current_job, **kwargs):
@@ -63,19 +113,55 @@ def test_generation_job_get_route_recovers_scope_from_existing_job_without_heade
         return current_job
 
     monkeypatch.setattr(
-        "orchestrator.app.api.routers.generation_jobs.resolve_generation_job_scope_from_existing_job",
-        lambda job_id: (WORKSPACE_A, "user_a"),
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_internal_with_scope",
+        fake_get_internal_with_scope,
+        raising=False,
     )
-    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_scoped)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_mark_stale_generation_job_failed", fake_mark_stale)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_poll_generation_job_from_modal", fake_poll_modal)
 
-    response = TestClient(create_app()).get("/api/v1/generation-jobs/job_polling")
+    response = TestClient(create_app()).get(
+        "/api/v1/generation-jobs/job_polling",
+        headers={"X-EasyAds-User-Id": "user_a"},
+    )
 
     assert response.status_code == 200
-    assert captured == {"job_id": "job_polling", "workspace_id": WORKSPACE_A, "user_id": "user_a"}
+    assert calls == {"internal_with_scope": 1, "scoped": 0}
     assert stale_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
     assert modal_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
+
+
+def test_generation_job_get_route_rejects_reused_scope_for_other_user(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false")
+    job = GenerationJobResponse(
+        job_id="job_polling",
+        thread_id="thread_polling",
+        user_id="user_a",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="brief_interpretation", stage_order=[]),
+        created_at="2026-06-09T00:00:00+00:00",
+        updated_at="2026-06-09T00:00:00+00:00",
+        metadata={},
+    )
+
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_internal_with_scope",
+        lambda job_id: (job, WORKSPACE_A, "user_a"),
+    )
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("scoped lookup should not run after user mismatch")),
+    )
+
+    response = TestClient(create_app()).get(
+        "/api/v1/generation-jobs/job_polling",
+        headers={"X-EasyAds-User-Id": "user_b"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["error_code"] == "generation_job_not_found"
 
 
 def test_generation_job_get_route_passes_workspace_scope(monkeypatch):
@@ -145,6 +231,10 @@ def test_generation_job_get_route_passes_guest_account_type_to_workspace_resolut
         return None
 
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.resolve_scoped_workspace_id", fake_resolve_scoped_workspace_id)
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_internal_with_scope",
+        lambda job_id: (None, None, None),
+    )
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
 
     response = TestClient(create_app()).get(
