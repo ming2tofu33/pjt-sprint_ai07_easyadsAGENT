@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { proxyOrchestratorJson } from "./orchestrator";
+import { proxyOrchestratorBinary, proxyOrchestratorJson } from "./orchestrator";
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(payload), {
@@ -254,5 +254,259 @@ describe("proxyOrchestratorJson", () => {
 
     const init = fetchMock.mock.calls[0][1] as RequestInit;
     expect((init.headers as Record<string, string>)["X-EasyAds-Internal-Secret"]).toBeUndefined();
+  });
+
+  it("supports DELETE requests", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({ success: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/archive/items/a1", { method: "DELETE" });
+    await proxyOrchestratorJson(request, "DELETE", "/api/v1/archive/items/a1");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/archive/items/a1",
+      expect.objectContaining({ method: "DELETE" })
+    );
+  });
+
+  it("injects verified guest principals into GET query params", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://supabase.example.com");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon_key");
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "guest_uuid_1", is_anonymous: true });
+      }
+      return jsonResponse({ success: true, threads: [] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/chat-threads?limit=10", {
+      headers: { authorization: "Bearer guest_access_token_1" }
+    });
+    await proxyOrchestratorJson(request, "GET", "/api/v1/chat-threads", undefined, {
+      injectVerifiedUserIdQuery: { userKey: "userId", accountKey: "accountType" }
+    });
+
+    const targetUrl = new URL(String(fetchMock.mock.calls[1][0]));
+    expect(`${targetUrl.origin}${targetUrl.pathname}`).toBe("http://orchestrator/api/v1/chat-threads");
+    expect(targetUrl.searchParams.get("limit")).toBe("10");
+    expect(targetUrl.searchParams.get("userId")).toBe("guest_uuid_1");
+    expect(targetUrl.searchParams.get("accountType")).toBe("guest");
+  });
+
+  it("returns invalid_request when body schema validation fails", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const bodySchema = {
+      safeParse: vi.fn(() => ({
+        success: false,
+        error: { issues: [{ path: ["name"], message: "Required" }] }
+      }))
+    };
+
+    const request = new NextRequest("http://localhost/api/brand-kits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "" })
+    });
+    const response = await proxyOrchestratorJson(request, "POST", "/api/v1/brand-kits", undefined, { bodySchema });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("invalid_request");
+    expect(bodySchema.safeParse).toHaveBeenCalledWith({ name: "" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns invalid_request when body schema validation fails for an empty POST body", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const bodySchema = {
+      safeParse: vi.fn(() => ({
+        success: false,
+        error: { issues: [{ path: ["name"], message: "Required" }] }
+      }))
+    };
+
+    const request = new NextRequest("http://localhost/api/brand-kits", {
+      method: "POST",
+      headers: { "content-type": "application/json" }
+    });
+    const response = await proxyOrchestratorJson(request, "POST", "/api/v1/brand-kits", undefined, { bodySchema });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("invalid_request");
+    expect(bodySchema.safeParse).toHaveBeenCalledWith(undefined);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns invalid_request when the request body contains malformed JSON", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const bodySchema = {
+      safeParse: vi.fn(() => ({
+        success: true,
+        data: {}
+      }))
+    };
+
+    const request = new NextRequest("http://localhost/api/brand-kits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{not-valid-json"
+    });
+    const response = await proxyOrchestratorJson(request, "POST", "/api/v1/brand-kits", undefined, { bodySchema });
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("invalid_request");
+    expect(bodySchema.safeParse).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("can override successful orchestrator response status", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => jsonResponse({ success: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/brand-kits", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Cafe" })
+    });
+    const response = await proxyOrchestratorJson(request, "POST", "/api/v1/brand-kits", undefined, {
+      successStatus: 201
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("injects verified user ids into request bodies with snake_case keys when requested", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://supabase.example.com");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon_key");
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1" });
+      }
+      return jsonResponse({ success: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/legacy-action", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer access_token_1",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        prompt: "New sale",
+        userId: "spoofed_user",
+        user_id: "spoofed_user_snake",
+        accountType: "guest",
+        account_type: "guest"
+      })
+    });
+    await proxyOrchestratorJson(request, "POST", "/api/v1/legacy-action", undefined, {
+      injectVerifiedUserIdSnakeBody: true
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://orchestrator/api/v1/legacy-action",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ prompt: "New sale", user_id: "user_uuid_1", account_type: "user" })
+      })
+    );
+  });
+});
+
+describe("proxyOrchestratorBinary", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("proxies binary GET responses and preserves content headers", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn(async () =>
+      new Response("image-bytes", {
+        status: 200,
+        headers: {
+          "content-type": "image/png",
+          "cache-control": "public, max-age=60"
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/assets/a1.png?download=1");
+    const response = await proxyOrchestratorBinary(request, "/api/v1/assets/a1.png");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(response.headers.get("cache-control")).toBe("public, max-age=60");
+    expect(await response.text()).toBe("image-bytes");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/assets/a1.png?download=1",
+      expect.objectContaining({ method: "GET", cache: "no-store" })
+    );
+  });
+
+  it("returns JSON for non-ok binary proxy responses", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn(async () => jsonResponse({ message: "Not found" }, { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/assets/missing.png");
+    const response = await proxyOrchestratorBinary(request, "/api/v1/assets/missing.png");
+    const body = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(body.error_code).toBe("orchestrator_binary_proxy_error");
+    expect(body.detail).toEqual({ message: "Not found" });
+  });
+
+  it("does not echo non-json binary error bodies", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn(async () =>
+      new Response("raw-error-secret", {
+        status: 500,
+        headers: { "content-type": "image/png" }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/assets/broken.png");
+    const response = await proxyOrchestratorBinary(request, "/api/v1/assets/broken.png");
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error_code).toBe("orchestrator_binary_proxy_error");
+    expect(body.detail).toEqual({ content_type: "image/png" });
+    expect(JSON.stringify(body)).not.toContain("raw-error-secret");
+  });
+
+  it("returns 502 JSON when binary proxy fetch fails", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn(async () => {
+      throw new Error("connection refused");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/assets/a1.png");
+    const response = await proxyOrchestratorBinary(request, "/api/v1/assets/a1.png");
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error_code).toBe("orchestrator_unavailable");
   });
 });

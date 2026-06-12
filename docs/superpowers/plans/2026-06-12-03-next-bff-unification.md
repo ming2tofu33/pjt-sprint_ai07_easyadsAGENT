@@ -24,7 +24,7 @@
 - Modify: `apps/web/app/api/_proxy/orchestrator.ts`
 - Test: `apps/web/app/api/_proxy/orchestrator.test.ts`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 Add this block to `apps/web/app/api/_proxy/orchestrator.test.ts`:
 
@@ -64,7 +64,7 @@ it("injects verified principal as query params", async () => {
 });
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -74,7 +74,7 @@ cd apps/web && npx vitest run app/api/_proxy/orchestrator.test.ts
 
 Expected: FAIL because `ProxyMethod` does not include `DELETE` and `injectVerifiedUserIdQuery` is not supported.
 
-- [ ] **Step 3: Implement proxy extensions**
+- [x] **Step 3: Implement proxy extensions**
 
 In `apps/web/app/api/_proxy/orchestrator.ts`, update types:
 
@@ -160,7 +160,7 @@ export async function proxyOrchestratorBinary(request: NextRequest, path: string
 }
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -170,7 +170,7 @@ cd apps/web && npx vitest run app/api/_proxy/orchestrator.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/app/api/_proxy/orchestrator.ts apps/web/app/api/_proxy/orchestrator.test.ts
