@@ -68,7 +68,7 @@ export function GenerationInProgressStep({ state, onBrowse }: GenerationInProgre
         <p>{generationStage.detail}</p>
       </div>
 
-      <section>
+      <section className={styles.generationPreviewSection}>
         <h2 className={styles.sectionTitle}>실제 생성 결과 준비</h2>
         <div className={styles.skeletonGrid} aria-label="생성 중인 광고 시안 미리보기">
           {Array.from({ length: 1 }).map((_, index) => (

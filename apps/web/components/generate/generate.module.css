@@ -661,7 +661,7 @@
   line-height: 1.45;
 }
 
-.copyModeGrid + .primaryButton {
+.chipGrid + .primaryButton {
   margin-top: 32px;
 }
 
@@ -1784,6 +1784,10 @@
 
 .generationProgress {
   margin-top: 15px;
+  margin-bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .progressMeta {
@@ -1799,12 +1803,40 @@
   color: var(--color-brand-purple-strong);
 }
 
+.generationProgress .progressMeta {
+  margin-bottom: 0;
+}
+
+.generationProgress .progressTrack {
+  display: block;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.generationProgress .progressBar {
+  height: 100%;
+  border-radius: inherit;
+}
+
 .generationProgress p {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--color-muted);
-  text-align: right;
+  text-align: left;
   font-size: 12px;
+  line-height: 1.45;
   font-weight: 750;
+}
+
+.generationPreviewSection {
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.generationPreviewSection .sectionTitle {
+  margin: 0;
 }
 
 .skeletonGrid,
@@ -5018,10 +5050,13 @@
   min-height: 360px;
   border-radius: 18px;
   background: #f7f4ee;
+  padding-top: 0;
 }
 
 .generatedImageViewer .adPreviewImage {
   object-fit: contain;
+  object-position: top center;
+  margin-top: 0;
 }
 
 .generatedImageSummary {
@@ -7111,20 +7146,30 @@
   background: var(--color-bg-card);
   color: var(--color-text);
   padding: 12px;
-  display: grid;
-  grid-template-columns: 46px 1fr 20px;
+  display: flex;
   align-items: center;
   gap: 10px;
+  overflow: hidden;
   text-align: left;
 }
 
 .myLinkedBrandCard > svg:first-child {
   width: 46px;
   height: 46px;
+  box-sizing: border-box;
+  flex: 0 0 46px;
   border-radius: 14px;
   background: var(--color-brand-lime-soft);
   color: #789b1c;
   padding: 10px;
+}
+
+.myLinkedBrandCard > strong {
+  flex: 1 1 auto;
+}
+
+.myLinkedBrandCard > svg:last-child {
+  flex: 0 0 auto;
 }
 
 .myStackedActions {
