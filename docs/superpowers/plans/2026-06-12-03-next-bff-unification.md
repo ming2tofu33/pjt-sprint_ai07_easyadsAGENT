@@ -308,7 +308,7 @@ git commit -m "feat(bff): add shared Next API zod schemas"
 - Create: `apps/web/app/api/generate/photo/start/route.ts`
 - Test: `apps/web/app/api/generate/chat/routes.test.ts`
 
-- [ ] **Step 1: Write failing route tests**
+- [x] **Step 1: Write failing route tests**
 
 Create `apps/web/app/api/generate/chat/routes.test.ts`:
 
@@ -350,7 +350,7 @@ describe("generate chat Next routes", () => {
 });
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -360,7 +360,7 @@ cd apps/web && npx vitest run app/api/generate/chat/routes.test.ts
 
 Expected: FAIL because routes do not exist.
 
-- [ ] **Step 3: Implement route handlers**
+- [x] **Step 3: Implement route handlers**
 
 Create `apps/web/app/api/generate/chat/start/route.ts`:
 
@@ -418,7 +418,7 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-- [ ] **Step 4: Run route tests and parity test**
+- [x] **Step 4: Run route tests and parity test**
 
 Run:
 
@@ -428,7 +428,7 @@ cd apps/web && npx vitest run app/api/generate/chat/routes.test.ts app/api/_prox
 
 Expected: chat route tests PASS; parity still FAILS for remaining missing routes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/app/api/generate/chat apps/web/app/api/generate/photo/start apps/web/app/api/generate/chat/routes.test.ts
