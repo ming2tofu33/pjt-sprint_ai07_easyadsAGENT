@@ -4,14 +4,22 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
+@lru_cache(maxsize=None)
 def _load_dotenv(path: Path) -> dict[str, str]:
-    """Load simple KEY=VALUE pairs without requiring python-dotenv."""
+    """Parse a dotenv file once per process.
+
+    Cached for the process lifetime: dotenv files are deployment-time inputs,
+    not runtime-mutable state. os.environ is NOT cached — _get_env always
+    checks it live, so monkeypatched env vars in tests keep working.
+    Callers must treat the returned dict as read-only.
+    """
     values: dict[str, str] = {}
     if not path.exists():
         return values
