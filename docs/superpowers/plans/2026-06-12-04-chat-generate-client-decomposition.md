@@ -25,7 +25,7 @@
 - Create: `apps/web/lib/chat-snapshots.test.ts`
 - Modify: `apps/web/app/generate/chat/ChatGenerateClient.tsx`
 
-- [ ] **Step 1: Locate exact helper block**
+- [x] **Step 1: Locate exact helper block**
 
 Run:
 
@@ -35,7 +35,7 @@ rg -n "CHAT_.*STORAGE_KEY|readChat|writeChat|clearChat|sessionStorage" apps/web/
 
 Expected: output includes `CHAT_FLOW_SNAPSHOT_STORAGE_KEY`, `CHAT_TURN_SNAPSHOT_STORAGE_KEY`, `CHAT_GENERATION_FAILURE_STORAGE_KEY`, and read/write/clear helpers.
 
-- [ ] **Step 2: Create the extracted module**
+- [x] **Step 2: Create the extracted module**
 
 Create `apps/web/lib/chat-snapshots.ts` and move the storage key constants plus read/write/clear helpers from `ChatGenerateClient.tsx` without changing behavior. The module must export every helper that `ChatGenerateClient.tsx` still calls:
 
@@ -91,7 +91,7 @@ export function clearJsonSnapshot(key: string): void {
 
 If the current helpers have narrower types, keep those typed wrappers in this file and implement them using `readJsonSnapshot`, `writeJsonSnapshot`, and `clearJsonSnapshot`.
 
-- [ ] **Step 3: Add unit tests**
+- [x] **Step 3: Add unit tests**
 
 Create `apps/web/lib/chat-snapshots.test.ts`:
 
@@ -133,11 +133,11 @@ describe("chat-snapshots", () => {
 });
 ```
 
-- [ ] **Step 4: Replace local helpers with imports**
+- [x] **Step 4: Replace local helpers with imports**
 
 In `apps/web/app/generate/chat/ChatGenerateClient.tsx`, remove duplicated storage helper implementations and import from `@/lib/chat-snapshots`.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run:
 
@@ -147,7 +147,7 @@ cd apps/web && npx vitest run lib/chat-snapshots.test.ts app/generate/chat/ChatG
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add apps/web/lib/chat-snapshots.ts apps/web/lib/chat-snapshots.test.ts apps/web/app/generate/chat/ChatGenerateClient.tsx
