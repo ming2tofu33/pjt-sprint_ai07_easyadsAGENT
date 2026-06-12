@@ -2048,6 +2048,208 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
   });
 
+  it("resumes final generation with custom copy entered from copy candidate selection", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.startChatGeneration).mockClear();
+    vi.mocked(api.createGenerationJob).mockClear();
+    vi.mocked(api.answerGenerationJob).mockClear();
+    mockInitialAutoPilotBrief(api);
+    vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "generation_job_copy_manual_waiting",
+        thread_id: "thread_generation_copy_manual_waiting",
+        status: "waiting_user_input",
+        progress: {
+          progress_percent: 48,
+          current_stage: "copy_selection"
+        },
+        metadata: {
+          pending_interrupt: {
+            type: "copy_candidate_selection",
+            candidates: [
+              { id: "copy_1", headline: "오늘 저녁 딸기라떼 한 잔" },
+              { id: "copy_2", headline: "오늘만 더 달콤한 신메뉴" }
+            ],
+            recommended_candidate_id: "copy_1"
+          }
+        },
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    vi.mocked(api.answerGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "generation_job_copy_manual_waiting",
+        thread_id: "thread_generation_copy_manual_waiting",
+        status: "done",
+        progress: {
+          progress_percent: 100,
+          current_stage: "completed"
+        },
+        result_payload: {
+          schema_version: "result_artifact_v1",
+          job_id: "generation_job_copy_manual_waiting",
+          preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_manual_waiting%2Ffinal_0.png",
+          download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_manual_waiting%2Ffinal_0.png",
+          final_image_path: "data/outputs/generation_job_copy_manual_waiting/final_0.png",
+          engine: "gpt_image_1"
+        },
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "우리 카페 딸기라떼 신메뉴 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    fireEvent.click(screen.getByText(/이 내용으로 이미지 생성/));
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "직접 문구 입력" }));
+    fireEvent.change(screen.getByLabelText("생성 재개 메인 문구 입력"), {
+      target: { value: "직접 쓴 딸기라떼 광고" }
+    });
+    fireEvent.change(screen.getByLabelText("생성 재개 보조 문구 입력"), {
+      target: { value: "오늘 오후 한정" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "문구로 생성 이어가기" }));
+
+    await waitFor(() =>
+      expect(api.answerGenerationJob).toHaveBeenCalledWith("generation_job_copy_manual_waiting", {
+        displayText: "직접 쓴 딸기라떼 광고 / 오늘 오후 한정",
+        userCustomHeadline: "직접 쓴 딸기라떼 광고",
+        userCustomSubcopy: "오늘 오후 한정",
+        payload: {
+          selected_channel_id: "instagram-feed",
+          selected_ad_format: "instagram_feed",
+          selected_tone: "감성적인",
+          custom_direction: undefined
+        }
+      })
+    );
+    await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
+  });
+
+  it("keeps restored final generation copy selection on the result path even without source metadata", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.getGenerationJob).mockClear();
+    vi.mocked(api.getChatThreadState).mockClear();
+    vi.mocked(api.getChatThreadMessages).mockClear();
+    vi.mocked(api.answerGenerationJob).mockClear();
+    vi.mocked(api.getGenerationJob)
+      .mockResolvedValueOnce({
+        success: true,
+        job: {
+          job_id: "generation_job_restored_copy_waiting",
+          thread_id: "thread_restored_copy_waiting",
+          status: "waiting_user_input",
+          progress: {
+            progress_percent: 48,
+            current_stage: "copy_selection"
+          },
+          metadata: {
+            final_brief: {
+              purpose: "신메뉴 출시",
+              item: "딸기라떼",
+              copy: null,
+              tone: "감성적인",
+              channel: "인스타 피드 (1:1)",
+              image_direction: "딸기라떼 중심 광고"
+            },
+            pending_interrupt: {
+              type: "copy_candidate_selection",
+              candidates: [
+                { id: "copy_1", headline: "오늘 저녁 딸기라떼 한 잔" },
+                { id: "copy_2", headline: "오늘만 더 달콤한 신메뉴" }
+              ],
+              recommended_candidate_id: "copy_1"
+            }
+          },
+          created_at: "2026-06-05T00:00:00.000Z",
+          updated_at: "2026-06-05T00:00:00.000Z"
+        }
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        job: {
+          job_id: "generation_job_restored_copy_waiting",
+          thread_id: "thread_restored_copy_waiting",
+          status: "done",
+          progress: {
+            progress_percent: 100,
+            current_stage: "completed"
+          },
+          metadata: {
+            final_brief: {
+              purpose: "신메뉴 출시",
+              item: "딸기라떼",
+              copy: "오늘만 더 달콤한 신메뉴",
+              tone: "감성적인",
+              channel: "인스타 피드 (1:1)",
+              image_direction: "딸기라떼 중심 광고"
+            }
+          },
+          result_payload: {
+            schema_version: "result_artifact_v1",
+            job_id: "generation_job_restored_copy_waiting",
+            preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_restored_copy_waiting%2Ffinal_0.png",
+            download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_restored_copy_waiting%2Ffinal_0.png",
+            final_image_path: "data/outputs/generation_job_restored_copy_waiting/final_0.png",
+            engine: "gpt_image_1"
+          },
+          created_at: "2026-06-05T00:00:00.000Z",
+          updated_at: "2026-06-05T00:00:00.000Z"
+        }
+      });
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({ success: true, snapshot: null });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({ success: true, messages: [], total: 0 });
+    vi.mocked(api.answerGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "generation_job_restored_copy_waiting",
+        thread_id: "thread_restored_copy_waiting",
+        status: "running",
+        progress: {
+          progress_percent: 55,
+          current_stage: "planning"
+        },
+        metadata: {
+          final_brief: {
+            purpose: "신메뉴 출시",
+            item: "딸기라떼",
+            copy: null,
+            tone: "감성적인",
+            channel: "인스타 피드 (1:1)",
+            image_direction: "딸기라떼 중심 광고"
+          }
+        },
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    searchParamsMock.value = new URLSearchParams("jobId=generation_job_restored_copy_waiting&threadId=thread_restored_copy_waiting");
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" initialStage="generating" />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "오늘만 더 달콤한 신메뉴 선택" }));
+
+    await waitFor(() => expect(api.answerGenerationJob).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
+    expect(navigationMock.replace).not.toHaveBeenCalledWith("/generate/chat/start?threadId=thread_restored_copy_waiting");
+  });
+
   it("resumes final generation with custom copy input interrupt", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.startChatGeneration).mockClear();
@@ -2685,6 +2887,7 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="studio" />);
 
     await waitFor(() => expect(screen.getByText("딸기라떼 신메뉴 광고")).toBeTruthy());
+    expect(api.listChatThreads).toHaveBeenCalledWith({ limit: 5, includeTotal: false });
     fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
 
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?threadId=thread_strawberry");

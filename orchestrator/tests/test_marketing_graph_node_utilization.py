@@ -16,6 +16,7 @@ TRACEABLE_NODE_ATTRS = {
     "product_preprocess": "product_preprocess_node",
     "reference_preprocess": "reference_preprocess_node",
     "input_evidence_normalizer": "input_evidence_normalizer_node",
+    "product_understanding": "product_understanding_node",
     "validator": "validator_node",
     "options": "options_node",
     "state_update": "state_update_node",
@@ -66,13 +67,14 @@ TRACEABLE_NODE_ATTRS = {
 
 NODE_UTILIZATION_MATRIX = {
     "missing_context_question": {
-        "includes": ["input", "input_evidence_normalizer", "validator", "options", "state_update"],
+        "includes": ["input", "input_evidence_normalizer", "product_understanding", "validator", "options", "state_update"],
         "excludes": ["format_planner", "input_compliance_precheck", "t2i_generation", "result"],
     },
     "auto_pilot_text_overlay": {
         "includes": [
             "input",
             "input_evidence_normalizer",
+            "product_understanding",
             "validator",
             "input_compliance_precheck",
             "format_planner",
@@ -132,6 +134,7 @@ NODE_UTILIZATION_MATRIX = {
             "input",
             "product_preprocess",
             "input_evidence_normalizer",
+            "product_understanding",
             "input_compliance_precheck",
             "copy_candidate_generation",
             "copy_candidate_selection_interrupt",

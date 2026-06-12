@@ -111,11 +111,13 @@ def list_chat_threads_route(
     user_id: str | None = Query(default=None, alias="userId"),
     account_type: str | None = Query(default=None, alias="accountType"),
     include_archived: bool = Query(default=False),
+    include_total: bool = Query(default=True),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> ChatThreadListResponse:
     threads, total = chat_service.list_chat_threads(
         include_archived=include_archived,
+        include_total=include_total,
         limit=limit,
         offset=offset,
         **_user_scope_kwargs(user_id, account_type),

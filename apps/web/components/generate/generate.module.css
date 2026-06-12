@@ -1440,6 +1440,10 @@
   background: var(--color-purple-soft);
 }
 
+.copyCandidateManualButton {
+  margin-top: 10px;
+}
+
 .copyNumber {
   width: 20px;
   height: 20px;
