@@ -1039,7 +1039,7 @@ git commit -m "feat(bff): port asset and admin reference routes to Next"
 - Modify: `apps/web/lib/api-client.ts`
 - Test: `apps/web/lib/api-client.test.ts`
 
-- [ ] **Step 1: Write failing test**
+- [x] **Step 1: Write failing test**
 
 Add to `apps/web/lib/api-client.test.ts`:
 
@@ -1067,7 +1067,7 @@ it("uses same-origin API routes when NEXT_PUBLIC_BFF_BASE_URL is unset", async (
 });
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -1077,7 +1077,7 @@ cd apps/web && npx vitest run lib/api-client.test.ts
 
 Expected: FAIL because the default is `http://127.0.0.1:4000`.
 
-- [ ] **Step 3: Implement default same-origin**
+- [x] **Step 3: Implement default same-origin**
 
 In `apps/web/lib/api-client.ts`, change:
 
@@ -1091,7 +1091,7 @@ to:
 const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "");
 ```
 
-- [ ] **Step 4: Run full web validation**
+- [x] **Step 4: Run full web validation**
 
 Run:
 
@@ -1101,7 +1101,7 @@ cd apps/web && npx vitest run && npx tsc --noEmit
 
 Expected: PASS. If route parity is still red, do not merge this task.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/lib/api-client.ts apps/web/lib/api-client.test.ts

@@ -13,7 +13,7 @@ import type {
 } from "@/types/marketing";
 import { getSupabaseAuthorizationHeader, type RequestHeaders } from "@/lib/supabase/session";
 
-const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "http://127.0.0.1:4000");
+const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "");
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
@@ -21,6 +21,27 @@ function normalizeBaseUrl(baseUrl: string): string {
 
 function buildBffUrl(path: string): string {
   return `${BFF_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function buildBffUrlWithParams(path: string, params?: ReferenceQueryParams): string {
+  const base =
+    BFF_BASE_URL ||
+    (typeof window !== "undefined" && window.location?.origin ? window.location.origin : "http://localhost");
+  const url = new URL(buildBffUrl(path), base);
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => url.searchParams.append(key, item));
+      return;
+    }
+    url.searchParams.set(key, String(value));
+  });
+  if (BFF_BASE_URL) {
+    return url.toString();
+  }
+  return `${url.pathname}${url.search}`;
 }
 
 export type ChatStartResponse = {
@@ -387,15 +408,9 @@ async function postJson<TResponse>(path: string, body: unknown, headers: Request
 }
 
 async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
-  const url = new URL(buildBffUrl(path));
-  Object.entries(params ?? {}).forEach(([key, value]) => {
-    if (value === undefined || value === null) {
-      return;
-    }
-    url.searchParams.set(key, String(value));
-  });
+  const url = buildBffUrlWithParams(path, params);
 
-  const response = await fetch(url.toString(), {
+  const response = await fetch(url, {
     method: "DELETE",
     headers: { accept: "application/json", ...headers }
   });
@@ -411,19 +426,9 @@ function compactPayload(payload: object): Record<string, unknown> {
 }
 
 async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
-  const url = new URL(buildBffUrl(path));
-  Object.entries(params ?? {}).forEach(([key, value]) => {
-    if (value === undefined || value === null) {
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach((item) => url.searchParams.append(key, item));
-      return;
-    }
-    url.searchParams.set(key, String(value));
-  });
+  const url = buildBffUrlWithParams(path, params);
 
-  const response = await fetch(url.toString(), {
+  const response = await fetch(url, {
     method: "GET",
     headers: { accept: "application/json", ...headers }
   });
