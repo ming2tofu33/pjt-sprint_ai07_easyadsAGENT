@@ -1005,9 +1005,30 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() => expect(screen.getByText(/작업은 최대 3개까지만 만들 수 있어요/)).toBeTruthy());
+    expect(screen.queryByText("AI가 이렇게 이해했어요")).toBeNull();
+    expect((screen.getByLabelText("광고 요청 입력") as HTMLTextAreaElement).value).toBe("우리 카페 딸기라떼 신메뉴 광고 만들어줘");
     fireEvent.click(screen.getByRole("button", { name: "홈으로 이동" }));
 
     expect(navigationMock.push).toHaveBeenCalledWith("/");
+  });
+
+  it("returns generic initial prompt failures to the start screen with the prompt intact", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.createGenerationJob).mockClear();
+    vi.mocked(api.createGenerationJob).mockRejectedValueOnce(new Error("생성 요청에 실패했습니다."));
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "우리 카페 딸기라떼 신메뉴 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() => expect(screen.getByText("생성 요청에 실패했습니다.")).toBeTruthy());
+    expect(screen.queryByText("AI가 이렇게 이해했어요")).toBeNull();
+    expect((screen.getByLabelText("광고 요청 입력") as HTMLTextAreaElement).value).toBe("우리 카페 딸기라떼 신메뉴 광고 만들어줘");
   });
 
   it("starts reference requests as a fresh chat instead of restoring the previous snapshot", async () => {
@@ -1867,6 +1888,62 @@ describe("ChatGenerateClient", () => {
       })
     );
     await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
+  });
+
+  it("does not push a jobId-less generating route during final generation (no failure flash)", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.createGenerationJob).mockClear();
+    mockInitialAutoPilotBrief(api);
+    vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "generation_job_final",
+        thread_id: "thread_generation_final",
+        status: "done",
+        progress: {
+          progress_percent: 100,
+          current_stage: "completed"
+        },
+        result_payload: {
+          schema_version: "result_artifact_v1",
+          job_id: "generation_job_final",
+          preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_final%2Ffinal_0.png",
+          download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_final%2Ffinal_0.png",
+          final_image_path: "data/outputs/generation_job_final/final_0.png",
+          engine: "gpt_image_1"
+        },
+        metadata: {
+          selected_engine_label: "GPT-image-1"
+        },
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "우리 카페 딸기라떼 신메뉴 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    navigationMock.push.mockClear();
+    navigationMock.replace.mockClear();
+    fireEvent.click(screen.getByText(/이 내용으로 이미지 생성/));
+
+    await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
+
+    // 생성 잡 생성 전에 jobId 없는 `/generate/chat/generating`로 push하면 복원 useEffect가
+    // jobId 부재 상태로 재실행돼 생성실패 화면이 잠깐 노출됨. push로는 절대 가면 안 되고
+    // jobId가 붙은 href로 replace만 일어나야 함.
+    expect(navigationMock.push).not.toHaveBeenCalledWith("/generate/chat/generating");
+    const replacedWithJob = navigationMock.replace.mock.calls.some(
+      ([href]) => typeof href === "string" && href.includes("/generate/chat/generating") && href.includes("jobId=generation_job_final")
+    );
+    expect(replacedWithJob).toBe(true);
   });
 
   it("auto-submits copy_generation_mode custom_input without a 선택 완료 click", async () => {
@@ -3522,7 +3599,7 @@ describe("ChatGenerateClient", () => {
       "easyads_generated_creatives_v1",
       JSON.stringify([
         {
-          id: "result-1",
+          id: "generated-result-1",
           title: "실제 생성 result-1",
           subtitle: "카페 · 인스타 피드",
           format: "1:1",

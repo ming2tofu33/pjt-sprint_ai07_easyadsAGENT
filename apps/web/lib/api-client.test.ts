@@ -487,6 +487,35 @@ describe("api-client backend contract routes", () => {
     expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
   });
 
+  it("strips null top-level fields from generation job creation but keeps metadata nulls", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_1",
+          status: "queued",
+          progress: { progress_percent: 0, current_stage: "queued" }
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createGenerationJob({
+      userInput: "Create an ad",
+      selectedCopyId: null,
+      customDirection: null,
+      selectedChannelId: null,
+      metadata: { selected_copy_id: null, source: "web_generation_flow" }
+    });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body).not.toHaveProperty("selectedCopyId");
+    expect(body).not.toHaveProperty("customDirection");
+    expect(body).not.toHaveProperty("selectedChannelId");
+    expect(body.userInput).toBe("Create an ad");
+    expect(body.metadata).toEqual({ selected_copy_id: null, source: "web_generation_flow" });
+  });
+
   it("answers generation job questions through the BFF", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({

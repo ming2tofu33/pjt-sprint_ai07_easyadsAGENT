@@ -53,6 +53,26 @@ describe("chat flow state", () => {
     expect(retrying.errorCode).toBeNull();
   });
 
+  it("recovers initial prompt request failures back to the start step", () => {
+    const submitting = chatFlowReducer(createInitialChatFlowState(), {
+      type: "submitPrompt",
+      prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘"
+    });
+
+    const failed = chatFlowReducer(submitting, {
+      type: "backendRequestFailed",
+      message: "생성 요청에 실패했습니다.",
+      recoverToStart: true
+    });
+
+    expect(failed.step).toBe(1);
+    expect(failed.progress).toEqual({ current: 0, total: 4, label: "대화 시작" });
+    expect(failed.currentQuestion).toBeNull();
+    expect(failed.isLoading).toBe(false);
+    expect(failed.userInput).toBe("우리 카페 딸기라떼 신메뉴 광고 만들어줘");
+    expect(failed.errorMessage).toBe("생성 요청에 실패했습니다.");
+  });
+
   it("appends new user prompts and can update the current turn without duplicating it", () => {
     let state = createInitialChatFlowState();
     state = chatFlowReducer(state, {

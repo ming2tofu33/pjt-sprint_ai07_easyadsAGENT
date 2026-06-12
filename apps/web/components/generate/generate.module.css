@@ -661,6 +661,10 @@
   line-height: 1.45;
 }
 
+.copyModeGrid + .primaryButton {
+  margin-top: 32px;
+}
+
 @media (max-width: 360px) {
   .copyModeGrid {
     gap: 12px;
