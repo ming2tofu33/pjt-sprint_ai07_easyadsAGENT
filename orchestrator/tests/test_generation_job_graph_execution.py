@@ -476,6 +476,44 @@ def test_execute_generation_job_graph_receives_selected_ui_values(monkeypatch):
     assert received_payload["context"]["extra"]["ad_format"] == "instagram_story"
 
 
+def test_execute_generation_job_graph_prefers_selected_channel_over_default_ad_format(monkeypatch):
+    received_payload = {}
+
+    class MockGraph:
+        def invoke(self, payload: dict, config: dict | None = None) -> dict:
+            nonlocal received_payload
+            received_payload = dict(payload)
+            state = dict(payload)
+            state["status"] = "done"
+            state["result_payload"] = {
+                "final_image_path": "/fake/channel-over-default.png",
+                "final_brief": {"user_input": state["user_input"]},
+            }
+            state["final_image_path"] = "/fake/channel-over-default.png"
+            return state
+
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+
+    request = GenerationJobCreateRequest(
+        user_input="선택한 스토리 포맷으로 광고 만들어줘",
+        run_mode="graph_job",
+        adFormat="instagram_feed",
+        selectedChannelId="instagram-story",
+    )
+    job = create_generation_job(request)
+
+    executed = execute_generation_job_graph(job.job_id, request)
+
+    assert executed.status == "done"
+    assert received_payload["selected_channel_id"] == "instagram-story"
+    assert received_payload["selected_ad_format"] == "instagram_story"
+    assert received_payload["current_brief"]["requested_ad_format"] == "instagram_story"
+    assert received_payload["context"]["extra"]["ad_format"] == "instagram_story"
+    assert received_payload["ad_format_spec"]["ad_format"] == "instagram_story"
+    assert received_payload["ad_format_spec"]["width"] == 1080
+    assert received_payload["ad_format_spec"]["height"] == 1920
+
+
 def test_suggest_candidates_create_clears_stale_copy_state():
     state = {
         "copy_generation_mode": "suggest_candidates",
