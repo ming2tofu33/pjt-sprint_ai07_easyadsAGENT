@@ -1,0 +1,79 @@
+{
+  "schema_version": "product_understanding_benchmark_v1",
+  "cases": [
+    {
+      "case_id": "macaron",
+      "input_mode": "image_only",
+      "source_image_path": "runtime_generated",
+      "expected_broad_category": "food_and_beverage",
+      "expected_category_prefix": ["food_and_beverage"]
+    },
+    {
+      "case_id": "strawberry_latte",
+      "input_mode": "text_and_image",
+      "user_text": "딸기라떼 신메뉴를 홍보하고 싶어",
+      "source_image_path": "runtime_generated",
+      "expected_broad_category": "food_and_beverage",
+      "expected_category_prefix": ["food_and_beverage"]
+    },
+    {
+      "case_id": "charcoal_grilled_meat",
+      "input_mode": "image_only",
+      "source_image_path": "runtime_generated",
+      "expected_broad_category": "food_and_beverage",
+      "expected_category_prefix": ["food_and_beverage"]
+    },
+    {
+      "case_id": "doenjang_jjigae",
+      "input_mode": "text_only",
+      "user_text": "된장찌개 메뉴를 홍보하고 싶어",
+      "expected_broad_category": "food_and_beverage",
+      "expected_category_prefix": ["food_and_beverage"]
+    },
+    {
+      "case_id": "facial_serum",
+      "input_mode": "text_and_image",
+      "user_text": "나이아신아마이드 5% 세럼을 소개하고 싶어",
+      "source_image_path": "runtime_generated",
+      "expected_broad_category": "beauty_and_personal_care",
+      "expected_category_prefix": ["beauty_and_personal_care"]
+    },
+    {
+      "case_id": "cheesecake_text_only",
+      "input_mode": "text_only",
+      "user_text": "치즈케이크를 홍보하고 싶어",
+      "expected_broad_category": "food_and_beverage",
+      "expected_category_prefix": ["food_and_beverage"]
+    },
+    {
+      "case_id": "cheesecake_image_only",
+      "input_mode": "image_only",
+      "source_image_path": "runtime_generated",
+      "expected_broad_category": "food_and_beverage",
+      "expected_category_prefix": ["food_and_beverage"]
+    },
+    {
+      "case_id": "cheesecake_text_and_image",
+      "input_mode": "text_and_image",
+      "user_text": "카페 신메뉴 치즈케이크를 인스타 피드로 홍보하고 싶어",
+      "source_image_path": "runtime_generated",
+      "expected_broad_category": "food_and_beverage",
+      "expected_category_prefix": ["food_and_beverage"]
+    },
+    {
+      "case_id": "perfume",
+      "input_mode": "image_only",
+      "source_image_path": "runtime_generated",
+      "expected_broad_category": "beauty_and_personal_care",
+      "expected_category_prefix": ["beauty_and_personal_care"]
+    },
+    {
+      "case_id": "sneakers",
+      "input_mode": "text_and_image",
+      "user_text": "러닝화 신제품을 홍보하고 싶어",
+      "source_image_path": "runtime_generated",
+      "expected_broad_category": "fashion_and_lifestyle",
+      "expected_category_prefix": ["fashion_and_lifestyle"]
+    }
+  ]
+}

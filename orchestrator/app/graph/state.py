@@ -102,6 +102,10 @@ class MarketingState(TypedDict, total=False):
     input_normalization_status: str | None
     input_conflicts: list[dict[str, Any]]
     unresolved_questions: list[str]
+    product_understanding: dict[str, Any] | None
+    product_understanding_status: str | None
+    product_understanding_confidence: float | None
+    product_understanding_provider_metadata: dict[str, Any] | None
     vision_preprocess_mode: str | None
     selected_reference_template_id: str | None
     selected_reference_template: dict[str, Any] | None
