@@ -838,7 +838,7 @@ export function updateBrandKit(brandKitId: string, payload: BrandKitPayload): Pr
 
 export async function createGenerationJob(payload: GenerationJobCreateInput): Promise<GenerationJobResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
-  return postJson<GenerationJobResponse>("/api/generation-jobs", payload, authHeaders);
+  return postJson<GenerationJobResponse>("/api/generation-jobs", compactPayload(payload as Record<string, unknown>), authHeaders);
 }
 
 export async function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
