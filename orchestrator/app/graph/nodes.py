@@ -242,9 +242,8 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
         extra_return["user_custom_subcopy"] = value
         updated = True
     elif field == "ad_format":
-        extra["ad_format"] = value
+        set_requested_ad_format(state.setdefault("current_brief", {}), extra, value)
         context_data["extra"] = extra
-        update_current_brief(state, {"requested_ad_format": value})
         updated = True
     elif field in context_data:
         context_data[field] = value

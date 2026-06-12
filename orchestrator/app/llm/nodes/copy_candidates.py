@@ -8,7 +8,7 @@ from typing import Any
 
 from langgraph.types import interrupt
 
-from orchestrator.app.graph.state import MarketingState, context_to_model
+from orchestrator.app.graph.state import MarketingState, context_to_model, set_requested_ad_format
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
 from orchestrator.app.llm.copy_quality_v2 import annotate_and_rank_candidate_output, generate_copy_candidates_v2
@@ -528,8 +528,7 @@ def build_frontend_selection_state_update(state: MarketingState, selection: dict
         context_extra["selected_channel_id"] = selected_channel_id
     if selected_ad_format:
         update["selected_ad_format"] = selected_ad_format
-        current_brief["requested_ad_format"] = selected_ad_format
-        context_extra["ad_format"] = selected_ad_format
+        set_requested_ad_format(current_brief, context_extra, selected_ad_format)
         context_extra["selected_ad_format"] = selected_ad_format
         ad_format_spec = build_ad_format_spec(selected_ad_format)
         update["ad_format_spec"] = ad_format_spec.model_dump()

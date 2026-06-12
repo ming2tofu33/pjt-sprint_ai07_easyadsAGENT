@@ -88,8 +88,7 @@ def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobC
         context_extra["selected_channel_id"] = selected_channel_id
     if selected_ad_format:
         state["selected_ad_format"] = selected_ad_format
-        current_brief["requested_ad_format"] = selected_ad_format
-        context_extra["ad_format"] = selected_ad_format
+        set_requested_ad_format(current_brief, context_extra, selected_ad_format)
         context_extra["selected_ad_format"] = selected_ad_format
     if selected_tone:
         state["selected_tone"] = selected_tone
