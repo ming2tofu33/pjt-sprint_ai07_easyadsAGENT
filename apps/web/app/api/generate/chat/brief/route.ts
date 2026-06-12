@@ -6,7 +6,7 @@ import { chatBriefSchema } from "../../../_schemas/generate";
 export const dynamic = "force-dynamic";
 
 export function POST(request: NextRequest) {
-  return proxyOrchestratorJson(request, "POST", "/v1/marketing/chat/brief", undefined, {
+  return proxyOrchestratorJson(request, "POST", "/api/v1/marketing/chat/brief", undefined, {
     bodySchema: chatBriefSchema
   });
 }

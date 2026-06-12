@@ -19,7 +19,7 @@ describe("generate chat and photo Next routes", () => {
     vi.unstubAllGlobals();
   });
 
-  it("proxies chat start to the legacy marketing chat endpoint", async () => {
+  it("proxies chat start to the standard marketing chat endpoint", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
     const fetchMock = vi.fn(async () => jsonResponse({ jobId: "job_1", threadId: "thread_1" }));
     vi.stubGlobal("fetch", fetchMock);
@@ -35,7 +35,7 @@ describe("generate chat and photo Next routes", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://orchestrator/v1/marketing/chat/start",
+      "http://orchestrator/api/v1/marketing/chat/start",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({ userInput: "카페 광고" })
@@ -63,7 +63,7 @@ describe("generate chat and photo Next routes", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("proxies chat brief selections to the legacy marketing brief endpoint", async () => {
+  it("proxies chat brief selections to the standard marketing brief endpoint", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
     const fetchMock = vi.fn(async () => jsonResponse({ success: true }));
     vi.stubGlobal("fetch", fetchMock);
@@ -85,12 +85,12 @@ describe("generate chat and photo Next routes", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://orchestrator/v1/marketing/chat/brief",
+      "http://orchestrator/api/v1/marketing/chat/brief",
       expect.objectContaining({ method: "POST", body: JSON.stringify(payload) })
     );
   });
 
-  it("proxies chat answers to the legacy marketing answer endpoint", async () => {
+  it("proxies chat answers to the standard marketing answer endpoint", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
     const fetchMock = vi.fn(async () => jsonResponse({ success: true }));
     vi.stubGlobal("fetch", fetchMock);
@@ -112,12 +112,12 @@ describe("generate chat and photo Next routes", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://orchestrator/v1/marketing/chat/answer",
+      "http://orchestrator/api/v1/marketing/chat/answer",
       expect.objectContaining({ method: "POST", body: JSON.stringify(payload) })
     );
   });
 
-  it("proxies photo start to the legacy marketing photo endpoint", async () => {
+  it("proxies photo start to the standard marketing photo endpoint", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
     const fetchMock = vi.fn(async () => jsonResponse({ jobId: "job_photo_1" }));
     vi.stubGlobal("fetch", fetchMock);
@@ -137,7 +137,7 @@ describe("generate chat and photo Next routes", () => {
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://orchestrator/v1/marketing/photo/start",
+      "http://orchestrator/api/v1/marketing/photo/start",
       expect.objectContaining({ method: "POST", body: JSON.stringify(payload) })
     );
   });

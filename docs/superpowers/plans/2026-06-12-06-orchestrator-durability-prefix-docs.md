@@ -142,7 +142,7 @@ git commit -m "feat(api): add standard marketing route aliases"
 - Modify: `apps/web/app/api/generate/photo/start/route.ts`
 - Test: `apps/web/app/api/generate/chat/routes.test.ts`
 
-- [ ] **Step 1: Update route tests to expect standard prefix**
+- [x] **Step 1: Update route tests to expect standard prefix**
 
 In `apps/web/app/api/generate/chat/routes.test.ts`, change the expected URL:
 
@@ -150,7 +150,7 @@ In `apps/web/app/api/generate/chat/routes.test.ts`, change the expected URL:
 expect(String(fetchMock.mock.calls[0][0])).toBe("http://orchestrator/api/v1/marketing/chat/start");
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -160,7 +160,7 @@ cd apps/web && npx vitest run app/api/generate/chat/routes.test.ts
 
 Expected: FAIL if route handlers still call `/v1/marketing/...`.
 
-- [ ] **Step 3: Update route handlers**
+- [x] **Step 3: Update route handlers**
 
 Change chat route handlers from:
 
@@ -182,7 +182,7 @@ Apply the same pattern to:
 "/api/v1/marketing/photo/start"
 ```
 
-- [ ] **Step 4: Run web tests**
+- [x] **Step 4: Run web tests**
 
 Run:
 
@@ -192,7 +192,7 @@ cd apps/web && npx vitest run app/api/generate/chat/routes.test.ts && npx tsc --
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/app/api/generate/chat apps/web/app/api/generate/photo/start apps/web/app/api/generate/chat/routes.test.ts
