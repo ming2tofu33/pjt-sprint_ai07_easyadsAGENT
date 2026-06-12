@@ -11,6 +11,7 @@ UserPlan = Literal["free", "economic", "premium", "internal_benchmark"]
 ModelClass = Literal["local_fast", "local_quality", "api_nano", "api_mini", "api_full", "api_vision", "mock"]
 NodeModelName = Literal[
     "validator",
+    "product_understanding",
     "copy_mode_inference",
     "tone_binding",
     "copy_candidate_generation",

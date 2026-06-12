@@ -8,7 +8,8 @@ from typing import Any
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding, UNSUPPORTED_CLAIM_CATEGORIES
 
-_SNAKE_CASE_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
+_SNAKE_CASE_RE = re.compile(r"^(?=.*[a-z])[a-z0-9]+(?:_[a-z0-9]+)*$")
+ROOT_ALIASES = {"food_beverage", "beauty_personal_care", "fashion_lifestyle", "home_living"}
 
 
 def normalize_slug(value: str | None) -> str | None:
@@ -24,6 +25,10 @@ def validate_product_understanding(
 ) -> ProductUnderstanding:
     bundle_model = bundle if isinstance(bundle, InputEvidenceBundle) else InputEvidenceBundle(**bundle)
     model = result if isinstance(result, ProductUnderstanding) else ProductUnderstanding(**result)
+    if len(model.category_path) == 1 and model.normalized_product_type:
+        raise ValueError("category_path must include product hierarchy when product identity is known")
+    if any(item in ROOT_ALIASES for item in model.category_path[1:]):
+        raise ValueError("category_path cannot contain root aliases below broad_category")
     _validate_verified_fact_provenance(model, bundle_model)
     _validate_visual_provenance(model, bundle_model)
     _validate_product_identity_conflict(model, bundle_model)
@@ -31,12 +36,21 @@ def validate_product_understanding(
     return model.model_copy(
         update={
             "unknown_fields": sorted(set(model.unknown_fields)),
-            "unsupported_claim_categories": sorted(set(item for item in model.unsupported_claim_categories if item in UNSUPPORTED_CLAIM_CATEGORIES)),
+            "unsupported_claim_categories": unsupported_claim_categories_for_bundle(bundle_model),
             "confidence": confidence,
             "clarification_required": model.clarification_required or (0.45 <= confidence < 0.70),
             "manual_review_required": model.manual_review_required or confidence < 0.45,
         }
     )
+
+
+def unsupported_claim_categories_for_bundle(bundle: InputEvidenceBundle) -> list[str]:
+    verified_keys = {
+        normalize_slug(item.key)
+        for item in bundle.explicit_user_facts + bundle.asset_metadata_evidence + bundle.brand_profile_evidence + bundle.reference_evidence
+    }
+    allowed = {item for item in verified_keys if item in UNSUPPORTED_CLAIM_CATEGORIES}
+    return sorted(set(UNSUPPORTED_CLAIM_CATEGORIES) - allowed)
 
 
 def calculate_product_understanding_confidence(model: ProductUnderstanding, bundle: InputEvidenceBundle) -> float:

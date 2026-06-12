@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field, model_validator
 from orchestrator.app.llm.nodes.input_evidence_normalizer import build_input_evidence_bundle
 from orchestrator.app.llm.nodes.product_understanding import build_minimal_product_understanding
 from orchestrator.app.llm.product_understanding_policy import normalize_slug, validate_product_understanding
+from orchestrator.app.llm.product_understanding_service import generate_product_understanding
 from orchestrator.app.quality_gate.final_composite_service import evaluate_final_composite
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.product_understanding import UNSUPPORTED_CLAIM_CATEGORIES
@@ -441,7 +442,7 @@ def _looks_like_existing_overlay_text(raw: dict[str, Any], value: str) -> bool:
 
 
 def _default_evidence_confidence(value: str, *, evidence_class: str) -> float:
-    if evidence_class == "visual_observation" and any(token in value.lower() for token in ("cheesecake", "cake", "macaron", "product", "dessert", "치즈케이크", "케이크", "마카롱")):
+    if evidence_class == "visual_observation" and len(value.strip()) >= 12:
         return 0.78
     return 0.5
 
@@ -533,21 +534,34 @@ def analyze_source_image(request: ActualCreativeInput, runtime: ActualCreativeRu
 
 
 def run_product_understanding(request: ActualCreativeInput, runtime: ActualCreativeRuntime, evidence: dict[str, Any]) -> dict[str, Any]:
-    adapter = runtime.openai_adapter
     if runtime.call_budget:
         runtime.call_budget.consume_openai()
+    adapter = getattr(runtime, "openai_adapter", None)
     if adapter and hasattr(adapter, "understand_product"):
         payload = adapter.understand_product(request=request, evidence=evidence, model=runtime.copy_model)
-        candidate = payload.get("product_understanding") or payload
-        metadata = payload.get("provider_metadata") or candidate.get("provider_metadata") or {}
-    else:
-        candidate = build_minimal_product_understanding(InputEvidenceBundle(**evidence)).model_dump()
-        metadata = candidate.get("provider_metadata") or {}
-    candidate = _coerce_product_understanding_candidate(candidate, evidence)
-    result = validate_product_understanding(candidate, evidence)
-    data = result.model_dump()
-    if metadata:
-        data["provider_metadata"] = metadata
+        product_payload = payload.get("product_understanding") if isinstance(payload, dict) else None
+        data = _coerce_product_understanding_candidate(product_payload or {}, evidence)
+        data = validate_product_understanding(data, evidence).model_dump()
+        data["provider_metadata"] = payload.get("provider_metadata") or {"provider": "openai", "model": runtime.copy_model}
+        return data
+    state = {
+        "user_plan": "premium",
+        "plan_policy": {
+            "user_plan": "premium",
+            "allowed_model_classes": ["api_full", "api_mini", "api_nano", "api_vision", "mock"],
+            "max_api_calls_per_job": 20,
+            "max_candidates": 3,
+            "vision_gate_enabled": True,
+            "allow_api_fallback": True,
+            "node_policies": {},
+        },
+        "llm_call_results": [],
+        "model_selections": [],
+    }
+    result = generate_product_understanding(InputEvidenceBundle(**evidence), state=state)
+    data = _coerce_product_understanding_candidate(result.model_dump(), evidence)
+    data = validate_product_understanding(data, evidence).model_dump()
+    data["provider_metadata"] = result.provider_metadata
     return data
 
 
@@ -570,7 +584,7 @@ def _coerce_product_understanding_candidate(candidate: dict[str, Any], evidence:
         "visual_observations": [item for item in _evidence_items(evidence, ("visual_observations",)) if item.get("evidence_id") in evidence_ids],
         "permissible_inferences": [item for item in _evidence_items(evidence, ("creative_inferences",)) if item.get("confidence", 1.0) <= 0.8],
         "unknown_fields": list(data.get("unknown_fields") or evidence.get("unknown_fields") or []),
-        "unsupported_claim_categories": [normalize_slug(str(item)) for item in (data.get("unsupported_claim_categories") or []) if normalize_slug(str(item)) in UNSUPPORTED_CLAIM_CATEGORIES],
+        "unsupported_claim_categories": _unsupported_claim_categories_from_evidence(evidence),
         "product_name_evidence_ids": evidence_ids,
         "confidence_by_field": data.get("confidence_by_field") if isinstance(data.get("confidence_by_field"), dict) else {},
         "confidence": _float_between(data.get("confidence"), 0.75 if evidence_ids else 0.45),
@@ -609,11 +623,11 @@ def _normalize_broad_category(value: str) -> str:
     }
     if slug in allowed:
         return slug
-    if any(token in slug for token in ("food", "beverage", "dessert", "drink", "meal", "restaurant", "cafe", "latte", "cake", "jjigae")) or any(token in value for token in ("라떼", "케이크", "찌개", "고기", "구이", "디저트")):
+    if any(token in slug for token in ("food", "beverage", "dessert", "drink", "meal", "restaurant", "cafe")):
         return "food_and_beverage"
-    if any(token in slug for token in ("beauty", "personal_care", "skincare", "cosmetic", "fragrance", "serum", "perfume")) or any(token in value for token in ("세럼", "향수", "화장품")):
+    if any(token in slug for token in ("beauty", "personal_care", "skincare", "cosmetic", "fragrance")):
         return "beauty_and_personal_care"
-    if any(token in slug for token in ("fashion", "lifestyle", "footwear", "apparel", "shoe")) or any(token in value for token in ("신발", "러닝화", "운동화")):
+    if any(token in slug for token in ("fashion", "lifestyle", "footwear", "apparel")):
         return "fashion_and_lifestyle"
     if any(token in slug for token in ("home", "living", "furniture", "decor", "lighting")):
         return "home_and_living"
@@ -628,9 +642,10 @@ def _normalize_broad_category(value: str) -> str:
 
 def _normalize_category_path(raw_path: list[Any], broad: str, normalized_type: str | None) -> list[str]:
     path = [broad]
+    root_aliases = {"food_beverage", "beauty_personal_care", "fashion_lifestyle", "home_living"}
     for item in raw_path:
         slug = normalize_slug(str(item))
-        if slug and slug != broad and slug not in path and len(path) < 6:
+        if slug and slug != broad and slug not in root_aliases and slug not in path and len(path) < 6:
             path.append(slug)
     if normalized_type and normalized_type not in path and len(path) < 6:
         path.append(normalized_type)
@@ -646,12 +661,16 @@ def _product_evidence_ids(product_name: str | None, evidence: dict[str, Any]) ->
         value_norm = "".join(ch.lower() for ch in str(item.get("normalized_value") or item.get("value") or "") if ch.isalnum())
         if value_norm and (product_norm in value_norm or value_norm in product_norm):
             ids.append(str(item.get("evidence_id")))
-    if not ids:
-        for item in _evidence_items(evidence, ("explicit_user_facts", "visual_observations")):
-            if item.get("evidence_id"):
-                ids.append(str(item["evidence_id"]))
-                break
     return ids
+
+
+def _unsupported_claim_categories_from_evidence(evidence: dict[str, Any]) -> list[str]:
+    verified_keys = {
+        normalize_slug(str(item.get("key") or ""))
+        for item in _evidence_items(evidence, ("explicit_user_facts", "asset_metadata_evidence", "brand_profile_evidence", "reference_evidence"))
+    }
+    allowed = {item for item in verified_keys if item in UNSUPPORTED_CLAIM_CATEGORIES}
+    return sorted(set(UNSUPPORTED_CLAIM_CATEGORIES) - allowed)
 
 
 def _evidence_items(evidence: dict[str, Any], groups: tuple[str, ...]) -> list[dict[str, Any]]:
@@ -706,7 +725,7 @@ def _hydrate_copy_payload(payload: dict[str, Any], evidence: dict[str, Any], pro
     if product:
         understanding["product_name"] = product
         understanding["normalized_product_candidate"] = understanding.get("normalized_product_candidate") or product
-    understanding.setdefault("broad_category", "cafe")
+    understanding.setdefault("broad_category", "other")
     understanding.setdefault("explicit_product_candidate", product or "product")
     understanding.setdefault("product_identity_confidence", evidence.get("overall_confidence") or 0.75)
     context.setdefault("brand_tone", "premium")
@@ -717,13 +736,13 @@ def _hydrate_copy_payload(payload: dict[str, Any], evidence: dict[str, Any], pro
         product_text = product or "product"
         if product:
             if any("\uac00" <= ch <= "\ud7a3" for ch in str(product_text)):
-                normalized["headline"] = f"{product_text} 신메뉴"
-                normalized["subcopy"] = "부드러운 카페 디저트를 지금 만나보세요."
-                normalized["cta"] = "메뉴 보기"
+                normalized["headline"] = str(product_text)
+                normalized["subcopy"] = f"{product_text}를 중심으로 소개합니다."
+                normalized["cta"] = "자세히 보기"
             else:
-                normalized["headline"] = f"{product_text.title()} Menu"
-                normalized["subcopy"] = "A simple cafe dessert to discover today."
-                normalized["cta"] = "View menu"
+                normalized["headline"] = str(product_text).title()
+                normalized["subcopy"] = f"A focused introduction to {product_text}."
+                normalized["cta"] = "Learn More"
         data["selected_copy"] = {**selected, **normalized}
     data["product_understanding"] = understanding
     data["product_copy_context"] = context
@@ -742,12 +761,6 @@ def _product_from_evidence(evidence: dict[str, Any]) -> str | None:
         text = str(value or "").lower()
         if not text:
             continue
-        if "cheesecake" in text or "치즈케이크" in text:
-            return "치즈케이크"
-        if "macaron" in text or "마카롱" in text:
-            return "마카롱"
-        if "cake" in text or "케이크" in text:
-            return "케이크"
         if key in {"product_name", "product_identity", "product"}:
             return str(value)
     return None
@@ -1130,12 +1143,13 @@ def _observation_confidence(observations: list[dict[str, Any]]) -> float:
 
 
 def _has_product_visual_signal(observations: list[dict[str, Any]]) -> bool:
-    tokens = ("cheesecake", "cake", "macaron", "dessert", "치즈케이크", "케이크", "마카롱")
     for item in observations:
         if not isinstance(item, dict):
             continue
-        text = " ".join(str(item.get(key) or "") for key in ("value", "text", "product", "normalized_value")).lower()
-        if any(token in text for token in tokens):
+        key = str(item.get("key") or "").lower()
+        text = " ".join(str(item.get(field) or "") for field in ("value", "text", "product", "normalized_value")).strip()
+        confidence = float(item.get("confidence") or 0.0)
+        if confidence >= 0.7 and (key in {"product", "product_identity", "visual_product_candidate"} or len(text) >= 12):
             return True
     return False
 

@@ -15,8 +15,12 @@ def product_understanding_node(state: dict[str, Any]) -> dict[str, Any]:
         return {"product_understanding": None, "product_understanding_status": "failed", "error_message": "input_evidence_bundle missing"}
     try:
         bundle = InputEvidenceBundle(**raw_bundle)
-        candidate = state.get("product_understanding_llm_response") or build_minimal_product_understanding(bundle)
-        result = validate_product_understanding(candidate, bundle)
+        if state.get("product_understanding_llm_response"):
+            result = validate_product_understanding(state["product_understanding_llm_response"], bundle)
+        else:
+            from orchestrator.app.llm.product_understanding_service import generate_product_understanding
+
+            result = generate_product_understanding(bundle, state=state)
     except Exception as exc:
         return {
             "product_understanding": None,

@@ -145,8 +145,9 @@ def test_visual_product_signal_hydrates_copy_without_user_facts():
     )
 
     assert evidence["explicit_user_facts"] == []
-    assert data["product_understanding"]["product_name"] == "치즈케이크"
-    assert data["selected_copy"]["headline"] == "치즈케이크 신메뉴"
+    assert data["product_understanding"]["product_name"] == "Cheesecake"
+    assert data["selected_copy"]["headline"] == "Cheesecake"
+    assert data["selected_copy"]["subcopy"] == "A focused introduction to Cheesecake."
 
 
 def test_vlm_revision_action_blocks_completed_status(tmp_path):

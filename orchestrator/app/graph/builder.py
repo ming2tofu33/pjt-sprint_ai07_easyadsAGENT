@@ -14,6 +14,7 @@ from orchestrator.app.graph.routers import (
     route_after_input_assets,
     route_after_input_reference_template,
     route_after_product_preprocess,
+    route_after_product_understanding,
     route_after_reference_template_resolve,
     route_after_ocr_gate,
     route_after_t2i_generation,
@@ -80,7 +81,7 @@ def build_intake_graph(checkpointer=None):
     graph.set_entry_point("input")
     graph.add_edge("input", "input_evidence_normalizer")
     graph.add_edge("input_evidence_normalizer", "product_understanding")
-    graph.add_edge("product_understanding", "validator")
+    graph.add_conditional_edges("product_understanding", route_after_product_understanding, {"validator": "validator", "options": "options", "result": END})
     graph.add_conditional_edges("validator", route_after_validator_for_intake, {"options": "options", END: END})
     graph.add_edge("options", "state_update")
     graph.add_edge("state_update", "input_evidence_normalizer")
@@ -159,7 +160,7 @@ def build_marketing_graph(checkpointer=None):
     )
     graph.add_edge("reference_preprocess", "input_evidence_normalizer")
     graph.add_edge("input_evidence_normalizer", "product_understanding")
-    graph.add_edge("product_understanding", "validator")
+    graph.add_conditional_edges("product_understanding", route_after_product_understanding, {"validator": "validator", "options": "options", "result": "result"})
     graph.add_conditional_edges(
         "validator",
         route_after_validator_for_marketing,

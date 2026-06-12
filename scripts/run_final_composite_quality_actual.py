@@ -59,7 +59,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--actual", action="store_true")
     parser.add_argument("--env-file")
-    parser.add_argument("--case", default="macaron_collection_001")
+    parser.add_argument("--case", default="open_domain_product_001")
     parser.add_argument("--seed", type=int, default=62)
     parser.add_argument("--force-flux-generation", action="store_true")
     parser.add_argument("--copy-model", default="gpt-5.4")
@@ -72,6 +72,7 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--canonical-smoke", action="store_true")
     parser.add_argument("--product-understanding-benchmark", action="store_true")
+    parser.add_argument("--composite-benchmark", action="store_true")
     parser.add_argument("--benchmark-manifest")
     parser.add_argument("--stop-after", choices=["product_understanding"])
     parser.add_argument("--source-image")
@@ -106,6 +107,11 @@ def main() -> int:
         _write_summary(output_dir, summary)
         return 0
 
+    if args.composite_benchmark:
+        summary.update(run_composite_benchmark(args=args, output_dir=output_dir))
+        _write_summary(output_dir, summary)
+        return 0
+
     case_dir = output_dir / args.case
     case_dir.mkdir(parents=True, exist_ok=True)
     result = run_actual_case(args=args, output_dir=output_dir, case_dir=case_dir)
@@ -121,17 +127,15 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
     runtime = _canonical_runtime(args)
     cases = [
         ActualCreativeInput(
-            case_id="cheesecake_text_only",
+            case_id="product_text_only",
             input_mode="text_only",
-            user_text="치즈케이크를 홍보하고 싶어",
+            user_text="Create a natural product introduction ad.",
             placement="instagram_feed_static",
             promotion_goal="brand_awareness",
             seed=81,
             output_dir=str(output_dir),
         )
     ]
-    cases[0] = cases[0].model_copy(update={"user_text": "치즈케이크를 홍보하고 싶어"})
-    cases[0] = cases[0].model_copy(update={"user_text": "\uce58\uc988\ucf00\uc774\ud06c\ub97c \ud64d\ubcf4\ud558\uace0 \uc2f6\uc5b4"})
     runs = [_run_or_resume_canonical_case(cases[0], runtime, resume=bool(args.resume))]
     source_image = args.source_image if _is_clean_background_source(args.source_image) else None
     if (
@@ -147,7 +151,7 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
         cases.extend(
             [
                 ActualCreativeInput(
-                    case_id="cheesecake_image_only",
+                    case_id="product_image_only",
                     input_mode="image_only",
                     source_image_path=source_image,
                     source_provenance="actual_generated_reuse" if source_image == runs[0].get("background_image_path") else "user_uploaded",
@@ -157,20 +161,18 @@ def run_canonical_smoke(*, args: argparse.Namespace, output_dir: Path) -> dict[s
                     output_dir=str(output_dir),
                 ),
                 ActualCreativeInput(
-                    case_id="cheesecake_text_and_image",
+                    case_id="product_text_and_image",
                     input_mode="text_and_image",
-                    user_text="카페 신메뉴 치즈케이크를 인스타 피드로 홍보하고 싶어",
+                    user_text="Create an Instagram feed ad centered on the product in the image.",
                     source_image_path=source_image,
                     source_provenance="actual_generated_reuse" if source_image == runs[0].get("background_image_path") else "user_uploaded",
                     placement="instagram_feed_static",
-                    promotion_goal="menu_discovery",
+                    promotion_goal="product_introduction",
                     seed=83,
                     output_dir=str(output_dir),
                 ),
             ]
         )
-        cases[-1] = cases[-1].model_copy(update={"user_text": "카페 신메뉴 치즈케이크를 인스타 피드로 홍보하고 싶어"})
-        cases[-1] = cases[-1].model_copy(update={"user_text": "\uce74\ud398 \uc2e0\uba54\ub274 \uce58\uc988\ucf00\uc774\ud06c\ub97c \uc778\uc2a4\ud0c0 \ud53c\ub4dc\ub85c \ud64d\ubcf4\ud558\uace0 \uc2f6\uc5b4"})
         for case in cases[1:]:
             runs.append(_run_or_resume_canonical_case(case, runtime, resume=bool(args.resume)))
 
@@ -232,8 +234,10 @@ def run_product_understanding_benchmark(*, args: argparse.Namespace, output_dir:
         case_dir = output_dir / "cases" / str(case["case_id"])
         case_dir.mkdir(parents=True, exist_ok=True)
         source_image_path = case.get("source_image_path")
+        synthetic_count = 0
         if source_image_path and not Path(source_image_path).exists():
-            source_image_path = _create_benchmark_source_image(case_dir, str(case.get("case_id") or ""))
+            results.append({"case_id": case.get("case_id"), "status": "failed", "error_code": "missing_actual_source_image"})
+            continue
         try:
             request = ActualCreativeInput(
                 case_id=str(case["case_id"]),
@@ -250,7 +254,7 @@ def run_product_understanding_benchmark(*, args: argparse.Namespace, output_dir:
             evidence = bundle.model_dump()
             product = run_product_understanding(request, runtime, evidence)
             result = _product_understanding_case_result(case, evidence, product)
-            result["status"] = "completed" if result["schema_valid"] and result["broad_category_ok"] and result["category_prefix_ok"] and result["evidence_integrity_ok"] else "failed"
+            result["status"] = "completed" if _product_understanding_case_passes(result) else "failed"
             (case_dir / "input_evidence.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
             (case_dir / "product_understanding.json").write_text(json.dumps(product, ensure_ascii=False, indent=2), encoding="utf-8")
             (case_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -275,7 +279,47 @@ def run_product_understanding_benchmark(*, args: argparse.Namespace, output_dir:
         "runs": results,
         "actual_api_calls": any((item.get("provider_metadata") or {}).get("provider") == "openai" for item in results),
         "image_generation_performed": False,
+        "actual_source_image_count": sum(1 for item in manifest.get("cases", []) if item.get("source_image_path") and Path(str(item.get("source_image_path"))).exists()),
+        "synthetic_source_image_count": 0,
+        "mock_or_fixture_count": 0,
         "stop_after": args.stop_after,
+    }
+
+
+def run_composite_benchmark(*, args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
+    if not args.benchmark_manifest:
+        return {"status": "blocked", "missing_requirements": ["--benchmark-manifest"], "runs": []}
+    manifest = json.loads(Path(args.benchmark_manifest).read_text(encoding="utf-8"))
+    runtime = _canonical_runtime(args)
+    runs: list[dict[str, Any]] = []
+    synthetic_source_count = 0
+    for case in manifest.get("cases", []):
+        source = case.get("source_image_path")
+        if case.get("input_mode") in {"image_only", "text_and_image"} and (not source or not Path(source).exists()):
+            runs.append({"case_id": case.get("case_id"), "status": "failed", "error_code": "missing_actual_source_image"})
+            continue
+        request = ActualCreativeInput(
+            case_id=str(case["case_id"]),
+            input_mode=case.get("input_mode") or "text_only",
+            user_text=case.get("user_text"),
+            source_image_path=source,
+            placement=case.get("placement") or "instagram_feed_static",
+            promotion_goal=case.get("promotion_goal") or "brand_awareness",
+            seed=int(case.get("seed") or args.seed),
+            output_dir=str(output_dir),
+            source_provenance=case.get("source_provenance") or ("user_uploaded" if source else None),
+        )
+        runs.append(run_actual_creative_case(request, runtime).model_dump())
+    comparison_path = _build_canonical_comparison(output_dir, runs)
+    return {
+        "schema_version": "open_domain_product_understanding_composite_v1",
+        "status": _canonical_summary_status(runs),
+        "runs": runs,
+        "actual_api_calls": any(_has_provider_usage(run.get("copy_provider_metadata")) or _has_provider_usage((run.get("vlm_result") or {}).get("provider_metadata") or run.get("vlm_result")) for run in runs),
+        "image_generation_performed": any(bool(run.get("flux_metadata")) for run in runs),
+        "mock_or_fixture_count": sum(int(run.get("mock_or_fixture_count") or 0) for run in runs),
+        "synthetic_source_image_count": synthetic_source_count,
+        "comparison_sheet_path": str(comparison_path) if comparison_path else None,
     }
 
 
@@ -301,44 +345,29 @@ def _product_understanding_case_result(case: dict[str, Any], evidence: dict[str,
         "broad_category_ok": product.get("broad_category") == case.get("expected_broad_category"),
         "category_prefix_ok": category_path[: len(expected_prefix)] == expected_prefix,
         "evidence_integrity_ok": all(item in evidence_ids for item in name_ids),
+        "identity_ok": bool(product.get("product_name")) and product.get("product_name") != "unknown product" and bool(name_ids),
+        "confidence_ok": float(product.get("confidence") or 0.0) >= float(case.get("min_confidence") or 0.70),
+        "review_ok": not product.get("manual_review_required") and not product.get("clarification_required"),
+        "normalized_type_ok": product.get("normalized_product_type") is None or any(ch.isalpha() for ch in str(product.get("normalized_product_type"))),
+        "category_depth_ok": len(category_path) >= (2 if product.get("normalized_product_type") else 1),
     }
 
 
-def _create_benchmark_source_image(case_dir: Path, case_id: str) -> str:
-    path = case_dir / "source_image.png"
-    image = Image.new("RGB", (512, 512), "#f5f1ea")
-    draw = ImageDraw.Draw(image)
-    key = case_id.lower()
-    if "perfume" in key:
-        draw.rectangle((215, 150, 297, 210), fill="#c8d7ee", outline="#54637a", width=5)
-        draw.rounded_rectangle((180, 205, 332, 385), radius=28, fill="#e8f0fb", outline="#54637a", width=7)
-        draw.rectangle((238, 120, 274, 150), fill="#54637a")
-    elif "sneaker" in key:
-        draw.polygon([(105, 315), (190, 245), (330, 268), (405, 330), (390, 370), (135, 370)], fill="#f2f2f2", outline="#222222")
-        draw.line((190, 245, 235, 322, 405, 330), fill="#222222", width=7)
-        draw.line((160, 345, 385, 345), fill="#777777", width=5)
-    elif "latte" in key:
-        draw.ellipse((155, 130, 357, 332), fill="#f4b6c5", outline="#8a5a5a", width=8)
-        draw.rectangle((185, 220, 327, 390), fill="#f4b6c5", outline="#8a5a5a", width=8)
-        draw.ellipse((190, 155, 322, 250), fill="#fff3f5")
-    elif "macaron" in key:
-        for y, color in [(190, "#e8a8c8"), (250, "#f7f1dd"), (310, "#e8a8c8")]:
-            draw.rounded_rectangle((130, y, 382, y + 70), radius=35, fill=color, outline="#8f5d75", width=5)
-    elif "meat" in key or "grilled" in key:
-        draw.rectangle((95, 360, 417, 375), fill="#222222")
-        for x in range(125, 400, 45):
-            draw.line((x, 180, x - 35, 390), fill="#333333", width=5)
-        for box in [(120, 190, 240, 285), (250, 210, 385, 300), (170, 300, 320, 380)]:
-            draw.ellipse(box, fill="#9b3f28", outline="#4f1e15", width=6)
-    elif "cheesecake" in key:
-        draw.polygon([(135, 185), (380, 245), (175, 360)], fill="#f1d37a", outline="#8a5a24")
-        draw.polygon([(135, 185), (380, 245), (340, 272), (175, 360)], fill="#f7e1a0", outline="#8a5a24")
-        draw.rectangle((170, 340, 345, 365), fill="#b06b35")
-    else:
-        draw.ellipse((156, 156, 356, 356), fill="#d8a657", outline="#8a5a24", width=8)
-    image.save(path)
-    return str(path)
-
+def _product_understanding_case_passes(result: dict[str, Any]) -> bool:
+    return all(
+        bool(result.get(key))
+        for key in (
+            "schema_valid",
+            "broad_category_ok",
+            "category_prefix_ok",
+            "evidence_integrity_ok",
+            "identity_ok",
+            "confidence_ok",
+            "review_ok",
+            "normalized_type_ok",
+            "category_depth_ok",
+        )
+    )
 
 def _canonical_runtime(args: argparse.Namespace) -> ActualCreativeRuntime:
     from openai import OpenAI  # type: ignore
@@ -705,8 +734,8 @@ def generate_gpt54_copy_candidates(args: argparse.Namespace) -> dict[str, Any]:
 
         client = OpenAI(timeout=90)
         prompt = (
-            "Return JSON only. Generate exactly 3 ad copy candidates for macaron_collection_001. "
-            "Context: dessert cafe, French macaron collection, menu discovery, premium/editorial/warm. "
+            "Return JSON only. Generate exactly 3 ad copy candidates for the supplied open-domain product. "
+            "Context: product introduction, visual-first commercial post, premium/editorial/warm. "
             "Angles: product-first, emotion-first, editorial/collection-first. English headline allowed; Korean body and CTA preferred; CTA optional. "
             "Avoid AI/smart/consulting/expert/technology/service innovation/best/freshest/free/price/guaranteed claims. "
             "Schema: {\"copy_candidates\":[{\"id\":\"copy_1\",\"angle\":\"...\",\"headline\":\"...\",\"subcopy\":\"...\",\"cta\":\"\",\"grounding\":{},\"score\":{}}],\"selected_copy\":{\"headline\":\"...\",\"subcopy\":\"...\",\"cta\":\"...\"},\"selection_reason\":\"...\"}"
@@ -735,8 +764,8 @@ def generate_flux2_background(args: argparse.Namespace, case_dir: Path) -> dict[
     try:
         engine = get_t2i_engine("flux2_klein_4b")
         prompt = (
-            "Premium editorial commercial photography background for a French macaron collection, "
-            "clean blank negative space for later copy overlay, warm dessert cafe mood, no text, no signage, no logo."
+            "Premium editorial commercial photography background for an open-domain product advertisement, "
+            "clean blank negative space for later copy overlay, warm commercial mood, no text, no signage, no logo."
         )
         output = engine.generate(
             T2IGenerationInput(
@@ -780,9 +809,9 @@ def build_initial_state(*, args: argparse.Namespace, copy_result: dict[str, Any]
         "thread_id": f"final-composite-{args.case}",
         "user_plan": "premium",
         "context": {
-            "business_type": "dessert cafe",
-            "item_or_service": "French macaron collection",
-            "promotion_goal": "menu_discovery",
+            "business_type": "open_domain_product",
+            "item_or_service": "product",
+            "promotion_goal": "product_introduction",
             "brand_tone": "premium/editorial/warm",
         },
         "ad_format_spec": {"ad_format": "instagram_feed", "width": 1024, "height": 1024},

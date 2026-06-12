@@ -121,7 +121,7 @@ def select_for_vision(user_plan: UserPlan, policy: PlanPolicy, node_allowed: lis
 def select_for_premium(node_name: str, latency: LatencyBudget | None, node_allowed: list[ModelClass], plan_allowed: list[ModelClass]) -> ModelClass:
     if latency == "interactive":
         return first_allowed(["api_mini", "api_nano", "local_fast", "mock"], node_allowed, plan_allowed)
-    if node_name in {"image_prompt_planner", "prompt_critic", "auto_pilot_copywriting", "copy_candidate_generation"}:
+    if node_name in {"product_understanding", "image_prompt_planner", "prompt_critic", "auto_pilot_copywriting", "copy_candidate_generation"}:
         return first_allowed(["api_full", "api_mini", "api_nano", "mock"], node_allowed, plan_allowed)
     if node_name in {"background_validation", "final_validation"}:
         return first_allowed(["api_vision", "api_mini", "api_nano", "mock"], node_allowed, plan_allowed)

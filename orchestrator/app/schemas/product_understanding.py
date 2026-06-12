@@ -52,13 +52,15 @@ UNSUPPORTED_CLAIM_CATEGORIES = {
 }
 
 
-_SNAKE_CASE_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
+_SNAKE_CASE_RE = re.compile(r"^(?=.*[a-z])[a-z0-9]+(?:_[a-z0-9]+)*$")
 
 
 class ProductUnderstanding(BaseModel):
     schema_version: Literal["product_understanding_v1"] = "product_understanding_v1"
     product_name: str
     normalized_product_type: str | None = None
+    product_variant: str | None = None
+    campaign_modifiers: list[str] = Field(default_factory=list)
     broad_category: BroadCategory
     category_path: list[str]
     product_form: str | None = None

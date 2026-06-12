@@ -43,3 +43,13 @@ def test_product_understanding_rejects_bad_category_path_and_claims():
             confidence=0.9,
         )
 
+
+def test_normalized_product_type_requires_letter():
+    with pytest.raises(ValidationError):
+        ProductUnderstanding(
+            product_name="niacinamide 5%",
+            normalized_product_type="5",
+            broad_category="beauty_and_personal_care",
+            category_path=["beauty_and_personal_care", "5"],
+            confidence=0.8,
+        )
