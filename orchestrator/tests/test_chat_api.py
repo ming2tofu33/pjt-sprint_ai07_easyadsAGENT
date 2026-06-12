@@ -75,7 +75,8 @@ def test_chat_start_passes_reference_template_to_graph(monkeypatch):
                 "copy_candidates": [{"id": "copy_1", "headline": "여름엔 수박주스"}],
             }
 
-    monkeypatch.setattr(chat_api, "_GRAPH", FakeGraph())
+    fake_graph = FakeGraph()
+    monkeypatch.setattr(chat_api, "get_marketing_graph", lambda: fake_graph)
     client = TestClient(app)
 
     response = client.post(
@@ -118,7 +119,8 @@ def test_photo_start_invokes_graph_with_photo_entry(monkeypatch):
 
     from orchestrator.app.api import photo as photo_api
 
-    monkeypatch.setattr(photo_api, "_GRAPH", FakeGraph())
+    fake_graph = FakeGraph()
+    monkeypatch.setattr(photo_api, "get_marketing_graph", lambda: fake_graph)
     client = TestClient(app)
 
     response = client.post(
@@ -179,7 +181,8 @@ def test_photo_start_can_return_option_question(monkeypatch):
 
     from orchestrator.app.api import photo as photo_api
 
-    monkeypatch.setattr(photo_api, "_GRAPH", FakeGraph())
+    fake_graph = FakeGraph()
+    monkeypatch.setattr(photo_api, "get_marketing_graph", lambda: fake_graph)
     client = TestClient(app)
 
     response = client.post(
@@ -587,7 +590,8 @@ def test_chat_brief_resumes_graph_with_frontend_choices(monkeypatch):
                 "final_image_path": "data/outputs/job_1/final_composite.png",
             }
 
-    monkeypatch.setattr(chat_api, "_GRAPH", FakeGraph())
+    fake_graph = FakeGraph()
+    monkeypatch.setattr(chat_api, "get_marketing_graph", lambda: fake_graph)
     client = TestClient(app)
 
     response = client.post(
@@ -640,7 +644,8 @@ def test_chat_brief_hides_internal_image_prompt_from_user_summary(monkeypatch):
                 "final_image_path": "data/outputs/job_1/final_composite.png",
             }
 
-    monkeypatch.setattr(chat_api, "_GRAPH", FakeGraph())
+    fake_graph = FakeGraph()
+    monkeypatch.setattr(chat_api, "get_marketing_graph", lambda: fake_graph)
     client = TestClient(app)
 
     response = client.post(
@@ -675,7 +680,8 @@ def test_chat_start_accepts_selected_reference_template_id(monkeypatch):
                 "copy_candidates": [{"id": "copy_1", "headline": "Latte"}],
             }
 
-    monkeypatch.setattr(chat_api, "_GRAPH", FakeGraph())
+    fake_graph = FakeGraph()
+    monkeypatch.setattr(chat_api, "get_marketing_graph", lambda: fake_graph)
     client = TestClient(app)
 
     response = client.post(
@@ -709,7 +715,8 @@ def test_photo_start_accepts_selected_reference_template_id(monkeypatch):
 
     from orchestrator.app.api import photo as photo_api
 
-    monkeypatch.setattr(photo_api, "_GRAPH", FakeGraph())
+    fake_graph = FakeGraph()
+    monkeypatch.setattr(photo_api, "get_marketing_graph", lambda: fake_graph)
     client = TestClient(app)
 
     response = client.post(
