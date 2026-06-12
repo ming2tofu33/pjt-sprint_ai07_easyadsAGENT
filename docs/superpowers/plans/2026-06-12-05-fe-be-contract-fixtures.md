@@ -26,7 +26,7 @@
 - Create: `apps/web/lib/generation-job-stage.contract.test.ts`
 - Create: `orchestrator/tests/test_generation_stage_contract.py`
 
-- [ ] **Step 1: Create the fixture**
+- [x] **Step 1: Create the fixture**
 
 Create `apps/web/types/contracts/generation-stages.json`:
 
@@ -47,7 +47,7 @@ Create `apps/web/types/contracts/generation-stages.json`:
 }
 ```
 
-- [ ] **Step 2: Add FE contract test**
+- [x] **Step 2: Add FE contract test**
 
 Create `apps/web/lib/generation-job-stage.contract.test.ts`:
 
@@ -75,7 +75,7 @@ describe("generation stage FE/BE contract", () => {
 });
 ```
 
-- [ ] **Step 3: Add BE contract test**
+- [x] **Step 3: Add BE contract test**
 
 Create `orchestrator/tests/test_generation_stage_contract.py`:
 
@@ -103,7 +103,7 @@ def test_backend_progress_stages_are_listed_in_frontend_contract():
     assert backend_known <= expected
 ```
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -115,7 +115,7 @@ EASYADS_DB_BACKEND=memory uv run python -m pytest orchestrator/tests/test_genera
 
 Expected: PASS. If the FE mapper does not support a listed stage, update `apps/web/lib/generation-job-stage.ts` in this task.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/web/types/contracts/generation-stages.json apps/web/lib/generation-job-stage.contract.test.ts orchestrator/tests/test_generation_stage_contract.py
