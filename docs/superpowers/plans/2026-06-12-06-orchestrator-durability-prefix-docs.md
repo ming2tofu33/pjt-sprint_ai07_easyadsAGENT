@@ -206,7 +206,7 @@ git commit -m "chore(bff): use standard marketing api prefix"
 - Modify: `docs/FE_BFF_BE_FIX_PLAN.md`
 - Modify: `apps/web/ROUTES.md`
 
-- [ ] **Step 1: Find mock-era wording**
+- [x] **Step 1: Find mock-era wording**
 
 Run:
 
@@ -216,7 +216,7 @@ rg -n "mock|모의|샘플|/v1/marketing|Fastify|InMemorySaver" docs apps/web/ROU
 
 Expected: list of outdated wording. Only edit docs affected by the current prefix/checkpointer/BFF migration.
 
-- [ ] **Step 2: Update architecture statements**
+- [x] **Step 2: Update architecture statements**
 
 In `docs/FE_BFF_BE_LOGIC_MAP.md`, update the BE prefix section to:
 
@@ -235,17 +235,17 @@ In `docs/FE_BFF_BE_FIX_PLAN.md`, add a status note near Phase 5:
 Status note, 2026-06-12: prefix migration should be implemented as an alias first. Do not remove `/v1/marketing/*` until deployed clients have switched to `/api/v1/marketing/*`.
 ```
 
-- [ ] **Step 3: Run markdown grep validation**
+- [x] **Step 3: Run markdown grep validation**
 
 Run:
 
 ```bash
-rg -n "mock 진행 화면|mock 광고 결과|InMemorySaver 체크포인터" docs apps/web/ROUTES.md
+rg -n "mock 진행 화면|mock 광고 결과|InMemorySaver 체크포인터" docs/FE_BFF_BE_LOGIC_MAP.md docs/FE_BFF_BE_FIX_PLAN.md apps/web/ROUTES.md
 ```
 
 Expected: no outdated statements remain unless they explicitly describe historical behavior.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/FE_BFF_BE_LOGIC_MAP.md docs/FE_BFF_BE_FIX_PLAN.md apps/web/ROUTES.md

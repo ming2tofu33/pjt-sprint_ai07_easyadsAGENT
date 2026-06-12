@@ -6,7 +6,9 @@
 
 **Architecture:** Phase별로 독립 배포 가능하게 설계함. Phase 1(BFF 단일화)이 최우선 — Fastify `apps/bff` 전용 엔드포인트 14개를 Next.js Route Handlers로 이식 후 base URL을 same-origin으로 전환, Fastify 폐기. Phase 3(god component 분해)은 Phase 1 완료 후 진행(어느 BFF로 가는지 고민 제거된 상태에서). 각 Phase 내 Task는 2~5분 단위, TDD, 작은 커밋.
 
-**Tech Stack:** Next.js 14 App Router Route Handlers, zod, Vitest + Testing Library, FastAPI, LangGraph(SqliteSaver), TypeScript `tsc --noEmit`.
+**Status note, 2026-06-12:** Next BFF route parity와 same-origin 기본값이 적용되었고, marketing chat/photo는 `/api/v1/marketing/*` 표준 prefix를 사용한다. `/v1/marketing/*`는 레거시 호환 alias로만 유지한다. LangGraph checkpointer는 `EASYADS_DB_BACKEND=postgres`에서 Postgres durable saver를 사용하고, `memory`는 로컬/테스트용이다.
+
+**Tech Stack:** Next.js 14 App Router Route Handlers, zod, Vitest + Testing Library, FastAPI, LangGraph(Postgres checkpointer in postgres mode), TypeScript `tsc --noEmit`.
 
 **선행 조건/규칙:**
 - 작업 디렉터리: `/home/spai0722/codeit`
@@ -1439,76 +1441,42 @@ it("parses the BE optionQuestion fixture", () => {
 
 ---
 
-## Phase 5: BE 내구성 + 문서 (P7, P8, P10) — BE 팀 합의 필요, 별도 PR
+## Phase 5: BE 내구성 + 문서 (P7, P8, P10)
 
-⚠️ orchestrator app 코드 변경은 팀 코드 소유 영역 — 구현 전 담당자 합의. 합의 전이면 이 Phase는 `fix.md`-류 제안서로만 전달.
+Status note, 2026-06-12: prefix migration is implemented as an alias first. Do not remove `/v1/marketing/*` until deployed clients have switched to `/api/v1/marketing/*` for at least one deployment cycle.
 
-### Task 5.1: InMemorySaver → SqliteSaver (P8)
+### Task 5.1: Postgres checkpointer factory (P8)
 
-**Files:**
-- Modify: `orchestrator/app/graph/builder.py` (두 그래프의 `checkpointer=InMemorySaver()`)
-- Modify: `pyproject.toml` (`langgraph-checkpoint-sqlite` 의존성)
-- Test: `orchestrator/tests/test_checkpointer_durability.py`
+현재 구현 기준:
 
-- [ ] **Step 1: 실패하는 테스트** — 그래프 재빌드(프로세스 재시작 시뮬레이션) 후 thread 체크포인트가 살아있는지:
+- `orchestrator/app/graph/checkpointer.py`가 `EASYADS_DB_BACKEND=postgres`일 때 PostgresSaver를 사용한다.
+- `EASYADS_DB_BACKEND=memory`는 로컬/테스트용 InMemorySaver를 유지한다.
+- HITL resume 내구성은 production postgres 설정에서 보장한다.
 
-```python
-import tempfile
-from pathlib import Path
+검증:
 
-def test_checkpoint_survives_graph_rebuild(tmp_path, monkeypatch):
-    db_path = tmp_path / "checkpoints.sqlite"
-    monkeypatch.setenv("LANGGRAPH_CHECKPOINT_DB", str(db_path))
-
-    from orchestrator.app.graph.builder import build_intake_graph
-    graph1 = build_intake_graph()
-    config = {"configurable": {"thread_id": "t-durability"}}
-    graph1.invoke({"user_input": "테스트 입력"}, config)  # 실제 초기 state 키는 create_initial_marketing_state 기준으로 교체
-
-    graph2 = build_intake_graph()  # 재시작 시뮬레이션
-    snapshot = graph2.get_state(config)
-    assert snapshot.values  # InMemorySaver면 비어 있어 FAIL
+```bash
+EASYADS_DB_BACKEND=memory uv run python -m pytest orchestrator/tests/test_graph_checkpointer.py -q
 ```
-
-- [ ] **Step 2:** 실행 — `uv run python -m pytest orchestrator/tests/test_checkpointer_durability.py -v` → FAIL
-- [ ] **Step 3: 구현** (`builder.py`):
-
-```python
-import os
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.checkpoint.sqlite import SqliteSaver
-
-def _build_checkpointer():
-    db_path = os.environ.get("LANGGRAPH_CHECKPOINT_DB", "")
-    if not db_path:
-        return InMemorySaver()  # 기존 동작 기본 유지 (opt-in)
-    import sqlite3
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    return SqliteSaver(conn)
-```
-두 그래프의 `checkpointer=InMemorySaver()`를 `checkpointer=_build_checkpointer()`로 교체. `.env.example`에 `LANGGRAPH_CHECKPOINT_DB=` 항목 추가(기본 빈 값 = 기존 동작).
-
-- [ ] **Step 4:** 전체 BE suite — `uv run python -m pytest orchestrator/tests && uv run python -m compileall orchestrator` → PASS
-- [ ] **Step 5: 커밋 (사용자)** — `git commit -m "feat(graph): opt-in SqliteSaver checkpointer for HITL durability"`
 
 ### Task 5.2: BE prefix 통일 (P7) — 마이그레이션 안전 방식
 
-- [ ] **Step 1:** `orchestrator/app/api/chat.py:14`의 `prefix="/v1/marketing/chat"`을 유지한 채, `app.py`에서 같은 라우터를 `/api/v1/marketing/chat`으로 **추가 마운트** (alias):
+- [x] **Step 1:** `orchestrator/app/api/chat.py:14`의 `prefix="/v1/marketing/chat"`을 유지한 채, `app.py`에서 같은 라우터를 `/api/v1/marketing/chat`으로 **추가 마운트** (alias):
 
 ```python
     app.include_router(chat_router)  # 기존 경로 유지
     app.include_router(chat_router, prefix="/api")  # 신규 표준 경로
 ```
 photo_router 동일.
-- [ ] **Step 2:** Next 라우트(Task 1.3, 1.6)의 대상 경로를 `/api/v1/marketing/chat/*`로 전환.
+- [x] **Step 2:** Next 라우트(Task 1.3, 1.6)의 대상 경로를 `/api/v1/marketing/chat/*`로 전환.
 - [ ] **Step 3:** 한 사이클 후 구 prefix 마운트 제거 (별도 PR).
-- [ ] **Step 4: 커밋 (사용자)** — `git commit -m "feat(api): mount marketing chat router under standard /api/v1 prefix"`
+- [x] **Step 4: 커밋** — `git commit -m "feat(api): mount marketing chat router under standard /api/v1 prefix"`
 
 ### Task 5.3: 문서 갱신 (P10)
 
-- [ ] **Step 1:** `apps/web/ROUTES.md`의 "mock 진행 화면"/"mock 광고 결과" 표기를 실제 동작 설명으로 갱신, BFF 단일화 후 아키텍처 1단락 추가.
-- [ ] **Step 2:** `CLAUDE.md`(루트)에 BFF 단일화 사실 반영 (apps/bff deprecated, api 계층은 apps/web/app/api).
-- [ ] **Step 3: 커밋 (사용자)** — `git commit -m "docs: update ROUTES.md and CLAUDE.md after BFF unification"`
+- [x] **Step 1:** `apps/web/ROUTES.md`의 과거 mock 생성 화면 표기를 실제 동작 설명으로 갱신, BFF 단일화 후 아키텍처 1단락 추가.
+- [x] **Step 2:** 루트 `CLAUDE.md`는 현재 repo에 없으므로 제외. BFF 단일화 사실은 `FE_BFF_BE_LOGIC_MAP.md`와 본 문서에 반영.
+- [ ] **Step 3: 커밋** — `git commit -m "docs: update FE BFF BE migration status"`
 
 ---
 
@@ -1530,5 +1498,4 @@ photo_router 동일.
 - **photo upload 디스크 의존:** Phase 1 헤더의 결정 (a)/(b) — 사용자 확인 전 Task 1.6은 (a)로 진행 가능하되 Vercel 배포 시 (b) 필수.
 
 ---
-미커밋 정책: 모든 커밋은 사용자가 직접 수행. 이 문서는 계획서이며 코드 변경 없음.
-근거 문서: `/home/spai0722/FE_BFF_BE_LOGIC_MAP.md` (P1~P10 정의).
+근거 문서: `docs/FE_BFF_BE_LOGIC_MAP.md` (P1~P10 정의).

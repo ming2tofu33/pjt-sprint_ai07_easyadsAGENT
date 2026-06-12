@@ -16,26 +16,26 @@
 │  - 화면 9개 라우트가 전부 ChatGenerateClient.tsx 한 파일 렌더  │
 │  - lib/api-client.ts (1,047줄) 가 모든 서버 호출 담당          │
 └──────────────────────────────────────────────────────────────┘
-   │  fetch → NEXT_PUBLIC_BFF_BASE_URL (기본 http://127.0.0.1:4000)
+   │  fetch → same-origin `/api/*` (Next BFF 기본값)
    ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ BFF ①: apps/bff (Fastify, 단일 app.js 829줄, 포트 4000)       │
-│  - zod 검증 + Supabase 토큰 검증 + camel↔snake 수동 변환      │
-│  - 33개 엔드포인트                                            │
+│ BFF ①: apps/bff (Fastify, legacy fallback)                    │
+│  - 한 배포 사이클 호환용으로 보존, 신규 연결의 기준 아님       │
 ├──────────────────────────────────────────────────────────────┤
-│ BFF ②: apps/web/app/api/* (Next.js Route Handlers)            │
-│  - _proxy/orchestrator.ts 공용 프록시 (161줄)                 │
-│  - 14개 라우트 파일 — BFF ①과 일부만 겹침 (아래 3절)          │
+│ BFF ②: apps/web/app/api/* (Next.js Route Handlers, canonical) │
+│  - _proxy/orchestrator.ts 공용 프록시                          │
+│  - FE api-client 기본 대상. 인증/검증/프록시 단일화 진행       │
 └──────────────────────────────────────────────────────────────┘
    │  ORCHESTRATOR_BASE_URL (기본 http://127.0.0.1:8000)
    ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ BE: orchestrator (FastAPI + LangGraph)                        │
-│  - /v1/marketing/chat/*  (chat.py — 브리프/질문 플로우)       │
+│  - /api/v1/marketing/chat/*, /photo/* (표준 prefix)            │
+│  - /v1/marketing/* (레거시 호환 prefix, 제거 예정)             │
 │  - /api/v1/generation-jobs (LangGraph 28노드 그래프 실행)      │
 │  - /api/v1/{references,brand-kits,assets,archive,chat-threads,│
 │    usage, generation-outputs, validation-feedback}            │
-│  - 체크포인터 InMemorySaver — 재시작 시 HITL 상태 전부 소실    │
+│  - Postgres checkpointer 사용 가능. memory backend는 로컬/테스트│
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -95,6 +95,8 @@ surface 8종(`home/studio/reference/ads/my/brand/chat/photo`) × stage 5종(`sta
 
 ### 3-1. 이중 BFF 라우트 대조표
 
+Status note, 2026-06-12: `apps/web/app/api/*` Next Route Handler 이식이 완료되어 FE의 기본 호출 경로는 same-origin Next BFF다. `apps/bff` Fastify BFF는 롤백/호환 확인용으로만 남아 있으며 신규 기능의 기준 구현은 Next BFF다.
+
 | 엔드포인트 | Fastify (apps/bff) | Next app/api | 비고 |
 |---|---|---|---|
 | `POST/GET /api/generation-jobs(+/:id, /answer)` | ✅ | ✅ | **중복 구현** (인증 주입 로직도 각자 구현) |
@@ -108,17 +110,19 @@ surface 8종(`home/studio/reference/ads/my/brand/chat/photo`) × stage 5종(`sta
 | `GET /api/generated-assets` | ❌ | ✅ | Next에만 |
 | `POST /api/account/delete` | ❌ | ✅ | Next에만 |
 
-문제:
-1. `api-client.ts`는 항상 `NEXT_PUBLIC_BFF_BASE_URL` 한 곳만 봄. 로컬 dev는 :4000(Fastify)로 전부 가지만, Vercel처럼 base를 Next 자신으로 두면 **Fastify 전용 엔드포인트(chat start, archive, chat-threads…)는 404**. 배포 환경별로 동작하는 기능 집합이 다름.
-2. 겹치는 3개 도메인은 **인증(Supabase principal resolve)·에러 포맷·필드 변환이 양쪽에 따로 구현**돼 드리프트 중. 예: Fastify generation-jobs 핸들러는 camel/snake 양쪽 키를 30줄짜리 수동 매핑+delete로 정리함 — 필드 1개 추가 시 FE 타입 + Fastify 매핑 + Next 프록시 + BE 스키마 4곳 수정 필요.
-3. Fastify BFF가 **app.js 단일 파일 829줄** — 라우트/스키마/프록시/인증 전부 한 파일.
+남은 문제:
+1. Fastify 코드가 아직 repo에 남아 있어 문서/운영자 관점에서는 두 BFF가 공존한다. 단, FE 기본 base는 same-origin이므로 배포 웹은 Next BFF를 기준으로 동작한다.
+2. 겹치는 도메인의 인증/에러 포맷은 Next BFF 기준으로 고정됐지만, Fastify 제거 전까지는 롤백 경로와 동작 차이를 계속 감시해야 한다.
+3. Fastify BFF가 **app.js 단일 파일 829줄**로 남아 있어 후속 PR에서 삭제/정리해야 한다.
 
 ### 3-2. BE 경로 prefix도 2종
 
-- chat 플로우: `/v1/marketing/chat/*` (구형 prefix)
-- 리소스 라우터: `/api/v1/*`
+- 표준 신규 경로: `/api/v1/marketing/chat/*`, `/api/v1/marketing/photo/*`
+- 레거시 호환 경로: `/v1/marketing/chat/*`, `/v1/marketing/photo/*`
+- Next BFF는 표준 경로를 사용한다.
+- 레거시 경로는 한 배포 사이클 후 제거한다.
 
-BFF가 둘 다 알아서 분기 중. 새 엔드포인트 추가 때마다 "어느 prefix?"를 사람이 기억해야 함.
+리소스 라우터도 `/api/v1/*`를 사용하므로 신규 문서/테스트/프록시는 `/api/v1`을 기준으로 작성한다.
 
 ---
 
@@ -127,15 +131,15 @@ BFF가 둘 다 알아서 분기 중. 새 엔드포인트 추가 때마다 "어�
 ```
 [채팅 입력] ChatStartStep
   └→ api-client.startChatGeneration
-      └→ Fastify POST /api/generate/chat/start
-          └→ BE POST /v1/marketing/chat/start  (브리프/질문 생성, intake 그래프)
+      └→ Next BFF POST /api/generate/chat/start
+          └→ BE POST /api/v1/marketing/chat/start  (브리프/질문 생성, intake 그래프)
 [브리프 확정 → 최종 생성] handleOpenGeneratedResult
   └→ setOptimisticSurface("chat") + setGenerationStage("generating")   ← #6 수정 후: URL은 아직 안 바꿈
   └→ api-client.createGenerationJob
-      └→ BFF POST /api/generation-jobs (Supabase principal 주입)
+      └→ Next BFF POST /api/generation-jobs (Supabase principal 주입)
           └→ BE POST /api/v1/generation-jobs
               └→ run_mode 분기: mock_immediate / t2i(engine 매핑표) / graph_job / modal 라우팅
-              └→ LangGraph 28노드 그래프 (InMemorySaver 체크포인트)
+              └→ LangGraph 28노드 그래프 (postgres backend는 durable checkpointer)
   └→ router.replace(buildChatStageHrefForJob("generating", job))       ← jobId 붙은 URL로 1회 교체
 [폴링 루프] getGenerationJob(jobId) 반복
   ├→ status=waiting + interrupt → generation-job-interrupt.ts 파싱 → GenerationJobInterruptStep (HITL 질문)
@@ -149,7 +153,7 @@ BFF가 둘 다 알아서 분기 중. 새 엔드포인트 추가 때마다 "어�
 주의 지점:
 - **stage 이름이 문자열 계약**: BE `progress.current_stage` ↔ FE `generation-job-stage.ts`의 7키(`queued/planning/image/storage/waiting/completed/failed`)를 문자열로 매핑. BE에서 stage 이름 바꾸면 FE 진행바 조용히 깨짐(타입 공유 없음).
 - **interrupt payload도 문자열 계약**: `generation-job-interrupt.ts`(245줄)가 BE interrupt JSON을 런타임 파싱. 스키마 공유 없어서 BE 쪽 형태 변경 = FE 질문 UI 무음 실패.
-- **InMemorySaver**: 오케스트레이터 재시작 시 진행 중 잡의 HITL 상태 소실 → FE 폴링이 갑자기 실패 응답 수신 → 실패 화면. "가끔 이유 없이 실패 뜸" 류 제보의 유력 원인.
+- **Checkpointer 모드**: `EASYADS_DB_BACKEND=postgres`에서는 Postgres checkpointer가 HITL resume 상태를 보존한다. `memory` 모드는 로컬/테스트용이며 재시작 시 진행 중 interrupt 상태가 유지되지 않는다.
 
 ---
 
@@ -163,17 +167,17 @@ BFF가 둘 다 알아서 분기 중. 새 엔드포인트 추가 때마다 "어�
 | P4 | URL 빌더 2종 (jobId 유/무) — 타입 강제 없음 | #6의 직접 원인 | 🟠 |
 | P5 | camel↔snake 수동 변환 (BFF 30줄 매핑) | 필드 추가 시 4곳 수정, 누락 시 무음 드랍 | 🟠 |
 | P6 | FE↔BE 계약이 전부 문자열 (stage명, interrupt JSON) — 타입/스키마 공유 없음 | BE 변경이 FE를 조용히 깨뜨림 | 🟠 |
-| P7 | BE prefix 2종 (`/v1/marketing` vs `/api/v1`) | 라우팅 혼선 | 🟡 |
-| P8 | InMemorySaver 체크포인터 | 재시작 시 진행 중 잡 실패로 보임 | 🟡 |
+| P7 | BE prefix 2종 (`/v1/marketing` vs `/api/v1`) | 표준 alias 적용됨, 레거시 제거 전까지 혼선 가능 | 🟡 |
+| P8 | checkpointer 운영 모드 | postgres 모드는 durable, memory 모드는 로컬/테스트용 | 🟡 |
 | P9 | Fastify BFF 단일 829줄 app.js | BFF 수정 병목 | 🟡 |
-| P10 | ROUTES.md 등 문서가 mock 시절 설명 잔존 ("mock 진행 화면") | 신규 작업자 오해 | 🟡 |
+| P10 | ROUTES.md 등 문서가 과거 mock 시절 표현을 포함 | 신규 작업자 오해 | 🟡 |
 
 ## 6. 개선 방향 (제안 — 구현 전 합의 필요)
 
-1. **P3 먼저**: BFF 단일화 결정(Next route handlers로 통일 권장 — Vercel 배포와 일치, Fastify 전용 엔드포인트 14개를 Next로 이식 후 apps/bff 폐기). 이것이 끝나야 FE 수정 시 "어느 BFF가 받나"를 고민 안 함.
+1. **P3 현재 상태**: Next route handlers 기준 단일화가 진행 완료됨. 남은 일은 Fastify 제거 타이밍 결정과 한 배포 사이클 검증.
 2. **P1/P2**: ChatGenerateClient를 surface별 컴포넌트로 분리하고, 화면 상태의 single source of truth를 URL로 통일(React state는 파생값, 스토리지는 캐시로 격하). 복원 useEffect는 surface별로 쪼갬. #5/#6 수정 경험상 이 분리 없이는 같은 류 버그 계속 남.
 3. **P6**: stage명·interrupt 스키마를 공유 계약 파일(예: zod 스키마 + BE Pydantic에서 JSON Schema export)로 고정.
 4. **P4**: `buildDashboardHref`에서 chat+generating/complete 조합을 타입 에러로 막고 jobId 필수 빌더만 허용.
 
 ---
-미커밋. 본 문서는 계획/분석 문서이며 코드 변경 없음.
+본 문서는 2026-06-12 기준 FE/BFF/BE 연결 상태를 반영한다.
