@@ -191,4 +191,29 @@ describe("proxyOrchestratorJson", () => {
     expect(body.error_code).toBe("supabase_auth_configuration_missing");
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("attaches the internal secret header to orchestrator requests when configured", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    vi.stubEnv("EASYADS_INTERNAL_API_SECRET", "internal_secret_1");
+    const fetchMock = vi.fn(async () => jsonResponse({ success: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/usage", { method: "GET" });
+    await proxyOrchestratorJson(request, "GET", "/api/v1/usage");
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>)["X-EasyAds-Internal-Secret"]).toBe("internal_secret_1");
+  });
+
+  it("omits the internal secret header when not configured", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn(async () => jsonResponse({ success: true }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/usage", { method: "GET" });
+    await proxyOrchestratorJson(request, "GET", "/api/v1/usage");
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    expect((init.headers as Record<string, string>)["X-EasyAds-Internal-Secret"]).toBeUndefined();
+  });
 });
