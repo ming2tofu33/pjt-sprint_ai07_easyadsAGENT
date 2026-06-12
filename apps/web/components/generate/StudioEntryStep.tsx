@@ -23,6 +23,7 @@ const statusLabelByThreadStatus: Record<string, string> = {
   failed: "생성 실패",
   archived: "보관됨"
 };
+const RECENT_WORKSPACE_LIMIT = 5;
 
 function formatThreadDate(value: string | null | undefined): string {
   if (!value) {
@@ -54,7 +55,7 @@ export function StudioEntryStep({
   const loadThreads = useCallback((isActive: () => boolean = () => true) => {
     setIsLoadingThreads(true);
     setThreadLoadError(null);
-    listChatThreads({ limit: 20 })
+    listChatThreads({ limit: RECENT_WORKSPACE_LIMIT, includeTotal: false })
       .then((response) => {
         if (!isActive()) {
           return;
@@ -145,7 +146,7 @@ export function StudioEntryStep({
           </div>
         ) : (
           <div className={styles.workspaceList}>
-            {threads.slice(0, 5).map((thread) => {
+            {threads.slice(0, RECENT_WORKSPACE_LIMIT).map((thread) => {
               const statusLabel = statusLabelByThreadStatus[thread.status] ?? "작업 중";
               return (
                 <div key={thread.thread_id} className={styles.workspaceCard}>

@@ -36,12 +36,18 @@ type ChatStartStepProps = {
   onBack: () => void;
   onGoHome: () => void;
   onHistory?: () => void;
+  errorMessage?: string | null;
+  initialPrompt?: string;
 };
 
-export function ChatStartStep({ onSubmit, onBack, onGoHome, onHistory }: ChatStartStepProps) {
+export function ChatStartStep({ onSubmit, onBack, onGoHome, onHistory, errorMessage = null, initialPrompt = "" }: ChatStartStepProps) {
   const referenceFileInputRef = useRef<HTMLInputElement | null>(null);
   const [referenceTemplateTitle] = useState(() => readGenerationRequestContext()?.selectedReferenceTemplateTitle ?? "");
   const [value, setValue] = useState(() => {
+    const initialPromptValue = initialPrompt.trim();
+    if (initialPromptValue) {
+      return initialPromptValue;
+    }
     const requestContext = readGenerationRequestContext();
     if (requestContext?.source === "reference_gallery") {
       return "";
@@ -149,7 +155,11 @@ export function ChatStartStep({ onSubmit, onBack, onGoHome, onHistory }: ChatSta
       />
       {referenceImageFile ? <p className={styles.referenceAttachmentNote}>참고 이미지: {referenceImageFile.name}</p> : null}
       {referenceImageError ? <p className={styles.referenceAttachmentNote}>{referenceImageError}</p> : null}
-      <p className={styles.helperText}>대충 써도 괜찮아요. AI가 찰떡같이 알아들을게요.</p>
+      {errorMessage ? (
+        <p className={styles.helperText} role="alert">{errorMessage}</p>
+      ) : (
+        <p className={styles.helperText}>대충 써도 괜찮아요. AI가 찰떡같이 알아들을게요.</p>
+      )}
     </>
   );
 }

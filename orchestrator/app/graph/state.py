@@ -102,6 +102,10 @@ class MarketingState(TypedDict, total=False):
     input_normalization_status: str | None
     input_conflicts: list[dict[str, Any]]
     unresolved_questions: list[str]
+    product_understanding: dict[str, Any] | None
+    product_understanding_status: str | None
+    product_understanding_confidence: float | None
+    product_understanding_provider_metadata: dict[str, Any] | None
     vision_preprocess_mode: str | None
     selected_reference_template_id: str | None
     selected_reference_template: dict[str, Any] | None
@@ -146,6 +150,12 @@ class MarketingState(TypedDict, total=False):
     text_layout_spec: dict[str, Any] | TextLayoutSpec | None
     text_style_spec: dict[str, Any] | TextStyleSpec | None
     copy_visual_intent: dict[str, Any] | None
+    product_copy_context: dict[str, Any] | None
+    copy_presence_plan: dict[str, Any] | None
+    language_policy: dict[str, Any] | None
+    interaction_copy_plan: dict[str, Any] | None
+    minimal_copy_candidates: list[dict[str, Any]]
+    selected_minimal_copy_candidate_id: str | None
     typography_art_direction: dict[str, Any] | None
     font_catalog_summary: list[dict[str, Any]]
     adaptive_typography_report: dict[str, Any] | None
@@ -260,8 +270,8 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "copy_generation_mode_confirmed": request.copy_generation_mode is not None,
         "user_custom_headline": request.user_custom_headline,
         "user_custom_subcopy": request.user_custom_subcopy,
-        "source_asset_id": request.source_asset_id if hasattr(request, "source_asset_id") else None,
-        "reference_asset_id": request.reference_asset_id if hasattr(request, "reference_asset_id") else None,
+        "source_asset_id": request.source_asset_id,
+        "reference_asset_id": request.reference_asset_id,
         "source_image_path": request.source_image_path,
         "reference_image_path": request.reference_image_path,
         "selected_reference_template_id": request.selected_reference_template_id,
@@ -297,8 +307,8 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "user_selection": None,
         "image_input": model_to_dict(request.image_input),
         "reference_input": model_to_dict(request.reference_input),
-        "source_asset_id": request.source_asset_id if hasattr(request, "source_asset_id") else None,
-        "reference_asset_id": request.reference_asset_id if hasattr(request, "reference_asset_id") else None,
+        "source_asset_id": request.source_asset_id,
+        "reference_asset_id": request.reference_asset_id,
         "source_image_path": request.source_image_path,
         "reference_image_path": request.reference_image_path,
         "vision_preprocess_mode": request.vision_preprocess_mode,
@@ -345,6 +355,12 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "text_layout_spec": None,
         "text_style_spec": None,
         "copy_visual_intent": None,
+        "product_copy_context": None,
+        "copy_presence_plan": None,
+        "language_policy": None,
+        "interaction_copy_plan": None,
+        "minimal_copy_candidates": [],
+        "selected_minimal_copy_candidate_id": None,
         "image_layout_analysis": None,
         "layout_candidate_scores": [],
         "layout_refinement_result": None,
@@ -433,21 +449,46 @@ def update_current_brief(state: MarketingState, updates: dict[str, Any]) -> None
     state["updated_at"] = now_iso()
 
 
+# Declarative dirty-field propagation: (trigger fields, fields invalidated when
+# any trigger changes). Single-pass and non-transitive by design — derived
+# fields appearing as triggers (e.g. marketing_copy) only fire when explicitly
+# listed in changed_fields, mirroring the legacy if-chain.
+DIRTY_PROPAGATION_RULES: tuple[tuple[frozenset[str], frozenset[str]], ...] = (
+    (
+        frozenset({"brand_tone", "target_persona", "promotion_goal", "usp", "item_or_service"}),
+        frozenset({"marketing_copy", "copywriting_output"}),
+    ),
+    (
+        frozenset({"business_type", "brand_tone", "ad_format", "usp"}),
+        frozenset({"image_prompt", "prompt_render_output"}),
+    ),
+    (
+        frozenset({"ad_format"}),
+        frozenset({"ad_format_spec", "layout_spec"}),
+    ),
+    (
+        frozenset({"marketing_copy", "copywriting_output", "item_or_service", "promotion_goal", "price_or_discount"}),
+        frozenset({"copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"}),
+    ),
+    (
+        frozenset({"brand_tone", "target_persona", "region_type", "usp"}),
+        frozenset({"text_style_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"}),
+    ),
+    (
+        frozenset({"ad_format", "layout_spec", "ad_format_spec"}),
+        frozenset({"text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"}),
+    ),
+    (
+        frozenset({"copy_generation_mode", "user_custom_headline", "user_custom_subcopy"}),
+        frozenset({"marketing_copy", "copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"}),
+    ),
+)
+
+
 def calculate_dirty_fields(state: MarketingState, changed_fields: list[str] | None = None) -> list[str]:
     changed = set(changed_fields or [])
     dirty: set[str] = set(changed)
-    if changed & {"brand_tone", "target_persona", "promotion_goal", "usp", "item_or_service"}:
-        dirty.update({"marketing_copy", "copywriting_output"})
-    if changed & {"business_type", "brand_tone", "ad_format", "usp"}:
-        dirty.update({"image_prompt", "prompt_render_output"})
-    if changed & {"ad_format"}:
-        dirty.update({"ad_format_spec", "layout_spec"})
-    if changed & {"marketing_copy", "copywriting_output", "item_or_service", "promotion_goal", "price_or_discount"}:
-        dirty.update({"copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"})
-    if changed & {"brand_tone", "target_persona", "region_type", "usp"}:
-        dirty.update({"text_style_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"})
-    if changed & {"ad_format", "layout_spec", "ad_format_spec"}:
-        dirty.update({"text_layout_spec", "image_prompt_spec", "prompt_render_output", "t2i_request"})
-    if changed & {"copy_generation_mode", "user_custom_headline", "user_custom_subcopy"}:
-        dirty.update({"marketing_copy", "copy_spec", "text_layout_spec", "image_prompt_spec", "prompt_render_output"})
+    for triggers, outputs in DIRTY_PROPAGATION_RULES:
+        if changed & triggers:
+            dirty.update(outputs)
     return sorted(dirty)

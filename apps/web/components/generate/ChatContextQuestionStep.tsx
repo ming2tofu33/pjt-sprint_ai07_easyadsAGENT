@@ -20,6 +20,7 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
   const [customText, setCustomText] = useState("");
   const [showCustomInput, setShowCustomInput] = useState(false);
   const [selectedOption, setSelectedOption] = useState<OptionItem | null>(null);
+  const [hideCopyModeSubmit, setHideCopyModeSubmit] = useState(false);
   const question = state.currentQuestion;
   if (!question) {
     return null;
@@ -44,6 +45,7 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
       // 개인 문구 직접 입력: 별도 "선택 완료" 없이 즉시 제출 → 백엔드 custom_copy_input interrupt 폼으로 진입
       setShowCustomInput(false);
       setSelectedOption(null);
+      setHideCopyModeSubmit(true);
       onAnswer({ value: option.value, label: option.label });
       return;
     }
@@ -54,12 +56,15 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
     }
     setSelectedOption(option);
     setShowCustomInput(false);
+    setHideCopyModeSubmit(false);
   }
 
   const noChips = question.options.length === 0;
   const effectiveShowCustomInput = showCustomInput || noChips;
+  const isCopyGenerationModeQuestion = question.field === "copy_generation_mode";
+  const shouldShowSelectionButton = Boolean(selectedOption) || (isCopyGenerationModeQuestion && !hideCopyModeSubmit);
   const chipGridClassName =
-    question.field === "copy_generation_mode" ? `${styles.chipGrid} ${styles.copyModeGrid}` : styles.chipGrid;
+    isCopyGenerationModeQuestion ? `${styles.chipGrid} ${styles.copyModeGrid}` : styles.chipGrid;
 
   return (
     <>
@@ -130,8 +135,8 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
             </button>
           }
         />
-      ) : selectedOption ? (
-        <button className={styles.primaryButton} type="button" disabled={state.isLoading} onClick={submitSelectedOption}>
+      ) : shouldShowSelectionButton ? (
+        <button className={styles.primaryButton} type="button" disabled={state.isLoading || !selectedOption} onClick={submitSelectedOption}>
           선택 완료
         </button>
       ) : null}

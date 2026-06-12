@@ -202,6 +202,17 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       };
     }
     case "backendRequestFailed":
+      if (action.recoverToStart) {
+        return {
+          ...state,
+          step: 1,
+          progress: { current: 0, total: 4, label: "대화 시작" },
+          currentQuestion: null,
+          isLoading: false,
+          errorMessage: action.message,
+          errorCode: action.errorCode ?? null
+        };
+      }
       return {
         ...state,
         isLoading: false,

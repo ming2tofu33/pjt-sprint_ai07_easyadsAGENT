@@ -48,6 +48,20 @@ def test_memory_thread_owner_scope_and_pagination_total(monkeypatch):
     assert all(get_chat_thread(thread.thread_id, user_id="user_b") is None for thread in threads)
 
 
+def test_memory_thread_list_can_skip_exact_total(monkeypatch):
+    monkeypatch.setattr(
+        "orchestrator.app.chat_threads.service.db_settings.get_max_threads_per_workspace",
+        lambda: 99,
+    )
+    for index in range(5):
+        create_chat_thread(ChatThreadCreateRequest(user_id="user_a", title=f"A {index}"))
+
+    threads, total = list_chat_threads(user_id="user_a", limit=2, offset=0, include_total=False)
+
+    assert len(threads) == 2
+    assert total == 2
+
+
 def test_memory_thread_limit_blocks_fourth_thread():
     # Default cap is 3 non-archived threads per owner in the memory backend.
     for index in range(3):
@@ -252,3 +266,55 @@ def test_postgres_thread_list_uses_authenticated_user_workspace_even_with_demo_w
     assert threads == []
     assert total == 0
     assert captured == {"workspace_id": "workspace_user_a", "count_workspace_id": "workspace_user_a"}
+
+
+def test_postgres_thread_list_can_skip_exact_total(monkeypatch):
+    from orchestrator.app.chat_threads import service as chat_service
+
+    @contextmanager
+    def fake_db_transaction(connection=None):
+        yield object()
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_DEMO_WORKSPACE_ID", "workspace_demo")
+    monkeypatch.setattr(chat_service, "db_transaction", fake_db_transaction)
+    monkeypatch.setattr(
+        chat_service.workspace_repo,
+        "ensure_user_workspace",
+        lambda user_id, connection=None: {"id": f"workspace_{user_id}"},
+    )
+    count_calls = []
+
+    def fake_list_chat_threads(*, workspace_id, include_archived=False, limit=50, offset=0, connection=None):
+        return [
+            {
+                "id": "thread-internal-1",
+                "public_thread_id": "thread_1",
+                "workspace_id": workspace_id,
+                "created_by": "user_a",
+                "title": "A 1",
+                "status": "draft",
+                "brand_kit_id": None,
+                "project_id": None,
+                "final_brief": {},
+                "active_public_job_id": None,
+                "final_output_id": None,
+                "last_message_at": "2026-06-07T00:00:00+00:00",
+                "archived_at": None,
+                "created_at": "2026-06-07T00:00:00+00:00",
+                "updated_at": "2026-06-07T00:00:00+00:00",
+            }
+        ]
+
+    def fake_count_chat_threads(*, workspace_id, include_archived=False, connection=None):
+        count_calls.append(workspace_id)
+        return 99
+
+    monkeypatch.setattr(chat_service.chat_thread_repo, "list_chat_threads", fake_list_chat_threads)
+    monkeypatch.setattr(chat_service.chat_thread_repo, "count_chat_threads", fake_count_chat_threads)
+
+    threads, total = chat_service.list_chat_threads(user_id="user_a", limit=5, include_total=False)
+
+    assert len(threads) == 1
+    assert total == 1
+    assert count_calls == []

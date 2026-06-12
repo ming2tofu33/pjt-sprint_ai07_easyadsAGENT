@@ -1,5 +1,5 @@
 from orchestrator.app.graph.state import create_initial_marketing_state
-from orchestrator.app.llm.node_runner import append_llm_call_result
+from orchestrator.app.llm.node_runner import append_llm_call_result_safe
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.nodes.auto_pilot_copywriting import auto_pilot_copywriting_node
 from orchestrator.app.llm.nodes.copy_candidates import copy_candidate_generation_node
@@ -124,7 +124,7 @@ def test_llm_call_results_store_summary_without_raw_text_or_output():
         model_name="gemma4-e4b",
         provider_profile="local_gemma_e4b",
     )
-    append_llm_call_result(
+    append_llm_call_result_safe(
         state,
         LLMCallResult(
             success=True,
