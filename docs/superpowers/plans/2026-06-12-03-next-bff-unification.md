@@ -635,7 +635,7 @@ git commit -m "feat(bff): port chat thread routes to Next"
 - Create: `apps/web/app/api/archive/items/[archiveItemId]/route.ts`
 - Test: `apps/web/app/api/archive/routes.test.ts`
 
-- [ ] **Step 1: Write failing route tests**
+- [x] **Step 1: Write failing route tests**
 
 Create `apps/web/app/api/archive/routes.test.ts`:
 
@@ -684,7 +684,7 @@ describe("archive and upload Next routes", () => {
 });
 ```
 
-- [ ] **Step 2: Run and verify failure**
+- [x] **Step 2: Run and verify failure**
 
 Run:
 
@@ -694,7 +694,7 @@ cd apps/web && npx vitest run app/api/archive/routes.test.ts
 
 Expected: FAIL because archive routes and schemas do not exist.
 
-- [ ] **Step 3: Add archive schema**
+- [x] **Step 3: Add archive schema**
 
 Create `apps/web/app/api/_schemas/archive.ts`:
 
@@ -727,7 +727,7 @@ export const archiveItemUpdateSchema = z.object({
 });
 ```
 
-- [ ] **Step 4: Implement archive route handlers**
+- [x] **Step 4: Implement archive route handlers**
 
 Create `apps/web/app/api/archive/items/route.ts`:
 
@@ -783,7 +783,7 @@ export function DELETE(request: NextRequest, { params }: { params: { archiveItem
 }
 ```
 
-- [ ] **Step 5: Implement upload route handlers**
+- [x] **Step 5: Implement upload route handlers**
 
 Create `apps/web/app/api/assets/uploads/presign/route.ts`:
 
@@ -837,7 +837,7 @@ export function POST(request: NextRequest) {
 }
 ```
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Run:
 
@@ -847,7 +847,7 @@ cd apps/web && npx vitest run app/api/archive/routes.test.ts app/api/_proxy/rout
 
 Expected: archive route tests PASS; parity still FAILS only for routes not ported yet.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add apps/web/app/api/_schemas/archive.ts apps/web/app/api/archive apps/web/app/api/assets/uploads apps/web/app/api/generate/photo/upload
