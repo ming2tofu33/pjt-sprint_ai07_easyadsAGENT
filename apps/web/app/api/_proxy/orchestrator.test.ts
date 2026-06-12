@@ -134,6 +134,43 @@ describe("proxyOrchestratorJson", () => {
     );
   });
 
+  it("injects verified user headers for generation job GET routes", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    vi.stubEnv("SUPABASE_URL", "http://supabase.local");
+    vi.stubEnv("SUPABASE_ANON_KEY", "anon");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ id: "guest_uuid_1", is_anonymous: true }))
+      .mockResolvedValueOnce(jsonResponse({ success: true, job: { job_id: "job_1", status: "queued", progress: {} } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const request = new NextRequest("http://localhost/api/generation-jobs/job_1", {
+      headers: { authorization: "Bearer guest_access_token_1" }
+    });
+    await proxyOrchestratorJson(request, "GET", "/api/v1/generation-jobs/job_1", undefined, {
+      injectVerifiedUserIdHeader: true
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://supabase.local/auth/v1/user",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          apikey: "anon",
+          authorization: "Bearer guest_access_token_1"
+        })
+      })
+    );
+    const init = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(init.headers).toEqual(
+      expect.objectContaining({
+        "X-EasyAds-User-Id": "guest_uuid_1",
+        "X-EasyAds-Account-Type": "guest"
+      })
+    );
+  });
+
   it("removes spoofed user ids when no bearer token is present", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
     const fetchMock = vi.fn(async () =>
