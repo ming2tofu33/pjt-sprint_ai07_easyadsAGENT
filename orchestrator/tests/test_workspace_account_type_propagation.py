@@ -84,16 +84,26 @@ def test_asset_presign_route_passes_account_type_to_service(monkeypatch):
 def test_chat_thread_route_passes_account_type_to_service(monkeypatch):
     captured = {}
 
-    def fake_list_chat_threads(user_id=None, account_type=None, include_archived=False, limit=50, offset=0):
-        captured.update({"user_id": user_id, "account_type": account_type, "include_archived": include_archived})
+    def fake_list_chat_threads(user_id=None, account_type=None, include_archived=False, limit=50, offset=0, include_total=True):
+        captured.update({
+            "user_id": user_id,
+            "account_type": account_type,
+            "include_archived": include_archived,
+            "include_total": include_total,
+        })
         return [], 0
 
     monkeypatch.setattr(chat_threads_router.chat_service, "list_chat_threads", fake_list_chat_threads)
 
     response = TestClient(create_app()).get(
         "/api/v1/chat-threads",
-        params={"userId": "guest_uuid_1", "accountType": "guest", "include_archived": "true"},
+        params={"userId": "guest_uuid_1", "accountType": "guest", "include_archived": "true", "include_total": "false"},
     )
 
     assert response.status_code == 200
-    assert captured == {"user_id": "guest_uuid_1", "account_type": "guest", "include_archived": True}
+    assert captured == {
+        "user_id": "guest_uuid_1",
+        "account_type": "guest",
+        "include_archived": True,
+        "include_total": False,
+    }
