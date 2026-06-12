@@ -122,10 +122,13 @@ export function GenerationJobInterruptStep({
 }: GenerationJobInterruptStepProps) {
   const [headline, setHeadline] = useState("");
   const [subcopy, setSubcopy] = useState("");
+  const [isCustomCopyOpen, setIsCustomCopyOpen] = useState(false);
   const fields = useMemo(
     () => (interrupt.type === "custom_copy_input" && interrupt.fields.length > 0 ? interrupt.fields : fallbackCustomFields),
     [interrupt]
   );
+  const shouldShowCustomCopyEditor =
+    interrupt.type === "custom_copy_input" || (interrupt.type === "copy_candidate_selection" && isCustomCopyOpen);
 
   function submitCustomCopy() {
     const nextHeadline = headline.trim();
@@ -199,12 +202,23 @@ export function GenerationJobInterruptStep({
               );
             })}
           </div>
+          <button
+            className={`${styles.secondaryButton} ${styles.copyCandidateManualButton}`}
+            type="button"
+            disabled={isLoading}
+            onClick={() => setIsCustomCopyOpen((current) => !current)}
+          >
+            <PenLine size={17} aria-hidden="true" />
+            {isCustomCopyOpen ? "직접 입력 닫기" : "직접 문구 입력"}
+          </button>
         </>
       ) : null}
 
-      {interrupt.type === "custom_copy_input" ? (
+      {shouldShowCustomCopyEditor ? (
         <>
-          <h2 className={styles.sectionTitle}>광고 문구를 입력해주세요</h2>
+          <h2 className={styles.sectionTitle}>
+            {interrupt.type === "custom_copy_input" ? "광고 문구를 입력해주세요" : "직접 사용할 문구를 입력해주세요"}
+          </h2>
           <div className={styles.customCopyFields}>
             {fields.map((field) => {
               const isHeadline = field.field === "user_custom_headline" || field.field === "headline";

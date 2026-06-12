@@ -12,6 +12,7 @@ import {
   getCurrentBrandKit,
   getGenerationJob,
   getArchiveItem,
+  listChatThreads,
   listReferenceTemplates,
   listArchiveItems,
   saveArchiveItem,
@@ -768,6 +769,21 @@ describe("api-client backend contract routes", () => {
     await listArchiveItems({ limit: 20, includeTotal: false });
 
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items?limit=20&include_total=false");
+  });
+
+  it("can skip exact chat thread totals for faster workspace list requests", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        success: true,
+        threads: [],
+        total: 0
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listChatThreads({ limit: 5, includeTotal: false });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/chat-threads?limit=5&include_total=false");
   });
 
 

@@ -194,13 +194,27 @@ def list_chat_threads(
     user_id: str | None = None,
     account_type: str | None = None,
     include_archived: bool = False,
+    include_total: bool = True,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[ChatThreadResponse], int]:
     """(threads, total) 반환."""
     if _use_postgres():
-        return _list_chat_threads_db(user_id=user_id, account_type=account_type, include_archived=include_archived, limit=limit, offset=offset)
-    return _list_chat_threads_memory(user_id=user_id, include_archived=include_archived, limit=limit, offset=offset)
+        return _list_chat_threads_db(
+            user_id=user_id,
+            account_type=account_type,
+            include_archived=include_archived,
+            include_total=include_total,
+            limit=limit,
+            offset=offset,
+        )
+    return _list_chat_threads_memory(
+        user_id=user_id,
+        include_archived=include_archived,
+        include_total=include_total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def update_chat_thread(
@@ -370,14 +384,21 @@ def _get_chat_thread_memory(thread_id: str, user_id: str | None = None) -> ChatT
         return ChatThreadResponse(**data)
 
 
-def _list_chat_threads_memory(user_id: str | None = None, include_archived: bool = False, limit: int = 50, offset: int = 0) -> tuple[list[ChatThreadResponse], int]:
+def _list_chat_threads_memory(
+    user_id: str | None = None,
+    include_archived: bool = False,
+    include_total: bool = True,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[ChatThreadResponse], int]:
     with _STORE_LOCK:
         items = [t for t in _CHAT_THREADS.values() if _owner_matches(t, user_id)]
         if not include_archived:
             items = [t for t in items if not t.get("archived_at")]
         items.sort(key=lambda t: t.get("last_message_at") or "", reverse=True)
         page = items[offset: offset + limit]
-        return [ChatThreadResponse(**t) for t in page], len(items)
+        total = len(items) if include_total else offset + len(page)
+        return [ChatThreadResponse(**t) for t in page], total
 
 
 def _update_chat_thread_memory(thread_id: str, request: ChatThreadUpdateRequest, user_id: str | None = None) -> ChatThreadResponse | None:
@@ -617,6 +638,7 @@ def _list_chat_threads_db(
     user_id: str | None = None,
     account_type: str | None = None,
     include_archived: bool = False,
+    include_total: bool = True,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[ChatThreadResponse], int]:
@@ -627,7 +649,11 @@ def _list_chat_threads_db(
         limit=limit,
         offset=offset,
     )
-    total = chat_thread_repo.count_chat_threads(workspace_id=workspace_id, include_archived=include_archived)
+    total = (
+        chat_thread_repo.count_chat_threads(workspace_id=workspace_id, include_archived=include_archived)
+        if include_total
+        else offset + len(rows)
+    )
     return [_thread_row_to_response(r) for r in rows], total
 
 
