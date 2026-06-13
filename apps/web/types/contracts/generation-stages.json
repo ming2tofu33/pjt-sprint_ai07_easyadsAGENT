@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "stages": [
+    "queued",
+    "briefing",
+    "planning",
+    "modal_submitted",
+    "modal_running",
+    "t2i_running",
+    "validating",
+    "rendering",
+    "waiting_user_input",
+    "completed",
+    "failed"
+  ]
+}

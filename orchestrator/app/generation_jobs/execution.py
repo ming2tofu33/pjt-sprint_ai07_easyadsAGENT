@@ -250,9 +250,9 @@ def execute_generation_job_immediate(job_id: str, request: GenerationJobCreateRe
 
 
 def get_generation_job_graph():
-    from orchestrator.app.api.marketing_graph import MARKETING_GRAPH
+    from orchestrator.app.api.marketing_graph import get_marketing_graph
 
-    return MARKETING_GRAPH
+    return get_marketing_graph()
 
 
 def _graph_modal_call_id(result_state: dict) -> str:

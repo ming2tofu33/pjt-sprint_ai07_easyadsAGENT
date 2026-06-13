@@ -157,6 +157,16 @@ class MarketingState(TypedDict, total=False):
     interaction_copy_plan: dict[str, Any] | None
     minimal_copy_candidates: list[dict[str, Any]]
     selected_minimal_copy_candidate_id: str | None
+    creative_execution_plan: dict[str, Any] | None
+    native_typography_eligibility: dict[str, Any] | None
+    approved_native_copy_brief: dict[str, Any] | None
+    native_source_visual_analysis: dict[str, Any] | None
+    native_creative_prompt_package: dict[str, Any] | None
+    native_creative_preflight_review: dict[str, Any] | None
+    native_generation_budget: dict[str, Any] | None
+    native_generation_result: dict[str, Any] | None
+    native_generation_review: dict[str, Any] | None
+    native_generation_status: str | None
     typography_art_direction: dict[str, Any] | None
     font_catalog_summary: list[dict[str, Any]]
     adaptive_typography_report: dict[str, Any] | None
@@ -454,6 +464,16 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "interaction_copy_plan": None,
         "minimal_copy_candidates": [],
         "selected_minimal_copy_candidate_id": None,
+        "creative_execution_plan": None,
+        "native_typography_eligibility": None,
+        "approved_native_copy_brief": None,
+        "native_source_visual_analysis": None,
+        "native_creative_prompt_package": None,
+        "native_creative_preflight_review": None,
+        "native_generation_budget": None,
+        "native_generation_result": None,
+        "native_generation_review": None,
+        "native_generation_status": None,
         "image_layout_analysis": None,
         "layout_candidate_scores": [],
         "layout_refinement_result": None,

@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from orchestrator.app.api.chat import router as chat_router
+from orchestrator.app.api.internal_auth import enforce_internal_secret
 from orchestrator.app.api.photo import router as photo_router
 from orchestrator.app.api.routers.archive import router as archive_router
 from orchestrator.app.api.routers.brand_kits import router as brand_kits_router
@@ -27,8 +28,12 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
+    app.middleware("http")(enforce_internal_secret)
+
     app.include_router(chat_router)
     app.include_router(photo_router)
+    app.include_router(chat_router, prefix="/api")
+    app.include_router(photo_router, prefix="/api")
     app.include_router(
         references_router,
         prefix="/api/v1",

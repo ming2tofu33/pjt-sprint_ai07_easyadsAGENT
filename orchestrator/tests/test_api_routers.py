@@ -1117,8 +1117,10 @@ def test_generation_job_get_route_recovers_scope_from_existing_job_without_heade
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false")
     captured = {}
+    scoped_resolution = {}
     stale_scope = {}
     modal_scope = {}
+    resolved_workspace = "33333333-3333-3333-3333-333333333333"
     job = GenerationJobResponse(
         job_id="job_polling",
         thread_id="thread_polling",
@@ -1142,10 +1144,15 @@ def test_generation_job_get_route_recovers_scope_from_existing_job_without_heade
         modal_scope.update(kwargs)
         return current_job
 
+    def fake_resolve_scoped_workspace_id(workspace_id, user_id, account_type=None):
+        scoped_resolution.update({"workspace_id": workspace_id, "user_id": user_id, "account_type": account_type})
+        return resolved_workspace
+
     monkeypatch.setattr(
         "orchestrator.app.api.routers.generation_jobs.resolve_generation_job_scope_from_existing_job",
         lambda job_id: (WORKSPACE_A, "user_a"),
     )
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.resolve_scoped_workspace_id", fake_resolve_scoped_workspace_id)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_mark_stale_generation_job_failed", fake_mark_stale)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_poll_generation_job_from_modal", fake_poll_modal)
@@ -1153,9 +1160,10 @@ def test_generation_job_get_route_recovers_scope_from_existing_job_without_heade
     response = TestClient(create_app()).get("/api/v1/generation-jobs/job_polling")
 
     assert response.status_code == 200
-    assert captured == {"job_id": "job_polling", "workspace_id": WORKSPACE_A, "user_id": "user_a"}
-    assert stale_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
-    assert modal_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
+    assert scoped_resolution == {"workspace_id": WORKSPACE_A, "user_id": "user_a", "account_type": None}
+    assert captured == {"job_id": "job_polling", "workspace_id": resolved_workspace, "user_id": "user_a"}
+    assert stale_scope == {"workspace_id": resolved_workspace, "user_id": "user_a"}
+    assert modal_scope == {"workspace_id": resolved_workspace, "user_id": "user_a"}
 
 
 def test_generation_job_get_route_passes_workspace_scope(monkeypatch):

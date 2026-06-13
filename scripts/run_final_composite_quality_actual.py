@@ -37,6 +37,22 @@ from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
 from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
 from orchestrator.app.llm.nodes.typography_art_director import typography_art_direction_node
 from orchestrator.app.quality_gate.final_composite_service import evaluate_final_composite
+from orchestrator.app.llm.native_copy_brief_service import generate_approved_native_copy_brief
+from orchestrator.app.llm.native_creative_preflight_service import review_native_creative_preflight
+from orchestrator.app.llm.native_copy_policy import (
+    build_native_prompt_package,
+    mark_image_call_completed,
+    mark_image_call_started,
+    new_native_generation_budget,
+    plan_gpt_image2_native_single_shot,
+    request_fingerprint,
+    reserve_image_call,
+    validate_approved_native_copy_brief,
+)
+from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
+from orchestrator.app.schemas.native_creative import NativeGenerationReview
+from orchestrator.app.schemas.product_understanding import ProductUnderstanding
+from orchestrator.app.t2i.engines.gpt_image_2 import GPTImage2ActualEngine
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from scripts._actual_env import load_env_file
@@ -80,6 +96,13 @@ def main() -> int:
     parser.add_argument("--max-openai-calls", type=int, default=6)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--render-all-variants", action="store_true")
+    parser.add_argument("--gpt-image2-native-single-shot", action="store_true")
+    parser.add_argument("--native-case", default="restaurant_doenjang_jjigae_001")
+    parser.add_argument("--user-text", default="고급진 된장찌개를 홍보하고 싶어")
+    parser.add_argument("--placement", default="restaurant_poster")
+    parser.add_argument("--promotion-goal", default="product_promotion")
+    parser.add_argument("--max-image-calls", type=int, default=1)
+    parser.add_argument("--max-images", type=int, default=1)
     args = parser.parse_args()
 
     env_report = load_env_file(args.env_file)
@@ -95,6 +118,11 @@ def main() -> int:
     missing = _missing_actual_requirements(args)
     if missing:
         summary.update({"status": "blocked", "missing_requirements": missing, "runs": []})
+        _write_summary(output_dir, summary)
+        return 0
+
+    if args.gpt_image2_native_single_shot:
+        summary.update(run_gpt_image2_native_single_shot(args=args, output_dir=output_dir))
         _write_summary(output_dir, summary)
         return 0
 
@@ -671,6 +699,212 @@ def run_actual_case(*, args: argparse.Namespace, output_dir: Path, case_dir: Pat
     }
 
 
+def run_gpt_image2_native_single_shot(*, args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
+    case_id = args.native_case
+    case_dir = output_dir / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    user_text = args.user_text
+    user_text = "고급진 된장찌개를 홍보하고 싶어"
+    user_text = args.user_text
+    request = ActualCreativeInput(
+        case_id=case_id,
+        input_mode="text_only",
+        user_text=user_text,
+        placement=args.placement,
+        promotion_goal=args.promotion_goal,
+        seed=args.seed,
+        output_dir=str(output_dir),
+    )
+    max_openai_calls = int(getattr(args, "max_openai_calls", 6))
+    runtime = ActualCreativeRuntime(copy_model=args.copy_model, vision_model=args.vlm_model, call_budget=ActualCallBudget(max_openai_calls=max_openai_calls, max_flux_generations=0))
+    evidence = run_input_evidence_normalizer(request, runtime=runtime, case_dir=case_dir).model_dump()
+    (case_dir / "input_evidence.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
+    product = run_product_understanding(request, runtime, evidence)
+    (case_dir / "product_understanding.json").write_text(json.dumps(product, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    plan = plan_gpt_image2_native_single_shot()
+    (case_dir / "creative_execution_plan.json").write_text(json.dumps(plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    input_bundle = InputEvidenceBundle(**evidence)
+    product_model = ProductUnderstanding(**product)
+    brief = generate_approved_native_copy_brief(
+        input_evidence=input_bundle,
+        product_understanding=product_model,
+        execution_plan=plan,
+        source_visual_analysis=None,
+        state={},
+    )
+    failures = validate_approved_native_copy_brief(brief)
+    (case_dir / "approved_native_copy_brief.json").write_text(json.dumps(brief.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    if failures:
+        review = {"decision": "rejected", "failure_reasons": failures}
+        (case_dir / "native_creative_preflight_review.json").write_text(json.dumps(review, ensure_ascii=False, indent=2), encoding="utf-8")
+        run = _native_run_result(args, case_id, "rejected", error_code="copy_preflight_rejected", approved_native_copy_brief=brief.model_dump(), preflight_review=review, image_call_count=0)
+        (case_dir / "result.json").write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"schema_version": "gpt_image2_native_single_shot_v1", "status": "rejected", "runs": [run], "case_count": 1, "gpt_image_2_image_calls": 0, "gpt_image_2_edit_calls": 0, "external_renderer_calls": 0, "flux_calls": 0, "sd35_calls": 0, "mock_or_fixture_count": 0}
+
+    package = build_native_prompt_package(product_understanding=product, copy_brief=brief, placement=args.placement, preflight_status="approved", input_evidence=evidence)
+    preflight_model = review_native_creative_preflight(
+        input_evidence=input_bundle,
+        product_understanding=product_model,
+        copy_brief=brief,
+        prompt_package=package,
+        state={"user_plan": "premium"},
+    )
+    preflight = preflight_model.model_dump()
+    package = package.model_copy(update={"preflight_status": "approved" if preflight_model.decision == "approved" else "rejected"})
+    (case_dir / "native_creative_prompt_package.json").write_text(json.dumps(package.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_creative_preflight_review.json").write_text(json.dumps(preflight, ensure_ascii=False, indent=2), encoding="utf-8")
+    if preflight_model.decision != "approved":
+        run = _native_run_result(args, case_id, "rejected", error_code="semantic_preflight_rejected", approved_native_copy_brief=brief.model_dump(), preflight_review=preflight, image_call_count=0)
+        (case_dir / "result.json").write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"schema_version": "gpt_image2_native_single_shot_v1", "status": "rejected", "runs": [run], "case_count": 1, "gpt_image_2_image_calls": 0, "gpt_image_2_edit_calls": 0, "external_renderer_calls": 0, "flux_calls": 0, "sd35_calls": 0, "mock_or_fixture_count": 0}
+
+    fingerprint = request_fingerprint({"case_id": case_id, "prompt_sha256": package.prompt_sha256, "allowed_texts": package.exact_allowed_texts})
+    budget = new_native_generation_budget(request_fingerprint=fingerprint)
+    budget = reserve_image_call(budget)
+    budget = mark_image_call_started(budget)
+    (case_dir / "native_generation_budget.json").write_text(json.dumps(budget.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    generation = GPTImage2ActualEngine().generate_native_single_shot(prompt_package=package, output_dir=case_dir)
+    budget = mark_image_call_completed(budget)
+    (case_dir / "native_generation_budget.json").write_text(json.dumps(budget.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_generation_result.json").write_text(json.dumps(generation, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    image_path = Path(generation["image_path"])
+    review, vlm_metadata = review_native_generation_with_gpt54(image_path=image_path, package=package, model=args.vlm_model)
+    (case_dir / "ocr_result.json").write_text(json.dumps({"detected_text": review.detected_texts, "provider": "gpt-5.4_vlm"}, ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_generation_review.json").write_text(json.dumps({**review.model_dump(), "provider_metadata": vlm_metadata}, ensure_ascii=False, indent=2), encoding="utf-8")
+    status = "completed" if review.decision == "accept" else ("manual_review" if review.decision == "manual_review" else "rejected")
+    run = _native_run_result(
+        args,
+        case_id,
+        status,
+        approved_native_copy_brief=brief.model_dump(),
+        native_creative_prompt_package={**package.model_dump(), "final_prompt": "[redacted]", "prompt_sha256": package.prompt_sha256},
+        preflight_review=preflight,
+        native_generation_budget=budget.model_dump(),
+        native_generation_result=generation,
+        native_generation_review=review.model_dump(),
+        post_vlm_model=args.vlm_model,
+        post_vlm_provider_metadata=vlm_metadata,
+        final_image_path=generation["image_path"],
+        output_sha256=generation["output_sha256"],
+        image_call_count=1,
+    )
+    (case_dir / "result.json").write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "schema_version": "gpt_image2_native_single_shot_v1",
+        "status": status,
+        "runs": [run],
+        "case_count": 1,
+        "raw_user_request": user_text,
+        "normalized_product_name": product.get("product_name"),
+        "campaign_intent": evidence.get("campaign_intent"),
+        "desired_positioning": evidence.get("desired_positioning"),
+        "non_display_instruction_fragments": evidence.get("non_display_instruction_fragments"),
+        "copy_source_mode": brief.copy_source_mode,
+        "transformation_performed": brief.transformation_performed,
+        "approved_headline": brief.headline,
+        "approved_supporting_or_closing_copy": brief.supporting_copy or brief.closing_copy,
+        "copy_revision_count": 0,
+        "preflight_provider": (preflight.get("provider_metadata") or {}).get("provider"),
+        "preflight_model": (preflight.get("provider_metadata") or {}).get("model"),
+        "preflight_token_usage": (preflight.get("provider_metadata") or {}).get("token_usage"),
+        "actual_api_calls": True,
+        "image_generation_performed": True,
+        "gpt_image_2_image_calls": 1,
+        "gpt_image_2_edit_calls": 0,
+        "gpt_image_2_retry_calls": 0,
+        "external_renderer_calls": 0,
+        "flux_calls": 0,
+        "sd35_calls": 0,
+        "mock_or_fixture_count": 0,
+        "final_image_count": 1,
+    }
+
+
+def review_native_generation_with_gpt54(*, image_path: Path, package: Any, model: str) -> tuple[NativeGenerationReview, dict[str, Any]]:
+    started = time.perf_counter()
+    from openai import OpenAI  # type: ignore
+
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    prompt = (
+        "Return JSON only matching NativeGenerationReview. Evaluate this single GPT Image 2 native typography poster. "
+        f"Expected exact texts: {json.dumps(package.exact_allowed_texts, ensure_ascii=False)}. "
+        "Decide accept/manual_review/reject. Do not request regeneration. Check extra text, missing text, product match, obstruction, typography, composition."
+    )
+    response = OpenAI(timeout=90).responses.create(
+        model=model,
+        input=[{"role": "user", "content": [{"type": "input_text", "text": prompt}, {"type": "input_image", "image_url": f"data:image/png;base64,{encoded}"}]}],
+        temperature=0,
+    )
+    payload = _normalize_native_generation_review_payload(json.loads(getattr(response, "output_text", "") or "{}"))
+    metadata = {"provider": "openai", "model": model, "fallback_used": False, "token_usage": _usage_dict(response), "latency_ms": int((time.perf_counter() - started) * 1000)}
+    try:
+        return NativeGenerationReview(**payload), metadata
+    except Exception:
+        return NativeGenerationReview(
+            expected_texts=list(package.exact_allowed_texts),
+            detected_texts=list(payload.get("detected_texts") or []),
+            exact_text_match_score=float(payload.get("exact_text_match_score") or 0.0),
+            unexpected_text_detected=bool(payload.get("unexpected_text_detected")),
+            missing_text_detected=True,
+            product_match_score=float(payload.get("product_match_score") or 0.0),
+            product_obstruction_score=float(payload.get("product_obstruction_score") or 0.0),
+            hierarchy_score=float(payload.get("hierarchy_score") or 0.0),
+            typography_quality_score=float(payload.get("typography_quality_score") or 0.0),
+            composition_score=float(payload.get("composition_score") or 0.0),
+            commercial_viability_score=float(payload.get("commercial_viability_score") or 0.0),
+            meta_instruction_exposed=bool(payload.get("meta_instruction_exposed")),
+            consumer_facing_copy_score=float(payload.get("consumer_facing_copy_score") or 0.0),
+            copy_semantic_quality_score=float(payload.get("copy_semantic_quality_score") or 0.0),
+            decision="manual_review",
+            failure_reasons=["vlm_review_schema_incomplete"],
+        ), metadata
+
+
+def _normalize_native_generation_review_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload or {})
+    aliases = {
+        "detected_text": "detected_texts",
+        "commercial_viability": "commercial_viability_score",
+        "consumer_facing_copy": "consumer_facing_copy_score",
+        "copy_semantic_quality": "copy_semantic_quality_score",
+    }
+    for source, target in aliases.items():
+        if source in normalized and target not in normalized:
+            normalized[target] = normalized[source]
+    if isinstance(normalized.get("detected_texts"), str):
+        normalized["detected_texts"] = [normalized["detected_texts"]]
+    if not normalized.get("detected_texts"):
+        normalized["decision"] = "manual_review"
+        normalized["missing_text_detected"] = True
+        normalized["failure_reasons"] = sorted(set([*list(normalized.get("failure_reasons") or []), "vlm_detected_text_missing"]))
+    if normalized.get("meta_instruction_exposed"):
+        normalized["decision"] = "reject"
+        normalized["failure_reasons"] = sorted(set([*list(normalized.get("failure_reasons") or []), "meta_instruction_exposed"]))
+    return normalized
+
+
+def _native_run_result(args: argparse.Namespace, case_id: str, status: str, **fields: Any) -> dict[str, Any]:
+    return {
+        "case_id": case_id,
+        "status": status,
+        "copy_model": args.copy_model,
+        "preflight_review_model": args.copy_model,
+        "post_vlm_model": fields.pop("post_vlm_model", args.vlm_model),
+        "image_model": "gpt-image-2",
+        "image_api_call_count": fields.pop("image_call_count", 0),
+        "edit_call_count": 0,
+        "regeneration_count": 0,
+        "external_renderer_call_count": 0,
+        "flux_call_count": 0,
+        "sd35_call_count": 0,
+        "mock_or_fixture_count": 0,
+        "usage_idempotency_key": f"gpt_image_2_native:{case_id}:{(fields.get('native_generation_budget') or {}).get('request_fingerprint')}",
+        **fields,
+    }
+
+
 def _legacy_run_actual_case(*, args: argparse.Namespace, output_dir: Path, case_dir: Path) -> dict[str, Any]:
     copy_result = generate_gpt54_copy_candidates(args)
     (output_dir / "copy_candidates_gpt54.json").write_text(json.dumps(copy_result, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1006,6 +1240,26 @@ def build_comparison(case_dir: Path, initial_path: Path, repaired_path: Path | N
 
 
 def _missing_actual_requirements(args: argparse.Namespace) -> list[str]:
+    if getattr(args, "gpt_image2_native_single_shot", False):
+        required = {
+            "EASYADS_FINAL_COMPOSITE_ACTUAL": "1",
+            "EASYADS_COPY_QUALITY_ACTUAL": "1",
+            "EASYADS_ENABLE_LLM_CALLS": "true",
+            "EASYADS_LLM_PROVIDER": "openai",
+            "EASYADS_VLM_ACTUAL": "1",
+            "EASYADS_ENABLE_GPT_IMAGE_2": "true",
+            "EASYADS_GPT_IMAGE_2_ACTUAL": "1",
+        }
+        missing = [name for name, expected in required.items() if str(os.getenv(name, "")).strip().lower() != expected.lower()]
+        if not os.getenv("OPENAI_API_KEY"):
+            missing.append("OPENAI_API_KEY")
+        if args.copy_model != "gpt-5.4":
+            missing.append("copy_model_must_be_gpt-5.4")
+        if args.vlm_model != "gpt-5.4":
+            missing.append("vlm_model_must_be_gpt-5.4")
+        if args.max_image_calls != 1 or args.max_images != 1:
+            missing.append("native_image_call_limit_must_be_1")
+        return missing
     required_env = dict(REQUIRED_ACTUAL_ENV)
     if getattr(args, "product_understanding_benchmark", False) and getattr(args, "stop_after", None) == "product_understanding":
         required_env.pop("EASYADS_FLUX2_KLEIN_ACTUAL", None)

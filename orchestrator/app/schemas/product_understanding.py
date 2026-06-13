@@ -61,6 +61,8 @@ class ProductUnderstanding(BaseModel):
     normalized_product_type: str | None = None
     product_variant: str | None = None
     campaign_modifiers: list[str] = Field(default_factory=list)
+    campaign_intent: str | None = None
+    desired_positioning: list[str] = Field(default_factory=list)
     broad_category: BroadCategory
     category_path: list[str]
     product_form: str | None = None
