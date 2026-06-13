@@ -416,7 +416,25 @@ function truncate(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
+function getKnownGenerationErrorMessage(error: unknown): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+  const errorCode = (error as { error_code?: unknown }).error_code;
+  if (errorCode === "generation_job_background_not_started") {
+    return "생성 작업이 서버에서 시작되지 않았어요. 잠시 후 다시 시도해주세요.";
+  }
+  if (errorCode === "generation_job_background_stalled") {
+    return "생성 작업이 중간에 멈췄어요. 같은 요청으로 다시 시도해주세요.";
+  }
+  return null;
+}
+
 function getErrorMessage(error: unknown): string | null {
+  const knownMessage = getKnownGenerationErrorMessage(error);
+  if (knownMessage) {
+    return knownMessage;
+  }
   if (!error || typeof error !== "object") {
     return typeof error === "string" ? error : null;
   }
