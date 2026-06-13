@@ -27,30 +27,19 @@ from orchestrator.app.graph.state import create_initial_marketing_state
 from orchestrator.app.llm.nodes.copy_candidates import copy_candidate_generation_node, state_update_selected_copy_node
 from orchestrator.app.llm.nodes.copy_spec_parser import copy_spec_parser_node
 from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest, MarketingContext
+from orchestrator.tests.factories.copy_payloads import make_copy_selection_payload, make_selected_copy_report
+from orchestrator.tests.helpers.copywriting import make_copy_state
 
 
 def _state():
-    return create_initial_marketing_state(
-        InitialMarketingRequest(
-            user_input="ready",
-            copy_generation_mode="suggest_candidates",
-            context=MarketingContext(business_type="restaurant", item_or_service="삼겹살", promotion_goal="reservation_cta", extra={"ad_format": "instagram_feed"}),
-        )
-    )
+    return make_copy_state()
 
 
 def _state_for_context(business_type: str, item_or_service: str, promotion_goal: str):
-    return create_initial_marketing_state(
-        InitialMarketingRequest(
-            user_input="ready",
-            copy_generation_mode="suggest_candidates",
-            context=MarketingContext(
-                business_type=business_type,
-                item_or_service=item_or_service,
-                promotion_goal=promotion_goal,
-                extra={"ad_format": "instagram_feed"},
-            ),
-        )
+    return make_copy_state(
+        business_type=business_type,
+        item_or_service=item_or_service,
+        promotion_goal=promotion_goal,
     )
 
 
@@ -93,7 +82,7 @@ def test_copy_candidate_generation_uses_cafe_appropriate_fallback_copy():
 def test_selected_copy_updates_marketing_copy_and_copy_spec():
     state = _state()
     state.update(copy_candidate_generation_node(state))
-    state["copy_selection"] = {"selected_copy_id": "copy_2"}
+    state["copy_selection"] = make_copy_selection_payload("copy_2")
     state.update(state_update_selected_copy_node(state))
     state.update(copy_spec_parser_node(state))
 
@@ -123,12 +112,12 @@ def test_selected_copy_node_uses_persisted_state_selection_without_resume_payloa
 def test_selected_copy_persists_frontend_choices_in_graph_state():
     state = _state()
     state.update(copy_candidate_generation_node(state))
-    state["copy_selection"] = {
-        "selected_copy_id": "copy_1",
-        "selected_channel_id": "instagram-story",
-        "selected_tone": "깔끔한",
-        "custom_direction": "상품을 더 크게 보여줘",
-    }
+    state["copy_selection"] = make_copy_selection_payload(
+        "copy_1",
+        selected_channel_id="instagram-story",
+        selected_tone="깔끔한",
+        custom_direction="상품을 더 크게 보여줘",
+    )
 
     update = state_update_selected_copy_node(state)
 
@@ -150,11 +139,11 @@ def test_selected_copy_persists_frontend_choices_in_graph_state():
 def test_selected_copy_node_prefers_custom_copy_from_candidate_selection_resume():
     state = _state()
     state.update(copy_candidate_generation_node(state))
-    state["copy_selection"] = {
-        "selected_copy_id": "copy_2",
-        "user_custom_headline": "내가 고친 삼겹살 문구",
-        "user_custom_subcopy": "오늘 저녁 예약 가능",
-    }
+    state["copy_selection"] = make_copy_selection_payload(
+        "copy_2",
+        user_custom_headline="내가 고친 삼겹살 문구",
+        user_custom_subcopy="오늘 저녁 예약 가능",
+    )
 
     update = state_update_selected_copy_node(state)
 
@@ -958,7 +947,7 @@ def test_visual_actual_success_path_uses_flux_renderer_and_vlm(monkeypatch, tmp_
         "macaron_collection_001",
         case_dir=tmp_path / "case",
         seed=42,
-        copy_report={"runs": [{"case_id": "macaron_collection_001", "selected_copy": {"headline": "마카롱 컬렉션", "subcopy": "달콤한 색을 고르는 시간", "cta": "라인업 보기"}}]},
+        copy_report=make_selected_copy_report(),
         max_vlm_calls=1,
     )
 

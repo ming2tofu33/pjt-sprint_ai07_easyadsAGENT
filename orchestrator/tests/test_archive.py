@@ -22,10 +22,12 @@ from orchestrator.app.api.app import create_app
 from orchestrator.app.api.schemas.archive import ArchiveItemResponse
 from orchestrator.app.api.routers import archive as archive_router
 from orchestrator.app.archive.service import ArchivePersistenceUnavailable, ArchiveItemNotFound
+from orchestrator.tests.factories.archive_payloads import make_archive_item_response_payload
+from orchestrator.tests.helpers.storage import make_api_client
 
 
 def make_client():
-    return TestClient(create_app())
+    return make_api_client()
 
 
 # ---------------------------------------------------------------------------
@@ -34,16 +36,7 @@ def make_client():
 
 def test_archive_detail_200(monkeypatch):
     """GET /api/v1/archive/items/{id} → 200 및 올바른 필드 반환."""
-    item = ArchiveItemResponse(
-        ad_id="archive_pub_1",
-        job_id="job_pub_1",
-        output_id="out_pub_1",
-        thread_id="thread_pub_1",
-        title="테스트 광고",
-        image_url="https://cdn.example.com/image.png",
-        status="saved",
-        source="generated",
-    )
+    item = ArchiveItemResponse(**make_archive_item_response_payload())
     monkeypatch.setattr(archive_router, "get_archive_item", lambda archive_item_id, workspace_id=None, user_id=None: item)
 
     resp = make_client().get("/api/v1/archive/items/archive_pub_1")

@@ -8,11 +8,16 @@ from orchestrator.app.db.repositories.generation_outputs import (
     mark_output_final,
 )
 
-def test_generation_output_create_get_list_count(monkeypatch):
-    # This is a focused mock test to ensure repository queries compile and pass parameters correctly
+
+def _mock_connection():
     mock_conn = MagicMock()
     mock_cur = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+    return mock_conn, mock_cur
+
+def test_generation_output_create_get_list_count(monkeypatch):
+    # This is a focused mock test to ensure repository queries compile and pass parameters correctly
+    mock_conn, mock_cur = _mock_connection()
     
     # 1. create
     mock_cur.fetchone.return_value = {"id": "uuid1", "public_output_id": "out_public_1"}
@@ -35,9 +40,7 @@ def test_generation_output_create_get_list_count(monkeypatch):
     assert cnt == 1
 
 def test_generation_output_mark_final_transaction(monkeypatch):
-    mock_conn = MagicMock()
-    mock_cur = MagicMock()
-    mock_conn.cursor.return_value.__enter__.return_value = mock_cur
+    mock_conn, mock_cur = _mock_connection()
     
     mock_cur.fetchone.side_effect = [{"thread_id": "thread1"}, {"id": "thread1"}, {"id": "uuid1"}]
     

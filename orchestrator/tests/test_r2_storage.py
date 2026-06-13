@@ -103,6 +103,7 @@ from PIL import Image
 
 from orchestrator.app.storage.errors import R2StorageUnavailableError, R2UploadError
 from orchestrator.app.storage.r2_service import upload_file_to_r2
+from orchestrator.tests.helpers.storage import write_test_png
 
 
 class FakeR2Client:
@@ -142,7 +143,7 @@ def _configure_signed_env(monkeypatch):
 
 
 def _write_png(path: Path):
-    Image.new("RGB", (64, 32), color=(255, 0, 0)).save(path)
+    write_test_png(path)
 
 
 def test_upload_file_to_r2_returns_signed_urls(tmp_path, monkeypatch):

@@ -27,6 +27,8 @@ from fastapi.testclient import TestClient
 
 from orchestrator.app.api.app import create_app
 from orchestrator.app.main import app as main_app
+from orchestrator.tests.factories.api_payloads import generation_job_create_payload
+from orchestrator.tests.helpers.api_clients import create_app_client
 
 
 def test_create_app_registers_legacy_and_new_routes():
@@ -67,7 +69,7 @@ from orchestrator.app.api.schemas.archive import ArchiveItemResponse
 
 
 def client() -> TestClient:
-    return TestClient(create_app())
+    return create_app_client()
 
 
 def test_openapi_registers_archive_routes():
@@ -291,7 +293,7 @@ def reset_store():
 
 
 def client__test_api_brand_kits_router() -> TestClient:
-    return TestClient(create_app())
+    return create_app_client()
 
 
 def test_openapi_registers_references_and_brand_kit_routes():
@@ -737,7 +739,7 @@ def reset_store__test_api_generation_jobs_router():
 
 @pytest.fixture()
 def client__test_api_generation_jobs_router() -> TestClient:
-    return TestClient(create_app())
+    return create_app_client()
 
 
 def test_openapi_registers_generation_jobs_and_existing_routes():
@@ -753,13 +755,7 @@ def test_openapi_registers_generation_jobs_and_existing_routes():
 def test_create_generation_job_and_get_job(client__test_api_generation_jobs_router):
     created = client__test_api_generation_jobs_router.post(
         "/api/v1/generation-jobs",
-        json={
-            "user_input": "Create a cafe launch ad",
-            "user_id": "user_1",
-            "brand_kit_id": "bk_1",
-            "selected_reference_template_id": "seed_cafe_strawberry_feed_001",
-            "run_mode": "queued_only",
-        },
+        json=generation_job_create_payload(),
     )
 
     assert created.status_code == 201
@@ -1556,8 +1552,7 @@ from orchestrator.app.api.app import create_app
 
 @pytest.fixture
 def client__test_api_generation_outputs_router():
-    app = create_app()
-    return TestClient(app)
+    return create_app_client()
 
 def test_list_generation_outputs(client__test_api_generation_outputs_router, monkeypatch):
     mock_service = MagicMock()

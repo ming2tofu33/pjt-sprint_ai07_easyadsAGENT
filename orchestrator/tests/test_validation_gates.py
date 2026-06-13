@@ -31,6 +31,8 @@ from PIL import Image
 from orchestrator.app.ocr_gate.adapters.local_http import LocalHTTPOCRAdapter
 from orchestrator.app.ocr_gate.adapters.stub import FakeOCRAdapter, StubOCRAdapter
 from orchestrator.app.ocr_gate.schemas import OCRSpan
+from orchestrator.tests.factories.validation_gate_payloads import make_normalized_box, make_ocr_span, make_ocr_validation_result
+from orchestrator.tests.helpers.validation_gates import assert_validation_decision, assert_validation_status
 
 
 class FakeResponse:
@@ -47,11 +49,11 @@ class FakeResponse:
 def test_stub_adapter_unavailable():
     result = StubOCRAdapter().extract_text(image_path="x.png", stage="background")
 
-    assert result.status == "unavailable"
+    assert_validation_status(result, "unavailable")
 
 
 def test_fake_adapter_uses_spans():
-    span = OCRSpan(text="SALE", normalized_text="sale", confidence=0.9)
+    span = make_ocr_span("SALE")
 
     assert FakeOCRAdapter([span]).extract_text(image_path="x.png", stage="background").spans == [span]
 
@@ -70,7 +72,7 @@ def test_local_http_payload_includes_image_data(monkeypatch, tmp_path):
 
     assert captured["body"]["image"].startswith("data:image/png;base64,")
     assert captured["body"]["stage"] == "background"
-    assert result.status == "ok"
+    assert_validation_status(result, "ok")
 
 
 def test_local_http_file_missing_structured_error():
@@ -100,7 +102,7 @@ def test_local_http_invalid_span_is_skipped(monkeypatch, tmp_path):
 
     result = LocalHTTPOCRAdapter(endpoint="http://localhost:1/ocr").extract_text(image_path=str(image_path), stage="background")
 
-    assert result.status == "ok"
+    assert_validation_status(result, "ok")
     assert [span.text for span in result.spans] == ["SALE"]
 
 
@@ -112,34 +114,34 @@ from orchestrator.app.ocr_gate.text_normalization import normalize_ocr_text
 
 
 def _span(text, confidence=0.9):
-    return OCRSpan(text=text, normalized_text=normalize_ocr_text(text), confidence=confidence)
+    return make_ocr_span(text, confidence=confidence)
 
 
 def test_background_no_text_passes():
     result = run_ocr_gate(request=OCRValidationRequest(stage="background", image_path="x.png"), adapter=FakeOCRAdapter([]))
 
-    assert result.decision == "pass"
+    assert_validation_decision(result, "pass")
 
 
 def test_background_sale_text_retries_image():
     result = run_ocr_gate(request=OCRValidationRequest(stage="background", image_path="x.png"), adapter=FakeOCRAdapter([_span("SALE 50%")]))
 
     assert result.fake_text is True
-    assert result.decision == "retry_image"
+    assert_validation_decision(result, "retry_image")
 
 
 def test_background_watermark_rejects():
     result = run_ocr_gate(request=OCRValidationRequest(stage="background", image_path="x.png"), adapter=FakeOCRAdapter([_span("SAMPLE")]))
 
     assert result.watermark_or_logo_text is True
-    assert result.decision == "reject"
+    assert_validation_decision(result, "reject")
 
 
 def test_stub_unavailable_manual_review():
     result = run_ocr_gate(request=OCRValidationRequest(stage="background", image_path="x.png"), adapter=StubOCRAdapter())
 
-    assert result.status == "unavailable"
-    assert result.decision == "manual_review"
+    assert_validation_status(result, "unavailable")
+    assert_validation_decision(result, "manual_review")
 
 
 def test_background_allows_known_brand_text():
@@ -148,14 +150,14 @@ def test_background_allows_known_brand_text():
         adapter=FakeOCRAdapter([_span("EasyAds")]),
     )
 
-    assert result.decision == "pass"
+    assert_validation_decision(result, "pass")
 
 
 def test_tiny_ocr_area_is_filtered():
-    tiny = OCRSpan(text="SALE", normalized_text="sale", confidence=0.99, box=NormalizedBox(x1=1, y1=1, x2=2, y2=2))
+    tiny = make_ocr_span("SALE", confidence=0.99, box=make_normalized_box(1, 1, 2, 2))
     result = run_ocr_gate(request=OCRValidationRequest(stage="background", image_path="x.png"), adapter=FakeOCRAdapter([tiny]))
 
-    assert result.decision == "pass"
+    assert_validation_decision(result, "pass")
 
 
 # ===== from test_ocr_gate_final_ad.py =====
@@ -166,11 +168,11 @@ from orchestrator.app.ocr_gate.text_normalization import normalize_ocr_text
 
 
 def _span__test_ocr_gate_final_ad(text, confidence=0.9):
-    return OCRSpan(text=text, normalized_text=normalize_ocr_text(text), confidence=confidence)
+    return make_ocr_span(text, confidence=confidence)
 
 
 def _boxed_span(text, x1, y1, x2, y2, confidence=0.9):
-    return OCRSpan(text=text, normalized_text=normalize_ocr_text(text), confidence=confidence, box=NormalizedBox(x1=x1, y1=y1, x2=x2, y2=y2))
+    return make_ocr_span(text, confidence=confidence, box=make_normalized_box(x1, y1, x2, y2))
 
 
 def test_final_expected_copy_matched_passes():
@@ -178,7 +180,7 @@ def test_final_expected_copy_matched_passes():
 
     result = run_ocr_gate(request=request, adapter=FakeOCRAdapter([_span__test_ocr_gate_final_ad("여름 시즌 아이스라떼"), _span__test_ocr_gate_final_ad("지금 주문하기")]))
 
-    assert result.decision == "pass"
+    assert_validation_decision(result, "pass")
 
 
 def test_final_missing_copy_retries_layout():
@@ -186,7 +188,7 @@ def test_final_missing_copy_retries_layout():
 
     result = run_ocr_gate(request=request, adapter=FakeOCRAdapter([]))
 
-    assert result.decision == "retry_layout"
+    assert_validation_decision(result, "retry_layout")
 
 
 def test_final_unexpected_extra_retries_image():
@@ -194,7 +196,7 @@ def test_final_unexpected_extra_retries_image():
 
     result = run_ocr_gate(request=request, adapter=FakeOCRAdapter([_span__test_ocr_gate_final_ad("여름 시즌 아이스라떼"), _span__test_ocr_gate_final_ad("SALE")]))
 
-    assert result.decision == "retry_image"
+    assert_validation_decision(result, "retry_image")
 
 
 def test_final_watermark_rejects():
@@ -202,7 +204,7 @@ def test_final_watermark_rejects():
 
     result = run_ocr_gate(request=request, adapter=FakeOCRAdapter([_span__test_ocr_gate_final_ad("여름 시즌 아이스라떼"), _span__test_ocr_gate_final_ad("shutterstock")]))
 
-    assert result.decision == "reject"
+    assert_validation_decision(result, "reject")
 
 
 def test_expected_copy_can_match_split_ocr_spans():
@@ -210,7 +212,7 @@ def test_expected_copy_can_match_split_ocr_spans():
 
     result = run_ocr_gate(request=request, adapter=FakeOCRAdapter([_boxed_span("여름 시즌", 10, 10, 200, 80), _boxed_span("아이스라떼", 210, 10, 400, 80)]))
 
-    assert result.decision == "pass"
+    assert_validation_decision(result, "pass")
 
 
 def test_expected_copy_required_empty_text_manual_review():
@@ -218,7 +220,7 @@ def test_expected_copy_required_empty_text_manual_review():
 
     result = run_ocr_gate(request=request, adapter=FakeOCRAdapter([]))
 
-    assert result.decision == "manual_review"
+    assert_validation_decision(result, "manual_review")
 
 
 def test_unexpected_text_priority_over_missing_copy():
@@ -226,7 +228,7 @@ def test_unexpected_text_priority_over_missing_copy():
 
     result = run_ocr_gate(request=request, adapter=FakeOCRAdapter([_span__test_ocr_gate_final_ad("SALE")]))
 
-    assert result.decision == "retry_image"
+    assert_validation_decision(result, "retry_image")
 
 
 # ===== from test_ocr_gate_graph_integration.py =====
@@ -238,7 +240,7 @@ from orchestrator.app.graph.routers import route_after_ocr_gate
 
 def test_background_ocr_gate_state_update(monkeypatch):
     def fake_run_ocr_gate(**kwargs):
-        return OCRValidationResult(stage="background", provider="stub", status="unavailable", decision="manual_review", revision_action="manual_review")
+        return make_ocr_validation_result(provider="stub", status="unavailable", decision="manual_review", revision_action="manual_review")
 
     monkeypatch.setattr("orchestrator.app.llm.nodes.ocr_gate.run_ocr_gate", fake_run_ocr_gate)
     update = background_ocr_gate_node({"t2i_result": {"image_paths": ["background.png"]}, "user_plan": "free"})
@@ -252,7 +254,7 @@ def test_final_ocr_gate_collects_expected_copy(monkeypatch):
 
     def fake_run_ocr_gate(**kwargs):
         captured["request"] = kwargs["request"]
-        return OCRValidationResult(stage="final_ad", provider="fake", status="pass", decision="pass")
+        return make_ocr_validation_result(stage="final_ad", decision="pass")
 
     monkeypatch.setattr("orchestrator.app.llm.nodes.ocr_gate.run_ocr_gate", fake_run_ocr_gate)
     update = final_ocr_gate_node({"final_image_path": "final.png", "copy_spec": {"headline": "여름 시즌 아이스라떼", "cta": "지금 주문하기"}})
