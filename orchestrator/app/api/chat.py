@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
@@ -9,6 +10,7 @@ from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
 from orchestrator.app.api.marketing_graph import get_marketing_graph
+from orchestrator.app.core.config import _get_env
 from orchestrator.app.graph.state import resolve_requested_ad_format
 from orchestrator.app.llm.option_registry import option_label_for_value
 
@@ -157,6 +159,28 @@ class ChatOptionQuestionResponse(CamelModel):
 
 def _thread_config(thread_id: str) -> dict[str, Any]:
     return {"configurable": {"thread_id": thread_id}}
+
+
+_FORCEABLE_USER_PLANS = {"free", "economic", "premium", "internal_benchmark"}
+
+
+def _forced_user_plan() -> str | None:
+    """Return a user_plan to force-inject at the API boundary, or None.
+
+    MVP policy: premium is the default in every (non-test) environment so all
+    generation runs on the GPT-5.4 models instead of falling back to local
+    Gemma. EASYADS_FORCE_USER_PLAN can override this to a lower plan
+    (free|economic|premium|internal_benchmark) per deployment if needed.
+
+    Skipped under pytest (returns None) so the suite keeps its deterministic
+    free-plan/mock behavior and never hits a real API.
+    """
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return None
+    forced = _get_env("EASYADS_FORCE_USER_PLAN", "").strip().lower()
+    if forced in _FORCEABLE_USER_PLANS:
+        return forced
+    return "premium"
 
 
 def _clean_optional_text(value: str | None) -> str | None:
@@ -377,6 +401,9 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
             }
         },
     }
+    forced_plan = _forced_user_plan()
+    if forced_plan:
+        state["user_plan"] = forced_plan
     result = get_marketing_graph().invoke(state, config=_thread_config(thread_id))
     interrupt = _interrupt_value(result)
 
