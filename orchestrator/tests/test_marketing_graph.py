@@ -21,7 +21,7 @@ from orchestrator.app.graph.state import create_initial_marketing_state
 from orchestrator.app.llm.nodes.copy_candidates import copy_candidate_generation_node
 from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest, MarketingContext
 from orchestrator.tests.factories.marketing_state import make_marketing_request
-from orchestrator.tests.helpers.graph_state import write_test_png
+from orchestrator.tests.helpers.images import write_test_png
 
 
 def _request(mode: str, job_id: str):
