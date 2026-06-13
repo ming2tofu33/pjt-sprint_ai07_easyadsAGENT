@@ -27,6 +27,7 @@ from orchestrator.app.generation_jobs.service import (
     mark_generation_job_modal_running,
     mark_generation_job_running,
 )
+from orchestrator.app.graph.state import resolve_requested_ad_format, set_requested_ad_format
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from orchestrator.app.t2i.execution import TEXT_FREE_NEGATIVE_PROMPT, build_generation_job_prompt, prompt_summary
@@ -215,10 +216,8 @@ def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobC
     selected_ad_format = _canonical_ad_format(
         request_selected_channel_id
         or request.ad_format
+        or resolve_requested_ad_format(state)
         or state_selected_channel_id
-        or state.get("selected_ad_format")
-        or current_brief.get("requested_ad_format")
-        or context_extra.get("ad_format")
     )
     selected_tone = _clean_optional_text(state.get("selected_tone") or request.selected_tone)
     custom_direction = _clean_optional_text(state.get("custom_direction") or request.custom_direction)
@@ -230,8 +229,7 @@ def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobC
     if selected_ad_format:
         state["selected_ad_format"] = selected_ad_format
         state["ad_format_spec"] = build_ad_format_spec(selected_ad_format).model_dump()
-        current_brief["requested_ad_format"] = selected_ad_format
-        context_extra["ad_format"] = selected_ad_format
+        set_requested_ad_format(current_brief, context_extra, selected_ad_format)
         context_extra["selected_ad_format"] = selected_ad_format
     if selected_tone:
         state["selected_tone"] = selected_tone
@@ -498,7 +496,7 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
 
     from orchestrator.app.graph.state import create_initial_marketing_state
     from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest
-    
+
     job = get_generation_job(job_id)
     if not job:
         raise ValueError("generation job was not found")
@@ -548,13 +546,13 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
             )
         )
         initial_state.update(restore_persistent_state(input_snapshot.state_payload))
-        
+
         # Enforce current context
         initial_state["job_id"] = public_job_id
         initial_state["thread_id"] = job.thread_id
         initial_state["user_input"] = request.user_input
         initial_state["workspace_id"] = workspace_id
-        
+
         if request.source_asset_id is not None:
             initial_state["source_asset_id"] = request.source_asset_id
             initial_state["source_image_path"] = None
@@ -585,7 +583,7 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
         if "__interrupt__" in result_state:
             from orchestrator.app.generation_jobs.service import mark_generation_job_waiting_user_input
             msg_content = _assistant_message_from_interrupt(result_state, "추가 정보가 필요해요.")
-            
+
             updated = mark_generation_job_waiting_user_input(
                 job_id=job_id,
                 result_state=result_state,

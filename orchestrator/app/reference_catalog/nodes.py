@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState, now_iso
+from orchestrator.app.graph.state import MarketingState, backfill_requested_ad_format, now_iso
 from orchestrator.app.reference_catalog.service import resolve_reference_template_selection
 from orchestrator.app.schemas.reference_catalog import ReferenceTemplate
 
@@ -97,8 +97,7 @@ def reference_template_resolve_node(state: MarketingState) -> dict[str, Any]:
             context[field] = value
 
     template_ad_format = context_defaults.get("ad_format")
-    if template_ad_format and not extra.get("ad_format"):
-        extra["ad_format"] = template_ad_format
+    backfill_requested_ad_format(current_brief, extra, template_ad_format)
     extra["selected_reference_template_id"] = template.template_id
     extra["reference_template_title"] = template.title
     extra["reference_template_category"] = template.category
@@ -109,8 +108,6 @@ def reference_template_resolve_node(state: MarketingState) -> dict[str, Any]:
     current_brief["reference_template_selected"] = True
     current_brief["selected_reference_template_id"] = template.template_id
     current_brief["reference_template_style_hint"] = selection.style_profile_hint
-    if template_ad_format and not current_brief.get("requested_ad_format"):
-        current_brief["requested_ad_format"] = template_ad_format
     updates["selected_reference_template"] = template_dump
     updates["context"] = context
     if selection.reference_asset_id:

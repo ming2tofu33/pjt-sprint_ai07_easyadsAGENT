@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState, context_to_model
+from orchestrator.app.graph.state import MarketingState, context_to_model, resolve_requested_ad_format
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.schemas.llm_marketing import LayoutSpec, TextZone, Zone
 
@@ -33,14 +33,10 @@ def format_planner_node(state: MarketingState) -> dict[str, Any]:
 
 
 def resolve_ad_format(state: MarketingState) -> str:
-    current_brief = state.get("current_brief", {})
-    context = context_to_model(state.get("context"))
     validator_output = state.get("validator_output") or {}
     candidates = [
-        current_brief.get("requested_ad_format"),
-        context.extra.get("ad_format"),
+        resolve_requested_ad_format(state),
         _extract_validator_ad_format(validator_output),
-        current_brief.get("ad_format"),
         "instagram_feed",
     ]
     for candidate in candidates:

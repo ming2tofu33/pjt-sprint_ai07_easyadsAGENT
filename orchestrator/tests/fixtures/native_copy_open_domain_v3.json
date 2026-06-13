@@ -1,0 +1,10 @@
+[
+  {"user_text": "고급진 된장찌개를 홍보하고 싶어", "product_name": "된장찌개", "positioning": ["premium", "refined"]},
+  {"user_text": "프리미엄한 딸기라떼 광고를 만들고 싶어", "product_name": "딸기라떼", "positioning": ["premium"]},
+  {"user_text": "감성적인 치즈케이크를 소개하고 싶어", "product_name": "치즈케이크", "positioning": ["emotional"]},
+  {"user_text": "고급스러운 진정 세럼을 홍보하고 싶어", "product_name": "진정 세럼", "positioning": ["premium", "refined"]},
+  {"user_text": "세련된 운동화 신상품 광고", "product_name": "운동화", "positioning": ["sophisticated"]},
+  {"user_text": "편안하고 따뜻한 패브릭 소파 광고", "product_name": "패브릭 소파", "positioning": ["warm"]},
+  {"user_text": "신뢰감 있는 세무 상담 서비스 광고", "product_name": "세무 상담 서비스", "positioning": ["trustworthy"]},
+  {"user_text": "특별한 향수를 홍보하고 싶어", "product_name": "향수", "positioning": ["exclusive"]}
+]

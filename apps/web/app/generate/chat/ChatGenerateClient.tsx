@@ -45,6 +45,21 @@ import {
 } from "@/lib/api-client";
 import { buildAdHref } from "@/lib/ad-navigation";
 import { archiveItemToCreative } from "@/lib/archive-creative";
+import {
+  clearChatFlowSnapshot,
+  clearChatTurnSnapshot,
+  clearGenerationFailureSnapshot,
+  readChatFlowBackTarget,
+  readChatFlowSnapshot,
+  readChatTurnSnapshot,
+  readGenerationFailureSnapshot,
+  writeChatFlowBackTarget,
+  writeChatFlowSnapshot,
+  writeChatTurnSnapshot,
+  writeGenerationFailureSnapshot,
+  type ChatFlowSnapshot,
+  type ChatTurnSnapshot
+} from "@/lib/chat-snapshots";
 import { mapChatMessagesToTranscript, mapChatThreadSnapshotToRestoreState } from "@/lib/chat-thread-state-mapper";
 import { buildBrief, chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 import {
@@ -55,8 +70,7 @@ import {
 import {
   addGeneratedCreativeSnapshot,
   readGeneratedCreatives,
-  removeGeneratedCreative,
-  type GeneratedCreativeSnapshot
+  removeGeneratedCreative
 } from "@/lib/generated-creative-storage";
 import { getPendingGenerationJobParsedInterrupt } from "@/lib/generation-job-interrupt";
 import {
@@ -90,6 +104,7 @@ import type {
   PartialInferredContext
 } from "@/types/marketing";
 import styles from "@/components/generate/generate.module.css";
+import { useChatRouteRestore } from "./useChatRouteRestore";
 
 type GenerationStage = "brief" | "generating" | "browsing" | "complete" | "similarBrowsing" | "jobQuestion";
 type ArchiveLoadState = "idle" | "loading" | "ready" | "error";
@@ -99,30 +114,12 @@ type ChatGenerateClientProps = {
   initialStage?: DashboardStage;
 };
 
-type ChatFlowSnapshot = GeneratedCreativeSnapshot;
-type ChatTurnSnapshot = {
-  prompt: string;
-  response?: ChatTurnResponse | null;
-  generationJob?: GenerationJob | null;
-  copyGenerationMode?: CopyGenerationMode;
-  imageGenerationEngine?: ImageGenerationEngine;
-  sourceImagePath?: string | null;
-  referenceImagePath?: string | null;
-  selectedReferenceTemplateId?: string | null;
-  selectedReferenceTemplateTitle?: string | null;
-  userCustomHeadline?: string | null;
-  userCustomSubcopy?: string | null;
-};
-
-const CHAT_FLOW_SNAPSHOT_STORAGE_KEY = "easyads_chat_flow_snapshot_v1";
-const CHAT_TURN_SNAPSHOT_STORAGE_KEY = "easyads_chat_turn_snapshot_v1";
-const CHAT_GENERATION_FAILURE_STORAGE_KEY = "easyads_chat_generation_failure_v1";
-const CHAT_FLOW_BACK_TARGET_STORAGE_KEY = "easyads_chat_flow_back_target_v1";
 const ARCHIVE_CREATIVES_CACHE_STORAGE_KEY = "easyads_archive_creatives_cache_v1";
 const ARCHIVE_CREATIVES_CACHE_LIMIT = 20;
 const GENERATION_JOB_POLL_INTERVAL_MS = 1800;
 const GENERATION_JOB_MAX_POLLS = 80;
-const CHAT_FLOW_BACK_TARGETS = new Set(["home", "studio", "reference", "ads", "my", "brand", "photo"]);
+const ignoreRouteJobRestore = (_jobId: string) => {};
+const ignoreRouteThreadRestore = (_threadId: string) => {};
 const AD_FORMAT_BY_CHANNEL_ID: Record<string, string> = {
   "instagram-feed": "instagram_feed",
   "instagram-story": "instagram_story",
@@ -133,13 +130,6 @@ const AD_FORMAT_BY_CHANNEL_ID: Record<string, string> = {
 function mergeBriefRefinement(existingDirection: string, refinement: string): string {
   return [existingDirection.trim(), refinement.trim()].filter(Boolean).join("\n");
 }
-
-type ChatGenerationFailureSnapshot = {
-  message: string;
-  threadId?: string | null;
-  userInput?: string | null;
-  imageGenerationEngine?: ImageGenerationEngine | null;
-};
 
 type ArchiveCreativesCache = {
   cachedAt: string;
@@ -206,106 +196,6 @@ function upsertArchiveCreativeCacheItem(creative: MockCreative) {
 
 function removeArchiveCreativeCacheItem(creativeId: string) {
   updateArchiveCreativesCache((current) => current.filter((creative) => creative.id !== creativeId));
-}
-
-function readChatFlowSnapshot(): ChatFlowSnapshot | null {
-  try {
-    const raw = window.sessionStorage.getItem(CHAT_FLOW_SNAPSHOT_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as ChatFlowSnapshot) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeChatFlowSnapshot(snapshot: ChatFlowSnapshot) {
-  try {
-    window.sessionStorage.setItem(CHAT_FLOW_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // Navigation should still work if sessionStorage is unavailable.
-  }
-}
-
-function clearChatFlowSnapshot() {
-  try {
-    window.sessionStorage.removeItem(CHAT_FLOW_SNAPSHOT_STORAGE_KEY);
-  } catch {
-    // Ignore storage failures; the in-memory flow can still continue.
-  }
-}
-
-function readChatTurnSnapshot(): ChatTurnSnapshot | null {
-  try {
-    const raw = window.sessionStorage.getItem(CHAT_TURN_SNAPSHOT_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as ChatTurnSnapshot) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeChatTurnSnapshot(snapshot: ChatTurnSnapshot) {
-  try {
-    window.sessionStorage.setItem(CHAT_TURN_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // The in-memory flow will still continue when route state is preserved.
-  }
-}
-
-function clearChatTurnSnapshot() {
-  try {
-    window.sessionStorage.removeItem(CHAT_TURN_SNAPSHOT_STORAGE_KEY);
-  } catch {
-    // Ignore storage failures; a fresh chat can still reset in memory.
-  }
-}
-
-function readGenerationFailureSnapshot(): ChatGenerationFailureSnapshot | null {
-  try {
-    const raw = window.sessionStorage.getItem(CHAT_GENERATION_FAILURE_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as ChatGenerationFailureSnapshot) : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeGenerationFailureSnapshot(snapshot: ChatGenerationFailureSnapshot) {
-  try {
-    window.sessionStorage.setItem(CHAT_GENERATION_FAILURE_STORAGE_KEY, JSON.stringify(snapshot));
-  } catch {
-    // The current component state still carries the error when storage is unavailable.
-  }
-}
-
-function clearGenerationFailureSnapshot() {
-  try {
-    window.sessionStorage.removeItem(CHAT_GENERATION_FAILURE_STORAGE_KEY);
-  } catch {
-    // Ignore storage failures; a fresh chat can still reset in memory.
-  }
-}
-
-function isChatFlowBackTarget(value: string | null | undefined): value is DashboardSurface {
-  return Boolean(value && CHAT_FLOW_BACK_TARGETS.has(value));
-}
-
-function readChatFlowBackTarget(): DashboardSurface | null {
-  try {
-    const raw = window.sessionStorage.getItem(CHAT_FLOW_BACK_TARGET_STORAGE_KEY);
-    return isChatFlowBackTarget(raw) ? raw : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeChatFlowBackTarget(surface: DashboardSurface) {
-  if (!isChatFlowBackTarget(surface)) {
-    return;
-  }
-
-  try {
-    window.sessionStorage.setItem(CHAT_FLOW_BACK_TARGET_STORAGE_KEY, surface);
-  } catch {
-    // Browser history remains available, but the flow fallback will use studio.
-  }
 }
 
 function isQuestionResponse(response: ChatTurnResponse): response is Extract<ChatTurnResponse, { type: "option_question" }> {
@@ -856,10 +746,23 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [isCurrentThreadDeleteOpen, setCurrentThreadDeleteOpen] = useState(false);
   const [isDeletingCurrentThread, setDeletingCurrentThread] = useState(false);
   const [currentThreadDeleteError, setCurrentThreadDeleteError] = useState<string | null>(null);
-  const lastPrimedStageRef = useRef<DashboardStage | null>(null);
   const activeThreadRef = useRef({ threadId: "", conversationMessageCount: 0 });
   const finalGenerationJobIdsRef = useRef<Set<string>>(new Set());
   const appSurface = optimisticSurface ?? initialSurface;
+  const prepareMissingGeneratingRoute = useCallback(() => {
+    dispatch({ type: "reset" });
+    dispatch({ type: "showResultShell" });
+  }, []);
+  const lastPrimedStageRef = useChatRouteRestore({
+    appSurface,
+    initialStage,
+    jobIdParam,
+    threadIdParam,
+    setGenerationStage,
+    restoreJob: ignoreRouteJobRestore,
+    restoreThread: ignoreRouteThreadRestore,
+    prepareMissingGeneratingRoute
+  });
   const currentGenerationJobInterrupt = getPendingGenerationJobParsedInterrupt(state.generationJob);
 
   function isClientFinalImageGenerationJob(job: GenerationJob | null | undefined): boolean {
