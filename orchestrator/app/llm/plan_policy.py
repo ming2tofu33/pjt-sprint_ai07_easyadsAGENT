@@ -107,6 +107,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "prompt_critic": "mock",
             "background_validation": "mock",
             "final_validation": "mock",
+            "native_creative_preflight_review": "mock",
             "revision_intent_classifier": "local_fast",
             "option_suggester": "local_fast",
         }
@@ -127,6 +128,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "prompt_critic": "api_mini",
             "background_validation": "mock",
             "final_validation": "api_nano",
+            "native_creative_preflight_review": "api_mini",
             "revision_intent_classifier": "api_nano",
             "option_suggester": "api_nano",
         }
@@ -148,6 +150,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
             "prompt_critic": "api_mini",
             "background_validation": "api_vision",
             "final_validation": "api_mini",
+            "native_creative_preflight_review": "api_full",
             "revision_intent_classifier": "api_mini",
         }
     return {
@@ -167,6 +170,7 @@ def default_model_class_by_node(plan: UserPlan) -> dict[NodeModelName, ModelClas
         "prompt_critic": "api_full",
         "background_validation": "api_vision",
         "final_validation": "api_vision",
+        "native_creative_preflight_review": "api_full",
         "revision_intent_classifier": "api_mini",
     }
 

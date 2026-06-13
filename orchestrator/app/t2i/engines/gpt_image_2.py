@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
+from PIL import Image
+
+from orchestrator.app.schemas.native_creative import NativeCreativePromptPackage
 from orchestrator.app.t2i.engines.base import T2IGenerationInput, T2IGenerationOutput
 from orchestrator.app.t2i.settings import (
     T2IEngineUnavailableError,
@@ -46,6 +50,50 @@ class GPTImageActualEngine:
             latency_ms=int((perf_counter() - started) * 1000),
             metadata={"api_call": True, "model": model, **request.metadata},
         )
+
+    def generate_native_single_shot(self, *, prompt_package: NativeCreativePromptPackage, output_dir: Path) -> dict[str, Any]:
+        started = perf_counter()
+        settings = load_t2i_settings()
+        require_t2i_enabled("gpt_image_2", settings)
+        if prompt_package.image_call_limit != 1 or prompt_package.automatic_edit_allowed or prompt_package.automatic_retry_allowed:
+            raise T2IEngineUnavailableError("Native single-shot prompt package violates image call policy.")
+        try:
+            from openai import OpenAI  # type: ignore
+        except Exception as exc:  # pragma: no cover - optional dependency
+            raise T2IEngineUnavailableError("OpenAI SDK is unavailable.") from exc
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        client = OpenAI(api_key=get_openai_api_key(), max_retries=0)
+        response = client.images.generate(
+            model="gpt-image-2",
+            prompt=prompt_package.final_prompt,
+            size="1024x1024",
+            n=1,
+        )
+        image_paths = _save_response_images(response, output_dir, "native")
+        source = Path(image_paths[0])
+        final_path = output_dir / "final_native_image.png"
+        if source.resolve() != final_path.resolve():
+            source.replace(final_path)
+        sha = _sha256(final_path)
+        width, height = _image_size(final_path)
+        return {
+            "provider": "openai",
+            "model": "gpt-image-2",
+            "api_operation": "generate",
+            "image_call_count": 1,
+            "edit_call_count": 0,
+            "retry_call_count": 0,
+            "max_retries": 0,
+            "request_id": getattr(response, "id", None),
+            "image_path": final_path.as_posix(),
+            "output_sha256": sha,
+            "width": width,
+            "height": height,
+            "format": "png",
+            "latency_ms": int((perf_counter() - started) * 1000),
+            "prompt_sha256": prompt_package.prompt_sha256,
+        }
 
 
 class GPTImage1ActualEngine(GPTImageActualEngine):
@@ -91,3 +139,16 @@ def _save_response_images(response: Any, output_dir: Path, engine_name: str) -> 
         raise T2IEngineUnavailableError("OpenAI image response did not include b64_json image data.")
 
     return paths
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _image_size(path: Path) -> tuple[int, int]:
+    with Image.open(path) as image:
+        return image.size
