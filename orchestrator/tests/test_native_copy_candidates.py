@@ -32,14 +32,16 @@ def test_candidate_bundle_coerces_four_candidates_and_selects_unblocked():
     evidence, product = _fixture()
     payload = {
         "candidates": [
-            {"candidate_id": "bad", "strategy": "product_name_first", "headline": "품격 있게 즐기는 된장찌개", "headline_basis_ids": product.product_name_evidence_ids},
             {"candidate_id": "good", "strategy": "minimal_identity", "headline": "된장찌개", "supporting_copy": "구수한 한 그릇", "headline_basis_ids": product.product_name_evidence_ids},
+            {"candidate_id": "bad", "strategy": "product_name_first", "headline": "품격 있게 즐기는 된장찌개", "headline_basis_ids": product.product_name_evidence_ids},
         ]
     }
 
     bundle = coerce_native_copy_strategy_bundle(payload, input_evidence=evidence, product_understanding=product)
 
-    assert len(bundle.candidates) == 4
+    assert len(bundle.candidates) == 1
+    assert bundle.effective_candidate_count == 1
+    assert bundle.candidate_capacity == "single_minimal"
     assert bundle.recommended_candidate_id is not None
     selected = next(score for score in bundle.scorecards if score.candidate_id == bundle.recommended_candidate_id)
     assert selected.blocked is False

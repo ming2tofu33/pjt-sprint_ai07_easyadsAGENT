@@ -21,3 +21,12 @@ def test_headline_support_repetition_is_penalized():
 
     assert score.repetition_penalty > 0
     assert "abstract_premium_repetition" in score.blocking_reasons
+
+
+def test_strategy_label_does_not_create_product_anchor():
+    candidate = NativeCopyCandidate(candidate_id="label_only", strategy="minimal_identity", headline="A calmer moment", headline_basis_ids=["e1"], text_block_count=1, total_character_count=15)
+
+    score = score_native_copy_candidate(candidate, product_identity="Product A")
+
+    assert score.product_centeredness < 0.55
+    assert "product_identity_missing" in score.blocking_reasons

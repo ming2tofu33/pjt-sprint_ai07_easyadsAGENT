@@ -60,11 +60,11 @@ def test_native_actual_script_uses_single_image_no_renderer(monkeypatch, tmp_pat
         from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief
 
         return ApprovedNativeCopyBrief(
-            headline="깊고 구수한 한 그릇",
-            supporting_copy="정갈하게 끓여낸 깊은 맛",
+            headline="된장찌개",
+            supporting_copy=None,
             language="korean",
-            message_role="headline_plus_support",
-            allowed_texts=["깊고 구수한 한 그릇", "정갈하게 끓여낸 깊은 맛"],
+            message_role="headline_only",
+            allowed_texts=["된장찌개"],
             forbidden_texts=[],
             max_text_blocks=2,
             max_total_characters=48,
@@ -98,7 +98,7 @@ def test_native_actual_script_uses_single_image_no_renderer(monkeypatch, tmp_pat
         lambda **kwargs: NativeCopyStrategyBundle(
             product_expression_basis=ProductExpressionBasis(product_identity="된장찌개", selected_headline_basis_ids=["e1"]),
             positioning_plan=PositioningRealizationPlan(requested_positioning=["premium", "refined"]),
-            candidates=[NativeCopyCandidate(candidate_id="c1", strategy="minimal_identity", headline="깊고 구수한 한 그릇", supporting_copy="정갈하게 끓여낸 깊은 맛", headline_basis_ids=["e1"], text_block_count=2, total_character_count=21)],
+                candidates=[NativeCopyCandidate(candidate_id="c1", strategy="minimal_identity", headline="된장찌개", headline_basis_ids=["e1"], text_block_count=1, total_character_count=4)],
             scorecards=[
                 NativeCopyScorecard(
                     candidate_id="c1",

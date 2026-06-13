@@ -67,6 +67,10 @@ class ApprovedNativeCopyBrief(BaseModel):
     positioning_realization_plan: dict = Field(default_factory=dict)
     candidate_scorecard: dict = Field(default_factory=dict)
     alternative_candidate_summaries: list[dict] = Field(default_factory=list)
+    campaign_message_plan: dict = Field(default_factory=dict)
+    visual_semantic_cue_plan: dict = Field(default_factory=dict)
+    typography_dominance_plan: dict = Field(default_factory=dict)
+    support_basis_type: Literal["none", "verified_fact", "permissible_sensory_inference", "campaign_context", "aesthetic_expression"] = "none"
 
 
 class NativeSourceVisualAnalysis(BaseModel):
@@ -108,9 +112,46 @@ class ProductExpressionBasis(BaseModel):
     selected_support_basis_ids: list[str] = Field(default_factory=list)
 
 
+class CampaignMessagePlan(BaseModel):
+    campaign_role: Literal["product_hero", "menu_identity", "new_product_introduction", "brand_editorial", "product_experience", "offer_announcement", "information_required"]
+    primary_communication_goal: str
+    funnel_stage: Literal["awareness", "consideration", "conversion", "retention", "unknown"]
+    image_explanatory_power: float = Field(ge=0.0, le=1.0)
+    verified_information_density: Literal["minimal", "low", "medium", "high"]
+    visible_copy_mode: Literal["image_only", "product_name_only", "headline_only", "headline_plus_support", "headline_plus_closing"]
+    headline_function: Literal["product_identity", "launch_announcement", "sensory_hook", "context_hook", "brand_statement"]
+    support_function: Literal["none", "product_detail", "sensory_detail", "usage_context", "launch_context", "brand_mood"]
+    rationale: list[str] = Field(default_factory=list)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class VisualSemanticCuePlan(BaseModel):
+    non_display_cues: list[str] = Field(default_factory=list)
+    atmosphere_cues: list[str] = Field(default_factory=list)
+    material_cues: list[str] = Field(default_factory=list)
+    sensory_visual_cues: list[str] = Field(default_factory=list)
+    composition_cues: list[str] = Field(default_factory=list)
+    typography_mood_cues: list[str] = Field(default_factory=list)
+    derived_from_positioning: list[str] = Field(default_factory=list)
+    derived_from_visual_evidence: list[str] = Field(default_factory=list)
+    derived_from_permissible_inference: list[str] = Field(default_factory=list)
+    must_not_render_as_text: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class TypographyDominancePlan(BaseModel):
+    headline_prominence: Literal["quiet", "balanced", "dominant"]
+    headline_scale_intent: Literal["small", "medium", "large"]
+    support_scale_intent: Literal["none", "caption", "small", "medium"]
+    product_visual_priority: float = Field(ge=0.0, le=1.0)
+    text_visual_priority: float = Field(ge=0.0, le=1.0)
+    preferred_copy_position: Literal["top", "top_left", "left", "bottom", "adaptive_negative_space"]
+    rationale: list[str] = Field(default_factory=list)
+
+
 class NativeCopyCandidate(BaseModel):
     candidate_id: str
-    strategy: Literal["product_name_first", "product_attribute_first", "sensory_first", "context_first", "minimal_identity"]
+    strategy: Literal["minimal_identity", "product_detail", "sensory_expression", "campaign_context", "brand_editorial", "product_name_first", "product_attribute_first", "sensory_first", "context_first"]
     headline: str
     supporting_copy: str | None = None
     closing_copy: str | None = None
@@ -121,6 +162,7 @@ class NativeCopyCandidate(BaseModel):
     positioning_realization_mode: Literal["implicit", "balanced", "explicit"] = "implicit"
     direct_positioning_terms_used: list[str] = Field(default_factory=list)
     sensory_terms_used: list[str] = Field(default_factory=list)
+    support_basis_type: Literal["none", "verified_fact", "permissible_sensory_inference", "campaign_context", "aesthetic_expression"] = "none"
     text_block_count: int = Field(default=1, ge=1, le=2)
     total_character_count: int = Field(default=0, ge=0, le=80)
 
@@ -142,6 +184,14 @@ class NativeCopyScorecard(BaseModel):
     abstract_language_penalty: float = Field(ge=0.0, le=1.0)
     repetition_penalty: float = Field(ge=0.0, le=1.0)
     unsupported_claim_penalty: float = Field(ge=0.0, le=1.0)
+    campaign_role_fit: float = Field(default=0.75, ge=0.0, le=1.0)
+    message_density_fit: float = Field(default=0.75, ge=0.0, le=1.0)
+    copy_visual_contribution: float = Field(default=0.75, ge=0.0, le=1.0)
+    candidate_distinctiveness: float = Field(default=1.0, ge=0.0, le=1.0)
+    forced_support_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    duplicate_candidate_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    campaign_role_mismatch_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    typography_dominance_mismatch_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
     total_score: float = Field(ge=0.0, le=1.0)
     blocked: bool = False
     blocking_reasons: list[str] = Field(default_factory=list)
@@ -150,11 +200,18 @@ class NativeCopyScorecard(BaseModel):
 class NativeCopyStrategyBundle(BaseModel):
     product_expression_basis: ProductExpressionBasis
     positioning_plan: PositioningRealizationPlan
+    campaign_message_plan: dict = Field(default_factory=dict)
     candidates: list[NativeCopyCandidate] = Field(default_factory=list)
     scorecards: list[NativeCopyScorecard] = Field(default_factory=list)
     recommended_candidate_id: str | None = None
     requires_revision: bool = False
     revision_reasons: list[str] = Field(default_factory=list)
+    requested_candidate_count: int = 4
+    generated_candidate_count: int = 0
+    effective_candidate_count: int = 0
+    candidate_capacity: Literal["single_minimal", "limited", "full"] = "limited"
+    diversity_constraints: list[str] = Field(default_factory=list)
+    deduplication_reasons: list[str] = Field(default_factory=list)
 
 
 class NativeCreativePromptPackage(BaseModel):
@@ -180,6 +237,9 @@ class NativeCreativePromptPackage(BaseModel):
     automatic_edit_allowed: Literal[False] = False
     automatic_retry_allowed: Literal[False] = False
     preflight_status: Literal["approved", "manual_review", "rejected"]
+    campaign_message_plan: dict = Field(default_factory=dict)
+    visual_semantic_cue_plan: dict = Field(default_factory=dict)
+    typography_dominance_plan: dict = Field(default_factory=dict)
 
 
 class NativeCreativePreflightReview(BaseModel):
@@ -237,8 +297,15 @@ class NativeGenerationReview(BaseModel):
     literal_positioning_language_detected: bool = False
     product_centered_copy_score: float = Field(default=0.0, ge=0.0, le=1.0)
     sensory_grounding_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    copy_sensory_grounding_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    visual_sensory_richness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    copy_visual_sensory_alignment_score: float = Field(default=0.0, ge=0.0, le=1.0)
     positioning_realization_score: float = Field(default=0.0, ge=0.0, le=1.0)
     copy_restraint_score: float = Field(default=0.0, ge=0.0, le=1.0)
     headline_support_complementarity: float = Field(default=0.0, ge=0.0, le=1.0)
+    campaign_role_fit_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    typography_dominance_fit_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    supporting_copy_value_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    visible_copy_value_score: float = Field(default=0.0, ge=0.0, le=1.0)
     decision: Literal["accept", "manual_review", "reject"]
     failure_reasons: list[str] = Field(default_factory=list)
