@@ -2018,6 +2018,7 @@ def test_postgres_mark_failed_updates_row_thread_and_event(monkeypatch):
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction__test_generation_job_persistence_db_backend)
     events = []
     thread_updates = []
+    snapshots = []
     state = _row__test_generation_job_persistence_db_backend()
 
     def mark_failed(job_id, error, metadata=None, connection=None):
@@ -2031,16 +2032,18 @@ def test_postgres_mark_failed_updates_row_thread_and_event(monkeypatch):
     monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
     monkeypatch.setattr(service.chat_message_repo, "append_generation_job_chat_event", lambda **kwargs: {"id": "msg_uuid"})
     monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
-    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: {"snapshot_id": "snap_uuid"})
+    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: snapshots.append(kwargs) or {"snapshot_id": "snap_uuid"})
     monkeypatch.setattr(service.chat_thread_repo, "get_chat_thread_by_public_id", lambda thread_id, **kwargs: {"id": "thread_uuid", "active_job_id": "job_uuid"})
 
-    failed = service.mark_generation_job_failed("job_db", {"error_code": "x", "message": "failed"})
+    failed = service.mark_generation_job_failed("job_db", {"error_code": "x", "message": "failed", "detail": "missing package"})
 
     assert failed.status == "failed"
     assert failed.error.error_code == "x"
     assert events[0]["event_type"] == "failed"
     assert events[0]["payload"]["error_code"] == "x"
     assert thread_updates[0]["expected_active_job_id"] == "job_uuid"
+    assert snapshots[0]["metadata"]["message"] == "failed"
+    assert snapshots[0]["metadata"]["detail"] == "missing package"
 
 
 # ===== from test_generation_job_r2_persistence.py =====
@@ -2457,6 +2460,7 @@ from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequ
 from orchestrator.app.generation_jobs.service import (
     create_generation_job,
     get_generation_job,
+    mark_generation_job_failed,
     mark_generation_job_running,
     maybe_mark_stale_generation_job_failed,
     reset_generation_job_store_for_tests,
@@ -2548,6 +2552,31 @@ def test_create_generation_job_graph_job_degrades_metadata():
     assert job.metadata["execution_mode"] == "pending_graph_execution"
     assert job.output_path is None
     assert job.result_payload is None
+
+
+def test_memory_mark_failed_snapshot_keeps_error_message_and_detail():
+    job = create_generation_job(GenerationJobCreateRequest(user_input="Create an ad", run_mode="graph_job"))
+
+    failed = mark_generation_job_failed(
+        job.job_id,
+        {
+            "error_code": "generation_job_execution_failed",
+            "message": "Generation job graph execution failed.",
+            "detail": "No module named 'langgraph.checkpoint.postgres'",
+        },
+    )
+
+    snapshot = get_chat_state_snapshot_by_key(
+        snapshot_key=f"{job.job_id}:failed",
+        public_thread_id=job.thread_id,
+        workspace_id="mem_workspace",
+        user_id=job.user_id,
+    )
+
+    assert failed is not None
+    assert snapshot is not None
+    assert snapshot.metadata["message"] == "Generation job graph execution failed."
+    assert snapshot.metadata["detail"] == "No module named 'langgraph.checkpoint.postgres'"
 
 
 def test_maybe_mark_stale_generation_job_failed_keeps_fresh_running_job():
