@@ -2046,6 +2046,51 @@ def test_postgres_mark_failed_updates_row_thread_and_event(monkeypatch):
     assert snapshots[0]["metadata"]["detail"] == "missing package"
 
 
+def test_postgres_record_generation_job_lifecycle_event_records_scoped_event(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(service, "db_transaction", fake_db_transaction__test_generation_job_persistence_db_backend)
+    events = []
+    row = _row__test_generation_job_persistence_db_backend()
+    row["workspace_id"] = "workspace_uuid"
+
+    monkeypatch.setattr(
+        service,
+        "_resolve_db_workspace_for_public_access",
+        lambda requested_workspace_id=None, user_id=None, connection=None: "workspace_uuid",
+    )
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "get_generation_job_scoped_by_public_id",
+        lambda job_id, workspace_id, connection=None, for_update=False: row,
+    )
+    monkeypatch.setattr(
+        service.generation_job_event_repo,
+        "record_generation_job_event",
+        lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"},
+    )
+
+    service.record_generation_job_lifecycle_event(
+        "job_db",
+        "background_enqueued",
+        message="graph_resume",
+        payload={"task": "graph_resume", "source": "answer_route"},
+        workspace_id="workspace_uuid",
+        user_id="user_uuid",
+    )
+
+    assert events == [
+        {
+            "workspace_id": "workspace_uuid",
+            "thread_id": "thread_uuid",
+            "job_id": "job_uuid",
+            "event_type": "background_enqueued",
+            "message": "graph_resume",
+            "payload": {"task": "graph_resume", "source": "answer_route"},
+            "connection": events[0]["connection"],
+        }
+    ]
+
+
 # ===== from test_generation_job_r2_persistence.py =====
 from contextlib import contextmanager
 

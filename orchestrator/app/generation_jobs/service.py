@@ -2242,6 +2242,42 @@ def _safe_record_r2_usage(payload: dict) -> None:
         logger.warning("Failed to record generation R2 usage.", exc_info=True)
 
 
+def record_generation_job_lifecycle_event(
+    job_id: str,
+    event_type: str,
+    *,
+    message: str | None = None,
+    payload: dict | None = None,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> None:
+    if not _use_postgres_backend():
+        return
+    with db_transaction() as conn:
+        if workspace_id is not None or user_id is not None:
+            resolved_workspace_id = _resolve_db_workspace_for_public_access(
+                requested_workspace_id=workspace_id,
+                user_id=user_id,
+                connection=conn,
+            )
+            row = generation_job_repo.get_generation_job_scoped_by_public_id(
+                job_id,
+                workspace_id=resolved_workspace_id,
+                connection=conn,
+            )
+        else:
+            row = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if not row:
+            return
+        _record_generation_job_event_db(
+            row,
+            event_type,
+            message=message,
+            payload=payload or {},
+            connection=conn,
+        )
+
+
 def _record_generation_job_event_db(
     row: dict,
     event_type: str,
