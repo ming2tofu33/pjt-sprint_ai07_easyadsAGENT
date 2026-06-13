@@ -25,6 +25,7 @@ NodeModelName = Literal[
     "prompt_critic",
     "background_validation",
     "final_validation",
+    "native_creative_preflight_review",
     "revision_intent_classifier",
     "option_suggester",
 ]

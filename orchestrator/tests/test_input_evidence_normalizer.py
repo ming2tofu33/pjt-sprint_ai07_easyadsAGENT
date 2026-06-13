@@ -20,6 +20,17 @@ def test_text_intent_and_product_are_separated():
     assert not bundle.visual_observations
 
 
+def test_korean_request_separates_product_intent_and_positioning():
+    bundle = build_input_evidence_bundle({"user_input": "고급진 된장찌개를 홍보하고 싶어"})
+
+    assert bundle.explicit_product_mentions == ["된장찌개"]
+    assert bundle.campaign_intent == "product_promotion"
+    assert "premium" in bundle.desired_positioning
+    assert "refined" in bundle.desired_positioning
+    assert bundle.non_display_instruction_fragments == ["홍보하고 싶어"]
+    assert all("홍보하고 싶어" not in item.value for item in bundle.explicit_user_facts)
+
+
 def test_image_only_uses_visual_observations_without_user_facts(tmp_path):
     image = tmp_path / "source.png"
     Image.new("RGB", (16, 16), "#ffffff").save(image)

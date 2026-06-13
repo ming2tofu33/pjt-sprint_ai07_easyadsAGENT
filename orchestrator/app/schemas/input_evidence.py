@@ -45,6 +45,11 @@ class InputEvidenceBundle(BaseModel):
     input_mode: InputMode
     user_text: str | None = None
     user_intent: str | None = None
+    user_request_utterance: str | None = None
+    campaign_intent: str | None = None
+    desired_positioning: list[str] = Field(default_factory=list)
+    non_display_instruction_fragments: list[str] = Field(default_factory=list)
+    user_exact_display_copy: list[str] = Field(default_factory=list)
     placement: str | None = None
     promotion_goal: str | None = None
     source_asset_id: str | None = None

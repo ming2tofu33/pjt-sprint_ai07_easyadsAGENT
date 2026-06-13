@@ -10,6 +10,20 @@ from orchestrator.app.schemas.product_understanding import ProductUnderstanding,
 
 _SNAKE_CASE_RE = re.compile(r"^(?=.*[a-z])[a-z0-9]+(?:_[a-z0-9]+)*$")
 ROOT_ALIASES = {"food_beverage", "beauty_personal_care", "fashion_lifestyle", "home_living"}
+REQUEST_INTENT_PATTERNS = [
+    r"홍보(?:하고 싶어|해\s*줘|해주세요)",
+    r"광고(?:하고 싶어|해\s*줘|해주세요)",
+    r"소개(?:하고 싶어|해\s*줘|해주세요)",
+    r"만들어\s*줘",
+    r"제작해\s*줘",
+    r"디자인해\s*줘",
+    r"알리고 싶어",
+    r"\bi want to promote\b",
+    r"\bcreate an ad\b",
+    r"\bmake an advertisement\b",
+    r"\badvertise this\b",
+    r"\bpromote this\b",
+]
 _UNICODE_SLUG_REPLACEMENTS = {
     "된장찌개": "doenjang jjigae",
     "김치찌개": "kimchi jjigae",
@@ -46,6 +60,8 @@ def validate_product_understanding(
     model = result if isinstance(result, ProductUnderstanding) else ProductUnderstanding(**result)
     if len(model.category_path) == 1 and model.normalized_product_type:
         raise ValueError("category_path must include product hierarchy when product identity is known")
+    if _contains_request_intent(model.product_name):
+        raise ValueError("product_identity_contaminated")
     if any(item in ROOT_ALIASES for item in model.category_path[1:]):
         raise ValueError("category_path cannot contain root aliases below broad_category")
     _validate_verified_fact_provenance(model, bundle_model)
@@ -56,6 +72,8 @@ def validate_product_understanding(
         update={
             "unknown_fields": sorted(set(model.unknown_fields)),
             "unsupported_claim_categories": unsupported_claim_categories_for_bundle(bundle_model),
+            "campaign_intent": model.campaign_intent or bundle_model.campaign_intent,
+            "desired_positioning": list(model.desired_positioning or bundle_model.desired_positioning),
             "confidence": confidence,
             "clarification_required": model.clarification_required or (0.45 <= confidence < 0.70),
             "manual_review_required": model.manual_review_required or confidence < 0.45,
@@ -121,3 +139,7 @@ def _validate_product_identity_conflict(model: ProductUnderstanding, bundle: Inp
 
 def _norm(value: str | None) -> str:
     return "".join(ch.lower() for ch in str(value or "") if ch.isalnum())
+
+
+def _contains_request_intent(value: str | None) -> bool:
+    return any(re.search(pattern, value or "", re.IGNORECASE) for pattern in REQUEST_INTENT_PATTERNS)
