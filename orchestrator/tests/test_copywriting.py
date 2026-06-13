@@ -413,6 +413,8 @@ def test_macaron_consultation_cta_is_hard_blocked():
 
     assert grounding.grounded is False
     assert grounding.cta_goal_mismatch_terms
+    assert grounding.product_drift_terms == []
+    assert grounding.internal_terms == []
     assert ranking.scorecards[0].hard_blocked is True
 
 
@@ -423,7 +425,9 @@ def test_macaron_meat_product_drift_is_hard_blocked():
     grounding = evaluate_copy_grounding(candidate, context=context)
     ranking = rank_copy_candidates([candidate], state={"context": context.model_dump()})
 
+    assert grounding.cta_goal_mismatch_terms == []
     assert grounding.product_drift_terms
+    assert grounding.internal_terms == []
     assert ranking.scorecards[0].hard_blocked is True
 
 
@@ -434,6 +438,8 @@ def test_internal_enum_menu_discovery_is_hard_blocked():
     grounding = evaluate_copy_grounding(candidate, context=context)
     ranking = rank_copy_candidates([candidate], state={"context": context.model_dump()})
 
+    assert grounding.cta_goal_mismatch_terms == []
+    assert grounding.product_drift_terms == []
     assert grounding.internal_terms
     assert ranking.scorecards[0].hard_blocked is True
 

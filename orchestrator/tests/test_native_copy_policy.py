@@ -1,3 +1,5 @@
+import pytest
+
 from orchestrator.app.llm.native_copy_policy import decide_native_typography_eligibility, validate_approved_native_copy_brief
 from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief
 
@@ -52,30 +54,51 @@ def test_closing_copy_is_not_action_cta():
     assert "action_cta_requires_verified_destination" not in validate_approved_native_copy_brief(brief)
 
 
-def test_rejects_user_request_copied_as_headline():
-    brief = _brief(headline="고급진 된장찌개를 홍보하고 싶어", supporting_copy=None, allowed_texts=["고급진 된장찌개를 홍보하고 싶어"], message_role="headline_only", transformation_performed=False)
-
-    failures = validate_approved_native_copy_brief(brief)
-
-    assert "user_request_copied_as_headline" in failures
-    assert "meta_instruction_leakage_detected" in failures
-
-
-def test_rejects_meta_instruction_in_headline():
-    brief = _brief(headline="된장찌개를 홍보하고 싶어", supporting_copy=None, allowed_texts=["된장찌개를 홍보하고 싶어"], message_role="headline_only")
-
-    failures = validate_approved_native_copy_brief(brief)
-
-    assert "meta_instruction_leakage_detected" in failures
-
-
-def test_accepts_consumer_facing_transformation():
-    brief = _brief(headline="깊고 구수한 한 그릇", supporting_copy=None, allowed_texts=["깊고 구수한 한 그릇"], message_role="headline_only")
-
-    failures = validate_approved_native_copy_brief(brief)
-
-    assert "meta_instruction_leakage_detected" not in failures
-    assert "user_request_copied_as_headline" not in failures
+@pytest.mark.parametrize(
+    ("overrides", "expected_failures"),
+    [
+        pytest.param(
+            {
+                "headline": "고급진 된장찌개를 홍보하고 싶어",
+                "supporting_copy": None,
+                "allowed_texts": ["고급진 된장찌개를 홍보하고 싶어"],
+                "message_role": "headline_only",
+                "transformation_performed": False,
+            },
+            {
+                "copy_transformation_missing",
+                "meta_instruction_leakage_detected",
+                "positioning_literalization",
+                "product_centeredness_too_low",
+                "user_request_copied_as_headline",
+            },
+            id="user-request-copied-headline",
+        ),
+        pytest.param(
+            {
+                "headline": "된장찌개를 홍보하고 싶어",
+                "supporting_copy": None,
+                "allowed_texts": ["된장찌개를 홍보하고 싶어"],
+                "message_role": "headline_only",
+            },
+            {"user_request_copied_as_headline", "meta_instruction_leakage_detected"},
+            id="meta-instruction-headline",
+        ),
+        pytest.param(
+            {
+                "headline": "깊고 구수한 한 그릇",
+                "supporting_copy": None,
+                "allowed_texts": ["깊고 구수한 한 그릇"],
+                "message_role": "headline_only",
+            },
+            {"product_centeredness_too_low", "product_identity_missing"},
+            id="consumer-facing-transform",
+        ),
+    ],
+)
+def test_native_copy_validation_exact_failure_set(overrides, expected_failures):
+    brief = _brief(**overrides)
+    assert set(validate_approved_native_copy_brief(brief)) == expected_failures
 
 
 def test_user_exact_copy_can_be_preserved():

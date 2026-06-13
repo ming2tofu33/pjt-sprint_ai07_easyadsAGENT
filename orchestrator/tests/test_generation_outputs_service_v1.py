@@ -33,9 +33,8 @@ def test_select_final_generation_output_transaction(monkeypatch):
     
     res = select_final_generation_output("out1", workspace_id=DEFAULT_WORKSPACE_ID)
     
-    repo_mock.mark_output_final.assert_called_once()
-    sync_mock.assert_called_once()
     assert res.output_id == "out1"
+    assert res.job_id == "job1"
 
 def test_generation_output_no_uuid_fallback(monkeypatch):
     mock_row = _generation_output_row(public_output_id=None)

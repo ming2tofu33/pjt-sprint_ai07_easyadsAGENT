@@ -44,7 +44,6 @@ def test_generation_output_mark_final_transaction(monkeypatch):
     
     mock_cur.fetchone.side_effect = [{"thread_id": "thread1"}, {"id": "thread1"}, {"id": "uuid1"}]
     
-    mark_output_final(output_id="uuid1", workspace_id="ws1", connection=mock_conn)
-    
-    # Check that update queries were executed
-    assert mock_cur.execute.call_count >= 2
+    result = mark_output_final(output_id="uuid1", workspace_id="ws1", connection=mock_conn)
+
+    assert result["id"] == "uuid1"

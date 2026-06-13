@@ -23,7 +23,7 @@ from orchestrator.app.main import app
 from orchestrator.app.t2i.schemas import T2IResult
 from orchestrator.tests.factories.chat_threads import make_chat_thread_row
 from orchestrator.tests.helpers.chat_threads import PNG_1X1
-from orchestrator.tests.helpers.graph_state import write_test_png
+from orchestrator.tests.helpers.images import write_test_png
 
 
 def test_chat_start_returns_inferred_context_and_copy_candidates():
