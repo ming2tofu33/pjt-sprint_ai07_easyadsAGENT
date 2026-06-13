@@ -13,6 +13,9 @@ from orchestrator.app.schemas.native_creative import (
     NativeCreativePromptPackage,
     NativeGenerationBudget,
     NativeTypographyEligibilityDecision,
+    NativeCopyCandidate,
+    NativeCopyScorecard,
+    PositioningRealizationPlan,
 )
 
 GENERIC_CTA_TERMS = {
@@ -67,6 +70,46 @@ REQUEST_INTENT_PATTERNS = [
     r"\badvertise this\b",
     r"\bpromote this\b",
 ]
+
+DIRECT_POSITIONING_TERMS = {
+    "고급",
+    "고급진",
+    "품격",
+    "프리미엄",
+    "럭셔리",
+    "우아",
+    "세련",
+    "최고급",
+    "명품",
+    "특별한",
+    "premium",
+    "luxury",
+    "luxurious",
+    "elegant",
+    "sophisticated",
+    "exclusive",
+    "prestigious",
+    "high-end",
+}
+ABSTRACT_PRESTIGE_TERMS = {"품격", "프리미엄", "럭셔리", "우아", "세련", "premium", "luxury", "elegant", "sophisticated"}
+SENSORY_LANGUAGE_CUES = {
+    "김",
+    "따뜻",
+    "온기",
+    "부드",
+    "고소",
+    "구수",
+    "향",
+    "식감",
+    "결",
+    "fresh",
+    "warm",
+    "steam",
+    "aroma",
+    "soft",
+    "crisp",
+    "texture",
+}
 
 
 def plan_gpt_image2_native_single_shot() -> CreativeExecutionPlan:
@@ -132,7 +175,171 @@ def validate_approved_native_copy_brief(brief: ApprovedNativeCopyBrief) -> list[
             failures.append("user_request_copied_as_headline")
     if not set(brief.product_evidence_ids or brief.verified_evidence_ids):
         failures.append("copy_provenance_missing")
+    score = score_native_copy_candidate(
+        NativeCopyCandidate(
+            candidate_id=brief.selected_candidate_id or "brief",
+            strategy="product_name_first",
+            headline=brief.headline or "",
+            supporting_copy=brief.supporting_copy,
+            closing_copy=brief.closing_copy,
+            action_cta=brief.action_cta,
+            headline_basis_ids=brief.product_evidence_ids or brief.verified_evidence_ids,
+            support_basis_ids=brief.copy_claim_evidence_ids or (brief.product_evidence_ids if brief.supporting_copy or brief.closing_copy else []),
+            support_basis_type=brief.support_basis_type,
+            language=brief.language,
+            text_block_count=min(len(texts) or 1, 2),
+            total_character_count=sum(len(text) for text in texts),
+        ),
+        product_identity=brief.product_identity,
+        requested_positioning=brief.desired_positioning,
+        exact_user_copy=brief.copy_source_mode == "user_exact",
+    )
+    if score.blocked:
+        failures.extend(score.blocking_reasons)
     return sorted(set(failures))
+
+
+def direct_positioning_terms_used(text: str | None) -> list[str]:
+    lowered = (text or "").lower()
+    return sorted(term for term in DIRECT_POSITIONING_TERMS if term.lower() in lowered)
+
+
+def build_positioning_realization_plan(*, requested_positioning: list[str], exact_user_copy: bool = False) -> PositioningRealizationPlan:
+    direct_terms = sorted(set(requested_positioning) & DIRECT_POSITIONING_TERMS)
+    if exact_user_copy:
+        return PositioningRealizationPlan(
+            requested_positioning=requested_positioning,
+            realization_mode="explicit",
+            copy_expression_policy="exact_user_copy",
+            preferred_channels=["product_copy"],
+            copy_should_carry_positioning=True,
+            direct_positioning_terms_allowed=direct_terms,
+            direct_positioning_terms_avoided=[],
+            rationale=["user_supplied_exact_display_copy"],
+            confidence=0.9,
+        )
+    return PositioningRealizationPlan(
+        requested_positioning=requested_positioning,
+        realization_mode="implicit" if requested_positioning else "balanced",
+        copy_expression_policy="avoid_direct_positioning_terms",
+        preferred_channels=["visual_style", "composition", "lighting", "color", "typography", "negative_space", "sensory_copy"],
+        copy_should_carry_positioning=False,
+        direct_positioning_terms_allowed=[],
+        direct_positioning_terms_avoided=sorted(set([*requested_positioning, *direct_terms])),
+        rationale=["positioning_is_visual_and_tonal_direction", "copy_should_remain_product_centered"],
+        confidence=0.85,
+    )
+
+
+def score_native_copy_candidate(
+    candidate: NativeCopyCandidate,
+    *,
+    product_identity: str | None,
+    requested_positioning: list[str] | None = None,
+    exact_user_copy: bool = False,
+    campaign_message_plan: dict[str, Any] | None = None,
+) -> NativeCopyScorecard:
+    texts = [candidate.headline, candidate.supporting_copy or candidate.closing_copy or ""]
+    joined = " ".join(texts)
+    used_direct = direct_positioning_terms_used(joined)
+    headline_direct = direct_positioning_terms_used(candidate.headline)
+    product_norm = _norm(product_identity or "")
+    headline_norm = _norm(candidate.headline)
+    support_norm = _norm(candidate.supporting_copy or candidate.closing_copy or "")
+    support_has_sensory_cue = _contains_sensory_cue(candidate.supporting_copy or candidate.closing_copy or "")
+    product_in_headline = bool(product_norm and headline_norm and (product_norm in headline_norm or headline_norm in product_norm))
+    product_anchor = product_in_headline
+    duplicate = bool(support_norm and headline_norm and (support_norm in headline_norm or headline_norm in support_norm))
+    direct_penalty = 0.0 if exact_user_copy else min(1.0, 0.35 * len(used_direct) + (0.25 if headline_direct else 0.0))
+    generic_prestige_penalty = 0.0 if exact_user_copy else (0.35 if any(term in joined.lower() for term in ABSTRACT_PRESTIGE_TERMS) else 0.0)
+    abstract_penalty = min(1.0, direct_penalty + generic_prestige_penalty)
+    repetition_penalty = 0.35 if duplicate else 0.0
+    unsupported_claim_penalty = 0.0
+    campaign_role = str((campaign_message_plan or {}).get("campaign_role") or "")
+    visible_copy_mode = str((campaign_message_plan or {}).get("visible_copy_mode") or "")
+    support_expected = visible_copy_mode in {"headline_plus_support", "headline_plus_closing"}
+    forced_support_penalty = 0.35 if candidate.supporting_copy and not support_expected and not candidate.support_basis_ids and candidate.support_basis_type in {"none", "aesthetic_expression"} else 0.0
+    campaign_role_mismatch_penalty = 0.35 if campaign_role == "new_product_introduction" and not candidate.supporting_copy and support_expected else 0.0
+    typography_dominance_mismatch_penalty = 0.25 if visible_copy_mode == "product_name_only" and candidate.supporting_copy else 0.0
+    campaign_role_fit = max(0.0, min(1.0, 0.9 - campaign_role_mismatch_penalty - typography_dominance_mismatch_penalty))
+    message_density_fit = max(0.0, min(1.0, 0.9 - forced_support_penalty - typography_dominance_mismatch_penalty))
+    copy_visual_contribution = 0.82 if candidate.supporting_copy or candidate.closing_copy else 0.68
+    candidate_distinctiveness = 1.0
+    product_centeredness = max(0.0, min(1.0, (0.9 if product_anchor else 0.45) - direct_penalty * 0.5 - generic_prestige_penalty * 0.3))
+    sensory_specificity = 0.85 if candidate.sensory_terms_used or support_has_sensory_cue else (0.62 if candidate.supporting_copy else 0.55)
+    evidence_grounding = 0.9 if candidate.headline_basis_ids and (not candidate.supporting_copy or candidate.support_basis_ids or candidate.sensory_terms_used or support_has_sensory_cue) else (0.72 if candidate.headline_basis_ids else 0.35)
+    consumer_naturalness = max(0.0, min(1.0, 0.9 - direct_penalty * 0.35 - repetition_penalty * 0.25))
+    positioning_alignment = 0.82 if requested_positioning else 0.75
+    headline_strength = max(0.0, min(1.0, 0.85 if len(candidate.headline) <= 18 else 0.7))
+    support_complementarity = 0.9 if candidate.supporting_copy and not duplicate and (candidate.sensory_terms_used or support_has_sensory_cue) else (0.75 if not candidate.supporting_copy else (0.62 if not duplicate else 0.45))
+    restraint = max(0.0, min(1.0, 0.9 - direct_penalty * 0.55 - generic_prestige_penalty * 0.35 - repetition_penalty * 0.25 - forced_support_penalty * 0.3))
+    native_fit = 0.9 if candidate.text_block_count <= 2 and candidate.total_character_count <= 48 else 0.45
+    blocking_reasons: list[str] = []
+    if product_centeredness < 0.55:
+        blocking_reasons.append("product_centeredness_too_low")
+    if not product_anchor:
+        blocking_reasons.append("product_identity_missing")
+    if direct_penalty >= 0.5:
+        blocking_reasons.append("positioning_literalization")
+    if generic_prestige_penalty > 0 and not product_anchor:
+        blocking_reasons.append("abstract_copy_without_product_anchor")
+    if candidate.supporting_copy and not (candidate.support_basis_ids or candidate.sensory_terms_used or support_has_sensory_cue):
+        blocking_reasons.append("supporting_copy_too_abstract")
+    if forced_support_penalty > 0:
+        blocking_reasons.append("forced_support_without_basis")
+    if campaign_role_mismatch_penalty > 0:
+        blocking_reasons.append("campaign_role_copy_mode_mismatch")
+    if repetition_penalty > 0:
+        blocking_reasons.append("abstract_premium_repetition")
+    total = (
+        product_centeredness * 0.18
+        + sensory_specificity * 0.10
+        + evidence_grounding * 0.12
+        + consumer_naturalness * 0.14
+        + positioning_alignment * 0.10
+        + headline_strength * 0.12
+        + support_complementarity * 0.10
+        + restraint * 0.10
+        + native_fit * 0.04
+        + campaign_role_fit * 0.06
+        + message_density_fit * 0.05
+        + copy_visual_contribution * 0.03
+        - direct_penalty * 0.12
+        - generic_prestige_penalty * 0.08
+        - repetition_penalty * 0.06
+        - forced_support_penalty * 0.08
+        - campaign_role_mismatch_penalty * 0.08
+        - typography_dominance_mismatch_penalty * 0.05
+    )
+    return NativeCopyScorecard(
+        candidate_id=candidate.candidate_id,
+        product_identity_clarity=0.9 if product_anchor else 0.4,
+        product_centeredness=product_centeredness,
+        sensory_specificity=sensory_specificity,
+        evidence_grounding=evidence_grounding,
+        consumer_naturalness=consumer_naturalness,
+        positioning_alignment=positioning_alignment,
+        headline_strength=headline_strength,
+        support_complementarity=support_complementarity,
+        restraint=restraint,
+        native_typography_fit=native_fit,
+        direct_positioning_penalty=direct_penalty,
+        generic_prestige_penalty=generic_prestige_penalty,
+        abstract_language_penalty=abstract_penalty,
+        repetition_penalty=repetition_penalty,
+        unsupported_claim_penalty=unsupported_claim_penalty,
+        campaign_role_fit=campaign_role_fit,
+        message_density_fit=message_density_fit,
+        copy_visual_contribution=copy_visual_contribution,
+        candidate_distinctiveness=candidate_distinctiveness,
+        forced_support_penalty=forced_support_penalty,
+        duplicate_candidate_penalty=0.0,
+        campaign_role_mismatch_penalty=campaign_role_mismatch_penalty,
+        typography_dominance_mismatch_penalty=typography_dominance_mismatch_penalty,
+        total_score=max(0.0, min(1.0, total)),
+        blocked=bool(blocking_reasons),
+        blocking_reasons=sorted(set(blocking_reasons)),
+    )
 
 
 def build_native_prompt_package(
@@ -142,28 +349,70 @@ def build_native_prompt_package(
     placement: str = "restaurant_poster",
     preflight_status: str = "approved",
     input_evidence: dict[str, Any] | None = None,
+    campaign_message_plan: dict[str, Any] | None = None,
+    visual_semantic_cue_plan: dict[str, Any] | None = None,
+    typography_dominance_plan: dict[str, Any] | None = None,
 ) -> NativeCreativePromptPackage:
     product = str(product_understanding.get("product_name") or "product")
     allowed = copy_brief.allowed_texts or [text for text in [copy_brief.headline, copy_brief.supporting_copy, copy_brief.closing_copy] if text]
     forbidden = sorted(set([*copy_brief.forbidden_texts, *GENERIC_CTA_TERMS, "price", "logo", "watermark"]))
+    positioning_plan = copy_brief.positioning_realization_plan or build_positioning_realization_plan(requested_positioning=copy_brief.desired_positioning).model_dump()
+    avoided = positioning_plan.get("direct_positioning_terms_avoided") or sorted(DIRECT_POSITIONING_TERMS)
+    campaign_plan = campaign_message_plan or copy_brief.campaign_message_plan or {}
+    visual_cues = visual_semantic_cue_plan or copy_brief.visual_semantic_cue_plan or {}
+    dominance = typography_dominance_plan or copy_brief.typography_dominance_plan or {}
     lines = [
         "Create one finished advertising image with native typography rendered inside the image.",
-        f"Product: {product}. Placement: {placement}.",
-        "Only render the exact approved Korean text below. Do not add any other letters, numbers, logos, watermarks, price, buttons, badges, menus, or pseudo text.",
+        "PRODUCT",
+        f"- {product}",
+        "",
+        "CAMPAIGN ROLE",
+        f"- role: {campaign_plan.get('campaign_role') or 'product_hero'}",
+        f"- visible copy mode: {campaign_plan.get('visible_copy_mode') or copy_brief.message_role}",
+        f"- placement: {placement}",
+        "",
+        "VISIBLE COPY",
     ]
     if copy_brief.headline:
-        lines.append(f'Headline text exactly: "{copy_brief.headline}"')
+        lines.append(f'- Headline exactly: "{copy_brief.headline}"')
     support = copy_brief.supporting_copy or copy_brief.closing_copy
     if support:
-        lines.append(f'Supporting text exactly: "{support}"')
+        lines.append(f'- Supporting copy exactly: "{support}"')
+    else:
+        lines.append("- Supporting copy: none")
     direction = ", ".join((input_evidence or {}).get("desired_positioning") or product_understanding.get("desired_positioning") or []) or "clean commercial"
-    lines.append(f"Use {direction} visual direction, clean composition, readable native typography, and keep text away from the main product.")
+    semantic_cues = list(visual_cues.get("non_display_cues") or [])
+    lines.extend(
+        [
+            "",
+            "TYPOGRAPHY DOMINANCE",
+            f"- headline prominence: {dominance.get('headline_prominence') or 'balanced'}",
+            f"- headline scale: {dominance.get('headline_scale_intent') or 'medium'}",
+            f"- support scale: {dominance.get('support_scale_intent') or ('small' if support else 'none')}",
+            f"- product visual priority: {dominance.get('product_visual_priority') or 0.72}",
+            "",
+            "NON-DISPLAY VISUAL SEMANTIC CUES",
+            *[f"- {cue}" for cue in semantic_cues[:12]],
+            "- These visual semantic cues describe atmosphere and composition. Do not render them as text.",
+            "",
+            "VISUAL POSITIONING",
+            f"- Express {direction} through restrained composition, controlled lighting, color, typography, and negative space.",
+            "",
+            "COMPOSITION",
+            "- Keep the product as the primary visual subject.",
+            "- Place copy in clean negative space without overpowering the product.",
+            "",
+            "PROHIBITED EXTRA TEXT",
+            "- Do not add slogans, CTA, labels, prices, badges, menus, pseudo text, or extra Korean text.",
+            f"- Do not add these positioning words unless they are present in approved copy: {', '.join(avoided[:24])}.",
+        ]
+    )
     final_prompt = "\n".join(lines)
     return NativeCreativePromptPackage(
         product_description=product,
         campaign_objective=str((input_evidence or {}).get("campaign_intent") or product_understanding.get("campaign_intent") or "product_promotion"),
         composition_direction=f"Show the product clearly with clean negative space for one or two text blocks. Placement: {placement}.",
-        visual_style=f"{direction} realistic commercial photography",
+        visual_style=f"{direction} realistic commercial photography with restrained visual positioning",
         lighting_direction="natural commercial lighting",
         color_direction="harmonious brand-appropriate colors with calm background",
         typography_direction="native Hangul typography, exact approved text only, no button treatment",
@@ -177,6 +426,9 @@ def build_native_prompt_package(
         final_prompt=final_prompt,
         prompt_sha256=sha256_text(final_prompt),
         preflight_status=preflight_status,  # type: ignore[arg-type]
+        campaign_message_plan=campaign_plan,
+        visual_semantic_cue_plan=visual_cues,
+        typography_dominance_plan=dominance,
     )
 
 
@@ -233,3 +485,8 @@ def _similarity(left: str, right: str) -> float:
 
 def _norm(value: str) -> str:
     return "".join(ch.lower() for ch in value if ch.isalnum())
+
+
+def _contains_sensory_cue(value: str | None) -> bool:
+    lowered = (value or "").lower()
+    return any(cue.lower() in lowered for cue in SENSORY_LANGUAGE_CUES)

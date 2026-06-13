@@ -6,9 +6,10 @@ import json
 import time
 from typing import Any
 
+from orchestrator.app.llm.native_copy_candidate_service import generate_native_copy_strategy_bundle
 from orchestrator.app.llm.native_copy_policy import validate_approved_native_copy_brief
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
-from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief, CreativeExecutionPlan
+from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief, CreativeExecutionPlan, NativeCopyStrategyBundle
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 
 
@@ -23,8 +24,11 @@ def generate_approved_native_copy_brief(
     adapter = state.get("native_copy_adapter")
     if adapter:
         payload = adapter.generate_native_copy_brief(input_evidence=input_evidence, product_understanding=product_understanding, execution_plan=execution_plan, source_visual_analysis=source_visual_analysis, state=state)
+    elif state.get("native_copy_strategy_bundle"):
+        return _brief_from_strategy_bundle(NativeCopyStrategyBundle(**state["native_copy_strategy_bundle"]), input_evidence=input_evidence, product_understanding=product_understanding)
     else:
-        payload = _call_openai_native_copy(input_evidence=input_evidence, product_understanding=product_understanding, execution_plan=execution_plan)
+        bundle = generate_native_copy_strategy_bundle(input_evidence=input_evidence, product_understanding=product_understanding, source_visual_analysis=source_visual_analysis, state=state)
+        return _brief_from_strategy_bundle(bundle, input_evidence=input_evidence, product_understanding=product_understanding)
     copy_payload = payload.get("approved_native_copy_brief") or payload.get("copy_brief") or payload.get("copy") or payload.get("native_copy") or payload
     brief = ApprovedNativeCopyBrief(
         **_coerce_native_copy_payload(
@@ -38,6 +42,94 @@ def generate_approved_native_copy_brief(
     if failures:
         return brief.model_copy(update={"compliance_status": "rejected", "rejection_reasons": sorted(set([*brief.rejection_reasons, *failures]))})
     return brief
+
+
+def _brief_from_strategy_bundle(
+    bundle: NativeCopyStrategyBundle,
+    *,
+    input_evidence: InputEvidenceBundle,
+    product_understanding: ProductUnderstanding,
+) -> ApprovedNativeCopyBrief:
+    candidate = next((item for item in bundle.candidates if item.candidate_id == bundle.recommended_candidate_id), None)
+    scorecard = next((item for item in bundle.scorecards if item.candidate_id == bundle.recommended_candidate_id), None)
+    if candidate is None or scorecard is None or scorecard.blocked:
+        return ApprovedNativeCopyBrief(
+            headline=None,
+            supporting_copy=None,
+            language="korean",
+            message_role="headline_only",
+            allowed_texts=[],
+            forbidden_texts=[],
+            max_text_blocks=1,
+            max_total_characters=48,
+            verified_evidence_ids=product_understanding.product_name_evidence_ids,
+            unsupported_claim_categories=[],
+            compliance_status="rejected",
+            rejection_reasons=bundle.revision_reasons or ["no_unblocked_candidate"],
+            copy_source_mode="generated",
+            source_user_request=input_evidence.user_request_utterance or input_evidence.user_text,
+            non_display_instructions=input_evidence.non_display_instruction_fragments,
+            product_identity=product_understanding.product_name,
+            desired_positioning=input_evidence.desired_positioning or product_understanding.desired_positioning,
+            campaign_intent=input_evidence.campaign_intent or product_understanding.campaign_intent,
+            transformation_performed=False,
+            product_evidence_ids=product_understanding.product_name_evidence_ids,
+            positioning_realization_plan=bundle.positioning_plan.model_dump(),
+            alternative_candidate_summaries=[_candidate_summary(item, bundle) for item in bundle.candidates],
+            campaign_message_plan=dict(getattr(bundle, "campaign_message_plan", {}) or {}),
+            support_basis_type="none",
+        )
+    texts = [candidate.headline, candidate.supporting_copy or candidate.closing_copy]
+    texts = [text for text in texts if text]
+    brief = ApprovedNativeCopyBrief(
+        headline=candidate.headline,
+        supporting_copy=candidate.supporting_copy,
+        closing_copy=candidate.closing_copy if not candidate.supporting_copy else None,
+        action_cta=None,
+        language=candidate.language,
+        message_role="headline_plus_support" if candidate.supporting_copy else ("headline_plus_closing" if candidate.closing_copy else "headline_only"),
+        allowed_texts=texts,
+        forbidden_texts=list(input_evidence.non_display_instruction_fragments),
+        max_text_blocks=len(texts),
+        max_total_characters=48,
+        verified_evidence_ids=list(dict.fromkeys([*candidate.headline_basis_ids, *candidate.support_basis_ids])),
+        unsupported_claim_categories=[],
+        compliance_status="approved",
+        rejection_reasons=[],
+        copy_source_mode="user_exact" if input_evidence.user_exact_display_copy else "generated",
+        source_user_request=input_evidence.user_request_utterance or input_evidence.user_text,
+        non_display_instructions=input_evidence.non_display_instruction_fragments,
+        product_identity=product_understanding.product_name,
+        desired_positioning=input_evidence.desired_positioning or product_understanding.desired_positioning,
+        campaign_intent=input_evidence.campaign_intent or product_understanding.campaign_intent,
+        transformation_performed=True,
+        product_evidence_ids=list(candidate.headline_basis_ids or product_understanding.product_name_evidence_ids),
+        creative_direction_evidence_ids=[],
+        copy_claim_evidence_ids=list(candidate.support_basis_ids),
+        selected_candidate_id=candidate.candidate_id,
+        positioning_realization_plan=bundle.positioning_plan.model_dump(),
+        candidate_scorecard=scorecard.model_dump(),
+        alternative_candidate_summaries=[_candidate_summary(item, bundle) for item in bundle.candidates if item.candidate_id != candidate.candidate_id],
+        campaign_message_plan=dict(getattr(bundle, "campaign_message_plan", {}) or {}),
+        support_basis_type=candidate.support_basis_type,
+    )
+    failures = validate_approved_native_copy_brief(brief)
+    if failures:
+        return brief.model_copy(update={"compliance_status": "rejected", "rejection_reasons": failures})
+    return brief
+
+
+def _candidate_summary(candidate, bundle: NativeCopyStrategyBundle) -> dict[str, Any]:
+    score = next((item for item in bundle.scorecards if item.candidate_id == candidate.candidate_id), None)
+    return {
+        "candidate_id": candidate.candidate_id,
+        "strategy": candidate.strategy,
+        "headline": candidate.headline,
+        "supporting_copy": candidate.supporting_copy,
+        "blocked": bool(score.blocked) if score else None,
+        "total_score": score.total_score if score else None,
+        "blocking_reasons": list(score.blocking_reasons) if score else [],
+    }
 
 
 def _coerce_native_copy_payload(
