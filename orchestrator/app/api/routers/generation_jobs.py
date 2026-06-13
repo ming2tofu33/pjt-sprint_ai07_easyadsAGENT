@@ -25,10 +25,12 @@ from orchestrator.app.generation_jobs.service import (
     get_generation_job,
     get_generation_job_internal_with_scope,
     get_generation_job_scoped,
+    mark_generation_job_failed,
     mark_generation_job_running,
     maybe_mark_stale_generation_job_failed,
     maybe_poll_generation_job_from_modal,
     maybe_submit_generation_job_to_modal,
+    record_generation_job_lifecycle_event,
     resolve_generation_job_scope_from_existing_job,
     resolve_scoped_workspace_id,
     should_route_generation_job_to_modal,
@@ -139,6 +141,104 @@ def _chat_thread_error(exc: ChatThreadServiceError) -> None:
     )
 
 
+def _run_graph_job_background(
+    job_id: str,
+    request: GenerationJobCreateRequest,
+    workspace_id: str | None,
+    user_id: str | None,
+) -> None:
+    try:
+        record_generation_job_lifecycle_event(
+            job_id,
+            "background_started",
+            message="graph_create",
+            payload={"task": "graph_create"},
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        execute_generation_job_graph(job_id, request)
+        record_generation_job_lifecycle_event(
+            job_id,
+            "background_delegated",
+            message="graph_create",
+            payload={"task": "graph_create"},
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+    except Exception as exc:
+        record_generation_job_lifecycle_event(
+            job_id,
+            "background_failed",
+            message="graph_create",
+            payload={"task": "graph_create", "error": str(exc)},
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        mark_generation_job_failed(
+            job_id,
+            {
+                "error_code": "generation_job_background_task_failed",
+                "message": f"Background graph create task failed: {exc}",
+            },
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        raise
+
+
+def _resume_graph_job_background(
+    job_id: str,
+    request: GenerationJobAnswerRequest,
+    *,
+    allow_running: bool = False,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> None:
+    try:
+        record_generation_job_lifecycle_event(
+            job_id,
+            "background_started",
+            message="graph_resume",
+            payload={"task": "graph_resume"},
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        resume_generation_job_graph(
+            job_id,
+            request,
+            allow_running=allow_running,
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        record_generation_job_lifecycle_event(
+            job_id,
+            "background_delegated",
+            message="graph_resume",
+            payload={"task": "graph_resume"},
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+    except Exception as exc:
+        record_generation_job_lifecycle_event(
+            job_id,
+            "background_failed",
+            message="graph_resume",
+            payload={"task": "graph_resume", "error": str(exc)},
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        mark_generation_job_failed(
+            job_id,
+            {
+                "error_code": "generation_job_background_task_failed",
+                "message": f"Background graph resume task failed: {exc}",
+            },
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        raise
+
+
 @router.post("/generation-jobs", response_model=GenerationJobCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_generation_job_route(
     request: GenerationJobCreateRequest,
@@ -167,7 +267,15 @@ def create_generation_job_route(
     elif request.run_mode == "mock_immediate":
         job = execute_generation_job_immediate(job.job_id, request)
     elif request.run_mode == "graph_job":
-        background_tasks.add_task(execute_generation_job_graph, job.job_id, request)
+        record_generation_job_lifecycle_event(
+            job.job_id,
+            "background_enqueued",
+            message="graph_create",
+            payload={"task": "graph_create", "source": "create_route"},
+            workspace_id=request.workspace_id,
+            user_id=request.user_id,
+        )
+        background_tasks.add_task(_run_graph_job_background, job.job_id, request, request.workspace_id, request.user_id)
     elif request.run_mode in T2I_RUN_MODE_TO_ENGINE:
         job = execute_generation_job_t2i(job.job_id, request, engine_name=T2I_RUN_MODE_TO_ENGINE[request.run_mode])
     return GenerationJobCreateResponse(job=job)
@@ -251,8 +359,16 @@ def answer_generation_job_route(
         )
     try:
         running = mark_generation_job_running(job_id, stage="planning", workspace_id=resolved_workspace_id, user_id=resolved_user_id)
+        record_generation_job_lifecycle_event(
+            job_id,
+            "background_enqueued",
+            message="graph_resume",
+            payload={"task": "graph_resume", "source": "answer_route"},
+            workspace_id=resolved_workspace_id,
+            user_id=resolved_user_id,
+        )
         background_tasks.add_task(
-            resume_generation_job_graph,
+            _resume_graph_job_background,
             job_id,
             request,
             allow_running=True,
