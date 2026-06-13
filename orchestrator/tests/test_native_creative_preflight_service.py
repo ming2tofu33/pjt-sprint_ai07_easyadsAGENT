@@ -32,7 +32,7 @@ def _product(evidence):
     )
 
 
-def _brief(evidence, product, headline="깊고 구수한 한 그릇"):
+def _brief(evidence, product, headline="된장찌개"):
     return ApprovedNativeCopyBrief(
         headline=headline,
         supporting_copy=None,

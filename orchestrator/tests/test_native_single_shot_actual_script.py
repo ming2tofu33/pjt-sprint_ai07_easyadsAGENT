@@ -1,7 +1,7 @@
 from argparse import Namespace
 from pathlib import Path
 
-from orchestrator.app.schemas.native_creative import NativeCreativePreflightReview, NativeGenerationReview
+from orchestrator.app.schemas.native_creative import NativeCopyCandidate, NativeCopyScorecard, NativeCopyStrategyBundle, NativeCreativePreflightReview, NativeGenerationReview, PositioningRealizationPlan, ProductExpressionBasis
 from scripts import run_final_composite_quality_actual as runner
 
 
@@ -60,11 +60,11 @@ def test_native_actual_script_uses_single_image_no_renderer(monkeypatch, tmp_pat
         from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief
 
         return ApprovedNativeCopyBrief(
-            headline="깊고 구수한 한 그릇",
-            supporting_copy="정갈하게 끓여낸 깊은 맛",
+            headline="된장찌개",
+            supporting_copy=None,
             language="korean",
-            message_role="headline_plus_support",
-            allowed_texts=["깊고 구수한 한 그릇", "정갈하게 끓여낸 깊은 맛"],
+            message_role="headline_only",
+            allowed_texts=["된장찌개"],
             forbidden_texts=[],
             max_text_blocks=2,
             max_total_characters=48,
@@ -77,11 +77,54 @@ def test_native_actual_script_uses_single_image_no_renderer(monkeypatch, tmp_pat
             product_identity="된장찌개",
             campaign_intent="product_promotion",
             desired_positioning=["premium", "refined"],
-            transformation_performed=True,
-            product_evidence_ids=["e1"],
-        )
+                transformation_performed=True,
+                product_evidence_ids=["e1"],
+                selected_candidate_id="c1",
+                positioning_realization_plan=PositioningRealizationPlan(requested_positioning=["premium", "refined"]).model_dump(),
+                candidate_scorecard={
+                    "candidate_id": "c1",
+                    "product_centeredness": 0.9,
+                    "consumer_naturalness": 0.9,
+                    "restraint": 0.9,
+                    "native_typography_fit": 0.9,
+                    "blocked": False,
+                },
+            )
 
     monkeypatch.setattr(runner, "generate_approved_native_copy_brief", fake_brief)
+    monkeypatch.setattr(
+        runner,
+        "generate_native_copy_strategy_bundle",
+        lambda **kwargs: NativeCopyStrategyBundle(
+            product_expression_basis=ProductExpressionBasis(product_identity="된장찌개", selected_headline_basis_ids=["e1"]),
+            positioning_plan=PositioningRealizationPlan(requested_positioning=["premium", "refined"]),
+                candidates=[NativeCopyCandidate(candidate_id="c1", strategy="minimal_identity", headline="된장찌개", headline_basis_ids=["e1"], text_block_count=1, total_character_count=4)],
+            scorecards=[
+                NativeCopyScorecard(
+                    candidate_id="c1",
+                    product_identity_clarity=0.9,
+                    product_centeredness=0.9,
+                    sensory_specificity=0.8,
+                    evidence_grounding=0.9,
+                    consumer_naturalness=0.9,
+                    positioning_alignment=0.8,
+                    headline_strength=0.85,
+                    support_complementarity=0.85,
+                    restraint=0.9,
+                    native_typography_fit=0.9,
+                    direct_positioning_penalty=0,
+                    generic_prestige_penalty=0,
+                    abstract_language_penalty=0,
+                    repetition_penalty=0,
+                    unsupported_claim_penalty=0,
+                    total_score=0.88,
+                    blocked=False,
+                    blocking_reasons=[],
+                )
+            ],
+            recommended_candidate_id="c1",
+        ),
+    )
     monkeypatch.setattr(
         runner,
         "review_native_creative_preflight",
