@@ -1322,6 +1322,11 @@ def test_generation_job_get_route_passes_guest_account_type_to_workspace_resolut
         captured_job.update({"job_id": job_id, "workspace_id": workspace_id, "user_id": user_id})
         return None
 
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_internal_with_scope",
+        lambda job_id: (None, None, None),
+        raising=False,
+    )
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.resolve_scoped_workspace_id", fake_resolve_scoped_workspace_id)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
 
