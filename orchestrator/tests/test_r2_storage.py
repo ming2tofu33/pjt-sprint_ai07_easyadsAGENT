@@ -11,6 +11,7 @@ Merged from:
 
 
 # ===== from test_r2_client.py =====
+from datetime import datetime
 import sys
 import types
 
@@ -49,9 +50,7 @@ def test_create_r2_client_uses_s3v4_signature(monkeypatch):
     monkeypatch.setenv("EASYADS_R2_SECRET_ACCESS_KEY", "secret")
     monkeypatch.setenv("EASYADS_R2_REGION", "auto")
 
-    client = r2_client.create_r2_client()
-
-    assert client is not None
+    r2_client.create_r2_client()
     assert captured["service_name"] == "s3"
     assert captured["endpoint_url"] == "https://example.r2.cloudflarestorage.com"
     assert captured["config"].kwargs["signature_version"] == "s3v4"
@@ -163,7 +162,8 @@ def test_upload_file_to_r2_returns_signed_urls(tmp_path, monkeypatch):
     assert uploaded.object_key.endswith("final_0.png")
     assert uploaded.final_image_url.startswith("https://signed.example/")
     assert uploaded.download_url == uploaded.final_image_url
-    assert uploaded.signed_url_expires_at is not None
+    expires_at = datetime.fromisoformat(uploaded.signed_url_expires_at)
+    assert expires_at > datetime.now(expires_at.tzinfo)
     assert uploaded.mime_type == "image/png"
     assert uploaded.width == 64
     assert uploaded.height == 32
