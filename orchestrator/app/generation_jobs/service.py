@@ -735,6 +735,61 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
         return None
 
 
+def _event_payload_task(events: list[dict]) -> str | None:
+    for event in events:
+        payload = event.get("payload") or {}
+        task = payload.get("task") if isinstance(payload, dict) else None
+        if task:
+            return str(task)
+    return None
+
+
+def _stale_running_failure_payload(job: GenerationJobResponse, events: list[dict]) -> tuple[dict, dict]:
+    event_types = {str(event.get("event_type")) for event in events}
+    background_task = _event_payload_task(events)
+    base_metadata = {
+        **(job.metadata or {}),
+        "stale_running_stage": job.progress.current_stage,
+    }
+    if "background_enqueued" in event_types and "background_started" not in event_types:
+        return (
+            {
+                "error_code": "generation_job_background_not_started",
+                "message": "Generation job worker did not start.",
+                "detail": "The job was queued for background execution, but no background_started event was recorded before the stale threshold.",
+            },
+            {
+                **base_metadata,
+                "execution_mode": "background_not_started_recovered",
+                "background_task": background_task,
+            },
+        )
+    if "background_started" in event_types:
+        return (
+            {
+                "error_code": "generation_job_background_stalled",
+                "message": "Generation job stalled while preparing the request.",
+                "detail": "A background_started event was recorded, but no completion, interrupt, or Modal handoff was recorded before the stale threshold.",
+            },
+            {
+                **base_metadata,
+                "execution_mode": "background_stalled_recovered",
+                "background_task": background_task,
+            },
+        )
+    return (
+        {
+            "error_code": "generation_job_stale_running",
+            "message": "Generation job stopped while preparing the request.",
+            "detail": "The job stayed in running/planning longer than the allowed stale threshold.",
+        },
+        {
+            **base_metadata,
+            "execution_mode": "stale_running_recovered",
+        },
+    )
+
+
 def maybe_mark_stale_generation_job_failed(
     job: GenerationJobResponse,
     *,
@@ -756,18 +811,17 @@ def maybe_mark_stale_generation_job_failed(
     if current_time - updated_at < timedelta(seconds=stale_after_seconds):
         return job
 
+    events: list[dict] = []
+    try:
+        events = generation_job_event_repo.list_generation_job_events_by_public_job_id(job.job_id, limit=20)
+    except Exception:
+        events = []
+    error_payload, metadata_payload = _stale_running_failure_payload(job, events)
+
     failed = mark_generation_job_failed(
         job.job_id,
-        {
-            "error_code": "generation_job_stale_running",
-            "message": "Generation job stopped while preparing the request.",
-            "detail": "The job stayed in running/planning longer than the allowed stale threshold.",
-        },
-        metadata={
-            **(job.metadata or {}),
-            "execution_mode": "stale_running_recovered",
-            "stale_running_stage": job.progress.current_stage,
-        },
+        error_payload,
+        metadata=metadata_payload,
         workspace_id=workspace_id,
         user_id=user_id,
     )
