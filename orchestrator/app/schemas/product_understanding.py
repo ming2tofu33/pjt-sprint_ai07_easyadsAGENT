@@ -62,6 +62,7 @@ class ProductUnderstanding(BaseModel):
     product_variant: str | None = None
     campaign_modifiers: list[str] = Field(default_factory=list)
     campaign_intent: str | None = None
+    campaign_status: Literal["new_product", "new_menu", "seasonal", "existing_product", "unknown"] | None = None
     desired_positioning: list[str] = Field(default_factory=list)
     broad_category: BroadCategory
     category_path: list[str]

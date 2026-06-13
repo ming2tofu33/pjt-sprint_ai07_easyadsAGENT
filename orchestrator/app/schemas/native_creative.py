@@ -70,7 +70,12 @@ class ApprovedNativeCopyBrief(BaseModel):
     campaign_message_plan: dict = Field(default_factory=dict)
     visual_semantic_cue_plan: dict = Field(default_factory=dict)
     typography_dominance_plan: dict = Field(default_factory=dict)
+    typography_expression_plan: dict = Field(default_factory=dict)
+    reference_typography_analysis: dict = Field(default_factory=dict)
     support_basis_type: Literal["none", "verified_fact", "permissible_sensory_inference", "campaign_context", "aesthetic_expression"] = "none"
+    support_value_type: Literal["none", "product_character", "sensory_expression", "serving_context", "brand_mood", "campaign_information"] = "none"
+    support_information_gain: float = Field(default=0.0, ge=0.0, le=1.0)
+    support_product_specificity: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class NativeSourceVisualAnalysis(BaseModel):
@@ -121,6 +126,9 @@ class CampaignMessagePlan(BaseModel):
     visible_copy_mode: Literal["image_only", "product_name_only", "headline_only", "headline_plus_support", "headline_plus_closing"]
     headline_function: Literal["product_identity", "launch_announcement", "sensory_hook", "context_hook", "brand_statement"]
     support_function: Literal["none", "product_detail", "sensory_detail", "usage_context", "launch_context", "brand_mood"]
+    launch_visibility_policy: Literal["implicit", "micro_label", "support_line", "headline"] = "implicit"
+    campaign_context_is_display_copy: bool = False
+    campaign_context_evidence_ids: list[str] = Field(default_factory=list)
     rationale: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -149,6 +157,22 @@ class TypographyDominancePlan(BaseModel):
     rationale: list[str] = Field(default_factory=list)
 
 
+class NativeTypographyExpressionPlan(BaseModel):
+    expression_role: Literal["editorial_display", "heritage_display", "modern_minimal", "bold_commercial", "soft_lifestyle", "decorative_lettering"]
+    cultural_register: Literal["neutral", "contemporary", "heritage", "luxury_editorial", "playful"]
+    letterform_character: str
+    stroke_character: str
+    texture_direction: str
+    visual_integration: Literal["integrated_with_scene", "editorial_layout", "floating_display"]
+    headline_shape: Literal["single_line", "stacked", "adaptive"]
+    headline_support_relationship: Literal["headline_dominant", "editorial_pair", "quiet_caption"]
+    ornament_policy: Literal["none", "minimal_divider", "subtle_motif"]
+    reference_style_source: Literal["none", "reference_image", "brand_profile", "semantic_direction"]
+    reference_style_summary: list[str] = Field(default_factory=list)
+    reference_texts_to_avoid: list[str] = Field(default_factory=list)
+    rationale: list[str] = Field(default_factory=list)
+
+
 class NativeCopyCandidate(BaseModel):
     candidate_id: str
     strategy: Literal["minimal_identity", "product_detail", "sensory_expression", "campaign_context", "brand_editorial", "product_name_first", "product_attribute_first", "sensory_first", "context_first"]
@@ -163,6 +187,9 @@ class NativeCopyCandidate(BaseModel):
     direct_positioning_terms_used: list[str] = Field(default_factory=list)
     sensory_terms_used: list[str] = Field(default_factory=list)
     support_basis_type: Literal["none", "verified_fact", "permissible_sensory_inference", "campaign_context", "aesthetic_expression"] = "none"
+    support_value_type: Literal["none", "product_character", "sensory_expression", "serving_context", "brand_mood", "campaign_information"] = "none"
+    support_information_gain: float = Field(default=0.0, ge=0.0, le=1.0)
+    support_product_specificity: float = Field(default=0.0, ge=0.0, le=1.0)
     text_block_count: int = Field(default=1, ge=1, le=2)
     total_character_count: int = Field(default=0, ge=0, le=80)
 
@@ -192,6 +219,16 @@ class NativeCopyScorecard(BaseModel):
     duplicate_candidate_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
     campaign_role_mismatch_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
     typography_dominance_mismatch_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    support_information_gain_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    support_product_specificity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    campaign_context_subtlety_score: float = Field(default=0.75, ge=0.0, le=1.0)
+    headline_product_clarity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    visible_copy_naturalness_score: float = Field(default=0.75, ge=0.0, le=1.0)
+    generic_launch_copy_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    launch_literalization_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    campaign_repetition_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    product_identity_contamination_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
+    generic_support_penalty: float = Field(default=0.0, ge=0.0, le=1.0)
     total_score: float = Field(ge=0.0, le=1.0)
     blocked: bool = False
     blocking_reasons: list[str] = Field(default_factory=list)
@@ -240,6 +277,8 @@ class NativeCreativePromptPackage(BaseModel):
     campaign_message_plan: dict = Field(default_factory=dict)
     visual_semantic_cue_plan: dict = Field(default_factory=dict)
     typography_dominance_plan: dict = Field(default_factory=dict)
+    typography_expression_plan: dict = Field(default_factory=dict)
+    reference_typography_analysis: dict = Field(default_factory=dict)
 
 
 class NativeCreativePreflightReview(BaseModel):
@@ -307,5 +346,15 @@ class NativeGenerationReview(BaseModel):
     typography_dominance_fit_score: float = Field(default=0.0, ge=0.0, le=1.0)
     supporting_copy_value_score: float = Field(default=0.0, ge=0.0, le=1.0)
     visible_copy_value_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    product_identity_clean: bool = True
+    campaign_context_literalized: bool = False
+    generic_launch_copy_detected: bool = False
+    support_information_gain_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    support_product_specificity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    typography_native_integration_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    typography_expression_alignment_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    flat_overlay_likelihood_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    headline_support_hierarchy_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    copy_product_relationship_score: float = Field(default=0.0, ge=0.0, le=1.0)
     decision: Literal["accept", "manual_review", "reject"]
     failure_reasons: list[str] = Field(default_factory=list)

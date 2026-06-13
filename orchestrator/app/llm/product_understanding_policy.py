@@ -7,6 +7,7 @@ from typing import Any
 
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding, UNSUPPORTED_CLAIM_CATEGORIES
+from orchestrator.app.llm.native_campaign_copy_rules import contains_campaign_modifier
 
 _SNAKE_CASE_RE = re.compile(r"^(?=.*[a-z])[a-z0-9]+(?:_[a-z0-9]+)*$")
 ROOT_ALIASES = {"food_beverage", "beauty_personal_care", "fashion_lifestyle", "home_living"}
@@ -62,6 +63,8 @@ def validate_product_understanding(
         raise ValueError("category_path must include product hierarchy when product identity is known")
     if _contains_request_intent(model.product_name):
         raise ValueError("product_identity_contaminated")
+    if contains_campaign_modifier(model.product_name):
+        raise ValueError("product_identity_contains_campaign_modifier")
     if any(item in ROOT_ALIASES for item in model.category_path[1:]):
         raise ValueError("category_path cannot contain root aliases below broad_category")
     _validate_verified_fact_provenance(model, bundle_model)
@@ -73,6 +76,7 @@ def validate_product_understanding(
             "unknown_fields": sorted(set(model.unknown_fields)),
             "unsupported_claim_categories": unsupported_claim_categories_for_bundle(bundle_model),
             "campaign_intent": model.campaign_intent or bundle_model.campaign_intent,
+            "campaign_status": model.campaign_status or bundle_model.campaign_status,
             "desired_positioning": list(model.desired_positioning or bundle_model.desired_positioning),
             "confidence": confidence,
             "clarification_required": model.clarification_required or (0.45 <= confidence < 0.70),
