@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "optionQuestion": {
+    "type": "option_question",
+    "job_id": "job_contract",
+    "thread_id": "thread_contract",
+    "option_question": {
+      "field": "business_type",
+      "question": "어떤 업종의 광고인가요?",
+      "required": true,
+      "options": [
+        { "id": "cafe", "label": "카페/디저트", "value": "cafe" },
+        { "id": "restaurant", "label": "음식점/식당", "value": "restaurant" }
+      ]
+    }
+  },
+  "copyCandidateSelection": {
+    "type": "copy_candidate_selection",
+    "job_id": "job_contract",
+    "thread_id": "thread_contract",
+    "candidates": [
+      {
+        "id": "copy_1",
+        "headline": "오늘 한 잔, 시원하게",
+        "subcopy": "점심 후 리프레시가 필요할 때",
+        "cta": "지금 주문하기"
+      },
+      {
+        "id": "copy_2",
+        "headline": "지금 필요한 커피 한 잔",
+        "subcopy": "시원한 아메리카노로 오후를 가볍게",
+        "cta": "메뉴 보기"
+      }
+    ],
+    "recommended_candidate_id": "copy_1",
+    "copy_candidate_origin": "llm"
+  },
+  "customCopyInput": {
+    "type": "custom_copy_input",
+    "job_id": "job_contract",
+    "thread_id": "thread_contract",
+    "fields": [
+      {
+        "field": "user_custom_headline",
+        "type": "text",
+        "placeholder": "포스터 메인 카피를 입력해주세요 (추천: 15자 이내)",
+        "required": true,
+        "max_recommended_chars": 15
+      },
+      {
+        "field": "user_custom_subcopy",
+        "type": "text",
+        "placeholder": "서브 카피 또는 이벤트 상세 내용을 입력해주세요",
+        "required": false
+      }
+    ]
+  },
+  "copyComplianceReview": {
+    "type": "copy_compliance_review",
+    "job_id": "job_contract",
+    "thread_id": "thread_contract",
+    "status": "evidence_required",
+    "summary": "광고 문구에 확인이 필요한 표현이 있어요.",
+    "findings": [
+      {
+        "finding_id": "finding_1",
+        "field": "headline",
+        "matched_text": "최고",
+        "severity": "evidence_required",
+        "reason": "객관적 근거가 필요한 최상급 표현입니다."
+      }
+    ],
+    "actions": [
+      { "id": "use_suggestion", "label": "안전한 문구로 수정", "available": true },
+      { "id": "edit_manually", "label": "직접 수정", "available": true },
+      { "id": "submit_claim", "label": "근거자료 제출", "available": true }
+    ]
+  }
+}

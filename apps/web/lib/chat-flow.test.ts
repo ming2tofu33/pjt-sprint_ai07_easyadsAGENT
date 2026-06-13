@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBrief,
+  chatFailureFromError,
   chatFlowReducer,
   createInitialChatFlowState,
   inferContextFromPrompt
@@ -51,6 +52,38 @@ describe("chat flow state", () => {
     expect(failed.errorCode).toBe("thread_limit_reached");
     expect(retrying.errorMessage).toBeNull();
     expect(retrying.errorCode).toBeNull();
+  });
+
+  it("maps workspace_required into a friendly retry message", () => {
+    const failed = chatFailureFromError({
+      errorCode: "workspace_required",
+      message: "workspaceId is required."
+    });
+
+    expect(failed.message).toBe("작업방을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    expect(failed.errorCode).toBe("workspace_required");
+  });
+
+  it("maps invalid_or_expired_session into a login refresh message", () => {
+    const failed = chatFailureFromError({
+      errorCode: "invalid_or_expired_session",
+      message: "Invalid or expired session."
+    });
+
+    expect(failed.message).toBe("로그인이 만료됐어요. 다시 로그인한 뒤 이어서 진행해 주세요.");
+    expect(failed.errorCode).toBe("invalid_or_expired_session");
+  });
+
+  it("maps backend workspace failures to the friendly Korean message", () => {
+    const failed = chatFlowReducer(createInitialChatFlowState(), {
+      type: "backendRequestFailed",
+      message: "workspaceId is required.",
+      errorCode: "workspace_required"
+    });
+
+    expect(failed.errorMessage).toBe("작업방을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    expect(failed.errorMessage).not.toBe("workspaceId is required.");
+    expect(failed.errorCode).toBe("workspace_required");
   });
 
   it("recovers initial prompt request failures back to the start step", () => {

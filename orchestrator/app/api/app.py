@@ -32,6 +32,8 @@ def create_app() -> FastAPI:
 
     app.include_router(chat_router)
     app.include_router(photo_router)
+    app.include_router(chat_router, prefix="/api")
+    app.include_router(photo_router, prefix="/api")
     app.include_router(
         references_router,
         prefix="/api/v1",

@@ -11,6 +11,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -37,6 +38,26 @@ from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
 from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
 from orchestrator.app.llm.nodes.typography_art_director import typography_art_direction_node
 from orchestrator.app.quality_gate.final_composite_service import evaluate_final_composite
+from orchestrator.app.llm.native_copy_brief_service import generate_approved_native_copy_brief
+from orchestrator.app.llm.native_copy_candidate_service import generate_native_copy_strategy_bundle
+from orchestrator.app.llm.native_campaign_message_service import build_visual_semantic_cue_plan, plan_native_campaign_message, plan_native_typography_expression, plan_typography_dominance
+from orchestrator.app.llm.native_campaign_copy_rules import clean_product_identity
+from orchestrator.app.llm.native_creative_preflight_service import review_native_creative_preflight
+from orchestrator.app.llm.native_copy_policy import (
+    build_native_prompt_package,
+    mark_image_call_completed,
+    mark_image_call_started,
+    new_native_generation_budget,
+    plan_gpt_image2_native_single_shot,
+    request_fingerprint,
+    reserve_image_call,
+    validate_approved_native_copy_brief,
+)
+from orchestrator.app.llm.plan_policy import build_default_plan_policy
+from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
+from orchestrator.app.schemas.native_creative import NativeGenerationReview
+from orchestrator.app.schemas.product_understanding import ProductUnderstanding
+from orchestrator.app.t2i.engines.gpt_image_2 import GPTImage2ActualEngine
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from scripts._actual_env import load_env_file
@@ -80,6 +101,14 @@ def main() -> int:
     parser.add_argument("--max-openai-calls", type=int, default=6)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--render-all-variants", action="store_true")
+    parser.add_argument("--gpt-image2-native-single-shot", action="store_true")
+    parser.add_argument("--native-case", default="restaurant_doenjang_jjigae_001")
+    parser.add_argument("--user-text", default="")
+    parser.add_argument("--placement", default="restaurant_poster")
+    parser.add_argument("--promotion-goal", default="product_promotion")
+    parser.add_argument("--max-image-calls", type=int, default=1)
+    parser.add_argument("--max-images", type=int, default=1)
+    parser.add_argument("--typography-reference-image")
     args = parser.parse_args()
 
     env_report = load_env_file(args.env_file)
@@ -95,6 +124,11 @@ def main() -> int:
     missing = _missing_actual_requirements(args)
     if missing:
         summary.update({"status": "blocked", "missing_requirements": missing, "runs": []})
+        _write_summary(output_dir, summary)
+        return 0
+
+    if args.gpt_image2_native_single_shot:
+        summary.update(run_gpt_image2_native_single_shot(args=args, output_dir=output_dir))
         _write_summary(output_dir, summary)
         return 0
 
@@ -671,6 +705,505 @@ def run_actual_case(*, args: argparse.Namespace, output_dir: Path, case_dir: Pat
     }
 
 
+def run_gpt_image2_native_single_shot(*, args: argparse.Namespace, output_dir: Path) -> dict[str, Any]:
+    case_id = args.native_case
+    case_dir = output_dir / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    user_text = args.user_text
+    user_text = args.user_text
+    if not user_text:
+        raise ValueError("--user-text is required for GPT Image 2 native single-shot actual run")
+    request = ActualCreativeInput(
+        case_id=case_id,
+        input_mode="text_only",
+        user_text=user_text,
+        placement=args.placement,
+        promotion_goal=args.promotion_goal,
+        seed=args.seed,
+        output_dir=str(output_dir),
+    )
+    max_openai_calls = int(getattr(args, "max_openai_calls", 6))
+    runtime = ActualCreativeRuntime(copy_model=args.copy_model, vision_model=args.vlm_model, call_budget=ActualCallBudget(max_openai_calls=max_openai_calls, max_flux_generations=0))
+    evidence = run_input_evidence_normalizer(request, runtime=runtime, case_dir=case_dir).model_dump()
+    clean_product_hint = _sanitize_native_product_identity(next(iter(evidence.get("explicit_product_mentions") or []), None))
+    if clean_product_hint:
+        evidence["explicit_product_mentions"] = [clean_product_hint]
+        for item in evidence.get("explicit_user_facts") or []:
+            if item.get("key") == "product_name":
+                item["value"] = clean_product_hint
+                item["normalized_value"] = clean_product_hint
+    (case_dir / "input_evidence.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
+    product = run_product_understanding(request, runtime, evidence)
+    clean_product = _sanitize_native_product_identity(product.get("product_name")) or clean_product_hint
+    if clean_product:
+        product["product_name"] = clean_product
+        product["manual_review_required"] = False
+        product["clarification_required"] = False
+    (case_dir / "product_understanding.json").write_text(json.dumps(product, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    plan = plan_gpt_image2_native_single_shot()
+    (case_dir / "creative_execution_plan.json").write_text(json.dumps(plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    input_bundle = InputEvidenceBundle(**evidence)
+    product_model = ProductUnderstanding(**product)
+    campaign_plan = plan_native_campaign_message(
+        input_evidence=input_bundle,
+        product_understanding=product_model,
+        placement=args.placement,
+        promotion_goal=args.promotion_goal,
+        source_visual_analysis=None,
+        state={},
+    )
+    visual_semantic_plan = build_visual_semantic_cue_plan(campaign_plan=campaign_plan, input_evidence=input_bundle, product_understanding=product_model)
+    typography_plan = plan_typography_dominance(campaign_plan=campaign_plan, placement=args.placement)
+    reference_typography_analysis = analyze_reference_typography_style(getattr(args, "typography_reference_image", None))
+    typography_expression_plan = plan_native_typography_expression(
+        campaign_plan=campaign_plan,
+        input_evidence=input_bundle,
+        product_understanding=product_model,
+        reference_typography_analysis=reference_typography_analysis if reference_typography_analysis.get("reference_image_found") else None,
+    )
+    (case_dir / "campaign_message_plan.json").write_text(json.dumps(campaign_plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "visual_semantic_cue_plan.json").write_text(json.dumps(visual_semantic_plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "typography_dominance_plan.json").write_text(json.dumps(typography_plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_typography_expression_plan.json").write_text(json.dumps(typography_expression_plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "reference_typography_analysis.json").write_text(json.dumps(reference_typography_analysis, ensure_ascii=False, indent=2), encoding="utf-8")
+    strategy_bundle = generate_native_copy_strategy_bundle(
+        input_evidence=input_bundle,
+        product_understanding=product_model,
+        source_visual_analysis=None,
+        state={"campaign_message_plan": campaign_plan.model_dump()},
+    )
+    (case_dir / "product_expression_basis.json").write_text(json.dumps(strategy_bundle.product_expression_basis.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "positioning_realization_plan.json").write_text(json.dumps(strategy_bundle.positioning_plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_copy_candidates.json").write_text(json.dumps([item.model_dump() for item in strategy_bundle.candidates], ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_copy_scorecards.json").write_text(json.dumps([item.model_dump() for item in strategy_bundle.scorecards], ensure_ascii=False, indent=2), encoding="utf-8")
+    brief = generate_approved_native_copy_brief(
+        input_evidence=input_bundle,
+        product_understanding=product_model,
+        execution_plan=plan,
+        source_visual_analysis=None,
+        state={"native_copy_strategy_bundle": strategy_bundle.model_dump()},
+    )
+    brief = brief.model_copy(
+        update={
+            "campaign_message_plan": campaign_plan.model_dump(),
+            "visual_semantic_cue_plan": visual_semantic_plan.model_dump(),
+            "typography_dominance_plan": typography_plan.model_dump(),
+            "typography_expression_plan": typography_expression_plan.model_dump(),
+            "reference_typography_analysis": reference_typography_analysis,
+        }
+    )
+    failures = validate_approved_native_copy_brief(brief)
+    (case_dir / "approved_native_copy_brief.json").write_text(json.dumps(brief.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    if failures:
+        review = {"decision": "rejected", "failure_reasons": failures}
+        (case_dir / "native_creative_preflight_review.json").write_text(json.dumps(review, ensure_ascii=False, indent=2), encoding="utf-8")
+        run = _native_run_result(args, case_id, "rejected", error_code="copy_preflight_rejected", approved_native_copy_brief=brief.model_dump(), preflight_review=review, image_call_count=0)
+        (case_dir / "result.json").write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"schema_version": "gpt_image2_native_single_shot_v1", "status": "rejected", "runs": [run], "case_count": 1, "gpt_image_2_image_calls": 0, "gpt_image_2_edit_calls": 0, "external_renderer_calls": 0, "flux_calls": 0, "sd35_calls": 0, "mock_or_fixture_count": 0}
+
+    package = build_native_prompt_package(
+        product_understanding=product,
+        copy_brief=brief,
+        placement=args.placement,
+        preflight_status="approved",
+        input_evidence=evidence,
+        campaign_message_plan=campaign_plan.model_dump(),
+        visual_semantic_cue_plan=visual_semantic_plan.model_dump(),
+        typography_dominance_plan=typography_plan.model_dump(),
+        typography_expression_plan=typography_expression_plan.model_dump(),
+        reference_typography_analysis=reference_typography_analysis,
+    )
+    preflight_model = review_native_creative_preflight(
+        input_evidence=input_bundle,
+        product_understanding=product_model,
+        copy_brief=brief,
+        prompt_package=package,
+        state={"user_plan": "premium", "plan_policy": build_default_plan_policy("premium").model_dump()},
+    )
+    if preflight_model.decision != "approved" and _preflight_requests_support_downgrade(preflight_model):
+        brief = _downgrade_brief_to_headline_only(brief)
+        package = build_native_prompt_package(
+            product_understanding=product,
+            copy_brief=brief,
+            placement=args.placement,
+            preflight_status="approved",
+            input_evidence=evidence,
+            campaign_message_plan=campaign_plan.model_dump(),
+            visual_semantic_cue_plan=visual_semantic_plan.model_dump(),
+            typography_dominance_plan=typography_plan.model_dump(),
+            typography_expression_plan=typography_expression_plan.model_dump(),
+            reference_typography_analysis=reference_typography_analysis,
+        )
+        preflight_model = review_native_creative_preflight(
+            input_evidence=input_bundle,
+            product_understanding=product_model,
+            copy_brief=brief,
+            prompt_package=package,
+            state={"user_plan": "premium", "plan_policy": build_default_plan_policy("premium").model_dump()},
+        )
+    preflight = preflight_model.model_dump()
+    package = package.model_copy(update={"preflight_status": "approved" if preflight_model.decision == "approved" else "rejected"})
+    (case_dir / "native_creative_prompt_package.json").write_text(json.dumps(package.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_creative_preflight_review.json").write_text(json.dumps(preflight, ensure_ascii=False, indent=2), encoding="utf-8")
+    if preflight_model.decision != "approved":
+        run = _native_run_result(args, case_id, "rejected", error_code="semantic_preflight_rejected", approved_native_copy_brief=brief.model_dump(), preflight_review=preflight, image_call_count=0)
+        (case_dir / "result.json").write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"schema_version": "gpt_image2_native_single_shot_v1", "status": "rejected", "runs": [run], "case_count": 1, "gpt_image_2_image_calls": 0, "gpt_image_2_edit_calls": 0, "external_renderer_calls": 0, "flux_calls": 0, "sd35_calls": 0, "mock_or_fixture_count": 0}
+    strict_failures = _native_v3_preimage_failures(brief=brief, product=product, user_text=user_text)
+    if strict_failures:
+        run = _native_run_result(args, case_id, "rejected", error_code="native_copy_v3_strict_preimage_failed", approved_native_copy_brief=brief.model_dump(), preflight_review=preflight, strict_failures=strict_failures, image_call_count=0)
+        (case_dir / "result.json").write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {"schema_version": "gpt_image2_native_single_shot_v1", "status": "rejected", "runs": [run], "case_count": 1, "gpt_image_2_image_calls": 0, "gpt_image_2_edit_calls": 0, "external_renderer_calls": 0, "flux_calls": 0, "sd35_calls": 0, "mock_or_fixture_count": 0}
+
+    fingerprint = request_fingerprint({"case_id": case_id, "prompt_sha256": package.prompt_sha256, "allowed_texts": package.exact_allowed_texts})
+    budget = new_native_generation_budget(request_fingerprint=fingerprint)
+    budget = reserve_image_call(budget)
+    budget = mark_image_call_started(budget)
+    (case_dir / "native_generation_budget.json").write_text(json.dumps(budget.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    generation = GPTImage2ActualEngine().generate_native_single_shot(prompt_package=package, output_dir=case_dir)
+    budget = mark_image_call_completed(budget)
+    (case_dir / "native_generation_budget.json").write_text(json.dumps(budget.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_generation_result.json").write_text(json.dumps(generation, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    image_path = Path(generation["image_path"])
+    review, vlm_metadata = review_native_generation_with_gpt54(image_path=image_path, package=package, model=args.vlm_model)
+    (case_dir / "ocr_result.json").write_text(json.dumps({"detected_text": review.detected_texts, "provider": "gpt-5.4_vlm"}, ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_generation_review.json").write_text(json.dumps({**review.model_dump(), "provider_metadata": vlm_metadata}, ensure_ascii=False, indent=2), encoding="utf-8")
+    status = "completed" if review.decision == "accept" else ("manual_review" if review.decision == "manual_review" else "rejected")
+    run = _native_run_result(
+        args,
+        case_id,
+        status,
+        approved_native_copy_brief=brief.model_dump(),
+        native_creative_prompt_package={**package.model_dump(), "final_prompt": "[redacted]", "prompt_sha256": package.prompt_sha256},
+        preflight_review=preflight,
+        native_generation_budget=budget.model_dump(),
+        native_generation_result=generation,
+        native_generation_review=review.model_dump(),
+        post_vlm_model=args.vlm_model,
+        post_vlm_provider_metadata=vlm_metadata,
+        final_image_path=generation["image_path"],
+        output_sha256=generation["output_sha256"],
+        image_call_count=1,
+    )
+    (case_dir / "result.json").write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "schema_version": "gpt_image2_native_single_shot_v1",
+        "status": status,
+        "runs": [run],
+        "case_count": 1,
+        "raw_user_request": user_text,
+        "normalized_product_name": product.get("product_name"),
+        "campaign_intent": evidence.get("campaign_intent"),
+        "desired_positioning": evidence.get("desired_positioning"),
+        "non_display_instruction_fragments": evidence.get("non_display_instruction_fragments"),
+        "copy_source_mode": brief.copy_source_mode,
+        "transformation_performed": brief.transformation_performed,
+        "approved_headline": brief.headline,
+        "approved_supporting_or_closing_copy": brief.supporting_copy or brief.closing_copy,
+        "copy_revision_count": 0,
+        "preflight_provider": (preflight.get("provider_metadata") or {}).get("provider"),
+        "preflight_model": (preflight.get("provider_metadata") or {}).get("model"),
+        "preflight_token_usage": (preflight.get("provider_metadata") or {}).get("token_usage"),
+        "positioning_realization_plan": strategy_bundle.positioning_plan.model_dump(),
+        "campaign_message_plan": campaign_plan.model_dump(),
+        "visual_semantic_cue_plan": visual_semantic_plan.model_dump(),
+        "typography_dominance_plan": typography_plan.model_dump(),
+        "typography_expression_plan": typography_expression_plan.model_dump(),
+        "reference_typography_analysis": reference_typography_analysis,
+        "visible_copy_texts": list(brief.allowed_texts),
+        "non_display_visual_cues": list(visual_semantic_plan.non_display_cues),
+        "campaign_role": campaign_plan.campaign_role,
+        "visible_copy_mode": campaign_plan.visible_copy_mode,
+        "headline_prominence": typography_plan.headline_prominence,
+        "product_visual_priority": typography_plan.product_visual_priority,
+        "effective_candidate_count": strategy_bundle.effective_candidate_count,
+        "candidate_deduplicated_count": len(strategy_bundle.deduplication_reasons),
+        "product_expression_basis": strategy_bundle.product_expression_basis.model_dump(),
+        "native_copy_candidate_count": len(strategy_bundle.candidates),
+        "native_copy_scorecards": [item.model_dump() for item in strategy_bundle.scorecards],
+        "selected_candidate_id": brief.selected_candidate_id,
+        "actual_api_calls": True,
+        "image_generation_performed": True,
+        "gpt_image_2_image_calls": 1,
+        "gpt_image_2_edit_calls": 0,
+        "gpt_image_2_retry_calls": 0,
+        "external_renderer_calls": 0,
+        "flux_calls": 0,
+        "sd35_calls": 0,
+        "mock_or_fixture_count": 0,
+        "final_image_count": 1,
+    }
+
+
+def review_native_generation_with_gpt54(*, image_path: Path, package: Any, model: str) -> tuple[NativeGenerationReview, dict[str, Any]]:
+    started = time.perf_counter()
+    from openai import OpenAI  # type: ignore
+
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    prompt = (
+        "Return JSON only matching NativeGenerationReview. Evaluate this single GPT Image 2 native typography poster. "
+        f"Expected exact texts: {json.dumps(package.exact_allowed_texts, ensure_ascii=False)}. "
+        "Include all fields: expected_texts, detected_texts, exact_text_match_score, unexpected_text_detected, missing_text_detected, product_match_score, product_obstruction_score, hierarchy_score, typography_quality_score, composition_score, commercial_viability_score, meta_instruction_exposed, consumer_facing_copy_score, copy_semantic_quality_score, literal_positioning_language_detected, product_centered_copy_score, sensory_grounding_score, copy_sensory_grounding_score, visual_sensory_richness_score, copy_visual_sensory_alignment_score, positioning_realization_score, copy_restraint_score, headline_support_complementarity, campaign_role_fit_score, typography_dominance_fit_score, supporting_copy_value_score, visible_copy_value_score, product_identity_clean, campaign_context_literalized, generic_launch_copy_detected, support_information_gain_score, support_product_specificity_score, typography_native_integration_score, typography_expression_alignment_score, flat_overlay_likelihood_score, headline_support_hierarchy_score, copy_product_relationship_score, decision, failure_reasons. "
+        "Do not copy expected_texts into detected_texts unless you actually see them in the image. "
+        "Evaluate copy and visual sensory qualities separately. copy_sensory_grounding_score judges only visible words. visual_sensory_richness_score judges only visual presentation. copy_visual_sensory_alignment_score judges whether copy and visual sensory presentation support each other. Do not give high copy sensory score merely because the image looks warm, steamy, glossy, soft, or appetizing. Check campaign role fit, typography dominance, visible copy value, extra positioning words, product match, obstruction, typography, and composition. Decide accept/manual_review/reject. Do not request regeneration."
+    )
+    response = OpenAI(timeout=90).responses.create(
+        model=model,
+        input=[{"role": "user", "content": [{"type": "input_text", "text": prompt}, {"type": "input_image", "image_url": f"data:image/png;base64,{encoded}"}]}],
+        temperature=0,
+    )
+    payload = _normalize_native_generation_review_payload(json.loads(getattr(response, "output_text", "") or "{}"))
+    metadata = {"provider": "openai", "model": model, "fallback_used": False, "token_usage": _usage_dict(response), "latency_ms": int((time.perf_counter() - started) * 1000)}
+    try:
+        return NativeGenerationReview(**payload), metadata
+    except Exception as exc:
+        reasons = sorted(set([*list(payload.get("failure_reasons") or []), f"schema_parse_normalized:{type(exc).__name__}"]))
+        return NativeGenerationReview(
+            expected_texts=list(package.exact_allowed_texts),
+            detected_texts=list(payload.get("detected_texts") or []),
+            exact_text_match_score=float(payload.get("exact_text_match_score") or 0.0),
+            unexpected_text_detected=bool(payload.get("unexpected_text_detected")),
+            missing_text_detected=True,
+            product_match_score=float(payload.get("product_match_score") or 0.0),
+            product_obstruction_score=float(payload.get("product_obstruction_score") or 0.0),
+            hierarchy_score=float(payload.get("hierarchy_score") or 0.0),
+            typography_quality_score=float(payload.get("typography_quality_score") or 0.0),
+            composition_score=float(payload.get("composition_score") or 0.0),
+            commercial_viability_score=float(payload.get("commercial_viability_score") or 0.0),
+            meta_instruction_exposed=bool(payload.get("meta_instruction_exposed")),
+            consumer_facing_copy_score=float(payload.get("consumer_facing_copy_score") or 0.0),
+            copy_semantic_quality_score=float(payload.get("copy_semantic_quality_score") or 0.0),
+            literal_positioning_language_detected=bool(payload.get("literal_positioning_language_detected")),
+            product_centered_copy_score=float(payload.get("product_centered_copy_score") or 0.0),
+            sensory_grounding_score=float(payload.get("sensory_grounding_score") or 0.0),
+            copy_sensory_grounding_score=float(payload.get("copy_sensory_grounding_score") or 0.0),
+            visual_sensory_richness_score=float(payload.get("visual_sensory_richness_score") or 0.0),
+            copy_visual_sensory_alignment_score=float(payload.get("copy_visual_sensory_alignment_score") or 0.0),
+            positioning_realization_score=float(payload.get("positioning_realization_score") or 0.0),
+            copy_restraint_score=float(payload.get("copy_restraint_score") or 0.0),
+            headline_support_complementarity=float(payload.get("headline_support_complementarity") or 0.0),
+            campaign_role_fit_score=float(payload.get("campaign_role_fit_score") or 0.0),
+            typography_dominance_fit_score=float(payload.get("typography_dominance_fit_score") or 0.0),
+            supporting_copy_value_score=float(payload.get("supporting_copy_value_score") or 0.0),
+            visible_copy_value_score=float(payload.get("visible_copy_value_score") or 0.0),
+            product_identity_clean=bool(payload.get("product_identity_clean", True)),
+            campaign_context_literalized=bool(payload.get("campaign_context_literalized")),
+            generic_launch_copy_detected=bool(payload.get("generic_launch_copy_detected")),
+            support_information_gain_score=float(payload.get("support_information_gain_score") or 0.0),
+            support_product_specificity_score=float(payload.get("support_product_specificity_score") or 0.0),
+            typography_native_integration_score=float(payload.get("typography_native_integration_score") or 0.0),
+            typography_expression_alignment_score=float(payload.get("typography_expression_alignment_score") or 0.0),
+            flat_overlay_likelihood_score=float(payload.get("flat_overlay_likelihood_score") or 0.0),
+            headline_support_hierarchy_score=float(payload.get("headline_support_hierarchy_score") or 0.0),
+            copy_product_relationship_score=float(payload.get("copy_product_relationship_score") or 0.0),
+            decision="manual_review",
+            failure_reasons=reasons,
+        ), metadata
+
+
+def _normalize_native_generation_review_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(payload or {})
+    aliases = {
+        "detected_text": "detected_texts",
+        "commercial_viability": "commercial_viability_score",
+        "consumer_facing_copy": "consumer_facing_copy_score",
+        "copy_semantic_quality": "copy_semantic_quality_score",
+        "product_centeredness": "product_centered_copy_score",
+        "sensory_grounding": "sensory_grounding_score",
+        "copy_sensory_grounding": "copy_sensory_grounding_score",
+        "visual_sensory_richness": "visual_sensory_richness_score",
+        "copy_visual_sensory_alignment": "copy_visual_sensory_alignment_score",
+        "positioning_realization": "positioning_realization_score",
+        "copy_restraint": "copy_restraint_score",
+        "campaign_role_fit": "campaign_role_fit_score",
+        "typography_dominance_fit": "typography_dominance_fit_score",
+        "supporting_copy_value": "supporting_copy_value_score",
+        "visible_copy_value": "visible_copy_value_score",
+    }
+    for source, target in aliases.items():
+        if source in normalized and target not in normalized:
+            normalized[target] = normalized[source]
+    if isinstance(normalized.get("detected_texts"), str):
+        normalized["detected_texts"] = [normalized["detected_texts"]]
+    if not normalized.get("detected_texts"):
+        normalized["decision"] = "manual_review"
+        normalized["missing_text_detected"] = True
+        normalized["failure_reasons"] = sorted(set([*list(normalized.get("failure_reasons") or []), "vlm_detected_text_missing"]))
+    if normalized.get("meta_instruction_exposed"):
+        normalized["decision"] = "reject"
+        normalized["failure_reasons"] = sorted(set([*list(normalized.get("failure_reasons") or []), "meta_instruction_exposed"]))
+    normalized.setdefault("expected_texts", [])
+    normalized.setdefault("exact_text_match_score", 0.0)
+    normalized.setdefault("unexpected_text_detected", False)
+    normalized.setdefault("missing_text_detected", False)
+    normalized.setdefault("product_match_score", 0.0)
+    normalized.setdefault("product_obstruction_score", 0.0)
+    normalized.setdefault("hierarchy_score", 0.0)
+    normalized.setdefault("typography_quality_score", 0.0)
+    normalized.setdefault("composition_score", 0.0)
+    normalized.setdefault("commercial_viability_score", 0.0)
+    normalized.setdefault("meta_instruction_exposed", False)
+    normalized.setdefault("consumer_facing_copy_score", 0.0)
+    normalized.setdefault("copy_semantic_quality_score", 0.0)
+    normalized.setdefault("literal_positioning_language_detected", False)
+    normalized.setdefault("product_centered_copy_score", 0.0)
+    normalized.setdefault("sensory_grounding_score", 0.0)
+    normalized.setdefault("copy_sensory_grounding_score", normalized.get("sensory_grounding_score", 0.0))
+    normalized.setdefault("visual_sensory_richness_score", 0.0)
+    normalized.setdefault("copy_visual_sensory_alignment_score", 0.0)
+    normalized.setdefault("positioning_realization_score", 0.0)
+    normalized.setdefault("copy_restraint_score", 0.0)
+    normalized.setdefault("headline_support_complementarity", 0.0)
+    normalized.setdefault("campaign_role_fit_score", 0.0)
+    normalized.setdefault("typography_dominance_fit_score", 0.0)
+    normalized.setdefault("supporting_copy_value_score", 0.0)
+    normalized.setdefault("visible_copy_value_score", 0.0)
+    normalized.setdefault("product_identity_clean", True)
+    normalized.setdefault("campaign_context_literalized", False)
+    normalized.setdefault("generic_launch_copy_detected", False)
+    normalized.setdefault("support_information_gain_score", normalized.get("supporting_copy_value_score", 0.0))
+    normalized.setdefault("support_product_specificity_score", normalized.get("copy_product_relationship_score", 0.0))
+    normalized.setdefault("typography_native_integration_score", normalized.get("typography_quality_score", 0.0))
+    normalized.setdefault("typography_expression_alignment_score", normalized.get("typography_quality_score", 0.0))
+    normalized.setdefault("flat_overlay_likelihood_score", 0.0)
+    normalized.setdefault("headline_support_hierarchy_score", normalized.get("hierarchy_score", 0.0))
+    normalized.setdefault("copy_product_relationship_score", normalized.get("product_centered_copy_score", 0.0))
+    if normalized.get("campaign_context_literalized") or normalized.get("generic_launch_copy_detected") or normalized.get("product_identity_clean") is False:
+        normalized["decision"] = "manual_review" if normalized.get("decision") == "accept" else normalized.get("decision", "manual_review")
+        normalized["failure_reasons"] = sorted(set([*list(normalized.get("failure_reasons") or []), "native_campaign_copy_v4_1_review_flag"]))
+    normalized.setdefault("decision", "manual_review")
+    normalized.setdefault("failure_reasons", [])
+    return normalized
+
+
+def _native_v3_preimage_failures(*, brief: Any, product: dict[str, Any], user_text: str) -> list[str]:
+    failures: list[str] = []
+    score = brief.candidate_scorecard or {}
+    plan = brief.positioning_realization_plan or {}
+    if not product.get("product_name"):
+        failures.append("product_name_missing")
+    non_display_fragments = [str(item).strip() for item in getattr(brief, "non_display_instructions", []) if str(item).strip()]
+    if brief.headline == user_text or any(fragment in str(brief.headline or "") for fragment in non_display_fragments):
+        failures.append("headline_contains_raw_request")
+    if brief.action_cta is not None:
+        failures.append("action_cta_not_null")
+    if brief.max_text_blocks > 2:
+        failures.append("text_block_limit_exceeded")
+    if plan.get("realization_mode") not in {"implicit", "balanced"}:
+        failures.append("positioning_realization_not_implicit_or_balanced")
+    thresholds = {
+        "product_centeredness": 0.80,
+        "consumer_naturalness": 0.80,
+        "restraint": 0.75,
+        "native_typography_fit": 0.80,
+    }
+    for key, minimum in thresholds.items():
+        if float(score.get(key) or 0.0) < minimum:
+            failures.append(f"{key}_below_threshold")
+    if score.get("blocked"):
+        failures.append("selected_candidate_blocked")
+    return sorted(set(failures))
+
+
+def _sanitize_native_product_identity(value: Any) -> str | None:
+    return clean_product_identity(str(value or ""))
+
+
+def analyze_reference_typography_style(path: str | None) -> dict[str, Any]:
+    if not path:
+        return {
+            "schema_version": "reference_typography_analysis_v1",
+            "reference_image_found": False,
+            "style_summary": [],
+            "reference_texts_to_avoid": [],
+            "exact_forbidden_texts": [],
+        }
+    source = Path(path)
+    if not source.exists():
+        return {
+            "schema_version": "reference_typography_analysis_v1",
+            "reference_image_found": False,
+            "reference_image_path": str(source),
+            "style_summary": [],
+            "reference_texts_to_avoid": [],
+            "exact_forbidden_texts": [],
+            "error_code": "reference_image_not_found",
+        }
+    width = height = None
+    try:
+        with Image.open(source) as image:
+            width, height = image.size
+    except Exception:
+        pass
+    return {
+        "schema_version": "reference_typography_analysis_v1",
+        "reference_image_found": True,
+        "reference_image_path": str(source),
+        "width": width,
+        "height": height,
+        "style_family": "editorial_display",
+        "stroke_character": "moderate contrast display strokes with commercial poster rhythm",
+        "texture_direction": "subtle printed texture, integrated with lighting and product composition",
+        "style_summary": [
+            "use the reference only for typographic hierarchy and native integration",
+            "avoid copying any existing words from the reference image",
+            "prefer editorial display balance over flat UI overlay",
+        ],
+        "reference_texts_to_avoid": [],
+        "exact_forbidden_texts": [],
+    }
+
+
+def _preflight_requests_support_downgrade(preflight: Any) -> bool:
+    reasons = " ".join(str(item).lower() for item in getattr(preflight, "failure_reasons", []) or [])
+    instructions = " ".join(str(item).lower() for item in getattr(preflight, "revision_instructions", []) or [])
+    text = f"{reasons} {instructions}"
+    return "support" in text or "supporting copy" in text or "supporting_copy" in text
+
+
+def _downgrade_brief_to_headline_only(brief: Any) -> Any:
+    allowed = [brief.headline] if brief.headline else []
+    scorecard = dict(brief.candidate_scorecard or {})
+    scorecard["support_downgraded_for_preflight"] = True
+    return brief.model_copy(
+        update={
+            "supporting_copy": None,
+            "closing_copy": None,
+            "message_role": "headline_only",
+            "allowed_texts": allowed,
+            "max_text_blocks": 1,
+            "copy_claim_evidence_ids": [],
+            "support_basis_type": "none",
+            "support_value_type": "none",
+            "support_information_gain": 0.0,
+            "support_product_specificity": 0.0,
+            "candidate_scorecard": scorecard,
+        }
+    )
+
+
+def _native_run_result(args: argparse.Namespace, case_id: str, status: str, **fields: Any) -> dict[str, Any]:
+    return {
+        "case_id": case_id,
+        "status": status,
+        "copy_model": args.copy_model,
+        "preflight_review_model": args.copy_model,
+        "post_vlm_model": fields.pop("post_vlm_model", args.vlm_model),
+        "image_model": "gpt-image-2",
+        "image_api_call_count": fields.pop("image_call_count", 0),
+        "edit_call_count": 0,
+        "regeneration_count": 0,
+        "external_renderer_call_count": 0,
+        "flux_call_count": 0,
+        "sd35_call_count": 0,
+        "mock_or_fixture_count": 0,
+        "usage_idempotency_key": f"gpt_image_2_native:{case_id}:{(fields.get('native_generation_budget') or {}).get('request_fingerprint')}",
+        **fields,
+    }
+
+
 def _legacy_run_actual_case(*, args: argparse.Namespace, output_dir: Path, case_dir: Path) -> dict[str, Any]:
     copy_result = generate_gpt54_copy_candidates(args)
     (output_dir / "copy_candidates_gpt54.json").write_text(json.dumps(copy_result, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1006,6 +1539,26 @@ def build_comparison(case_dir: Path, initial_path: Path, repaired_path: Path | N
 
 
 def _missing_actual_requirements(args: argparse.Namespace) -> list[str]:
+    if getattr(args, "gpt_image2_native_single_shot", False):
+        required = {
+            "EASYADS_FINAL_COMPOSITE_ACTUAL": "1",
+            "EASYADS_COPY_QUALITY_ACTUAL": "1",
+            "EASYADS_ENABLE_LLM_CALLS": "true",
+            "EASYADS_LLM_PROVIDER": "openai",
+            "EASYADS_VLM_ACTUAL": "1",
+            "EASYADS_ENABLE_GPT_IMAGE_2": "true",
+            "EASYADS_GPT_IMAGE_2_ACTUAL": "1",
+        }
+        missing = [name for name, expected in required.items() if str(os.getenv(name, "")).strip().lower() != expected.lower()]
+        if not os.getenv("OPENAI_API_KEY"):
+            missing.append("OPENAI_API_KEY")
+        if args.copy_model != "gpt-5.4":
+            missing.append("copy_model_must_be_gpt-5.4")
+        if args.vlm_model != "gpt-5.4":
+            missing.append("vlm_model_must_be_gpt-5.4")
+        if args.max_image_calls != 1 or args.max_images != 1:
+            missing.append("native_image_call_limit_must_be_1")
+        return missing
     required_env = dict(REQUIRED_ACTUAL_ENV)
     if getattr(args, "product_understanding_benchmark", False) and getattr(args, "stop_after", None) == "product_understanding":
         required_env.pop("EASYADS_FLUX2_KLEIN_ACTUAL", None)

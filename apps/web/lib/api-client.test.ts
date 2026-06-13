@@ -58,7 +58,7 @@ describe("api-client photo generation", () => {
 
     expect(result.sourceImagePath).toBe("data/uploads/photo_1.png");
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:4000/api/generate/photo/upload",
+      "/api/generate/photo/upload",
       expect.objectContaining({
         method: "POST",
         headers: { "content-type": "application/json" }
@@ -130,7 +130,7 @@ describe("api-client photo generation", () => {
 
     expect(result.jobId).toBe("photo_1");
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:4000/api/generate/photo/start",
+      "/api/generate/photo/start",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
@@ -313,14 +313,14 @@ describe("api-client photo generation", () => {
     const result = await listReferenceTemplates({ keyword: "수박 음료", tags: ["수박", "음료"], limit: 40 });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:4000/api/references?keyword=%EC%88%98%EB%B0%95+%EC%9D%8C%EB%A3%8C&tags=%EC%88%98%EB%B0%95&tags=%EC%9D%8C%EB%A3%8C&limit=40",
+      "/api/references?keyword=%EC%88%98%EB%B0%95+%EC%9D%8C%EB%A3%8C&tags=%EC%88%98%EB%B0%95&tags=%EC%9D%8C%EB%A3%8C&limit=40",
       expect.objectContaining({ method: "GET" })
     );
     expect(result.items[0]).toMatchObject({
       templateId: "temp_watermelon_juice_feed",
       title: "수박주스 블루 여름 피드",
-      thumbnailUrl: "http://127.0.0.1:4000/api/references/temp-assets/2026-06-user-refs/watermelon-juice.png",
-      previewUrl: "http://127.0.0.1:4000/api/references/temp-assets/2026-06-user-refs/watermelon-juice.png"
+      thumbnailUrl: "/api/references/temp-assets/2026-06-user-refs/watermelon-juice.png",
+      previewUrl: "/api/references/temp-assets/2026-06-user-refs/watermelon-juice.png"
     });
     expect(result.pagination.total).toBe(1);
   });
@@ -433,9 +433,9 @@ describe("api-client backend contract routes", () => {
     const detail = await fetchReferenceDetail("template_1");
     const similar = await fetchSimilarReferences("template_1", { limit: 3 });
 
-    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/references?category=cafe&tags=CTA&tags=warm&limit=2");
-    expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/references/template_1");
-    expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/references/template_1/similar?limit=3");
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/references?category=cafe&tags=CTA&tags=warm&limit=2");
+    expect(String(fetchMock.mock.calls[1][0])).toBe("/api/references/template_1");
+    expect(String(fetchMock.mock.calls[2][0])).toBe("/api/references/template_1/similar?limit=3");
     expect(detail.template.templateId).toBe("template_1");
     expect(detail.similarTemplates[0].templateId).toBe("template_1");
     expect(similar.items[0].templateId).toBe("template_1");
@@ -450,11 +450,11 @@ describe("api-client backend contract routes", () => {
     await getBrandKit("bk_1");
     await updateBrandKit("bk_1", { store_name: "Sun Cafe" });
 
-    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/brand-kits/current?user_id=user_1");
-    expect(fetchMock.mock.calls[1][0]).toBe("http://127.0.0.1:4000/api/brand-kits");
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/brand-kits/current?user_id=user_1");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/brand-kits");
     expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({ method: "POST" }));
-    expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/brand-kits/bk_1");
-    expect(fetchMock.mock.calls[3][0]).toBe("http://127.0.0.1:4000/api/brand-kits/bk_1");
+    expect(String(fetchMock.mock.calls[2][0])).toBe("/api/brand-kits/bk_1");
+    expect(fetchMock.mock.calls[3][0]).toBe("/api/brand-kits/bk_1");
     expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({ method: "PATCH" }));
   });
 
@@ -480,11 +480,33 @@ describe("api-client backend contract routes", () => {
     const created = await createGenerationJob({ userInput: "Create an ad" });
     const fetched = await getGenerationJob("job_1");
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/generation-jobs");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/generation-jobs");
     expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({ method: "POST" }));
-    expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/generation-jobs/job_1");
+    expect(String(fetchMock.mock.calls[1][0])).toBe("/api/generation-jobs/job_1");
     expect(created.job.result_payload?.schema_version).toBe("result_artifact_v1");
     expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
+  });
+
+  it("uses same-origin API routes when NEXT_PUBLIC_BFF_BASE_URL is unset", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BFF_BASE_URL", "");
+    vi.resetModules();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_same_origin",
+          status: "queued",
+          progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+          metadata: {}
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const api = await import("./api-client");
+
+    await api.getGenerationJob("job_same_origin");
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/generation-jobs/job_same_origin");
   });
 
   it("strips null top-level fields from generation job creation but keeps metadata nulls", async () => {
@@ -516,6 +538,34 @@ describe("api-client backend contract routes", () => {
     expect(body.metadata).toEqual({ selected_copy_id: null, source: "web_generation_flow" });
   });
 
+  it("forwards Supabase authorization when reading a generation job", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "guest_access_token_1" } } })
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        job: {
+          job_id: "job_guest_1",
+          status: "running",
+          progress: { progress_percent: 25, current_stage: "planning", stage_order: [] },
+          metadata: {}
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getGenerationJob("job_guest_1");
+
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer guest_access_token_1" })
+    );
+  });
+
   it("answers generation job questions through the BFF", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
@@ -536,7 +586,7 @@ describe("api-client backend contract routes", () => {
       customText: undefined
     });
 
-    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/generation-jobs/job_1/answer");
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/generation-jobs/job_1/answer");
     expect(fetchMock.mock.calls[0][1]).toEqual(
       expect.objectContaining({
         method: "POST",
@@ -721,7 +771,7 @@ describe("api-client backend contract routes", () => {
     const updated = await updateArchiveItem("archive_1", { status: "favorite" });
     const deleted = await deleteArchiveItem("archive_1");
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/archive/items");
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
       title: "봄을 닮은 한 잔",
       publicJobId: "job_1",
@@ -729,12 +779,12 @@ describe("api-client backend contract routes", () => {
       status: "saved",
       source: "generated"
     });
-    expect(String(fetchMock.mock.calls[1][0])).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
-    expect(String(fetchMock.mock.calls[2][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
-    expect(String(fetchMock.mock.calls[3][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
+    expect(String(fetchMock.mock.calls[1][0])).toBe("/api/archive/items?limit=20");
+    expect(String(fetchMock.mock.calls[2][0])).toBe("/api/archive/items/archive_1");
+    expect(String(fetchMock.mock.calls[3][0])).toBe("/api/archive/items/archive_1");
     expect(fetchMock.mock.calls[3][1]).toEqual(expect.objectContaining({ method: "PATCH" }));
     expect(JSON.parse(String(fetchMock.mock.calls[3][1]?.body))).toEqual({ status: "favorite" });
-    expect(String(fetchMock.mock.calls[4][0])).toBe("http://127.0.0.1:4000/api/archive/items/archive_1");
+    expect(String(fetchMock.mock.calls[4][0])).toBe("/api/archive/items/archive_1");
     expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
       expect.objectContaining({ authorization: "Bearer access_token_1" })
     );
@@ -770,7 +820,7 @@ describe("api-client backend contract routes", () => {
         }
       })
     }));
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         items: [],
         pagination: { limit: 20, offset: 0, total: 0, has_more: false }
@@ -780,14 +830,14 @@ describe("api-client backend contract routes", () => {
 
     await listArchiveItems({ limit: 20 });
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items?limit=20");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/archive/items?limit=20");
     expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
       expect.objectContaining({ authorization: "Bearer anon_access_token_1" })
     );
   });
 
   it("can skip exact archive totals for faster archive list requests", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         items: [],
         pagination: { limit: 20, offset: 0, total: 0, has_more: false }
@@ -797,11 +847,11 @@ describe("api-client backend contract routes", () => {
 
     await listArchiveItems({ limit: 20, includeTotal: false });
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/archive/items?limit=20&include_total=false");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/archive/items?limit=20&include_total=false");
   });
 
   it("can skip exact chat thread totals for faster workspace list requests", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         success: true,
         threads: [],
@@ -812,7 +862,7 @@ describe("api-client backend contract routes", () => {
 
     await listChatThreads({ limit: 5, includeTotal: false });
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/chat-threads?limit=5&include_total=false");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/chat-threads?limit=5&include_total=false");
   });
 
 
@@ -855,13 +905,13 @@ describe("api-client backend contract routes", () => {
     const file = new File([new Uint8Array([1, 2, 3])], "reference.png", { type: "image/png" });
     const result = await uploadReferenceImageToR2(file);
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/assets/uploads/presign");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/assets/uploads/presign");
     expect(fetchMock.mock.calls[0][1]?.headers).toEqual(expect.objectContaining({ authorization: "Bearer access_token_1" }));
     expect(fetchMock.mock.calls[1]).toEqual([
       "https://r2.example.com/upload",
       expect.objectContaining({ method: "PUT", body: file })
     ]);
-    expect(fetchMock.mock.calls[2][0]).toBe("http://127.0.0.1:4000/api/assets/uploads/asset_abc/complete");
+    expect(fetchMock.mock.calls[2][0]).toBe("/api/assets/uploads/asset_abc/complete");
     expect(result.status).toBe("ready");
     expect(result.width).toBe(1200);
   });
@@ -918,7 +968,7 @@ describe("api-client backend contract routes", () => {
     const listed = await listAdminReferenceTemplates();
     const created = await createAdminReferenceTemplate({ assetId: "asset_abc", title: "관리자 카페 샘플", category: "cafe" });
 
-    expect(String(fetchMock.mock.calls[0][0])).toBe("http://127.0.0.1:4000/api/admin/references");
+    expect(String(fetchMock.mock.calls[0][0])).toBe("/api/admin/references");
     expect(fetchMock.mock.calls[0][1]?.headers).toEqual(expect.objectContaining({ authorization: "Bearer access_token_1" }));
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toMatchObject({ assetId: "asset_abc", title: "관리자 카페 샘플" });
     expect(listed[0].status).toBe("draft");
@@ -977,7 +1027,7 @@ describe("api-client backend contract routes", () => {
 
     const response = await archiveChatThread("thread_1");
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:4000/api/chat-threads/thread_1/archive");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/chat-threads/thread_1/archive");
     expect(fetchMock.mock.calls[0][1]).toEqual(
       expect.objectContaining({
         method: "POST",
