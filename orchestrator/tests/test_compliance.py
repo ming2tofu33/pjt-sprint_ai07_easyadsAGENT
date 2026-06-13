@@ -17,6 +17,8 @@ Merged from:
 """Phase 2: 카피 후보 배지 테스트."""
 from orchestrator.app.graph.state import create_initial_marketing_state
 from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest, MarketingContext
+from orchestrator.tests.factories.compliance_payloads import make_compliance_candidate
+from orchestrator.tests.helpers.compliance import assert_compliance_badge, assert_compliance_record
 
 
 def _state(business_type="restaurant", item_or_service="삼겹살", promotion_goal="reservation_cta"):
@@ -66,9 +68,7 @@ def test_attach_compliance_badges_adds_badge_key():
     from orchestrator.app.llm.nodes.copy_candidates import _attach_compliance_badges
 
     state = _state(business_type="cafe")
-    candidates = [
-        {"id": "copy_1", "headline": "기분 좋은 딸기라떼", "subcopy": "한 잔의 여유", "cta": "주문하기", "metadata": {}},
-    ]
+    candidates = [make_compliance_candidate(headline="기분 좋은 딸기라떼", subcopy="한 잔의 여유", cta="주문하기")]
     updated, _records, _status, _ready = _attach_compliance_badges(candidates, state)
     badge = updated[0]["metadata"]["compliance"]
     assert "status" in badge
@@ -80,29 +80,21 @@ def test_attach_compliance_badges_safe_copy_returns_pass():
     from orchestrator.app.llm.nodes.copy_candidates import _attach_compliance_badges
 
     state = _state(business_type="cafe")
-    candidates = [
-        {"id": "copy_1", "headline": "기분 좋은 딸기라떼", "subcopy": "한 잔의 여유", "cta": "주문하기", "metadata": {}},
-    ]
+    candidates = [make_compliance_candidate(headline="기분 좋은 딸기라떼", subcopy="한 잔의 여유", cta="주문하기")]
     updated, records, worst_status, pub_ready = _attach_compliance_badges(candidates, state)
-    assert updated[0]["metadata"]["compliance"]["status"] == "pass"
-    assert updated[0]["metadata"]["compliance"]["disabled"] is False
+    assert_compliance_badge(updated[0], status="pass", disabled=False)
     assert worst_status == "pass"
     assert pub_ready is True
-    assert records[0]["candidate_id"] == "copy_1"
-    assert records[0]["publication_ready"] is True
+    assert_compliance_record(records[0], candidate_id="copy_1", publication_ready=True)
 
 
 def test_attach_compliance_badges_blocked_copy_sets_disabled():
     from orchestrator.app.llm.nodes.copy_candidates import _attach_compliance_badges
 
     state = _state(business_type="cafe")
-    candidates = [
-        {"id": "copy_1", "headline": "독소 배출 그린 스무디", "subcopy": None, "cta": None, "metadata": {}},
-    ]
+    candidates = [make_compliance_candidate(headline="독소 배출 그린 스무디")]
     updated, records, worst_status, pub_ready = _attach_compliance_badges(candidates, state)
-    badge = updated[0]["metadata"]["compliance"]
-    assert badge["status"] == "blocked"
-    assert badge["disabled"] is True
+    assert_compliance_badge(updated[0], status="blocked", disabled=True)
     assert worst_status == "blocked"
     assert pub_ready is False
     assert records[0]["finding_count"] >= 1
@@ -112,9 +104,7 @@ def test_attach_compliance_badges_evidence_required():
     from orchestrator.app.llm.nodes.copy_candidates import _attach_compliance_badges
 
     state = _state(business_type="cafe")
-    candidates = [
-        {"id": "copy_1", "headline": "국내 1위 카페", "subcopy": None, "cta": None, "metadata": {}},
-    ]
+    candidates = [make_compliance_candidate(headline="국내 1위 카페")]
     _, _, worst_status, pub_ready = _attach_compliance_badges(candidates, state)
     assert worst_status == "evidence_required"
     assert pub_ready is False
@@ -125,8 +115,8 @@ def test_attach_compliance_badges_worst_case_across_candidates():
 
     state = _state(business_type="cafe")
     candidates = [
-        {"id": "copy_1", "headline": "맛있는 딸기라떼", "subcopy": None, "cta": None, "metadata": {}},
-        {"id": "copy_2", "headline": "독소 배출 그린 스무디", "subcopy": None, "cta": None, "metadata": {}},
+        make_compliance_candidate(headline="맛있는 딸기라떼"),
+        make_compliance_candidate(candidate_id="copy_2", headline="독소 배출 그린 스무디"),
     ]
     _, _, worst_status, pub_ready = _attach_compliance_badges(candidates, state)
     assert worst_status == "blocked"
@@ -138,13 +128,13 @@ def test_attach_compliance_badges_record_count_matches_candidates():
 
     state = _state(business_type="restaurant")
     candidates = [
-        {"id": "copy_1", "headline": "삼겹살 한 판", "subcopy": None, "cta": "예약하기", "metadata": {}},
-        {"id": "copy_2", "headline": "오늘 회식은 여기서", "subcopy": None, "cta": "예약 문의", "metadata": {}},
+        make_compliance_candidate(headline="삼겹살 한 판", cta="예약하기"),
+        make_compliance_candidate(candidate_id="copy_2", headline="오늘 회식은 여기서", cta="예약 문의"),
     ]
     _, records, _, _ = _attach_compliance_badges(candidates, state)
     assert len(records) == 2
-    assert records[0]["candidate_id"] == "copy_1"
-    assert records[1]["candidate_id"] == "copy_2"
+    assert_compliance_record(records[0], candidate_id="copy_1")
+    assert_compliance_record(records[1], candidate_id="copy_2")
 
 
 # ── copy_candidate_generation_node 통합 ──────────────────────────────────────
