@@ -2018,6 +2018,7 @@ def test_postgres_mark_failed_updates_row_thread_and_event(monkeypatch):
     monkeypatch.setattr(service, "db_transaction", fake_db_transaction__test_generation_job_persistence_db_backend)
     events = []
     thread_updates = []
+    snapshots = []
     state = _row__test_generation_job_persistence_db_backend()
 
     def mark_failed(job_id, error, metadata=None, connection=None):
@@ -2031,16 +2032,18 @@ def test_postgres_mark_failed_updates_row_thread_and_event(monkeypatch):
     monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
     monkeypatch.setattr(service.chat_message_repo, "append_generation_job_chat_event", lambda **kwargs: {"id": "msg_uuid"})
     monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: None)
-    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: {"snapshot_id": "snap_uuid"})
+    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: snapshots.append(kwargs) or {"snapshot_id": "snap_uuid"})
     monkeypatch.setattr(service.chat_thread_repo, "get_chat_thread_by_public_id", lambda thread_id, **kwargs: {"id": "thread_uuid", "active_job_id": "job_uuid"})
 
-    failed = service.mark_generation_job_failed("job_db", {"error_code": "x", "message": "failed"})
+    failed = service.mark_generation_job_failed("job_db", {"error_code": "x", "message": "failed", "detail": "missing package"})
 
     assert failed.status == "failed"
     assert failed.error.error_code == "x"
     assert events[0]["event_type"] == "failed"
     assert events[0]["payload"]["error_code"] == "x"
     assert thread_updates[0]["expected_active_job_id"] == "job_uuid"
+    assert snapshots[0]["metadata"]["message"] == "failed"
+    assert snapshots[0]["metadata"]["detail"] == "missing package"
 
 
 # ===== from test_generation_job_r2_persistence.py =====
@@ -2457,6 +2460,7 @@ from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequ
 from orchestrator.app.generation_jobs.service import (
     create_generation_job,
     get_generation_job,
+    mark_generation_job_failed,
     mark_generation_job_running,
     maybe_mark_stale_generation_job_failed,
     reset_generation_job_store_for_tests,
@@ -2550,6 +2554,31 @@ def test_create_generation_job_graph_job_degrades_metadata():
     assert job.result_payload is None
 
 
+def test_memory_mark_failed_snapshot_keeps_error_message_and_detail():
+    job = create_generation_job(GenerationJobCreateRequest(user_input="Create an ad", run_mode="graph_job"))
+
+    failed = mark_generation_job_failed(
+        job.job_id,
+        {
+            "error_code": "generation_job_execution_failed",
+            "message": "Generation job graph execution failed.",
+            "detail": "No module named 'langgraph.checkpoint.postgres'",
+        },
+    )
+
+    snapshot = get_chat_state_snapshot_by_key(
+        snapshot_key=f"{job.job_id}:failed",
+        public_thread_id=job.thread_id,
+        workspace_id="mem_workspace",
+        user_id=job.user_id,
+    )
+
+    assert failed is not None
+    assert snapshot is not None
+    assert snapshot.metadata["message"] == "Generation job graph execution failed."
+    assert snapshot.metadata["detail"] == "No module named 'langgraph.checkpoint.postgres'"
+
+
 def test_maybe_mark_stale_generation_job_failed_keeps_fresh_running_job():
     now = datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
     fresh_job = GenerationJobResponse(
@@ -2630,6 +2659,11 @@ import pytest
 from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
 from orchestrator.app.chat_threads.errors import ChatThreadHasActiveJobError
 from orchestrator.app.generation_jobs import service
+from orchestrator.tests.factories.generation_jobs import (
+    DEFAULT_WORKSPACE_ID,
+    fake_db_transaction as shared_fake_db_transaction,
+    make_generation_job_row,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -2641,39 +2675,30 @@ def reset_store__test_generation_job_service_db_backend(monkeypatch):
 
 
 def _row__test_generation_job_service_db_backend(public_job_id="job_db", status="queued", metadata=None, result_payload=None, error=None):
-    now = datetime.now(timezone.utc)
-    return {
-        "id": "job_uuid",
-        "public_job_id": public_job_id,
-        "workspace_id": "11111111-1111-1111-1111-111111111111",
-        "thread_id": "thread_uuid",
-        "requested_by": "demo_user",
-        "status": status,
-        "current_stage": "completed" if status == "done" else status,
-        "progress_percent": 100 if status == "done" else 0,
-        "selected_reference_template_id": "seed_1",
-        "output_path": "data/outputs/job_db/final_0.png" if status == "done" else None,
-        "result_payload": result_payload,
-        "error": error,
-        "created_at": now,
-        "updated_at": now,
-        "metadata": metadata or {
+    return make_generation_job_row(
+        public_job_id=public_job_id,
+        workspace_id=DEFAULT_WORKSPACE_ID,
+        status=status,
+        selected_reference_template_id="seed_1",
+        output_path="data/outputs/job_db/final_0.png" if status == "done" else None,
+        result_payload=result_payload,
+        error=error,
+        metadata=metadata
+        or {
             "public_thread_id": "thread_db",
             "requested_run_mode": "queued_only",
             "effective_run_mode": "queued_only",
             "execution_mode": "queued_only",
         },
-    }
+    )
 
 
 from unittest.mock import MagicMock
 
 @contextmanager
 def fake_db_transaction__test_generation_job_service_db_backend():
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    yield conn
+    with shared_fake_db_transaction() as conn:
+        yield conn
 
 
 def _patch_noop_side_effects(monkeypatch):
@@ -2994,43 +3019,30 @@ from orchestrator.app.generation_jobs import service
 from orchestrator.app.generation_jobs.errors import GenerationJobWorkspaceNotFound, GenerationJobWorkspaceRequired
 
 
-WORKSPACE_A = "11111111-1111-1111-1111-111111111111"
+WORKSPACE_A = DEFAULT_WORKSPACE_ID
 WORKSPACE_B = "22222222-2222-2222-2222-222222222222"
 
 
 @contextmanager
 def fake_db_transaction__test_generation_job_tenant_isolation():
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    yield conn
+    with shared_fake_db_transaction() as conn:
+        yield conn
 
 
 def _row__test_generation_job_tenant_isolation(*, public_job_id="job_db", workspace_id=WORKSPACE_A, metadata=None):
-    now = datetime.now(timezone.utc)
-    return {
-        "id": "job_uuid",
-        "public_job_id": public_job_id,
-        "workspace_id": workspace_id,
-        "thread_id": "thread_uuid",
-        "requested_by": "user_a",
-        "status": "queued",
-        "current_stage": "queued",
-        "progress_percent": 0,
-        "selected_reference_template_id": None,
-        "output_path": None,
-        "result_payload": None,
-        "error": {},
-        "created_at": now,
-        "updated_at": now,
-        "metadata": metadata or {
+    return make_generation_job_row(
+        public_job_id=public_job_id,
+        workspace_id=workspace_id,
+        requested_by="user_a",
+        metadata=metadata
+        or {
             "public_thread_id": "thread_a",
             "requested_run_mode": "queued_only",
             "effective_run_mode": "queued_only",
             "execution_mode": "queued_only",
             "user_id": "user_a",
         },
-    }
+    )
 
 
 @pytest.fixture(autouse=True)

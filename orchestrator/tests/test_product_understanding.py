@@ -362,15 +362,33 @@ def test_product_understanding_rejects_product_as_broad_category():
         )
 
 
-def test_product_understanding_rejects_bad_category_path_and_claims():
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        pytest.param(
+            {
+                "product_name": "desk lamp",
+                "broad_category": "home_and_living",
+                "category_path": ["home_and_living", "Bad Path"],
+                "confidence": 0.9,
+            },
+            id="invalid-category-path",
+        ),
+        pytest.param(
+            {
+                "product_name": "desk lamp",
+                "broad_category": "home_and_living",
+                "category_path": ["home_and_living", "desk_lamp"],
+                "unsupported_claim_categories": ["magic_claim"],
+                "confidence": 0.9,
+            },
+            id="invalid-unsupported-claim-category",
+        ),
+    ],
+)
+def test_product_understanding_rejects_invalid_category_or_claims(kwargs):
     with pytest.raises(ValidationError):
-        ProductUnderstanding(
-            product_name="desk lamp",
-            broad_category="home_and_living",
-            category_path=["home_and_living", "Bad Path"],
-            unsupported_claim_categories=["magic_claim"],
-            confidence=0.9,
-        )
+        ProductUnderstanding(**kwargs)
 
 
 def test_normalized_product_type_requires_letter():

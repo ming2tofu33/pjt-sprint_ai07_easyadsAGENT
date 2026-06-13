@@ -157,6 +157,20 @@ function extractQuestion(payload: Record<string, unknown>, metadata: Record<stri
   );
 }
 
+function failedJobErrorFrom(metadata: Record<string, unknown>): Record<string, string | null> | undefined {
+  const errorCode = firstString(metadata.error_code, metadata.errorCode);
+  const message = firstString(metadata.message, metadata.error_message, metadata.errorMessage);
+  const detail = firstString(metadata.detail, metadata.error_detail, metadata.errorDetail);
+  if (!errorCode && !message && !detail) {
+    return undefined;
+  }
+  return {
+    error_code: errorCode || null,
+    message: message || null,
+    detail: detail || null
+  };
+}
+
 export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotResponse | null | undefined): ThreadSnapshotRestoreState | null {
   if (!snapshot) {
     return null;
@@ -220,6 +234,23 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     conversationMessages.push({ role: "assistant", text: currentQuestion.question });
   }
 
+  const restoredGenerationJob: GenerationJob = {
+    job_id: jobId,
+    thread_id: threadId,
+    status,
+    progress: {
+      progress_percent: Number(progressState.progress_percent ?? progressState.progressPercent ?? (status === "done" ? 100 : 0)),
+      current_stage: firstString(progressState.current_stage, progressState.currentStage) || (status === "done" ? "completed" : status),
+      message: firstString(progressState.message) || null
+    },
+    result_payload: Object.keys(resultPayload).length > 0 ? resultPayload : null,
+    metadata: currentQuestion ? { pending_interrupt: { type: "option_question", option_question: currentQuestion } } : {}
+  };
+  const failedError = status === "failed" ? failedJobErrorFrom(metadata) : undefined;
+  if (failedError) {
+    restoredGenerationJob.error = failedError;
+  }
+
   return {
     prompt,
     jobId,
@@ -244,18 +275,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     selectedReferenceTemplateTitle:
       firstString(asRecord(snapshot.reference_template_snapshot).title, payload.selected_reference_template_title, payload.selectedReferenceTemplateTitle) ||
       null,
-    generationJob: {
-      job_id: jobId,
-      thread_id: threadId,
-      status,
-      progress: {
-        progress_percent: Number(progressState.progress_percent ?? progressState.progressPercent ?? (status === "done" ? 100 : 0)),
-        current_stage: firstString(progressState.current_stage, progressState.currentStage) || (status === "done" ? "completed" : status),
-        message: firstString(progressState.message) || null
-      },
-      result_payload: Object.keys(resultPayload).length > 0 ? resultPayload : null,
-      metadata: currentQuestion ? { pending_interrupt: { type: "option_question", option_question: currentQuestion } } : {}
-    },
+    generationJob: restoredGenerationJob,
     currentQuestion,
     conversationMessages
   };

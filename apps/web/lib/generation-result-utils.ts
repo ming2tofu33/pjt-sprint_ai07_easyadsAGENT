@@ -420,9 +420,12 @@ function getErrorMessage(error: unknown): string | null {
   if (!error || typeof error !== "object") {
     return typeof error === "string" ? error : null;
   }
-  const maybe = error as { message?: unknown; error_code?: unknown };
-  if (typeof maybe.message === "string") {
-    return typeof maybe.error_code === "string" ? `${maybe.error_code}: ${maybe.message}` : maybe.message;
+  const maybe = error as { message?: unknown; detail?: unknown; error_code?: unknown };
+  const detail = typeof maybe.detail === "string" && maybe.detail.trim() ? maybe.detail : null;
+  const message = typeof maybe.message === "string" && maybe.message.trim() ? maybe.message : null;
+  const preferred = detail ?? message;
+  if (preferred) {
+    return typeof maybe.error_code === "string" ? `${maybe.error_code}: ${preferred}` : preferred;
   }
   return typeof maybe.error_code === "string" ? maybe.error_code : null;
 }

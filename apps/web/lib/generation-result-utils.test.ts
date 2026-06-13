@@ -80,6 +80,20 @@ describe("generation result utils", () => {
     expect(isSuccessfulGenerationJob(failedJob)).toBe(false);
   });
 
+  it("prefers error detail over generic failed generation message", () => {
+    expect(
+      getGenerationResultNotice({
+        job_id: "job_failed_detail",
+        status: "failed",
+        error: {
+          error_code: "generation_job_execution_failed",
+          message: "Generation job graph execution failed.",
+          detail: "No module named 'langgraph.checkpoint.postgres'"
+        }
+      }).message
+    ).toBe("generation_job_execution_failed: No module named 'langgraph.checkpoint.postgres'");
+  });
+
   it("returns result artifact payload from a job", () => {
     expect(getResultArtifactPayload(doneJobWithUrl)?.schema_version).toBe("result_artifact_v1");
     expect(getResultArtifactPayload(null)).toBeNull();

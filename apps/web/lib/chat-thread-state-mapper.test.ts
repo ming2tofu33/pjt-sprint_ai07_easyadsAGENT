@@ -176,6 +176,46 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
       }
     });
   });
+
+  it("preserves failed generation error metadata for thread restore", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_failed",
+      thread_id: "thread_failed",
+      job_id: "job_failed",
+      snapshot_version: 2,
+      schema_version: 1,
+      snapshot_kind: "job_failed",
+      state_payload: {
+        user_input: "\"82고기\" 고기집 오픈 홍보 광고",
+        context: {
+          business_type: "restaurant",
+          item_or_service: "고기집",
+          promotion_goal: "new_launch"
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {
+        status: "failed",
+        error_code: "generation_job_execution_failed",
+        message: "Generation job graph execution failed.",
+        detail: "No module named 'langgraph.checkpoint.postgres'"
+      },
+      created_at: "2026-06-13T00:00:00+00:00"
+    });
+
+    expect(restore?.generationJob).toMatchObject({
+      job_id: "job_failed",
+      thread_id: "thread_failed",
+      status: "failed",
+      error: {
+        error_code: "generation_job_execution_failed",
+        message: "Generation job graph execution failed.",
+        detail: "No module named 'langgraph.checkpoint.postgres'"
+      }
+    });
+  });
 });
 
 describe("mapChatMessagesToTranscript", () => {

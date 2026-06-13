@@ -20,21 +20,12 @@ from orchestrator.app.graph.builder import build_marketing_graph
 from orchestrator.app.graph.state import create_initial_marketing_state
 from orchestrator.app.llm.nodes.copy_candidates import copy_candidate_generation_node
 from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest, MarketingContext
+from orchestrator.tests.factories.marketing_state import make_marketing_request
+from orchestrator.tests.helpers.images import write_test_png
 
 
 def _request(mode: str, job_id: str):
-    return {
-        "user_input": "ready",
-        "job_id": job_id,
-        "thread_id": job_id,
-        "copy_generation_mode": mode,
-        "context": {
-            "business_type": "restaurant",
-            "item_or_service": "삼겹살",
-            "promotion_goal": "reservation_cta",
-            "extra": {"ad_format": "instagram_feed"},
-        },
-    }
+    return make_marketing_request(mode=mode, job_id=job_id)
 
 
 def test_auto_pilot_mode_runs_through_tlfp_to_mock():
@@ -742,23 +733,20 @@ from orchestrator.app.graph.builder import build_marketing_graph
 
 
 def _image__test_marketing_graph_vision_optional(path: Path, color=(180, 120, 90)) -> Path:
-    Image.new("RGB", (96, 96), color).save(path)
-    return path
+    return write_test_png(path, color=color)
 
 
 def _request__test_marketing_graph_vision_optional(job_id: str, **extra):
-    request = {
-        "user_input": "ready",
-        "job_id": job_id,
-        "thread_id": job_id,
-        "copy_generation_mode": "auto_pilot",
-        "context": {
+    request = make_marketing_request(
+        mode="auto_pilot",
+        job_id=job_id,
+        context={
             "business_type": "restaurant",
             "item_or_service": "cake",
             "promotion_goal": "reservation_cta",
             "extra": {"ad_format": "instagram_feed"},
         },
-    }
+    )
     request.update(extra)
     return request
 
