@@ -469,6 +469,62 @@ def update_current_brief(state: MarketingState, updates: dict[str, Any]) -> None
     state["updated_at"] = now_iso()
 
 
+def resolve_requested_ad_format(state: dict[str, Any] | MarketingState) -> str | None:
+    """Canonical ad_format read order — the single source-of-truth resolver.
+
+    ad_format historically lived in several mirrors with per-reader priority
+    orders. All business-logic reads must go through this function:
+      1. top-level selected_ad_format (explicit user selection)
+      2. current_brief.requested_ad_format (confirmed/restored brief)
+      3. context.extra.ad_format (heuristic/LLM inference)
+      4. current_brief.ad_format (legacy generic-write key)
+    Returns None when unset; callers own their defaults.
+    """
+    brief = state.get("current_brief") or {}
+    context = state.get("context") or {}
+    extra = (context.get("extra") if isinstance(context, dict) else getattr(context, "extra", None)) or {}
+    for candidate in (
+        state.get("selected_ad_format"),
+        brief.get("requested_ad_format"),
+        extra.get("ad_format"),
+        brief.get("ad_format"),
+    ):
+        if candidate:
+            return str(candidate)
+    return None
+
+
+def set_requested_ad_format(current_brief: dict[str, Any], context_extra: dict[str, Any], value: str) -> None:
+    """Write-through setter: keep the two ad_format mirrors consistent.
+
+    current_brief.requested_ad_format is the UI read-model copy;
+    context.extra.ad_format is the business-context copy. Writing them
+    anywhere else by hand is how they diverged — always use this.
+    """
+    current_brief["requested_ad_format"] = value
+    context_extra["ad_format"] = value
+
+
+def backfill_requested_ad_format(
+    current_brief: dict[str, Any], context_extra: dict[str, Any], default: str | None
+) -> None:
+    """Fill missing ad_format mirrors without overwriting an existing choice.
+
+    Priority: an already-set mirror value wins over the supplied default
+    (e.g. a reference template's ad_format). Ensures both mirrors end up
+    identical — the legacy code filled each independently and could diverge.
+    """
+    value = current_brief.get("requested_ad_format") or context_extra.get("ad_format") or default
+    if not value:
+        return
+    # Falsy check (not setdefault): initial state seeds the brief key with an
+    # explicit None, which must count as "missing" — same rule as the resolver.
+    if not current_brief.get("requested_ad_format"):
+        current_brief["requested_ad_format"] = value
+    if not context_extra.get("ad_format"):
+        context_extra["ad_format"] = value
+
+
 # Declarative dirty-field propagation: (trigger fields, fields invalidated when
 # any trigger changes). Single-pass and non-transitive by design — derived
 # fields appearing as triggers (e.g. marketing_copy) only fire when explicitly

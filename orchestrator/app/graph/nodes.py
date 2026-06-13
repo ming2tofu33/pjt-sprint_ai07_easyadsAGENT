@@ -14,6 +14,8 @@ from orchestrator.app.graph.state import (
     calculate_dirty_fields,
     context_to_model,
     create_initial_marketing_state,
+    resolve_requested_ad_format,
+    set_requested_ad_format,
     update_current_brief,
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
@@ -60,7 +62,7 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         for key, value in llm_updates.items():
             if value and not context_data.get(key):
                 context_data[key] = value
-    requested_ad_format = state.get("current_brief", {}).get("requested_ad_format") or infer_ad_format(text) or extra.get("ad_format")
+    requested_ad_format = resolve_requested_ad_format(state) or infer_ad_format(text)
     if requested_ad_format:
         extra["ad_format"] = requested_ad_format
     context_data["extra"] = extra
@@ -240,9 +242,8 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
         extra_return["user_custom_subcopy"] = value
         updated = True
     elif field == "ad_format":
-        extra["ad_format"] = value
+        set_requested_ad_format(state.setdefault("current_brief", {}), extra, value)
         context_data["extra"] = extra
-        update_current_brief(state, {"requested_ad_format": value})
         updated = True
     elif field in context_data:
         context_data[field] = value

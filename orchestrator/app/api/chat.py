@@ -9,6 +9,7 @@ from langgraph.types import Command
 from pydantic import BaseModel, ConfigDict, Field
 
 from orchestrator.app.api.marketing_graph import get_marketing_graph
+from orchestrator.app.graph.state import resolve_requested_ad_format
 from orchestrator.app.llm.option_registry import option_label_for_value
 
 router = APIRouter(prefix="/v1/marketing/chat", tags=["marketing-chat"])
@@ -403,12 +404,11 @@ def answer_chat_question(request: ChatAnswerRequest) -> ChatStartResponse | Chat
     if interrupt and interrupt.get("type") == "option_question":
         return _option_question_response(result, interrupt)
     if result.get("copy_generation_mode") in BRIEF_READY_COPY_MODES and result.get("status") == "done":
-        current_brief = result.get("current_brief") or {}
         return _brief_ready_response(
             result,
             job_id=request.job_id,
             thread_id=request.thread_id,
-            selected_channel_id=_selected_channel_id_for_ad_format(current_brief.get("requested_ad_format")),
+            selected_channel_id=_selected_channel_id_for_ad_format(resolve_requested_ad_format(result)),
         )
 
     return _copy_candidates_response(result, job_id=request.job_id, thread_id=request.thread_id, interrupt=interrupt)
