@@ -106,3 +106,17 @@ explicit = true
 # breaking disabled-path tests). Plugin lives in eval/ to avoid git-pull conflict with
 # develop's tests/conftest.py. Makefile passes the same -p explicitly.
 addopts = "-p orchestrator.eval.dotenv_isolation"
+markers = [
+    "unit: isolated pure-function or component test",
+    "integration: multiple internal components or application wiring",
+    "contract: public interface, serialization, adapter, or runner contract",
+    "e2e: end-to-end user or graph workflow",
+    "regression: reproduces and protects a previously observed defect",
+    "external: may communicate with an external provider or remote service",
+    "actual: performs a real provider/model/storage call",
+    "slow: intentionally expensive or long-running test",
+    "critical: protects a critical production invariant",
+    "security: protects authorization, tenant, secret, or public-boundary behavior",
+    "transaction: protects atomicity, rollback, concurrency, or idempotency",
+    "graph: validates LangGraph state, node, edge, routing, or resume behavior",
+]
