@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, status
 
+from orchestrator.app.api.chat import _forced_user_plan
 from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.api.schemas.generation_jobs import (
     GenerationJobAnswerRequest,
@@ -145,6 +146,9 @@ def create_generation_job_route(
     principal: RequestPrincipal = Depends(_request_principal),
 ) -> GenerationJobCreateResponse:
     request = _scoped_create_request(request, principal)
+    forced_plan = _forced_user_plan()
+    if forced_plan:
+        request = request.model_copy(update={"user_plan": forced_plan})
     if request.selected_reference_template_id and not get_reference_template(request.selected_reference_template_id):
         _reference_template_not_found(request.selected_reference_template_id)
     from orchestrator.app.generation_jobs.errors import GenerationJobError
