@@ -817,6 +817,28 @@ def test_run_graph_job_background_marks_failed_on_exception(monkeypatch):
     ]
 
 
+def test_run_graph_job_background_preserves_original_error_when_mark_failed_raises(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    request = GenerationJobCreateRequest(userInput="Create an ad", runMode="graph_job")
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+
+    def raise_execute_error(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    def raise_mark_failed_error(*args, **kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(router, "execute_generation_job_graph", raise_execute_error)
+    monkeypatch.setattr(router, "mark_generation_job_failed", raise_mark_failed_error)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        router._run_graph_job_background("job_123", request, "workspace_123", "user_123")
+
+    assert [event[0][1] for event in events] == ["background_started", "background_failed"]
+
+
 def test_run_graph_job_background_marks_failed_when_failure_event_recording_raises(monkeypatch):
     from orchestrator.app.api.routers import generation_jobs as router
 
@@ -875,6 +897,34 @@ def test_resume_graph_job_background_marks_failed_on_exception(monkeypatch):
             {"workspace_id": "workspace_123", "user_id": "user_123"},
         )
     ]
+
+
+def test_resume_graph_job_background_preserves_original_error_when_mark_failed_raises(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    request = GenerationJobAnswerRequest(userCustomHeadline="직접 입력")
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+
+    def raise_resume_error(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    def raise_mark_failed_error(*args, **kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(router, "resume_generation_job_graph", raise_resume_error)
+    monkeypatch.setattr(router, "mark_generation_job_failed", raise_mark_failed_error)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        router._resume_graph_job_background(
+            "job_123",
+            request,
+            allow_running=True,
+            workspace_id="workspace_123",
+            user_id="user_123",
+        )
+
+    assert [event[0][1] for event in events] == ["background_started", "background_failed"]
 
 
 def test_resume_graph_job_background_marks_failed_when_failure_event_recording_raises(monkeypatch):

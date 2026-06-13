@@ -166,6 +166,24 @@ def _record_generation_job_lifecycle_event_best_effort(
         logger.warning("Failed to record generation job lifecycle event.", exc_info=True)
 
 
+def _mark_generation_job_failed_best_effort(
+    job_id: str,
+    error: dict[str, Any],
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> None:
+    try:
+        mark_generation_job_failed(
+            job_id,
+            error,
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+    except Exception:
+        logger.warning("Failed to mark generation job failed.", exc_info=True)
+
+
 def _run_graph_job_background(
     job_id: str,
     request: GenerationJobCreateRequest,
@@ -191,7 +209,7 @@ def _run_graph_job_background(
             user_id=user_id,
         )
     except Exception as exc:
-        mark_generation_job_failed(
+        _mark_generation_job_failed_best_effort(
             job_id,
             {
                 "error_code": "generation_job_background_task_failed",
@@ -244,7 +262,7 @@ def _resume_graph_job_background(
             user_id=user_id,
         )
     except Exception as exc:
-        mark_generation_job_failed(
+        _mark_generation_job_failed_best_effort(
             job_id,
             {
                 "error_code": "generation_job_background_task_failed",
