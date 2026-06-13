@@ -91,7 +91,7 @@ def test_resolve_input_asset_not_found(monkeypatch):
         def get_asset_by_public_id(self, *a, **k):
             return None
     monkeypatch.setattr("orchestrator.app.db.repositories.assets.get_asset_by_public_id", MockRepo().get_asset_by_public_id)
-    
+
     with pytest.raises(GenerationJobAssetNotFound):
         _resolve_generation_input_asset(
             public_asset_id="asset_123",
@@ -105,7 +105,7 @@ def test_resolve_input_asset_invalid_kind(monkeypatch):
         def get_asset_by_public_id(self, *a, **k):
             return {"kind": "reference"}
     monkeypatch.setattr("orchestrator.app.db.repositories.assets.get_asset_by_public_id", MockRepo().get_asset_by_public_id)
-    
+
     with pytest.raises(GenerationJobAssetKindInvalid):
         _resolve_generation_input_asset(
             public_asset_id="asset_123",
@@ -119,7 +119,7 @@ def test_resolve_input_asset_not_ready(monkeypatch):
         def get_asset_by_public_id(self, *a, **k):
             return {"kind": "source", "metadata": {"upload": {"status": "pending"}}}
     monkeypatch.setattr("orchestrator.app.db.repositories.assets.get_asset_by_public_id", MockRepo().get_asset_by_public_id)
-    
+
     with pytest.raises(GenerationJobAssetNotReady):
         _resolve_generation_input_asset(
             public_asset_id="asset_123",
@@ -133,7 +133,7 @@ def test_resolve_input_asset_success(monkeypatch):
         def get_asset_by_public_id(self, *a, **k):
             return {"id": "internal-uuid", "kind": "source", "metadata": {"upload": {"status": "ready"}}}
     monkeypatch.setattr("orchestrator.app.db.repositories.assets.get_asset_by_public_id", MockRepo().get_asset_by_public_id)
-    
+
     row = _resolve_generation_input_asset(
         public_asset_id="asset_123",
         workspace_id="ws1",
@@ -146,7 +146,7 @@ def test_create_generation_job_db_asset_integration(monkeypatch):
     from orchestrator.app.generation_jobs.service import _create_generation_job_db
     from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
     import uuid
-    
+
     req = GenerationJobCreateRequest(
         source_asset_id="asset_" + "a"*32,
         reference_asset_id="asset_" + "b"*32,
@@ -154,14 +154,14 @@ def test_create_generation_job_db_asset_integration(monkeypatch):
         user_id="demo",
         workspace_id="11111111-1111-1111-1111-111111111111",
     )
-    
+
     def fake_resolve(*, public_asset_id, expected_kind, **kwargs):
         if expected_kind == "source":
             return {"id": "int-src"}
         return {"id": "int-ref"}
-        
+
     monkeypatch.setattr("orchestrator.app.generation_jobs.service._resolve_generation_input_asset", fake_resolve)
-    
+
     class MockJobRepo:
         def create_generation_job_row(self, **kwargs):
             self.kwargs = kwargs
@@ -521,7 +521,7 @@ def test_mark_generation_job_done_db_idempotent(monkeypatch):
     # 3. Mock Repositories
     mock_job_repo = MagicMock()
     mock_thread_repo = MagicMock()
-    
+
     # job이 이미 done 상태라고 가정 (existing_status="done")
     mock_job_repo.get_generation_job_row.return_value = {
         "id": "job_uuid_1",
@@ -980,7 +980,7 @@ def test_execute_generation_job_graph_state_restoration(monkeypatch):
             return state
 
     monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
-    
+
     req1 = GenerationJobCreateRequest(
         user_input="turn 1 prompt",
         run_mode="graph_job",
@@ -988,12 +988,12 @@ def test_execute_generation_job_graph_state_restoration(monkeypatch):
     )
     job1 = create_generation_job(req1)
     assert job1.status == "queued"
-    
+
     executed1 = execute_generation_job_graph(job1.job_id, req1)
     if executed1.status == "failed":
         print("ERROR1:", executed1.error)
     assert executed1.status == "done"
-    
+
     received_payload = {}
     class MockGraph2:
         def invoke(self, payload: dict, config: dict | None = None) -> dict:
@@ -1004,9 +1004,9 @@ def test_execute_generation_job_graph_state_restoration(monkeypatch):
             state["result_payload"] = {"final_image_path": "/fake/path2.png", "final_brief": {"user_input": state["user_input"]}}
             state["final_image_path"] = "/fake/path2.png"
             return state
-            
+
     monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph2())
-    
+
     req2 = GenerationJobCreateRequest(
         user_input="turn 2 prompt",
         run_mode="graph_job",
@@ -1016,7 +1016,7 @@ def test_execute_generation_job_graph_state_restoration(monkeypatch):
     )
     job2 = create_generation_job(req2)
     executed2 = execute_generation_job_graph(job2.job_id, req2)
-    
+
     assert executed2.status == "done"
     assert received_payload["user_input"] == "turn 2 prompt"
     assert received_payload["copy_generation_mode"] == "custom_input"
@@ -1371,17 +1371,17 @@ def test_execute_generation_job_graph_waiting_user_input(monkeypatch):
             return state
 
     monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraphWaiting())
-    
+
     req = GenerationJobCreateRequest(
         user_input="start",
         run_mode="graph_job",
     )
     job = create_generation_job(req)
     executed = execute_generation_job_graph(job.job_id, req)
-    
+
     if executed.status == "failed":
         print("ERROR:", executed.error)
-        
+
     assert executed.status == "waiting_user_input"
     assert executed.progress.current_stage == "waiting_user_input"
 
@@ -1396,20 +1396,20 @@ def test_execute_generation_job_graph_waiting_and_resume(monkeypatch):
             return state
 
     monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraphWaiting())
-    
+
     req1 = GenerationJobCreateRequest(
         user_input="start cafe ad",
         run_mode="graph_job",
     )
     job1 = create_generation_job(req1)
     executed1 = execute_generation_job_graph(job1.job_id, req1)
-    
+
     assert executed1.status == "waiting_user_input"
-    
+
     from orchestrator.app.chat_threads.service import get_chat_thread
     thread = get_chat_thread(job1.thread_id, job1.user_id)
     assert thread.active_job_id is None
-    
+
     # 5. 동일 thread로 두 번째 GenerationJob 생성 성공
     req2 = GenerationJobCreateRequest(
         user_input="resume with more details",
@@ -1419,7 +1419,7 @@ def test_execute_generation_job_graph_waiting_and_resume(monkeypatch):
     )
     job2 = create_generation_job(req2)
     assert job2.job_id != job1.job_id
-    
+
     # Check input snapshot
     from orchestrator.app.chat_threads.state_service import get_latest_thread_state_for_user
     snap = get_latest_thread_state_for_user(job1.thread_id, job1.user_id)

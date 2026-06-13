@@ -778,16 +778,16 @@ def test_snapshot_response_accepts_database_datetime_created_at():
 
 def test_memory_snapshot_service():
     state_service.reset_chat_state_snapshot_store_for_tests()
-    
+
     # Mock get_chat_thread
     from orchestrator.app.chat_threads import service as chat_service
-    
+
     class MockThread:
         thread_id = "t1"
-        
+
     original_get_chat_thread = chat_service.get_chat_thread
     chat_service.get_chat_thread = lambda *args, **kwargs: MockThread()
-    
+
     try:
         snap1 = state_service.save_thread_state_snapshot(
             public_thread_id="t1",
@@ -798,7 +798,7 @@ def test_memory_snapshot_service():
         )
         assert snap1.snapshot_version == 1
         assert snap1.state_payload["user_input"] == "hello"
-        
+
         snap2 = state_service.save_thread_state_snapshot(
             public_thread_id="t1",
             workspace_id="w1",
@@ -811,7 +811,7 @@ def test_memory_snapshot_service():
         latest = state_service.get_latest_thread_state_snapshot("t1", "w1")
         assert latest.snapshot_version == 2
         assert latest.state_payload["final_brief"] == {"a": 1}
-        
+
         lst, total = state_service.list_thread_state_snapshots("t1", "w1")
         assert total == 2
         assert len(lst) == 2
@@ -871,7 +871,7 @@ def test_chat_state_snapshot_repo_requires_connection():
             snapshot_kind="k",
             state_payload={},
             changed_fields=[],
-            connection=None  # will fail db_transaction without object connection? 
+            connection=None  # will fail db_transaction without object connection?
             # Actually db_transaction creates a new connection if none provided, but we assume it throws runtime error if no DB configured or raises Postgres backend error.
         )
 

@@ -136,9 +136,9 @@ def options_node(state: MarketingState) -> dict[str, Any]:
     if field is None:
         return {"status": state.get("status", "validating_context"), "option_question": None}
     question = get_option_question(field)
-    
+
     from orchestrator.app.schemas.option_suggestion import is_field_eligible
-    
+
     if is_field_eligible(field):
         cached = state.get("current_brief", {}).get("cached_options", {}).get(field)
         if cached is not None:
@@ -153,7 +153,7 @@ def options_node(state: MarketingState) -> dict[str, Any]:
                 }
             })
         question = question.model_copy(update={"options": augmented_options})
-        
+
     question = question.model_copy(update={"progress_state": build_progress_state(state.get("missing_fields", []) )})
     payload = {
         "type": "option_question",
@@ -211,7 +211,7 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
     extra_return: dict[str, Any] = {}
     original_value = value
     value = display_value_for_selection(field, value)
-    
+
     # P7: Check cached dynamic options for label resolution
     if value == original_value and field in DISPLAY_LABEL_CONTEXT_FIELDS:
         from orchestrator.app.schemas.option_suggestion import label_for_dynamic_value

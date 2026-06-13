@@ -79,12 +79,12 @@ def test_archive_detail_user_isolation(monkeypatch):
 
     # get_archive_item_row mock
     repo_mock = MagicMock()
-    
+
     def fake_get_row(public_archive_id, workspace_id, created_by=None):
         if workspace_id == "ws1" and created_by == "u1":
             return {"public_archive_id": public_archive_id, "title": "my ad"}
         return None
-        
+
     repo_mock.get_archive_item_row.side_effect = fake_get_row
     monkeypatch.setattr(svc, "archive_item_repo", repo_mock)
 
@@ -259,7 +259,7 @@ def test_archive_list_returns_full_join_fields(monkeypatch):
     resp = make_client().get("/api/v1/archive/items")
     assert resp.status_code == 200
     data = resp.json()["items"][0]
-    
+
     assert data["job_id"] == "job_public"
     assert data["output_id"] == "output_public"
     assert data["thread_id"] == "thread_public"
@@ -298,57 +298,57 @@ from orchestrator.app.api.schemas.archive import ArchiveItemCreateRequest
 def test_archive_invalid_generated_source(monkeypatch):
     monkeypatch.setattr("orchestrator.app.archive.service._ensure_postgres_enabled", lambda: None)
     monkeypatch.setattr("orchestrator.app.archive.service._resolve_workspace_id", lambda *a, **k: "ws1")
-    
+
     req = ArchiveItemCreateRequest(
         title="test",
         source="generated",
         public_job_id=None,
     )
-    
+
     with pytest.raises(ArchiveInvalidGeneratedSource):
         create_archive_item(req)
 
 def test_archive_generation_job_not_found(monkeypatch):
     monkeypatch.setattr("orchestrator.app.archive.service._ensure_postgres_enabled", lambda: None)
     monkeypatch.setattr("orchestrator.app.archive.service._resolve_workspace_id", lambda *a, **k: "ws1")
-    
+
     mock_job_repo = MagicMock()
     mock_job_repo.get_generation_job_db.return_value = None
     monkeypatch.setattr("orchestrator.app.archive.service.job_repo", mock_job_repo)
-    
+
     req = ArchiveItemCreateRequest(
         title="test",
         source="generated",
         public_job_id="job1",
     )
-    
+
     with pytest.raises(ArchiveItemNotFound):
         create_archive_item(req)
 
 def test_archive_generation_output_not_ready(monkeypatch):
     monkeypatch.setattr("orchestrator.app.archive.service._ensure_postgres_enabled", lambda: None)
     monkeypatch.setattr("orchestrator.app.archive.service._resolve_workspace_id", lambda *a, **k: "ws1")
-    
+
     mock_job_repo = MagicMock()
     mock_job_repo.get_generation_job_db.return_value = {
         "id": "job_uuid",
         "public_job_id": "job1",
     }
     monkeypatch.setattr("orchestrator.app.archive.service.job_repo", mock_job_repo)
-    
+
     monkeypatch.setattr(
         "orchestrator.app.archive.service.sync_archive_for_job",
         lambda *a, **k: (_ for _ in ()).throw(
             ArchiveGenerationOutputNotReady("Final output not ready")
         ),
     )
-    
+
     req = ArchiveItemCreateRequest(
         title="test",
         source="generated",
         public_job_id="job1",
     )
-    
+
     with pytest.raises(ArchiveGenerationOutputNotReady):
         create_archive_item(req)
 
@@ -409,19 +409,19 @@ def test_sync_archive_for_job_success(monkeypatch):
         "requested_by": "user1",
         "brief": {"item_or_service": "Cool product"},
     }
-    
+
     mock_thread = {
         "id": "thread_uuid",
         "title": "Thread Title",
     }
-    
+
     mock_outputs = [{
         "id": "output_uuid",
         "asset_id": "asset_uuid",
         "image_url": "local/image.png",
         "thumbnail_url": "local/thumb.png",
     }]
-    
+
     mock_archive_row = {
         "public_archive_id": "archive_public",
         "id": "archive_uuid"
@@ -430,18 +430,18 @@ def test_sync_archive_for_job_success(monkeypatch):
     job_repo_mock = MagicMock()
     job_repo_mock.get_generation_job_db_by_id.return_value = mock_job
     monkeypatch.setattr("orchestrator.app.archive.service.job_repo", job_repo_mock)
-    
+
     thread_repo_mock = MagicMock()
     thread_repo_mock.get_chat_thread.return_value = mock_thread
     monkeypatch.setattr("orchestrator.app.archive.service.thread_repo", thread_repo_mock)
-    
+
     output_repo_mock = MagicMock()
     output_repo_mock.list_generation_outputs.return_value = mock_outputs
     monkeypatch.setattr("orchestrator.app.archive.service.output_repo", output_repo_mock)
-    
+
     archive_repo_mock = MagicMock()
     archive_repo_mock.upsert_generated_archive_item_row.return_value = mock_archive_row
-    
+
     archive_repo_mock.get_archive_item_row.return_value = {
         **mock_archive_row,
         "workspace_id": "ws1",
@@ -451,15 +451,15 @@ def test_sync_archive_for_job_success(monkeypatch):
         "public_thread_id": "thread_public",
     }
     monkeypatch.setattr("orchestrator.app.archive.service.archive_item_repo", archive_repo_mock)
-    
+
     monkeypatch.setattr("orchestrator.app.archive.service._ensure_postgres_enabled", lambda: None)
-    
+
     res = sync_archive_for_job(workspace_id="ws1", internal_job_id="job_uuid")
-    
+
     assert res is not None
     assert res.title == "Thread Title"
     assert res.job_id == "job_public"
-    
+
     archive_repo_mock.upsert_generated_archive_item_row.assert_called_once()
     called_kwargs = archive_repo_mock.upsert_generated_archive_item_row.call_args[1]
     assert called_kwargs["title"] == "Thread Title"
