@@ -623,7 +623,6 @@ def test_vlm_quality_gate_smoke_redacts_secret_like_metadata():
     assert redacted["safe"] == "visible"
 
 
-@pytest.mark.actual
 def test_quality_gate_actual_smoke_requires_opt_in():
     if os.getenv("EASYADS_VLM_ACTUAL") != "1":
         pytest.skip("actual smoke is opt-in")
