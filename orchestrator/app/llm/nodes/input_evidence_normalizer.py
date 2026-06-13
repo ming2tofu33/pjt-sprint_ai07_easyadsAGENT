@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,29 @@ from orchestrator.app.schemas.input_evidence import EvidenceItem, InputConflict,
 
 DEFAULT_UNKNOWN_FIELDS = ["specific_variant", "brand_name", "price", "promotion_detail", "ingredients", "origin", "manufacturing_method"]
 PRODUCT_CONTEXT_KEYS = ("item_or_service", "product_name", "service_name")
+NON_DISPLAY_INSTRUCTION_PATTERNS = [
+    r"홍보(?:하고 싶어|해\s*줘|해주세요)?",
+    r"광고(?:하고 싶어|해\s*줘|해주세요)?",
+    r"소개(?:하고 싶어|해\s*줘|해주세요)?",
+    r"만들어\s*줘",
+    r"제작해\s*줘",
+    r"디자인해\s*줘",
+    r"알리고 싶어",
+    r"\bi want to promote\b",
+    r"\bcreate an ad(?: for)?\b",
+    r"\bmake an advertisement\b",
+    r"\badvertise this\b",
+    r"\bpromote this\b",
+]
+POSITIONING_TERMS = {
+    "고급진": ["premium", "refined"],
+    "고급스럽": ["premium", "refined"],
+    "프리미엄": ["premium"],
+    "정갈": ["refined"],
+    "따뜻": ["warm"],
+    "상큼": ["fresh"],
+    "귀여": ["playful"],
+}
 
 
 def input_evidence_normalizer_node(state: dict[str, Any]) -> dict[str, Any]:
@@ -39,6 +63,9 @@ def build_input_evidence_bundle(state: dict[str, Any]) -> InputEvidenceBundle:
     input_mode = _input_mode(user_text, source_image_path)
     product = _product_from_state(state, user_text=user_text)
     user_intent = resolve_user_intent(user_text, promotion_goal=state.get("promotion_goal") or _context_value(state, "promotion_goal"))
+    non_display = extract_non_display_instruction_fragments(user_text)
+    positioning = extract_desired_positioning(user_text)
+    exact_display = extract_user_exact_display_copy(user_text)
     facts: list[EvidenceItem] = []
     if user_text and product:
         facts.append(_fact("product_name", product, source_ref="user_input"))
@@ -56,6 +83,11 @@ def build_input_evidence_bundle(state: dict[str, Any]) -> InputEvidenceBundle:
         input_mode=input_mode,
         user_text=user_text,
         user_intent=user_intent,
+        user_request_utterance=user_text,
+        campaign_intent=user_intent,
+        desired_positioning=positioning,
+        non_display_instruction_fragments=non_display,
+        user_exact_display_copy=exact_display,
         placement=state.get("placement") or state.get("selected_ad_format") or (state.get("ad_format_spec") or {}).get("ad_format"),
         promotion_goal=state.get("promotion_goal") or _context_value(state, "promotion_goal"),
         source_asset_id=state.get("source_asset_id"),
@@ -140,7 +172,7 @@ def _product_from_state(state: dict[str, Any], *, user_text: str | None) -> str 
         if isinstance(value, str) and value.strip():
             return value.strip()
     if user_text:
-        return user_text.strip()
+        return _strip_non_display_instruction_text(user_text)
     return None
 
 
@@ -241,3 +273,56 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def extract_non_display_instruction_fragments(text: str | None) -> list[str]:
+    if not text:
+        return []
+    fragments: list[str] = []
+    for pattern in NON_DISPLAY_INSTRUCTION_PATTERNS:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            fragment = match.group(0).strip()
+            if fragment and fragment not in fragments:
+                fragments.append(fragment)
+    return fragments
+
+
+def extract_desired_positioning(text: str | None) -> list[str]:
+    if not text:
+        return []
+    values: list[str] = []
+    for source, mapped in POSITIONING_TERMS.items():
+        if source in text:
+            for item in mapped:
+                if item not in values:
+                    values.append(item)
+    return values
+
+
+def extract_user_exact_display_copy(text: str | None) -> list[str]:
+    if not text:
+        return []
+    matches = re.findall(r"[\"'“‘](.+?)[\"'”’]", text)
+    return [item.strip() for item in matches if item.strip()]
+
+
+def _strip_non_display_instruction_text(text: str) -> str | None:
+    product = text.strip()
+    for pattern in NON_DISPLAY_INSTRUCTION_PATTERNS:
+        product = re.sub(pattern, "", product, flags=re.IGNORECASE)
+    for source in POSITIONING_TERMS:
+        product = product.replace(source, "")
+    product = re.sub(r"\s*(을|를|은|는|이|가|으로|로)\s*$", "", product.strip())
+    product = re.sub(r"\s+", " ", product).strip(" ,.")
+    return product or None
+
+
+def resolve_user_intent(text: str | None, promotion_goal: str | None = None) -> str | None:  # type: ignore[no-redef]
+    if promotion_goal:
+        return str(promotion_goal)
+    lowered = (text or "").lower()
+    if _has_new_menu_intent(text):
+        return "new_menu_promotion"
+    if any(re.search(pattern, text or "", re.IGNORECASE) for pattern in NON_DISPLAY_INSTRUCTION_PATTERNS) or "promote" in lowered or "advertise" in lowered:
+        return "product_promotion"
+    return None

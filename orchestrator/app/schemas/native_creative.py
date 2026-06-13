@@ -50,6 +50,17 @@ class ApprovedNativeCopyBrief(BaseModel):
     unsupported_claim_categories: list[str] = Field(default_factory=list)
     compliance_status: Literal["approved", "manual_review", "rejected"]
     rejection_reasons: list[str] = Field(default_factory=list)
+    copy_source_mode: Literal["generated", "user_exact"] = "generated"
+    source_user_request: str | None = None
+    non_display_instructions: list[str] = Field(default_factory=list)
+    product_identity: str | None = None
+    desired_positioning: list[str] = Field(default_factory=list)
+    campaign_intent: str | None = None
+    transformation_performed: bool = False
+    product_evidence_ids: list[str] = Field(default_factory=list)
+    creative_direction_evidence_ids: list[str] = Field(default_factory=list)
+    copy_claim_evidence_ids: list[str] = Field(default_factory=list)
+    provider_metadata: dict = Field(default_factory=dict)
 
 
 class NativeSourceVisualAnalysis(BaseModel):
@@ -98,8 +109,16 @@ class NativeCreativePreflightReview(BaseModel):
     text_budget_valid: bool
     native_typography_suitable: bool
     product_visual_direction_valid: bool
+    consumer_facing_copy: bool = False
+    meta_instruction_absent: bool = False
+    user_request_transformed: bool = False
+    product_identity_clean: bool = False
+    copy_relevance_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    headline_quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    positioning_alignment_score: float = Field(default=0.0, ge=0.0, le=1.0)
     failure_reasons: list[str] = Field(default_factory=list)
     revision_instructions: list[str] = Field(default_factory=list)
+    provider_metadata: dict = Field(default_factory=dict)
 
 
 class NativeGenerationBudget(BaseModel):
@@ -126,5 +145,8 @@ class NativeGenerationReview(BaseModel):
     typography_quality_score: float = Field(ge=0.0, le=1.0)
     composition_score: float = Field(ge=0.0, le=1.0)
     commercial_viability_score: float = Field(ge=0.0, le=1.0)
+    meta_instruction_exposed: bool = False
+    consumer_facing_copy_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    copy_semantic_quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
     decision: Literal["accept", "manual_review", "reject"]
     failure_reasons: list[str] = Field(default_factory=list)
