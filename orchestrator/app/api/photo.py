@@ -14,6 +14,7 @@ from orchestrator.app.api.chat import (
     _brief_ready_response,
     _clean_optional_text,
     _copy_candidates_response,
+    _forced_user_plan,
     _interrupt_value,
     _option_question_response,
     _require_custom_copy_headline,
@@ -78,6 +79,9 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
             }
         },
     }
+    forced_plan = _forced_user_plan()
+    if forced_plan:
+        state["user_plan"] = forced_plan
     result = get_marketing_graph().invoke(state, config=_thread_config(thread_id))
     interrupt = _interrupt_value(result)
 

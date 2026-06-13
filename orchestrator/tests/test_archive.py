@@ -22,10 +22,8 @@ from orchestrator.app.api.app import create_app
 from orchestrator.app.api.schemas.archive import ArchiveItemResponse
 from orchestrator.app.api.routers import archive as archive_router
 from orchestrator.app.archive.service import ArchivePersistenceUnavailable, ArchiveItemNotFound
-
-
-def make_client():
-    return TestClient(create_app())
+from orchestrator.tests.factories.archive_payloads import make_archive_item_response_payload
+from orchestrator.tests.helpers.api_clients import create_app_client
 
 
 # ---------------------------------------------------------------------------
@@ -34,19 +32,10 @@ def make_client():
 
 def test_archive_detail_200(monkeypatch):
     """GET /api/v1/archive/items/{id} → 200 및 올바른 필드 반환."""
-    item = ArchiveItemResponse(
-        ad_id="archive_pub_1",
-        job_id="job_pub_1",
-        output_id="out_pub_1",
-        thread_id="thread_pub_1",
-        title="테스트 광고",
-        image_url="https://cdn.example.com/image.png",
-        status="saved",
-        source="generated",
-    )
+    item = ArchiveItemResponse(**make_archive_item_response_payload())
     monkeypatch.setattr(archive_router, "get_archive_item", lambda archive_item_id, workspace_id=None, user_id=None: item)
 
-    resp = make_client().get("/api/v1/archive/items/archive_pub_1")
+    resp = create_app_client().get("/api/v1/archive/items/archive_pub_1")
     assert resp.status_code == 200
     data = resp.json()
     assert data["ad_id"] == "archive_pub_1"
@@ -62,7 +51,7 @@ def test_archive_detail_404(monkeypatch):
         lambda archive_item_id, workspace_id=None, user_id=None: (_ for _ in ()).throw(ArchiveItemNotFound("not found"))
     )
 
-    resp = make_client().get("/api/v1/archive/items/nonexistent")
+    resp = create_app_client().get("/api/v1/archive/items/nonexistent")
     assert resp.status_code == 404
     body = resp.json()
     assert body["detail"]["error_code"] == "archive_item_not_found"
@@ -114,7 +103,7 @@ def test_archive_detail_503_when_db_disabled(monkeypatch):
         lambda archive_item_id, workspace_id=None, user_id=None: (_ for _ in ()).throw(ArchivePersistenceUnavailable("DB disabled"))
     )
 
-    resp = make_client().get("/api/v1/archive/items/archive_1?workspace_id=ws1")
+    resp = create_app_client().get("/api/v1/archive/items/archive_1?workspace_id=ws1")
     assert resp.status_code == 503
     assert resp.json()["detail"]["error_code"] == "archive_storage_unavailable"
 
@@ -132,7 +121,7 @@ def test_archive_create_returns_409_when_final_output_not_ready(monkeypatch):
         lambda req: (_ for _ in ()).throw(ArchiveGenerationOutputNotReady("Final output not ready"))
     )
 
-    resp = make_client().post(
+    resp = create_app_client().post(
         "/api/v1/archive/items",
         json={
             "title": "내 광고",
@@ -163,7 +152,7 @@ def test_archive_create_generated_source_ignores_client_urls_on_success(monkeypa
         lambda request: server_item,
     )
 
-    response = make_client().post(
+    response = create_app_client().post(
         "/api/v1/archive/items",
         json={
             "title": "광고",
@@ -190,7 +179,7 @@ def test_archive_list_returns_empty_state_when_no_items(monkeypatch):
         archive_router, "list_archive_items",
         lambda workspace_id=None, user_id=None, limit=50, offset=0: ([], 0),
     )
-    resp = make_client().get("/api/v1/archive/items?workspace_id=ws1")
+    resp = create_app_client().get("/api/v1/archive/items?workspace_id=ws1")
     assert resp.status_code == 200
     body = resp.json()
     assert body["items"] == []
@@ -205,7 +194,7 @@ def test_archive_list_pagination(monkeypatch):
         archive_router, "list_archive_items",
         lambda workspace_id=None, user_id=None, limit=1, offset=0: ([item], 5),
     )
-    resp = make_client().get("/api/v1/archive/items?limit=1&offset=0")
+    resp = create_app_client().get("/api/v1/archive/items?limit=1&offset=0")
     assert resp.status_code == 200
     pg = resp.json()["pagination"]
     assert pg["total"] == 5
@@ -225,7 +214,7 @@ def test_archive_list_can_skip_exact_total(monkeypatch):
 
     monkeypatch.setattr(archive_router, "list_archive_items", fake_list_archive_items)
 
-    resp = make_client().get("/api/v1/archive/items?limit=1&include_total=false")
+    resp = create_app_client().get("/api/v1/archive/items?limit=1&include_total=false")
 
     assert resp.status_code == 200
     assert calls["include_total"] is False
@@ -256,7 +245,7 @@ def test_archive_list_returns_full_join_fields(monkeypatch):
         archive_router, "list_archive_items",
         lambda workspace_id=None, user_id=None, limit=50, offset=0: ([item], 1),
     )
-    resp = make_client().get("/api/v1/archive/items")
+    resp = create_app_client().get("/api/v1/archive/items")
     assert resp.status_code == 200
     data = resp.json()["items"][0]
 

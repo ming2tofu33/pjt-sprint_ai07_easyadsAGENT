@@ -24,6 +24,7 @@ from orchestrator.app.assets.errors import (
     ConflictError,
     ServiceUnavailableError,
 )
+from orchestrator.tests.factories.storage_payloads import make_asset_row
 
 ASSET_ID = "asset_" + "a" * 32
 
@@ -56,13 +57,7 @@ def test_presign_validates_mime_type(monkeypatch):
         service.presign_asset_upload(req)
 
 def test_complete_records_failed_status(monkeypatch):
-    mock_row = {
-        "id": "internal-uuid",
-        "public_asset_id": ASSET_ID,
-        "metadata": {"upload": {"status": "pending"}},
-        "bucket": "test-bucket",
-        "object_key": "test-key"
-    }
+    mock_row = make_asset_row(public_asset_id=ASSET_ID)
 
     class MockRepo:
         def __init__(self):
@@ -289,14 +284,11 @@ def test_presign_oversize(monkeypatch):
 
 
 def test_get_asset_no_signed_url_if_not_ready(monkeypatch):
-    mock_row = {
-        "public_asset_id": ASSET_ID__test_asset_upload_service,
-        "kind": "source",
-        "metadata": {"upload": {"status": "pending"}},
-        "storage_provider": "r2",
-        "bucket": "b",
-        "object_key": "k",
-    }
+    mock_row = make_asset_row(
+        public_asset_id=ASSET_ID__test_asset_upload_service,
+        bucket="b",
+        object_key="k",
+    )
     monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, **kw: "ws1")
     monkeypatch.setattr("orchestrator.app.assets.service.db_transaction", _null_transaction)
     monkeypatch.setattr("orchestrator.app.db.settings.get_demo_user_id", lambda: "user1")
@@ -313,15 +305,13 @@ def test_get_asset_no_signed_url_if_not_ready(monkeypatch):
 
 
 def test_complete_idempotency(monkeypatch):
-    mock_row = {
-        "public_asset_id": ASSET_ID__test_asset_upload_service,
-        "kind": "source",
-        "metadata": {"upload": {"status": "ready"}},
-        "storage_provider": "r2",
-        "bucket": "b",
-        "object_key": "k",
-        "public_url": "http://existing",
-    }
+    mock_row = make_asset_row(
+        public_asset_id=ASSET_ID__test_asset_upload_service,
+        metadata={"upload": {"status": "ready"}},
+        bucket="b",
+        object_key="k",
+        public_url="http://existing",
+    )
     monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, **kw: "ws1")
     monkeypatch.setattr("orchestrator.app.assets.service.db_transaction", _null_transaction)
     monkeypatch.setattr("orchestrator.app.db.settings.get_demo_user_id", lambda: "user1")
