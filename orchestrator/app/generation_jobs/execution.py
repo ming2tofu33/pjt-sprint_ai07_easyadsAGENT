@@ -27,6 +27,7 @@ from orchestrator.app.generation_jobs.service import (
     mark_generation_job_modal_running,
     mark_generation_job_running,
 )
+from orchestrator.app.graph.state import resolve_requested_ad_format, set_requested_ad_format
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from orchestrator.app.t2i.execution import TEXT_FREE_NEGATIVE_PROMPT, build_generation_job_prompt, prompt_summary
@@ -49,6 +50,24 @@ _CHANNEL_TO_AD_FORMAT = {
     "flyer": "flyer",
 }
 _VALID_AD_FORMATS = {"instagram_feed", "instagram_story", "poster", "flyer", "banner", "product_detail"}
+_GOAL_LABELS = {
+    "new_launch": "신메뉴 출시",
+    "discount_event": "할인 이벤트",
+    "reservation_cta": "예약/방문 유도",
+    "review_event": "리뷰 이벤트",
+    "brand_awareness": "브랜드 인지도",
+    "retention": "재방문 유도",
+    "seasonal_limited": "시즌 한정 홍보",
+    "seasonal_campaign": "시즌 한정 홍보",
+}
+_CHANNEL_LABELS = {
+    "instagram-feed": "인스타 피드 (1:1)",
+    "instagram_feed": "인스타 피드 (1:1)",
+    "instagram-story": "인스타 스토리 (9:16)",
+    "instagram_story": "인스타 스토리 (9:16)",
+    "poster": "포스터 (4:5)",
+    "flyer": "전단지 (A4)",
+}
 
 
 def _clean_optional_text(value: Any) -> str | None:
@@ -56,6 +75,124 @@ def _clean_optional_text(value: Any) -> str | None:
         return None
     normalized = str(value).strip()
     return normalized or None
+
+
+def _dict_value(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _labeled(mapping: dict[str, str], value: Any) -> str | None:
+    normalized = _clean_optional_text(value)
+    if not normalized:
+        return None
+    return mapping.get(normalized, normalized)
+
+
+def _final_brief_channel(state: dict[str, Any], current_brief: dict[str, Any], context_extra: dict[str, Any]) -> str:
+    selected_channel_id = _clean_optional_text(
+        state.get("selected_channel_id")
+        or current_brief.get("selected_channel_id")
+        or context_extra.get("selected_channel_id")
+    )
+    selected_ad_format = _clean_optional_text(
+        state.get("selected_ad_format")
+        or current_brief.get("requested_ad_format")
+        or current_brief.get("ad_format")
+        or context_extra.get("selected_ad_format")
+        or context_extra.get("ad_format")
+    )
+    return (
+        _labeled(_CHANNEL_LABELS, selected_channel_id)
+        or _labeled(_CHANNEL_LABELS, selected_ad_format)
+        or selected_channel_id
+        or selected_ad_format
+        or ""
+    )
+
+
+def _final_brief_image_direction(state: dict[str, Any], current_brief: dict[str, Any], item: str) -> str:
+    image_prompt = _dict_value(state.get("image_prompt"))
+    image_prompt_spec = _dict_value(state.get("image_prompt_spec"))
+    return (
+        _clean_optional_text(current_brief.get("image_direction"))
+        or _clean_optional_text(current_brief.get("visual_direction"))
+        or _clean_optional_text(current_brief.get("custom_direction"))
+        or _clean_optional_text(state.get("custom_direction"))
+        or _clean_optional_text(image_prompt.get("prompt_text"))
+        or _clean_optional_text(image_prompt.get("positive_prompt"))
+        or _clean_optional_text(image_prompt_spec.get("positive_prompt"))
+        or f"{item or '상품/서비스'} 중심의 깔끔한 광고 배경과 문구 여백을 구성해요."
+    )
+
+
+def build_generation_job_final_brief(state: dict[str, Any]) -> dict[str, Any]:
+    context = _dict_value(state.get("context"))
+    context_extra = _dict_value(context.get("extra"))
+    current_brief = _dict_value(state.get("current_brief"))
+    marketing_copy = _dict_value(state.get("marketing_copy"))
+    result_payload = _dict_value(state.get("result_payload"))
+
+    item = (
+        _clean_optional_text(current_brief.get("item"))
+        or _clean_optional_text(current_brief.get("item_or_service"))
+        or _clean_optional_text(context.get("item_or_service"))
+        or ""
+    )
+    copy_text = (
+        _clean_optional_text(current_brief.get("copy"))
+        or _clean_optional_text(current_brief.get("copy_text"))
+        or _clean_optional_text(current_brief.get("headline"))
+        or _clean_optional_text(marketing_copy.get("headline"))
+        or ("문구 없이 이미지로만" if state.get("copy_generation_mode") == "no_copy" else "")
+    )
+    final_image_path = (
+        _clean_optional_text(state.get("final_image_path"))
+        or _clean_optional_text(result_payload.get("final_image_path"))
+        or _clean_optional_text(result_payload.get("output_path"))
+    )
+
+    return {
+        "purpose": _labeled(
+            _GOAL_LABELS,
+            current_brief.get("purpose")
+            or current_brief.get("promotion_goal")
+            or context.get("promotion_goal"),
+        )
+        or "",
+        "item": item,
+        "copy": copy_text,
+        "tone": (
+            _clean_optional_text(current_brief.get("tone"))
+            or _clean_optional_text(current_brief.get("selected_tone"))
+            or _clean_optional_text(state.get("selected_tone"))
+            or _clean_optional_text(context.get("brand_tone"))
+            or "브랜드에 맞춘 분위기"
+        ),
+        "channel": _final_brief_channel(state, current_brief, context_extra),
+        "image_direction": _final_brief_image_direction(state, current_brief, item),
+        "final_image_path": final_image_path,
+    }
+
+
+def _merge_non_empty_final_brief(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        merged[key] = value
+    return merged
+
+
+def _result_payload_with_final_brief(state: dict[str, Any]) -> dict[str, Any]:
+    result_payload = dict(_dict_value(state.get("result_payload")))
+    final_brief = _merge_non_empty_final_brief(
+        build_generation_job_final_brief(state),
+        _dict_value(result_payload.get("final_brief")),
+    )
+    result_payload["final_brief"] = final_brief
+    return result_payload
 
 
 def _canonical_ad_format(value: Any) -> str | None:
@@ -79,10 +216,8 @@ def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobC
     selected_ad_format = _canonical_ad_format(
         request_selected_channel_id
         or request.ad_format
+        or resolve_requested_ad_format(state)
         or state_selected_channel_id
-        or state.get("selected_ad_format")
-        or current_brief.get("requested_ad_format")
-        or context_extra.get("ad_format")
     )
     selected_tone = _clean_optional_text(state.get("selected_tone") or request.selected_tone)
     custom_direction = _clean_optional_text(state.get("custom_direction") or request.custom_direction)
@@ -94,8 +229,7 @@ def _seed_generation_job_ui_state(state: dict[str, Any], request: GenerationJobC
     if selected_ad_format:
         state["selected_ad_format"] = selected_ad_format
         state["ad_format_spec"] = build_ad_format_spec(selected_ad_format).model_dump()
-        current_brief["requested_ad_format"] = selected_ad_format
-        context_extra["ad_format"] = selected_ad_format
+        set_requested_ad_format(current_brief, context_extra, selected_ad_format)
         context_extra["selected_ad_format"] = selected_ad_format
     if selected_tone:
         state["selected_tone"] = selected_tone
@@ -362,7 +496,7 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
 
     from orchestrator.app.graph.state import create_initial_marketing_state
     from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest
-    
+
     job = get_generation_job(job_id)
     if not job:
         raise ValueError("generation job was not found")
@@ -405,7 +539,6 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
                 source_image_path=request.source_image_path,
                 reference_image_path=request.reference_image_path,
                 selected_reference_template_id=request.selected_reference_template_id,
-                renderer_mode=request.renderer_mode,
                 # #7 dedup: FE가 보낸 ad_format(기본 instagram_feed)을 시드 → ad_format이
                 # missing_fields에 안 들어가 intake에서 중복 질문 안 함. 최종 사이즈는 브리프의
                 # CopyChannelStep(selectedChannelId)가 소유(final gen이 channel로 adFormat 전송).
@@ -413,13 +546,13 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
             )
         )
         initial_state.update(restore_persistent_state(input_snapshot.state_payload))
-        
+
         # Enforce current context
         initial_state["job_id"] = public_job_id
         initial_state["thread_id"] = job.thread_id
         initial_state["user_input"] = request.user_input
         initial_state["workspace_id"] = workspace_id
-        
+
         if request.source_asset_id is not None:
             initial_state["source_asset_id"] = request.source_asset_id
             initial_state["source_image_path"] = None
@@ -450,7 +583,7 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
         if "__interrupt__" in result_state:
             from orchestrator.app.generation_jobs.service import mark_generation_job_waiting_user_input
             msg_content = _assistant_message_from_interrupt(result_state, "추가 정보가 필요해요.")
-            
+
             updated = mark_generation_job_waiting_user_input(
                 job_id=job_id,
                 result_state=result_state,
@@ -487,7 +620,7 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
                 created_by=job.user_id,
                 user_id=job.user_id,
             )
-            result_payload = result_state.get("result_payload") or {}
+            result_payload = _result_payload_with_final_brief(result_state)
             done = mark_generation_job_done(
                 job_id,
                 result_payload=result_payload,
@@ -496,7 +629,7 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
                     "requested_run_mode": request.run_mode,
                     "effective_run_mode": "graph_job",
                     "execution_mode": "graph_execution",
-                    "final_brief": result_state.get("current_brief"),
+                    "final_brief": result_payload.get("final_brief"),
                 },
             )
             return done or job
@@ -592,15 +725,16 @@ def resume_generation_job_graph(
             )
 
         if result_state.get("status") == "done":
+            result_payload = _result_payload_with_final_brief(result_state)
             done = mark_generation_job_done(
                 job_id,
-                result_payload=result_state.get("result_payload") or {},
+                result_payload=result_payload,
                 output_path=result_state.get("final_image_path"),
                 metadata={
                     "requested_run_mode": "graph_job",
                     "effective_run_mode": "graph_job",
                     "execution_mode": "graph_execution",
-                    "final_brief": result_state.get("current_brief"),
+                    "final_brief": result_payload.get("final_brief"),
                 },
                 workspace_id=workspace_id,
                 user_id=user_id,
@@ -737,17 +871,18 @@ def poll_and_process_graph_modal_generation_job(
     )
 
     if state.get("status") == "done":
+        result_payload = _result_payload_with_final_brief(state)
         return mark_generation_job_done(
             job_id,
-            result_payload=state.get("result_payload") or {},
-            output_path=state.get("final_image_path") or (state.get("result_payload") or {}).get("output_path"),
+            result_payload=result_payload,
+            output_path=state.get("final_image_path") or result_payload.get("output_path"),
             metadata={
                 "requested_run_mode": (context.get("metadata") or {}).get("requested_run_mode") or "graph_job",
                 "effective_run_mode": "graph_job",
                 "execution_mode": "graph_modal_completed",
                 "execution_backend": "modal",
                 "modal_status": "succeeded",
-                "final_brief": state.get("current_brief"),
+                "final_brief": result_payload.get("final_brief"),
             },
             workspace_id=workspace_id,
             user_id=user_id,

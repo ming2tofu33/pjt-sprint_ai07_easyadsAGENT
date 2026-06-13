@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
-from orchestrator.app.schemas.native_creative import CampaignMessagePlan, NativeSourceVisualAnalysis, TypographyDominancePlan, VisualSemanticCuePlan
+from orchestrator.app.schemas.input_evidence import EvidenceItem, InputEvidenceBundle
+from orchestrator.app.schemas.native_creative import CampaignMessagePlan, NativeSourceVisualAnalysis, NativeTypographyExpressionPlan, TypographyDominancePlan, VisualSemanticCuePlan
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
+from orchestrator.app.llm.native_campaign_copy_rules import detect_campaign_status
 
 
 LAUNCH_HINTS = ("launch", "new_product", "new_menu", "new menu", "new", "신메뉴", "출시", "새로운", "소개")
@@ -36,27 +37,35 @@ def plan_native_campaign_message(
         )
         return CampaignMessagePlan(**payload)
 
-    text = " ".join([promotion_goal or "", placement or "", input_evidence.user_text or "", input_evidence.user_request_utterance or ""]).lower()
-    info_ids = {item.evidence_id for item in input_evidence.explicit_user_facts}
-    info_ids.update(item.evidence_id for item in (product_understanding.verified_facts or []))
+    campaign_status, campaign_evidence_ids = _campaign_status_from_evidence(input_evidence, product_understanding)
+    intent = (promotion_goal or input_evidence.campaign_intent or product_understanding.campaign_intent or "").lower()
+    info_ids = {item.evidence_id for item in input_evidence.explicit_user_facts if item.key not in {"product_name", "campaign_status", "launch_status"}}
+    info_ids.update(item.evidence_id for item in (product_understanding.verified_facts or []) if item.key not in {"product_name", "campaign_status", "launch_status"})
     info_count = len(info_ids)
-    has_support_basis = bool(input_evidence.explicit_user_facts or product_understanding.permissible_inferences or input_evidence.creative_inferences)
+    has_support_basis = has_meaningful_support_basis(input_evidence=input_evidence, product_understanding=product_understanding)
     image_power = 0.82 if source_visual_analysis and source_visual_analysis.source_suitable else 0.65
     density = "minimal" if info_count <= 1 else ("low" if info_count <= 3 else ("medium" if info_count <= 6 else "high"))
+    is_launch = campaign_status in {"new_menu", "new_product"} or intent in {"new_product_launch", "new_menu_promotion"}
 
-    if any(hint in text for hint in LAUNCH_HINTS):
+    if is_launch:
+        visible_mode = "headline_plus_support" if has_support_basis else "headline_only"
+        support_function = "sensory_detail" if has_support_basis else "none"
         return CampaignMessagePlan(
             campaign_role="new_product_introduction",
             primary_communication_goal=promotion_goal or "new_product_launch",
             funnel_stage="awareness",
             image_explanatory_power=image_power,
             verified_information_density=density,
-            visible_copy_mode="headline_plus_support" if has_support_basis else "headline_only",
-            headline_function="launch_announcement",
-            support_function="launch_context" if has_support_basis else "none",
-            rationale=["launch_or_introduction_context_detected", "support_allowed_only_when_it_adds_campaign_context"],
+            visible_copy_mode=visible_mode,
+            headline_function="product_identity",
+            support_function=support_function,  # type: ignore[arg-type]
+            launch_visibility_policy="implicit",
+            campaign_context_is_display_copy=False,
+            campaign_context_evidence_ids=campaign_evidence_ids,
+            rationale=["campaign_status_separated_from_product_identity", "launch_context_is_non_display_by_default"],
             confidence=0.86,
         )
+    text = " ".join([promotion_goal or "", placement or "", input_evidence.user_intent or ""]).lower()
     if any(hint in text for hint in OFFER_HINTS):
         return CampaignMessagePlan(
             campaign_role="offer_announcement",
@@ -67,6 +76,9 @@ def plan_native_campaign_message(
             visible_copy_mode="headline_only",
             headline_function="product_identity",
             support_function="none",
+            launch_visibility_policy="implicit",
+            campaign_context_is_display_copy=False,
+            campaign_context_evidence_ids=[],
             rationale=["offer_context_requires_verified_offer_details"],
             confidence=0.78,
         )
@@ -80,6 +92,9 @@ def plan_native_campaign_message(
             visible_copy_mode="headline_plus_support" if density in {"medium", "high"} else "headline_only",
             headline_function="product_identity",
             support_function="product_detail" if density in {"medium", "high"} else "none",
+            launch_visibility_policy="implicit",
+            campaign_context_is_display_copy=False,
+            campaign_context_evidence_ids=[],
             rationale=["information_goal_detected"],
             confidence=0.8,
         )
@@ -90,9 +105,12 @@ def plan_native_campaign_message(
             funnel_stage="awareness",
             image_explanatory_power=image_power,
             verified_information_density=density,
-            visible_copy_mode="headline_only",
+            visible_copy_mode="headline_plus_support" if has_support_basis else "headline_only",
             headline_function="brand_statement",
-            support_function="brand_mood",
+            support_function="brand_mood" if has_support_basis else "none",
+            launch_visibility_policy="implicit",
+            campaign_context_is_display_copy=False,
+            campaign_context_evidence_ids=[],
             rationale=["editorial_or_brand_mood_context_detected"],
             confidence=0.78,
         )
@@ -102,13 +120,15 @@ def plan_native_campaign_message(
         funnel_stage="awareness",
         image_explanatory_power=image_power,
         verified_information_density=density,
-        visible_copy_mode="product_name_only" if density == "minimal" else "headline_only",
+        visible_copy_mode="product_name_only" if not has_support_basis else "headline_only",
         headline_function="product_identity",
         support_function="none",
-        rationale=["default_product_identity_or_menu_identity", "minimal_verified_information_prefers_minimal_visible_copy"],
+        launch_visibility_policy="implicit",
+        campaign_context_is_display_copy=False,
+        campaign_context_evidence_ids=[],
+        rationale=["default_product_identity_or_menu_identity", "generic_intro_request_is_not_launch_evidence"],
         confidence=0.82,
     )
-
 
 def build_visual_semantic_cue_plan(
     *,
@@ -169,6 +189,73 @@ def plan_typography_dominance(*, campaign_plan: CampaignMessagePlan, placement: 
         rationale=["identity_role_allows_clear_product_name_without_support"],
     )
 
+
+
+def _campaign_status_from_evidence(input_evidence: InputEvidenceBundle, product_understanding: ProductUnderstanding) -> tuple[str | None, list[str]]:
+    evidence_ids: list[str] = []
+    status = input_evidence.campaign_status or product_understanding.campaign_status
+    for collection in (input_evidence.explicit_user_facts, product_understanding.verified_facts):
+        for item in collection:
+            if item.key in {"campaign_status", "launch_status"}:
+                status = item.normalized_value or item.value or status
+                evidence_ids.append(item.evidence_id)
+    return status or detect_campaign_status(input_evidence.user_text), evidence_ids
+
+
+def has_meaningful_support_basis(*, input_evidence: InputEvidenceBundle, product_understanding: ProductUnderstanding) -> bool:
+    ignored_keys = {"product_name", "campaign_status", "launch_status", "business_context"}
+    for item in input_evidence.explicit_user_facts:
+        if item.key not in ignored_keys and item.usable_for_copy:
+            return True
+    if product_understanding.permissible_inferences:
+        return True
+    if input_evidence.creative_inferences:
+        return True
+    if any(item.usable_for_copy and item.key not in {"product_identity", "existing_overlay_text"} for item in input_evidence.visual_observations):
+        return True
+    if any(item.key in {"brand_message", "serving_context", "usage_context", "aesthetic_expression"} for item in input_evidence.brand_profile_evidence):
+        return True
+    if input_evidence.desired_positioning:
+        return True
+    return False
+
+
+def plan_native_typography_expression(
+    *,
+    campaign_plan: CampaignMessagePlan,
+    input_evidence: InputEvidenceBundle,
+    product_understanding: ProductUnderstanding,
+    reference_typography_analysis: dict[str, Any] | None = None,
+) -> NativeTypographyExpressionPlan:
+    reference = reference_typography_analysis or {}
+    positioning = {item.lower() for item in (input_evidence.desired_positioning or product_understanding.desired_positioning)}
+    if reference.get("style_family") == "modern_minimal" or "minimal" in positioning:
+        role = "modern_minimal"
+        register = "contemporary"
+        letterform = "clean geometric Hangul with generous spacing"
+    elif "premium" in positioning or "refined" in positioning or campaign_plan.campaign_role == "new_product_introduction":
+        role = "editorial_display"
+        register = "luxury_editorial"
+        letterform = "refined editorial Hangul with confident display rhythm"
+    else:
+        role = "soft_lifestyle"
+        register = "contemporary"
+        letterform = "soft readable Hangul with natural commercial warmth"
+    return NativeTypographyExpressionPlan(
+        expression_role=role,  # type: ignore[arg-type]
+        cultural_register=register,  # type: ignore[arg-type]
+        letterform_character=letterform,
+        stroke_character=str(reference.get("stroke_character") or "moderate contrast strokes, not a flat UI font"),
+        texture_direction=str(reference.get("texture_direction") or "subtle print-like texture integrated with lighting"),
+        visual_integration="integrated_with_scene",
+        headline_shape="adaptive",
+        headline_support_relationship="editorial_pair" if campaign_plan.visible_copy_mode == "headline_plus_support" else "headline_dominant",
+        ornament_policy="minimal_divider" if role == "editorial_display" else "none",
+        reference_style_source="reference_image" if reference else "semantic_direction",
+        reference_style_summary=list(reference.get("style_summary") or []),
+        reference_texts_to_avoid=list(reference.get("reference_texts_to_avoid") or []),
+        rationale=["typography_expression_is_separate_from_size_dominance", "letterform_must_feel_native_to_scene"],
+    )
 
 def _visualize_positioning(positioning: list[str]) -> list[str]:
     cues: list[str] = []

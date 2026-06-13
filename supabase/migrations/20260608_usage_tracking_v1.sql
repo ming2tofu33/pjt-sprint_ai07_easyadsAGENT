@@ -10,6 +10,14 @@ update usage_events
 set quantity = 1
 where quantity is null;
 
+update usage_events
+set event_type = 'modal_gpu_runtime'
+where event_type = 'modal_gpu_seconds';
+
+update usage_events
+set unit = 'second'
+where unit = 'seconds';
+
 alter table usage_events
 alter column quantity set not null;
 

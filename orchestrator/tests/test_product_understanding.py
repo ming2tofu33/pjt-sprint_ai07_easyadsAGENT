@@ -262,6 +262,23 @@ def test_product_understanding_node_uses_llm_response_without_copy_fields():
     assert "headline" not in update["product_understanding"]
 
 
+def test_product_understanding_node_recovers_numeric_korean_brand_name():
+    bundle = build_input_evidence_bundle(
+        {
+            "user_input": '"82고기" 고깃집 오픈 홍보 광고 만들어줘',
+            "context": {"item_or_service": "82고기"},
+            "user_plan": "free",
+        }
+    )
+
+    update = product_understanding_node({"input_evidence_bundle": bundle.model_dump(), "user_plan": "free"})
+
+    assert update["product_understanding_status"] != "failed"
+    assert update["product_understanding"]["product_name"] == "82고기"
+    assert update["product_understanding"]["normalized_product_type"] == "82_meat"
+    assert update["product_understanding"]["broad_category"] == "food_and_beverage"
+
+
 # ===== from test_product_understanding_policy.py =====
 import pytest
 

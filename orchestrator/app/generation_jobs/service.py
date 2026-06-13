@@ -460,6 +460,32 @@ def get_generation_job_internal(job_id: str) -> GenerationJobResponse | None:
         return _GENERATION_JOBS.get(job_id)
 
 
+def get_generation_job_internal_with_scope(job_id: str) -> tuple[GenerationJobResponse | None, str | None, str | None]:
+    """Fetch a public job and the scope carried by the same DB row.
+
+    Polling endpoints often receive only a public job id and the authenticated
+    user. Returning the job plus its workspace/user scope avoids a second
+    public_job_id lookup on every polling request.
+    """
+    if _use_postgres_backend():
+        row = generation_job_repo.get_generation_job_internal_by_public_id(job_id)
+        if not row:
+            return None, None, None
+        metadata = row.get("metadata") or {}
+        workspace_id = str(row.get("workspace_id")) if row.get("workspace_id") else None
+        user_id = (
+            str(row.get("requested_by") or metadata.get("user_id"))
+            if row.get("requested_by") or metadata.get("user_id")
+            else None
+        )
+        return _job_response_from_db_row(row), workspace_id, user_id
+    with _GENERATION_JOB_LOCK:
+        job = _GENERATION_JOBS.get(job_id)
+    if not job:
+        return None, None, None
+    return job, _memory_job_workspace_id(job), job.user_id
+
+
 def resolve_generation_job_scope_from_existing_job(job_id: str) -> tuple[str | None, str | None]:
     if _use_postgres_backend():
         row = generation_job_repo.get_generation_job_internal_by_public_id(job_id)

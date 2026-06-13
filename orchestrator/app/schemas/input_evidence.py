@@ -47,6 +47,7 @@ class InputEvidenceBundle(BaseModel):
     user_intent: str | None = None
     user_request_utterance: str | None = None
     campaign_intent: str | None = None
+    campaign_status: Literal["new_product", "new_menu", "seasonal", "existing_product", "unknown"] | None = None
     desired_positioning: list[str] = Field(default_factory=list)
     non_display_instruction_fragments: list[str] = Field(default_factory=list)
     user_exact_display_copy: list[str] = Field(default_factory=list)

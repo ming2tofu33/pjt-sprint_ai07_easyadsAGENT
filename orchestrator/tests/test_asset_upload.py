@@ -47,7 +47,7 @@ def test_presign_validates_mime_type(monkeypatch):
         workspaceId="ws1"
     )
     monkeypatch.setattr("orchestrator.app.storage.settings.require_r2_ready", lambda: None)
-    
+
     with pytest.raises(UnprocessableEntityError, match="Unsupported extension"):
         service.presign_asset_upload(req)
 
@@ -63,7 +63,7 @@ def test_complete_records_failed_status(monkeypatch):
         "bucket": "test-bucket",
         "object_key": "test-key"
     }
-    
+
     class MockRepo:
         def __init__(self):
             self.last_update = None
@@ -71,37 +71,37 @@ def test_complete_records_failed_status(monkeypatch):
             return mock_row
         def update_asset(self, *args, **kwargs):
             self.last_update = kwargs.get("metadata_merge")
-            
+
     mock_repo = MockRepo()
     monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", mock_repo)
     monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, user_id=None, account_type=None: "ws1")
     monkeypatch.setattr("orchestrator.app.assets.service.db_transaction", lambda *a, **k: __import__("contextlib").nullcontext())
-    
+
     from orchestrator.app.storage.errors import R2StorageUnavailableError
     def mock_head(*args, **kwargs):
         raise R2StorageUnavailableError("Not found")
-        
+
     monkeypatch.setattr("orchestrator.app.assets.service.head_object", mock_head)
     monkeypatch.setattr("orchestrator.app.assets.service.create_r2_client", lambda: None)
-    
+
     # 1. storage unavailable is retryable, should NOT update to failed
     with pytest.raises(ServiceUnavailableError):
         service.complete_asset_upload(ASSET_ID)
     assert mock_repo.last_update is None
-    
+
     # 2. Mock a terminal error
     def mock_head_terminal(*args, **kwargs):
         return {"ContentLength": 9999999999, "ContentType": "image/png"} # Too large
-        
+
     monkeypatch.setattr("orchestrator.app.assets.service.head_object", mock_head_terminal)
     monkeypatch.setattr(
         "orchestrator.app.assets.service.get_vision_settings",
         lambda: type("Settings", (), {"max_file_size_mb": 1, "max_pixel_count": 1_000_000})(),
     )
-    
+
     with pytest.raises(PayloadTooLargeError):
         service.complete_asset_upload(ASSET_ID)
-        
+
     assert mock_repo.last_update is not None
     assert mock_repo.last_update["upload"]["status"] == "failed"
     assert mock_repo.last_update["upload"]["error_code"] == "asset_too_large"
@@ -122,7 +122,7 @@ def test_create_asset_conflict(monkeypatch):
     mock_cursor = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
     mock_cursor.fetchone.return_value = {"id": "123"}
-    
+
     res1 = asset_repo.create_asset(
         workspace_id="ws1",
         bucket="b",
@@ -141,7 +141,7 @@ def test_update_asset_with_workspace(monkeypatch):
     mock_cursor = MagicMock()
     mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
     mock_cursor.fetchone.return_value = {"id": "123", "public_url": "http://new"}
-    
+
     updated = asset_repo.update_asset(
         "123",
         workspace_id="ws1",

@@ -191,11 +191,11 @@ def test_presign_asset_api(monkeypatch):
     monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, **kw: "ws1")
     monkeypatch.setattr("orchestrator.app.db.settings.get_demo_user_id", lambda: "user1")
     monkeypatch.setattr("orchestrator.app.assets.service.db_transaction", lambda *a, **kw: __import__("contextlib").nullcontext())
-    
+
     class MockRepo:
         def create_asset(self, *args, **kwargs):
             return {"id": "asset-uuid"}
-            
+
     monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", MockRepo())
     monkeypatch.setattr("orchestrator.app.assets.service.build_upload_object_key", lambda **k: "key")
     monkeypatch.setattr("orchestrator.app.assets.service.create_r2_client", lambda: None)
@@ -226,7 +226,7 @@ def test_complete_asset_api(monkeypatch):
         "bucket": "test-bucket",
         "object_key": "test-key"
     }
-    
+
     class MockRepo:
         def get_asset_by_public_id(self, *args, **kwargs):
             return mock_row
@@ -234,18 +234,18 @@ def test_complete_asset_api(monkeypatch):
             mock_row["metadata"] = kwargs.get("metadata_merge")
             mock_row["public_url"] = kwargs.get("public_url")
             return mock_row
-            
+
     monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", MockRepo())
     monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, **kw: "ws1")
     monkeypatch.setattr("orchestrator.app.assets.service.db_transaction", lambda: __import__("contextlib").nullcontext())
     monkeypatch.setattr("orchestrator.app.assets.service.create_r2_client", lambda: None)
-    
+
     from orchestrator.app.storage.errors import R2StorageUnavailableError
     def mock_head(*args, **kwargs):
         raise R2StorageUnavailableError("Not found")
-        
+
     monkeypatch.setattr("orchestrator.app.assets.service.head_object", mock_head)
-    
+
     resp = client__test_api_assets_router.post(f"/api/v1/assets/uploads/{VALID_ASSET_ID}/complete", params={"workspace_id": "ws1", "user_id": "user1"})
     assert resp.status_code == 503
     assert resp.json()["detail"]["error_code"] == "asset_storage_unavailable"
@@ -262,12 +262,12 @@ def test_get_asset_api(monkeypatch):
     }
     monkeypatch.setattr("orchestrator.app.assets.service._resolve_workspace_id", lambda x, **kw: "ws1")
     monkeypatch.setattr("orchestrator.app.assets.service.db_transaction", lambda *a, **kw: __import__("contextlib").nullcontext())
-    
+
     class MockRepo:
         def get_asset_by_public_id(self, *args, **kwargs):
             return mock_row
     monkeypatch.setattr("orchestrator.app.assets.service.asset_repo", MockRepo())
-    
+
     resp = client__test_api_assets_router.get(f"/api/v1/assets/{VALID_ASSET_ID}", params={"workspace_id": "ws1", "user_id": "user1"})
     assert resp.status_code == 200
     data = resp.json()
@@ -1152,6 +1152,11 @@ def test_generation_job_get_route_recovers_scope_from_existing_job_without_heade
         "orchestrator.app.api.routers.generation_jobs.resolve_generation_job_scope_from_existing_job",
         lambda job_id: (WORKSPACE_A, "user_a"),
     )
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_internal_with_scope",
+        lambda job_id: (None, None, None),
+        raising=False,
+    )
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.resolve_scoped_workspace_id", fake_resolve_scoped_workspace_id)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_mark_stale_generation_job_failed", fake_mark_stale)
@@ -1164,6 +1169,91 @@ def test_generation_job_get_route_recovers_scope_from_existing_job_without_heade
     assert captured == {"job_id": "job_polling", "workspace_id": resolved_workspace, "user_id": "user_a"}
     assert stale_scope == {"workspace_id": resolved_workspace, "user_id": "user_a"}
     assert modal_scope == {"workspace_id": resolved_workspace, "user_id": "user_a"}
+
+
+def test_generation_job_get_route_reuses_existing_job_scope_without_extra_lookup(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false")
+    stale_scope = {}
+    modal_scope = {}
+    calls = {"internal_with_scope": 0, "scoped": 0}
+    job = GenerationJobResponse(
+        job_id="job_polling",
+        thread_id="thread_polling",
+        user_id="user_a",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="brief_interpretation", stage_order=[]),
+        created_at="2026-06-09T00:00:00+00:00",
+        updated_at="2026-06-09T00:00:00+00:00",
+        metadata={},
+    )
+
+    def fake_get_internal_with_scope(job_id):
+        calls["internal_with_scope"] += 1
+        return job, WORKSPACE_A, "user_a"
+
+    def fake_get_scoped(*args, **kwargs):
+        calls["scoped"] += 1
+        return job
+
+    def fake_mark_stale(current_job, **kwargs):
+        stale_scope.update(kwargs)
+        return current_job
+
+    def fake_poll_modal(current_job, **kwargs):
+        modal_scope.update(kwargs)
+        return current_job
+
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_internal_with_scope",
+        fake_get_internal_with_scope,
+        raising=False,
+    )
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_scoped)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_mark_stale_generation_job_failed", fake_mark_stale)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.maybe_poll_generation_job_from_modal", fake_poll_modal)
+
+    response = TestClient(create_app()).get(
+        "/api/v1/generation-jobs/job_polling",
+        headers={"X-EasyAds-User-Id": "user_a"},
+    )
+
+    assert response.status_code == 200
+    assert calls == {"internal_with_scope": 1, "scoped": 0}
+    assert stale_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
+    assert modal_scope == {"workspace_id": WORKSPACE_A, "user_id": "user_a"}
+
+
+def test_generation_job_get_route_rejects_reused_scope_for_other_user(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setenv("EASYADS_ALLOW_DEMO_WORKSPACE_FALLBACK", "false")
+    job = GenerationJobResponse(
+        job_id="job_polling",
+        thread_id="thread_polling",
+        user_id="user_a",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="brief_interpretation", stage_order=[]),
+        created_at="2026-06-09T00:00:00+00:00",
+        updated_at="2026-06-09T00:00:00+00:00",
+        metadata={},
+    )
+
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_internal_with_scope",
+        lambda job_id: (job, WORKSPACE_A, "user_a"),
+    )
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("scoped lookup should not run after user mismatch")),
+    )
+
+    response = TestClient(create_app()).get(
+        "/api/v1/generation-jobs/job_polling",
+        headers={"X-EasyAds-User-Id": "user_b"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["error_code"] == "generation_job_not_found"
 
 
 def test_generation_job_get_route_passes_workspace_scope(monkeypatch):
@@ -1232,6 +1322,11 @@ def test_generation_job_get_route_passes_guest_account_type_to_workspace_resolut
         captured_job.update({"job_id": job_id, "workspace_id": workspace_id, "user_id": user_id})
         return None
 
+    monkeypatch.setattr(
+        "orchestrator.app.api.routers.generation_jobs.get_generation_job_internal_with_scope",
+        lambda job_id: (None, None, None),
+        raising=False,
+    )
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.resolve_scoped_workspace_id", fake_resolve_scoped_workspace_id)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
 
@@ -1468,29 +1563,29 @@ def test_list_generation_outputs(client__test_api_generation_outputs_router, mon
     mock_service = MagicMock()
     mock_service.return_value = ([], 0)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_outputs.list_generation_outputs", mock_service)
-    
+
     mock_scope = MagicMock()
     mock_scope.return_value = "ws1"
     monkeypatch.setattr("orchestrator.app.db.workspace_scope.resolve_workspace_scope", mock_scope)
-    
+
     resp = client__test_api_generation_outputs_router.get("/api/v1/generation-outputs?workspace_id=ws1")
     assert resp.status_code == 200
     assert resp.json()["items"] == []
 
 def test_select_final_generation_output(client__test_api_generation_outputs_router, monkeypatch):
     mock_service = MagicMock()
-    
+
     from orchestrator.app.api.schemas.generation_outputs import GenerationOutputResponse
-    
+
     mock_service.return_value = GenerationOutputResponse(
         output_id="out1", is_final=True, variant_index=0, output_type="final_image", created_at="2026-06-06T00:00:00Z", updated_at="2026-06-06T00:00:00Z"
     )
     monkeypatch.setattr("orchestrator.app.api.routers.generation_outputs.select_final_generation_output", mock_service)
-    
+
     mock_scope = MagicMock()
     mock_scope.return_value = "ws1"
     monkeypatch.setattr("orchestrator.app.db.workspace_scope.resolve_workspace_scope", mock_scope)
-    
+
     resp = client__test_api_generation_outputs_router.post("/api/v1/generation-outputs/out1/select-final?workspace_id=ws1")
     assert resp.status_code == 200
     assert resp.json()["output_id"] == "out1"

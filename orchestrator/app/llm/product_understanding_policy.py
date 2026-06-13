@@ -7,6 +7,7 @@ from typing import Any
 
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding, UNSUPPORTED_CLAIM_CATEGORIES
+from orchestrator.app.llm.native_campaign_copy_rules import contains_campaign_modifier
 
 _SNAKE_CASE_RE = re.compile(r"^(?=.*[a-z])[a-z0-9]+(?:_[a-z0-9]+)*$")
 ROOT_ALIASES = {"food_beverage", "beauty_personal_care", "fashion_lifestyle", "home_living"}
@@ -25,6 +26,8 @@ REQUEST_INTENT_PATTERNS = [
     r"\bpromote this\b",
 ]
 _UNICODE_SLUG_REPLACEMENTS = {
+    "고깃집": "meat restaurant",
+    "고기": "meat",
     "된장찌개": "doenjang jjigae",
     "김치찌개": "kimchi jjigae",
     "부대찌개": "budae jjigae",
@@ -49,7 +52,9 @@ def normalize_slug(value: str | None) -> str | None:
     for source, replacement in _UNICODE_SLUG_REPLACEMENTS.items():
         text = text.replace(source, f" {replacement} ")
     slug = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
-    return slug or None
+    if not slug or not re.search(r"[a-z]", slug):
+        return None
+    return slug
 
 
 def validate_product_understanding(
@@ -62,6 +67,8 @@ def validate_product_understanding(
         raise ValueError("category_path must include product hierarchy when product identity is known")
     if _contains_request_intent(model.product_name):
         raise ValueError("product_identity_contaminated")
+    if contains_campaign_modifier(model.product_name):
+        raise ValueError("product_identity_contains_campaign_modifier")
     if any(item in ROOT_ALIASES for item in model.category_path[1:]):
         raise ValueError("category_path cannot contain root aliases below broad_category")
     _validate_verified_fact_provenance(model, bundle_model)
@@ -73,6 +80,7 @@ def validate_product_understanding(
             "unknown_fields": sorted(set(model.unknown_fields)),
             "unsupported_claim_categories": unsupported_claim_categories_for_bundle(bundle_model),
             "campaign_intent": model.campaign_intent or bundle_model.campaign_intent,
+            "campaign_status": model.campaign_status or bundle_model.campaign_status,
             "desired_positioning": list(model.desired_positioning or bundle_model.desired_positioning),
             "confidence": confidence,
             "clarification_required": model.clarification_required or (0.45 <= confidence < 0.70),

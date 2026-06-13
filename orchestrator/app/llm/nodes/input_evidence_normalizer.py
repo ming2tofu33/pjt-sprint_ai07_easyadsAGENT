@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from orchestrator.app.schemas.input_evidence import EvidenceItem, InputConflict, InputEvidenceBundle
+from orchestrator.app.llm.native_campaign_copy_rules import clean_product_identity, detect_campaign_status, strip_campaign_modifiers
 
 
 DEFAULT_UNKNOWN_FIELDS = ["specific_variant", "brand_name", "price", "promotion_detail", "ingredients", "origin", "manufacturing_method"]
@@ -62,15 +63,17 @@ def build_input_evidence_bundle(state: dict[str, Any]) -> InputEvidenceBundle:
     source_image_path = state.get("source_image_path")
     input_mode = _input_mode(user_text, source_image_path)
     product = _product_from_state(state, user_text=user_text)
-    user_intent = resolve_user_intent(user_text, promotion_goal=state.get("promotion_goal") or _context_value(state, "promotion_goal"))
+    campaign_status = detect_campaign_status(user_text)
+    user_intent = resolve_user_intent(user_text, promotion_goal=state.get("promotion_goal") or _context_value(state, "promotion_goal"), campaign_status=campaign_status)
     non_display = extract_non_display_instruction_fragments(user_text)
     positioning = extract_desired_positioning(user_text)
     exact_display = extract_user_exact_display_copy(user_text)
     facts: list[EvidenceItem] = []
     if user_text and product:
         facts.append(_fact("product_name", product, source_ref="user_input"))
-    if user_text and _has_new_menu_intent(user_text):
-        facts.append(_fact("launch_status", "new_menu", source_ref="user_input"))
+    if user_text and campaign_status:
+        facts.append(_fact("campaign_status", campaign_status, source_ref="user_input"))
+        facts.append(_fact("launch_status", campaign_status, source_ref="user_input"))
     business_context = _context_value(state, "business_type")
     if user_text and business_context:
         facts.append(_fact("business_context", str(business_context), source_ref="context"))
@@ -85,6 +88,7 @@ def build_input_evidence_bundle(state: dict[str, Any]) -> InputEvidenceBundle:
         user_intent=user_intent,
         user_request_utterance=user_text,
         campaign_intent=user_intent,
+        campaign_status=campaign_status or "unknown",
         desired_positioning=positioning,
         non_display_instruction_fragments=non_display,
         user_exact_display_copy=exact_display,
@@ -172,7 +176,7 @@ def _product_from_state(state: dict[str, Any], *, user_text: str | None) -> str 
         if isinstance(value, str) and value.strip():
             return value.strip()
     if user_text:
-        return _strip_non_display_instruction_text(user_text)
+        return clean_product_identity(_strip_non_display_instruction_text(user_text))
     return None
 
 
@@ -314,15 +318,15 @@ def _strip_non_display_instruction_text(text: str) -> str | None:
         product = product.replace(source, "")
     product = re.sub(r"\s*(을|를|은|는|이|가|으로|로)\s*$", "", product.strip())
     product = re.sub(r"\s+", " ", product).strip(" ,.")
-    return product or None
+    return clean_product_identity(product) or None
 
 
-def resolve_user_intent(text: str | None, promotion_goal: str | None = None) -> str | None:  # type: ignore[no-redef]
+def resolve_user_intent(text: str | None, promotion_goal: str | None = None, campaign_status: str | None = None) -> str | None:  # type: ignore[no-redef]
     if promotion_goal:
         return str(promotion_goal)
     lowered = (text or "").lower()
-    if _has_new_menu_intent(text):
-        return "new_menu_promotion"
+    if campaign_status in {"new_menu", "new_product"} or detect_campaign_status(text) in {"new_menu", "new_product"}:
+        return "new_product_launch"
     if any(re.search(pattern, text or "", re.IGNORECASE) for pattern in NON_DISPLAY_INSTRUCTION_PATTERNS) or "promote" in lowered or "advertise" in lowered:
         return "product_promotion"
     return None

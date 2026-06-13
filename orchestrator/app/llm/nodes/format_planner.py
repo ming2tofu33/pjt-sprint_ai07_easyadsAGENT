@@ -8,6 +8,7 @@ from orchestrator.app.graph.state import (
     MarketingState,
     context_to_model,
     reference_template_supports_poster,
+    resolve_requested_ad_format,
     resolve_renderer_mode,
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
@@ -51,15 +52,11 @@ def format_planner_node(state: MarketingState) -> dict[str, Any]:
 
 
 def resolve_ad_format(state: MarketingState) -> str:
-    current_brief = state.get("current_brief", {})
-    context = context_to_model(state.get("context"))
     validator_output = state.get("validator_output") or {}
     candidates = [
-        current_brief.get("requested_ad_format"),
-        context.extra.get("ad_format"),
+        resolve_requested_ad_format(state),
         _extract_validator_ad_format(validator_output),
         _extract_reference_template_ad_format(state.get("selected_reference_template")),
-        current_brief.get("ad_format"),
         "instagram_feed",
     ]
     for candidate in candidates:

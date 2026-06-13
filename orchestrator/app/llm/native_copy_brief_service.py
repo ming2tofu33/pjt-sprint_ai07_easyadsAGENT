@@ -76,8 +76,11 @@ def _brief_from_strategy_bundle(
             product_evidence_ids=product_understanding.product_name_evidence_ids,
             positioning_realization_plan=bundle.positioning_plan.model_dump(),
             alternative_candidate_summaries=[_candidate_summary(item, bundle) for item in bundle.candidates],
-            campaign_message_plan=dict(getattr(bundle, "campaign_message_plan", {}) or {}),
-            support_basis_type="none",
+        campaign_message_plan=dict(getattr(bundle, "campaign_message_plan", {}) or {}),
+        support_basis_type="none",
+        support_value_type="none",
+        support_information_gain=0.0,
+        support_product_specificity=0.0,
         )
     texts = [candidate.headline, candidate.supporting_copy or candidate.closing_copy]
     texts = [text for text in texts if text]
@@ -112,6 +115,9 @@ def _brief_from_strategy_bundle(
         alternative_candidate_summaries=[_candidate_summary(item, bundle) for item in bundle.candidates if item.candidate_id != candidate.candidate_id],
         campaign_message_plan=dict(getattr(bundle, "campaign_message_plan", {}) or {}),
         support_basis_type=candidate.support_basis_type,
+        support_value_type=candidate.support_value_type,
+        support_information_gain=candidate.support_information_gain,
+        support_product_specificity=candidate.support_product_specificity,
     )
     failures = validate_approved_native_copy_brief(brief)
     if failures:

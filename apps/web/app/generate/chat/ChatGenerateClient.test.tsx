@@ -795,6 +795,31 @@ describe("ChatGenerateClient", () => {
     window.localStorage.clear();
   });
 
+  it("rejects completed generation jobs when the final brief is empty", async () => {
+    const chatClientModule = (await import("./ChatGenerateClient")) as typeof import("./ChatGenerateClient") & {
+      generationJobToChatTurnResponse: (job: unknown, copyGenerationMode?: "suggest_candidates") => unknown;
+    };
+
+    expect(() =>
+      chatClientModule.generationJobToChatTurnResponse(
+        {
+          job_id: "job_empty_brief",
+          thread_id: "thread_empty_brief",
+          status: "done",
+          progress: { progress_percent: 100, current_stage: "completed" },
+          result_payload: {
+            final_image_path: "data/outputs/job_empty_brief/final.png",
+            final_brief: {}
+          },
+          metadata: {},
+          created_at: "2026-06-12T00:00:00.000Z",
+          updated_at: "2026-06-12T00:00:00.000Z"
+        },
+        "suggest_candidates"
+      )
+    ).toThrow("완성된 광고 브리프 정보가 비어 있어요");
+  });
+
   it("restores waiting graph question from a thread snapshot", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({
@@ -1686,6 +1711,57 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
     expect(screen.getByText("여름 네일은 지금이 딱 좋아요")).toBeTruthy();
     expect(screen.queryByText("AI가 이렇게 이해했어요")).toBeNull();
+  });
+
+  it("stops polling on a waiting job even when the pending interrupt is missing", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.getGenerationJob).mockClear();
+    vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_initial_question_without_interrupt",
+        thread_id: "thread_initial_question_without_interrupt",
+        status: "running",
+        progress: { progress_percent: 24, current_stage: "brief_interpretation" },
+        result_payload: null,
+        metadata: {},
+        created_at: "2026-06-12T00:00:00.000Z",
+        updated_at: "2026-06-12T00:00:00.000Z"
+      }
+    });
+    vi.mocked(api.getGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_initial_question_without_interrupt",
+        thread_id: "thread_initial_question_without_interrupt",
+        status: "waiting_user_input",
+        progress: { progress_percent: 50, current_stage: "waiting_user_input" },
+        result_payload: null,
+        metadata: {
+          context: {
+            business_type: "cafe",
+            item_or_service: "딸기라떼"
+          },
+          missing_fields: ["promotion_goal"]
+        },
+        created_at: "2026-06-12T00:00:00.000Z",
+        updated_at: "2026-06-12T00:00:00.000Z"
+      }
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "우리 카페 딸기라떼 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() => expect(screen.getAllByText("어떤 목적의 광고를 만들까요?").length).toBeGreaterThan(0));
+    expect(api.getGenerationJob).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("카페")).toBeTruthy();
+    expect(screen.getByText("딸기라떼")).toBeTruthy();
   });
 
   it("renders a no-copy brief without surfacing copy selection", async () => {
