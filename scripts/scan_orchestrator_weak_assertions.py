@@ -88,10 +88,28 @@ DECISION_OVERRIDES: dict[str, dict[str, Any]] = {
 }
 CONVERTED_CONTRACT_OVERRIDES = [
     {
-        "node_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_create_get_list_count",
-        "replacement_test_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_create_get_list_count",
-        "replacement_contract_id": "generation-output-repository:sql-params",
-        "reason": "repository mock passthrough converted to SQL clause/params contract coverage",
+        "node_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_create_returns_public_id_and_insert_params",
+        "replacement_test_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_create_returns_public_id_and_insert_params",
+        "replacement_contract_id": "generation-output-repository:create-params",
+        "reason": "repository mock passthrough converted to create SQL params contract coverage",
+    },
+    {
+        "node_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_get_scopes_by_workspace_and_public_id",
+        "replacement_test_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_get_scopes_by_workspace_and_public_id",
+        "replacement_contract_id": "generation-output-repository:get-workspace-scope",
+        "reason": "repository mock passthrough converted to workspace-scoped lookup contract coverage",
+    },
+    {
+        "node_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_list_applies_job_workspace_and_final_filters",
+        "replacement_test_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_list_applies_job_workspace_and_final_filters",
+        "replacement_contract_id": "generation-output-repository:list-filters",
+        "reason": "repository mock passthrough converted to list filter contract coverage",
+    },
+    {
+        "node_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_count_applies_job_and_workspace_filters",
+        "replacement_test_id": "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_count_applies_job_and_workspace_filters",
+        "replacement_contract_id": "generation-output-repository:count-filters",
+        "reason": "repository mock passthrough converted to count filter contract coverage",
     },
     {
         "node_id": "orchestrator/tests/test_generation_outputs_service_v1.py::test_select_final_generation_output_transaction",

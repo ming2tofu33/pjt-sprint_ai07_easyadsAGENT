@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "mutants": [
+    {
+      "mutant_id": "workspace-scope-remove-output-workspace-filter",
+      "scope_id": "workspace-scope",
+      "status_on_survive": "warn",
+      "classification_hint": "workspace_scope_removed",
+      "file": "orchestrator/app/db/repositories/generation_outputs.py",
+      "description": "Remove workspace filter from public output lookup.",
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "WHERE public_id = %s AND workspace_id = %s",
+          "new": "WHERE public_id = %s"
+        }
+      ]
+    },
+    {
+      "mutant_id": "workspace-scope-remove-chat-thread-workspace-filter",
+      "scope_id": "workspace-scope",
+      "status_on_survive": "warn",
+      "classification_hint": "workspace_scope_removed",
+      "file": "orchestrator/app/db/repositories/chat_threads.py",
+      "description": "Remove workspace filter from chat thread public lookup.",
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "WHERE public_id = %s AND workspace_id = %s",
+          "new": "WHERE public_id = %s"
+        }
+      ]
+    },
+    {
+      "mutant_id": "final-selection-skip-sibling-clear",
+      "scope_id": "final-selection-transaction",
+      "status_on_survive": "evidence-required",
+      "classification_hint": "transaction_state_not_cleared",
+      "file": "orchestrator/app/db/repositories/generation_outputs.py",
+      "description": "Skip sibling final-output clear update.",
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "\"UPDATE generation_outputs SET is_final = FALSE WHERE generation_job_id = %s\",",
+          "new": "\"SELECT %s\","
+        }
+      ]
+    },
+    {
+      "mutant_id": "quality-gate-allow-reject",
+      "scope_id": "quality-ocr",
+      "status_on_survive": "warn",
+      "classification_hint": "fail_closed_reversed",
+      "file": "orchestrator/app/quality_gate/final_composite_policy.py",
+      "description": "Reverse reject action into pass.",
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "return \"reject\"",
+          "new": "return \"pass\""
+        }
+      ]
+    },
+    {
+      "mutant_id": "compliance-unknown-allowed",
+      "scope_id": "compliance",
+      "status_on_survive": "warn",
+      "classification_hint": "compliance_gate_weakened",
+      "file": "orchestrator/app/llm/nodes/copy_compliance.py",
+      "description": "Allow unknown compliance state.",
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "\"manual_review\"",
+          "new": "\"allowed\""
+        }
+      ]
+    },
+    {
+      "mutant_id": "native-copy-remove-request-leak-guard",
+      "scope_id": "native-copy-policy",
+      "status_on_survive": "warn",
+      "classification_hint": "copy_guard_removed",
+      "file": "orchestrator/app/llm/native_copy_policy.py",
+      "description": "Disable raw request intent detection.",
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "return _contains_request_intent(value)",
+          "new": "return False"
+        }
+      ]
+    }
+  ]
+}

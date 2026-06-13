@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--coverage-data")
     parser.add_argument("--coverage-json")
     parser.add_argument("--pytest-nodes")
+    parser.add_argument("--baseline-nodes")
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR.relative_to(REPO_ROOT)).replace("\\", "/"))
     parser.add_argument("--self-check", action="store_true")
     return parser.parse_args()
@@ -109,11 +110,43 @@ def run_self_check() -> int:
     owners = {"a.py:1->2": ["test_a"], "a.py:2->3": ["test_a", "test_b"]}
     assert len(owners["a.py:1->2"]) == 1
     assert SESSION_CONTEXT not in {"pytest::x", "pytest::y"}
+    records = {
+        "test_a": {"markers": ["unit"]},
+        "test_b": {"markers": ["external", "actual"]},
+    }
+    count, status = external_actual_only_owner_branch_count({"a.py:1->2": ["test_a"], "a.py:2->3": ["test_b"]}, records)
+    assert count == 1
+    assert status == "calculated"
     print("self_check=ok")
     return 0
 
 
-def analyze(coverage_data_path: Path, coverage_json_path: Path, pytest_nodes_path: Path, output_dir: Path) -> int:
+def external_actual_only_owner_branch_count(
+    branch_owner_map: dict[str, list[str]],
+    node_record_map: dict[str, dict[str, Any]],
+) -> tuple[int | None, str]:
+    count = 0
+    for owners in branch_owner_map.values():
+        if not owners:
+            continue
+        owner_markers = []
+        for owner in owners:
+            record = node_record_map.get(owner)
+            if record is None:
+                return None, "unsupported"
+            owner_markers.append(set(record.get("markers", [])))
+        if owner_markers and all(marker_set and marker_set.issubset({"external", "actual"}) for marker_set in owner_markers):
+            count += 1
+    return count, "calculated"
+
+
+def analyze(
+    coverage_data_path: Path,
+    coverage_json_path: Path,
+    pytest_nodes_path: Path,
+    baseline_nodes_path: Path | None,
+    output_dir: Path,
+) -> int:
     coverage_json = load_json(coverage_json_path)
     pytest_nodes = load_json(pytest_nodes_path)
     marker_summary_path = REPO_ROOT / "data/test_optimization/marker_taxonomy/marker_summary.json"
@@ -129,7 +162,13 @@ def analyze(coverage_data_path: Path, coverage_json_path: Path, pytest_nodes_pat
     measured_contexts = set(cov_data.measured_contexts())
     node_records = pytest_nodes["nodes"]
     collected_node_ids = pytest_nodes["collected_node_ids"]
+    if baseline_nodes_path is not None:
+        baseline_nodes_payload = load_json(baseline_nodes_path)
+        baseline_collected_node_ids = baseline_nodes_payload.get("collected_node_ids") or baseline_nodes_payload.get("node_ids") or []
+    else:
+        baseline_collected_node_ids = collected_node_ids
     node_contexts = {f"pytest::{node_id}": node_id for node_id in collected_node_ids}
+    node_record_map = {node["node_id"]: node for node in node_records}
     unknown_contexts = sorted(ctx for ctx in measured_contexts if ctx not in node_contexts and ctx not in {SESSION_CONTEXT, ""})
     app_measured_files = [
         (filename, rel_path(filename))
@@ -219,14 +258,12 @@ def analyze(coverage_data_path: Path, coverage_json_path: Path, pytest_nodes_pat
             if arc in file_universe:
                 collection_branch_ids.add(branch_id(normalized_filename, arc))
 
-    residual_collection_branch_ids = global_branch_ids - test_owned_branch_ids - session_branch_ids - collection_branch_ids
-    collection_branch_ids |= residual_collection_branch_ids
+    unattributed_branch_ids = global_branch_ids - test_owned_branch_ids - session_branch_ids - collection_branch_ids
     non_test_branch_ids = session_branch_ids | collection_branch_ids
-    reconciliation_ok = test_owned_branch_ids | non_test_branch_ids == global_branch_ids
+    reconciliation_ok = test_owned_branch_ids | non_test_branch_ids | unattributed_branch_ids == global_branch_ids
 
     unique_by_test_map: dict[str, list[str]] = defaultdict(list)
     branch_owners_payload = []
-    external_actual_only_owner_branch_count = 0
     for branch in sorted(global_branch_ids):
         owners = sorted(branch_owners.get(branch, []))
         owner_count = len(owners)
@@ -241,6 +278,10 @@ def analyze(coverage_data_path: Path, coverage_json_path: Path, pytest_nodes_pat
                 "unique_owner": owner_count == 1,
             }
         )
+    external_actual_branch_count, external_actual_calculation_status = external_actual_only_owner_branch_count(
+        {item["branch_id"]: item["owners"] for item in branch_owners_payload},
+        node_record_map,
+    )
 
     for node_id in collected_node_ids:
         branches = sorted(unique_by_test_map.get(node_id, []))
@@ -311,7 +352,7 @@ def analyze(coverage_data_path: Path, coverage_json_path: Path, pytest_nodes_pat
         )
 
     context_integrity = {
-        "baseline_collected_nodes": len(collected_node_ids),
+        "baseline_collected_nodes": len(baseline_collected_node_ids),
         "coverage_collected_nodes": len(collected_node_ids),
         "measured_test_contexts": len([ctx for ctx in measured_contexts if ctx.startswith("pytest::") and ctx != SESSION_CONTEXT]),
         "unknown_contexts": unknown_contexts,
@@ -321,6 +362,9 @@ def analyze(coverage_data_path: Path, coverage_json_path: Path, pytest_nodes_pat
         "test_owned_branch_count": len(test_owned_branch_ids),
         "session_only_branch_count": len(non_test_branch_ids - test_owned_branch_ids),
         "collection_context_count": 1 if "" in measured_contexts else 0,
+        "unattributed_branch_count": len(unattributed_branch_ids),
+        "external_actual_only_owner_branch_count": external_actual_branch_count,
+        "external_actual_only_owner_calculation_status": external_actual_calculation_status,
     }
 
     write_json(output_dir / "test_line_contexts.json", {"tests": test_line_contexts})
@@ -331,15 +375,16 @@ def analyze(coverage_data_path: Path, coverage_json_path: Path, pytest_nodes_pat
     write_json(output_dir / "empty_branch_contexts.json", {"tests": empty_branch_contexts})
     write_json(output_dir / "critical_branch_gaps.json", {"files": critical_gaps})
     write_json(output_dir / "removal_candidates_with_branch_context.json", {"findings": removal_with_context})
+    write_json(output_dir / "unattributed_branches.json", {"branch_ids": sorted(unattributed_branch_ids)})
     write_json(output_dir / "context_integrity.json", context_integrity)
 
     coverage_version = coverage.__version__
     coverage_core = os.environ.get("COVERAGE_CORE", "")
     summary = {
-        "status": "completed" if reconciliation_ok and not unknown_contexts else "failed",
+        "status": "completed" if reconciliation_ok and not unknown_contexts and not unattributed_branch_ids else "partial",
         "coverage_version": coverage_version,
         "coverage_core": coverage_core,
-        "baseline_collected_nodes": len(collected_node_ids),
+        "baseline_collected_nodes": len(baseline_collected_node_ids),
         "coverage_collected_nodes": len(collected_node_ids),
         "measured_test_contexts": context_integrity["measured_test_contexts"],
         "no_source_execution_nodes": no_source_execution_nodes,
@@ -350,6 +395,9 @@ def analyze(coverage_data_path: Path, coverage_json_path: Path, pytest_nodes_pat
         "global_executed_branch_count": len(global_branch_ids),
         "test_owned_branch_count": len(test_owned_branch_ids),
         "session_only_branch_count": len(non_test_branch_ids - test_owned_branch_ids),
+        "unattributed_branch_count": len(unattributed_branch_ids),
+        "external_actual_only_owner_branch_count": external_actual_branch_count,
+        "external_actual_only_owner_calculation_status": external_actual_calculation_status,
         "tests_with_unique_branches": sum(1 for item in unique_branches_by_test if item["unique_branch_count"] > 0),
         "tests_with_zero_unique_branches": sum(1 for item in unique_branches_by_test if item["unique_branch_count"] == 0),
         "duplicate_nonempty_signature_groups": sum(1 for group in duplicate_branch_signatures if not group["empty_signature"]),
@@ -373,7 +421,7 @@ def analyze(coverage_data_path: Path, coverage_json_path: Path, pytest_nodes_pat
     ]
     (output_dir / "report.md").write_text("\n".join(report_lines) + "\n", encoding="utf-8")
 
-    if not reconciliation_ok or unknown_contexts:
+    if not reconciliation_ok or unknown_contexts or unattributed_branch_ids:
         raise SystemExit(1)
     return 0
 
@@ -388,6 +436,7 @@ def main() -> int:
         coverage_data_path=(REPO_ROOT / args.coverage_data).resolve() if not Path(args.coverage_data).is_absolute() else Path(args.coverage_data),
         coverage_json_path=(REPO_ROOT / args.coverage_json).resolve() if not Path(args.coverage_json).is_absolute() else Path(args.coverage_json),
         pytest_nodes_path=(REPO_ROOT / args.pytest_nodes).resolve() if not Path(args.pytest_nodes).is_absolute() else Path(args.pytest_nodes),
+        baseline_nodes_path=((REPO_ROOT / args.baseline_nodes).resolve() if args.baseline_nodes and not Path(args.baseline_nodes).is_absolute() else Path(args.baseline_nodes)) if args.baseline_nodes else None,
         output_dir=(REPO_ROOT / args.output_dir).resolve() if not Path(args.output_dir).is_absolute() else Path(args.output_dir),
     )
 
