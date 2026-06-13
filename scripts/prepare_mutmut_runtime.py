@@ -69,13 +69,28 @@ def function_names(path: Path) -> set[str]:
     return names
 
 
-def resolve_test_nodes(pytest_nodes_path: Path, patterns: list[str]) -> tuple[list[str], list[str]]:
+def collect_live_node_ids(source_root: Path, python_cmd: str, target: str) -> list[str]:
+    completed = run_command([python_cmd, "-m", "pytest", target, "--collect-only", "--strict-markers", "-q"], cwd=source_root, env={**os.environ, "PYTHONPATH": "."})
+    if completed.returncode != 0:
+        return []
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip().startswith("orchestrator/tests/")]
+
+
+def resolve_test_nodes(pytest_nodes_path: Path, patterns: list[str], *, source_root: Path | None = None, python_cmd: str | None = None) -> tuple[list[str], list[str]]:
     payload = load_json(pytest_nodes_path)
     node_ids = payload.get("collected_node_ids", [])
+    live_cache: dict[str, list[str]] = {}
     matches: list[str] = []
     unmatched: list[str] = []
     for pattern in patterns:
-        pattern_matches = [node_id for node_id in node_ids if node_id.startswith(pattern)]
+        target = pattern.split("::", 1)[0]
+        pattern_matches: list[str] = []
+        if source_root and python_cmd:
+            if target not in live_cache:
+                live_cache[target] = collect_live_node_ids(source_root, python_cmd, target)
+            pattern_matches = [node_id for node_id in live_cache[target] if node_id.startswith(pattern)]
+        if not pattern_matches:
+            pattern_matches = [node_id for node_id in node_ids if node_id.startswith(pattern)]
         if pattern_matches:
             matches.extend(pattern_matches)
         else:
@@ -83,7 +98,7 @@ def resolve_test_nodes(pytest_nodes_path: Path, patterns: list[str]) -> tuple[li
     return sorted(dict.fromkeys(matches)), unmatched
 
 
-def validate_scope(scope: dict[str, Any], *, source_root: Path, pytest_nodes_path: Path) -> tuple[dict[str, Any], bool]:
+def validate_scope(scope: dict[str, Any], *, source_root: Path, pytest_nodes_path: Path, python_cmd: str) -> tuple[dict[str, Any], bool]:
     errors: list[str] = []
     source_results = []
     all_names: set[str] = set()
@@ -105,7 +120,7 @@ def validate_scope(scope: dict[str, Any], *, source_root: Path, pytest_nodes_pat
             errors.append(f"invalid_source_path:{source_file}")
         if not exists:
             errors.append(f"missing_source_file:{source_file}")
-    resolved_nodes, unmatched_patterns = resolve_test_nodes(pytest_nodes_path, scope["test_node_patterns"])
+    resolved_nodes, unmatched_patterns = resolve_test_nodes(pytest_nodes_path, scope["test_node_patterns"], source_root=source_root, python_cmd=python_cmd)
     if not resolved_nodes:
         errors.append("zero_test_matches")
     if unmatched_patterns:
@@ -223,7 +238,7 @@ def sandbox_preflight(source_root: Path, worktree: Path, scope: dict[str, Any], 
 def run_self_check() -> int:
     assert classify_missing_module(REPO_ROOT, "scripts._test_marker_taxonomy") == "sandbox_copy_missing"
     assert classify_missing_module(REPO_ROOT, "PIL") == "runtime_dependency_missing"
-    resolved, unmatched = resolve_test_nodes(REPO_ROOT / "data/test_optimization/branch_context_v1/pytest_nodes.json", ["orchestrator/tests/test_validation_gates.py::test_stub_adapter_unavailable"])
+    resolved, unmatched = resolve_test_nodes(REPO_ROOT / "data/test_optimization/branch_context_v1/pytest_nodes.json", ["orchestrator/tests/test_validation_gates.py::test_stub_adapter_unavailable"], source_root=REPO_ROOT, python_cmd=os.environ.get("MUTATION_PYTHON", "python"))
     assert resolved and not unmatched
     print("self_check=ok")
     return 0
@@ -240,8 +255,8 @@ def main() -> int:
     source_root = worktree
     scope = read_scope(resolve_path(args.scope_manifest), args.scope)
     integrity = worktree_integrity(worktree, args.expected_source_commit)
-    scope_preflight, ok = validate_scope(scope, source_root=source_root, pytest_nodes_path=resolve_path(args.pytest_nodes))
-    resolved_test_nodes, unmatched_patterns = resolve_test_nodes(resolve_path(args.pytest_nodes), scope["test_node_patterns"])
+    scope_preflight, ok = validate_scope(scope, source_root=source_root, pytest_nodes_path=resolve_path(args.pytest_nodes), python_cmd=args.python)
+    resolved_test_nodes, unmatched_patterns = resolve_test_nodes(resolve_path(args.pytest_nodes), scope["test_node_patterns"], source_root=source_root, python_cmd=args.python)
     setup_cfg_text = build_mutmut_config(scope, resolved_test_nodes)
     runtime_dir = worktree / ".mutation-runtime"
     runtime_dir.mkdir(parents=True, exist_ok=True)

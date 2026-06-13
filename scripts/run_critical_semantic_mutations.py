@@ -50,10 +50,17 @@ def run_command(command: list[str], *, cwd: Path, env: dict[str, str] | None = N
     return subprocess.run(command, cwd=cwd, capture_output=True, text=True, env=env, timeout=timeout)
 
 
+def git_status_lines(cwd: Path) -> list[str]:
+    completed = run_command(["git", "status", "--short"], cwd=cwd)
+    if completed.returncode != 0:
+        return ["git_status_failed"]
+    return [line for line in completed.stdout.splitlines() if line.strip()]
+
+
 def load_manifest(path: Path) -> dict[str, Any]:
     payload = load_json(path)
-    if payload.get("version") != 1:
-        raise SystemExit("unsupported_manifest_version")
+    if payload.get("version") != 1 or not isinstance(payload.get("mutants"), list):
+        raise SystemExit("unsupported_manifest")
     return payload
 
 
@@ -67,13 +74,19 @@ def sha256_file(path: Path) -> str:
 
 def symbol_span(file_path: Path, symbol: str) -> tuple[int, int]:
     tree = ast.parse(file_path.read_text(encoding="utf-8"))
-    spans = []
+    matches = []
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == symbol:
-            spans.append((node.lineno, node.end_lineno))
-    if len(spans) != 1:
+            matches.append((node.lineno, node.end_lineno))
+    if len(matches) != 1:
         raise SystemExit(f"target_symbol_not_unique:{symbol}")
-    return spans[0]
+    return matches[0]
+
+
+def symbol_text(file_path: Path, symbol: str) -> tuple[str, tuple[int, int]]:
+    start, end = symbol_span(file_path, symbol)
+    lines = file_path.read_text(encoding="utf-8").splitlines()
+    return "\n".join(lines[start - 1 : end]), (start, end)
 
 
 def apply_replace_once_scoped(text: str, old: str, new: str) -> str:
@@ -82,44 +95,6 @@ def apply_replace_once_scoped(text: str, old: str, new: str) -> str:
     if text.count(old) != 1:
         raise SystemExit("non_unique_patch_target")
     return text.replace(old, new, 1)
-
-
-def apply_mutant(mutant: dict[str, Any], *, worktree: Path) -> dict[str, Any]:
-    file_path = worktree / mutant["file"]
-    original_text = file_path.read_text(encoding="utf-8")
-    start, end = symbol_span(file_path, mutant["target_symbol"])
-    lines = original_text.splitlines()
-    symbol_text = "\n".join(lines[start - 1 : end])
-    symbol_hash = sha256_text(symbol_text)
-    if symbol_hash != mutant["source_sha256"]:
-        return {"status": "stale_patch", "file": str(file_path), "source_sha256": symbol_hash}
-    mutated_symbol = symbol_text
-    for op in mutant["operations"]:
-        if op["type"] != "replace_once":
-            return {"status": "error", "reason": "unsupported_operation"}
-        mutated_symbol = apply_replace_once_scoped(mutated_symbol, op["old"], op["new"])
-    mutated_lines = lines[: start - 1] + mutated_symbol.splitlines() + lines[end:]
-    file_path.write_text("\n".join(mutated_lines) + ("\n" if original_text.endswith("\n") else ""), encoding="utf-8")
-    return {"status": "applied", "file": str(file_path), "original_hash": sha256_file(file_path)}
-
-
-def restore_file(path: Path, original_text: str) -> bool:
-    path.write_text(original_text, encoding="utf-8")
-    return path.read_text(encoding="utf-8") == original_text
-
-
-def branch_context_candidates(branch_context_dir: Path, mutant: dict[str, Any]) -> list[str]:
-    payload = load_json(branch_context_dir / "test_line_contexts.json")
-    wanted_file = mutant["file"]
-    candidates: list[str] = []
-    for row in payload.get("tests", []):
-        for file_row in row.get("files", []):
-            if file_row.get("file") != wanted_file:
-                continue
-            if any(mutant.get("target_line_hint", 0) == line or mutant.get("target_line_hint") is None for line in file_row.get("lines", [])):
-                candidates.append(row["node_id"])
-                break
-    return sorted(dict.fromkeys(candidates))
 
 
 def resolve_candidate_patterns(branch_context_dir: Path, patterns: list[str]) -> list[str]:
@@ -131,6 +106,43 @@ def resolve_candidate_patterns(branch_context_dir: Path, patterns: list[str]) ->
         else:
             resolved.append(pattern)
     return sorted(dict.fromkeys(resolved))
+
+
+def live_collect_nodes(patterns: list[str], *, worktree: Path, python_cmd: str) -> list[str]:
+    files = sorted({pattern.split("::", 1)[0] for pattern in patterns})
+    if not files:
+        return []
+    command = [python_cmd, "-m", "pytest", *files, "--collect-only", "-q"]
+    completed = run_command(command, cwd=worktree, env={**os.environ, "PYTHONPATH": "."}, timeout=300)
+    if completed.returncode != 0:
+        return []
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip().startswith("orchestrator/tests/")]
+
+
+def filter_to_live_nodes(patterns: list[str], live_nodes: list[str]) -> list[str]:
+    resolved: list[str] = []
+    for pattern in patterns:
+        if pattern.endswith("::"):
+            resolved.extend(node for node in live_nodes if node.startswith(pattern))
+        elif pattern in live_nodes:
+            resolved.append(pattern)
+    return sorted(dict.fromkeys(resolved))
+
+
+def branch_context_candidates(branch_context_dir: Path, mutant: dict[str, Any]) -> list[str]:
+    payload = load_json(branch_context_dir / "test_line_contexts.json")
+    wanted_file = mutant["file"]
+    file_path = resolve_path(mutant["file"])
+    _, (start, end) = symbol_text(file_path, mutant["target_symbol"])
+    candidates: list[str] = []
+    for row in payload.get("tests", []):
+        for file_row in row.get("files", []):
+            if file_row.get("file") != wanted_file:
+                continue
+            if any(start <= line <= end for line in file_row.get("lines", [])):
+                candidates.append(row["node_id"])
+                break
+    return sorted(dict.fromkeys(candidates))
 
 
 def run_pytest(nodes: list[str], *, worktree: Path, python_cmd: str, timeout_seconds: int = 300) -> dict[str, Any]:
@@ -171,26 +183,108 @@ def classify_result(test_run: dict[str, Any]) -> str:
     return "killed"
 
 
-def run_single_mutant(mutant: dict[str, Any], *, worktree: Path, python_cmd: str, branch_context_dir: Path, output_dir: Path) -> dict[str, Any]:
+def apply_mutant(mutant: dict[str, Any], *, worktree: Path) -> dict[str, Any]:
     file_path = worktree / mutant["file"]
     original_text = file_path.read_text(encoding="utf-8")
-    configured_candidates = mutant.get("candidate_test_patterns") or branch_context_candidates(branch_context_dir, mutant)
-    candidate_tests = resolve_candidate_patterns(branch_context_dir, configured_candidates)
+    current_symbol_text, (start, end) = symbol_text(file_path, mutant["target_symbol"])
+    current_file_hash = sha256_file(file_path)
+    current_symbol_hash = sha256_text(current_symbol_text)
+    if mutant.get("source_file_sha256") and current_file_hash != mutant["source_file_sha256"]:
+        return {"status": "stale_patch", "reason": "source_file_hash_mismatch", "current_file_hash": current_file_hash}
+    expected_symbol_hash = mutant.get("target_symbol_sha256") or mutant.get("source_sha256")
+    if current_symbol_hash != expected_symbol_hash:
+        return {"status": "stale_patch", "reason": "target_symbol_hash_mismatch", "current_symbol_hash": current_symbol_hash}
+    mutated_symbol = current_symbol_text
+    for op in mutant["operations"]:
+        if op["type"] != "replace_once":
+            return {"status": "error", "reason": "unsupported_operation"}
+        mutated_symbol = apply_replace_once_scoped(mutated_symbol, op["old"], op["new"])
+    original_lines = original_text.splitlines()
+    mutated_lines = original_lines[: start - 1] + mutated_symbol.splitlines() + original_lines[end:]
+    mutated_text = "\n".join(mutated_lines) + ("\n" if original_text.endswith("\n") else "")
+    file_path.write_text(mutated_text, encoding="utf-8")
+    return {
+        "status": "applied",
+        "file": str(file_path),
+        "line_span": [start, end],
+        "original_file_hash": current_file_hash,
+        "original_symbol_hash": current_symbol_hash,
+        "mutated_file_hash": sha256_file(file_path),
+        "mutated_symbol_hash": sha256_text(symbol_text(file_path, mutant["target_symbol"])[0]),
+        "original_text": original_text,
+    }
+
+
+def restore_file(path: Path, original_text: str) -> bool:
+    path.write_text(original_text, encoding="utf-8")
+    return path.read_text(encoding="utf-8") == original_text
+
+
+def run_single_mutant(mutant: dict[str, Any], *, worktree: Path, python_cmd: str, branch_context_dir: Path) -> dict[str, Any]:
+    file_path = worktree / mutant["file"]
+    branch_candidates = branch_context_candidates(branch_context_dir, mutant)
+    configured_candidates = resolve_candidate_patterns(branch_context_dir, mutant.get("candidate_test_patterns", []))
+    live_nodes = live_collect_nodes(sorted(dict.fromkeys(configured_candidates + branch_candidates)), worktree=worktree, python_cmd=python_cmd)
+    configured_candidates = filter_to_live_nodes(configured_candidates, live_nodes)
+    branch_candidates = filter_to_live_nodes(branch_candidates, live_nodes)
+    if branch_candidates:
+        candidate_tests = sorted(dict.fromkeys(configured_candidates + branch_candidates))
+        candidate_resolution_mode = "union_configured_branch_context"
+    else:
+        candidate_tests = configured_candidates
+        candidate_resolution_mode = "configured_fallback"
+    result = {
+        "mutant_id": mutant["mutant_id"],
+        "scope_id": mutant["scope_id"],
+        "classification_hint": mutant.get("classification_hint"),
+        "description": mutant.get("description"),
+        "file": mutant["file"],
+        "target_symbol": mutant["target_symbol"],
+        "status_on_survive": mutant.get("status_on_survive"),
+        "configured_candidate_count": len(configured_candidates),
+        "branch_context_candidate_count": len(branch_candidates),
+        "resolved_candidate_count": len(candidate_tests),
+        "candidate_resolution_mode": candidate_resolution_mode,
+        "candidate_tests": candidate_tests,
+        "restore_attempted": False,
+        "restore_passed": False,
+        "git_status_after_restore": [],
+    }
     if not candidate_tests:
-        return {"mutant_id": mutant["mutant_id"], "scope_id": mutant["scope_id"], "status": "uncovered", "candidate_tests": []}
+        result["status"] = "uncovered"
+        return result
     baseline = run_pytest(candidate_tests, worktree=worktree, python_cmd=python_cmd)
+    result["baseline"] = baseline
     if baseline["status"] != "passed":
-        return {"mutant_id": mutant["mutant_id"], "scope_id": mutant["scope_id"], "status": "error", "candidate_tests": candidate_tests, "baseline": baseline}
+        result["status"] = "error"
+        return result
     apply_result = apply_mutant(mutant, worktree=worktree)
+    for key, value in apply_result.items():
+        if key == "original_text":
+            continue
+        if key == "file":
+            result["patched_file"] = value
+            continue
+        result[key] = value
     if apply_result["status"] != "applied":
-        return {"mutant_id": mutant["mutant_id"], "scope_id": mutant["scope_id"], "status": apply_result["status"], "candidate_tests": candidate_tests}
+        result["status"] = apply_result["status"]
+        return result
+    original_text = apply_result["original_text"]
     per_test_rows = []
     try:
         compile_run = run_command([python_cmd, "-m", "compileall", mutant["file"]], cwd=worktree, env={**os.environ, "PYTHONPATH": "."})
+        result["compile"] = {
+            "returncode": compile_run.returncode,
+            "stdout": compile_run.stdout,
+            "stderr": compile_run.stderr,
+        }
         if compile_run.returncode != 0:
-            return {"mutant_id": mutant["mutant_id"], "scope_id": mutant["scope_id"], "status": "incompetent", "candidate_tests": candidate_tests, "compile_stdout": compile_run.stdout, "compile_stderr": compile_run.stderr}
+            result["status"] = "incompetent"
+            return result
         focused = run_pytest(candidate_tests, worktree=worktree, python_cmd=python_cmd)
+        result["focused"] = focused
         overall_status = classify_result(focused)
+        result["status"] = overall_status
         killing_tests: list[str] = []
         non_killing_tests: list[str] = []
         timeout_tests: list[str] = []
@@ -210,23 +304,20 @@ def run_single_mutant(mutant: dict[str, Any], *, worktree: Path, python_cmd: str
                     non_killing_tests.append(node)
         else:
             non_killing_tests = list(candidate_tests)
-        attribution_status = "suite_interaction_kill" if overall_status == "killed" and not killing_tests else "complete"
-        return {
-            "mutant_id": mutant["mutant_id"],
-            "scope_id": mutant["scope_id"],
-            "status": overall_status,
-            "candidate_tests": candidate_tests,
-            "killing_tests": killing_tests,
-            "non_killing_tests": non_killing_tests,
-            "timeout_tests": timeout_tests,
-            "error_tests": error_tests,
-            "attribution_status": attribution_status,
-            "per_test_rows": per_test_rows,
-        }
+        result["killing_tests"] = killing_tests
+        result["non_killing_tests"] = non_killing_tests
+        result["timeout_tests"] = timeout_tests
+        result["error_tests"] = error_tests
+        result["per_test_rows"] = per_test_rows
+        result["attribution_status"] = "suite_interaction_kill" if overall_status == "killed" and not killing_tests else "complete"
+        return result
     finally:
+        result["restore_attempted"] = True
         restored = restore_file(file_path, original_text)
-        if not restored:
-            raise SystemExit(f"restore_failed:{mutant['mutant_id']}")
+        result["restore_passed"] = restored
+        result["restored_file_hash"] = sha256_file(file_path)
+        result["restored_symbol_hash"] = sha256_text(symbol_text(file_path, mutant["target_symbol"])[0])
+        result["git_status_after_restore"] = git_status_lines(worktree)
 
 
 def write_outputs(output_dir: Path, results: list[dict[str, Any]]) -> dict[str, int]:
@@ -237,11 +328,11 @@ def write_outputs(output_dir: Path, results: list[dict[str, Any]]) -> dict[str, 
     suite_interaction_kills = 0
     for row in results:
         if row["status"] == "killed":
-            if row["attribution_status"] == "suite_interaction_kill":
+            if row.get("attribution_status") == "suite_interaction_kill":
                 suite_interaction_kills += 1
-            if len(row["killing_tests"]) == 1:
+            if len(row.get("killing_tests", [])) == 1:
                 unique_by_test[row["killing_tests"][0]].append(row["mutant_id"])
-            elif len(row["killing_tests"]) > 1:
+            elif len(row.get("killing_tests", [])) > 1:
                 for test_node in row["killing_tests"]:
                     shared_by_test[test_node].append(row["mutant_id"])
         kill_rows.append(
@@ -262,7 +353,10 @@ def write_outputs(output_dir: Path, results: list[dict[str, Any]]) -> dict[str, 
     write_json(output_dir / "unique_kills_by_test.json", {"tests": [{"test_node_id": key, "unique_mutant_ids": value, "unique_kill_count": len(value)} for key, value in sorted(unique_by_test.items())]})
     write_json(output_dir / "shared_kills_by_test.json", {"tests": [{"test_node_id": key, "shared_mutant_ids": value, "shared_kill_count": len(value)} for key, value in sorted(shared_by_test.items())]})
     write_json(output_dir / "surviving_mutants.json", {"mutants": [row for row in results if row["status"] == "survived"]})
-    write_json(output_dir / "survivor_classification.json", {"classifications": [{"mutant_id": row["mutant_id"], "classification": row.get("classification_hint", "unclassified_survivor")} for row in results if row["status"] == "survived"]})
+    write_json(
+        output_dir / "survivor_classification.json",
+        {"classifications": [{"mutant_id": row["mutant_id"], "classification": row.get("classification_hint") or "unclassified_survivor", "description": row.get("description"), "file": row.get("file"), "target_symbol": row.get("target_symbol")} for row in results if row["status"] == "survived"]},
+    )
     write_json(output_dir / "uncovered_mutants.json", {"mutants": [row for row in results if row["status"] == "uncovered"]})
     write_json(output_dir / "timeout_mutants.json", {"mutants": [row for row in results if row["status"] == "timeout"]})
     write_json(output_dir / "error_mutants.json", {"mutants": [row for row in results if row["status"] in {"error", "incompetent", "stale_patch"}]})
@@ -291,29 +385,51 @@ def main() -> int:
     args = parse_args()
     if args.self_check:
         return run_self_check()
+    if bool(args.all) == bool(args.mutant):
+        raise SystemExit("choose_exactly_one_of_all_or_mutant")
     manifest = load_manifest(resolve_path(args.manifest))
     output_dir = resolve_path(args.output_dir)
     worktree = resolve_path(args.worktree)
     branch_context_dir = resolve_path(args.branch_context_dir)
-    selected = []
-    for mutant in manifest["mutants"]:
-        if args.mutant and mutant["mutant_id"] != args.mutant:
-            continue
-        if args.all or args.mutant:
-            selected.append(mutant)
-    if not selected:
-        raise SystemExit("choose --all or --mutant")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    selected = [mutant for mutant in manifest["mutants"] if args.all or mutant["mutant_id"] == args.mutant]
     results = []
     for mutant in selected:
-        results.append(run_single_mutant(mutant, worktree=worktree, python_cmd=args.python, branch_context_dir=branch_context_dir, output_dir=output_dir))
+        try:
+            results.append(run_single_mutant(mutant, worktree=worktree, python_cmd=args.python, branch_context_dir=branch_context_dir))
+        except Exception as exc:  # noqa: BLE001
+            results.append(
+                {
+                    "mutant_id": mutant["mutant_id"],
+                    "scope_id": mutant["scope_id"],
+                    "classification_hint": mutant.get("classification_hint"),
+                    "description": mutant.get("description"),
+                    "file": mutant["file"],
+                    "target_symbol": mutant["target_symbol"],
+                    "status": "error",
+                    "error_message": f"{type(exc).__name__}: {exc}",
+                    "restore_attempted": False,
+                    "restore_passed": False,
+                    "git_status_after_restore": git_status_lines(worktree),
+                }
+            )
     counts = write_outputs(output_dir, results)
+    restore_failures = sum(1 for row in results if row.get("restore_attempted") and not row.get("restore_passed"))
+    cleanup_failures = sum(1 for row in results if row.get("git_status_after_restore"))
+    result_count = len(results)
+    status = "completed"
+    if result_count != len(selected) or any(counts[key] for key in ("timeout", "uncovered", "incompetent", "stale_patch", "error")) or restore_failures or cleanup_failures:
+        status = "failed"
     summary = {
-        "status": "completed",
+        "status": status,
+        "selected_mutant_count": len(selected),
+        "result_count": result_count,
         "counts": counts,
-        "source_restore_failures": 0,
+        "source_restore_failures": restore_failures,
+        "cleanup_failures": cleanup_failures,
     }
     write_json(output_dir / "semantic_summary.json", summary)
-    return 0
+    return 0 if status == "completed" else 1
 
 
 if __name__ == "__main__":

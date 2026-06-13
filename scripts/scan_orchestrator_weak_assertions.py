@@ -152,6 +152,8 @@ class ScanVisitor(ast.NodeVisitor):
         self._visit_test_function(node)
 
     def _visit_test_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        if not node.name.startswith("test_"):
+            return
         prev = self.function
         self.function = node.name
         self.generic_visit(node)

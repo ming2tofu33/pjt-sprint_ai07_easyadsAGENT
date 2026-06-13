@@ -19,9 +19,9 @@
         "route_after_compliance_resolution"
       ],
       "test_node_patterns": [
-        "orchestrator/tests/test_validation_gates.py::",
-        "orchestrator/tests/test_marketing_graph.py::",
-        "orchestrator/tests/test_chat_threads.py::"
+        "orchestrator/tests/test_validation_gates.py::test_revision_router_respects_feature_flag",
+        "orchestrator/tests/test_final_composite_quality_loop.py::",
+        "orchestrator/tests/test_compliance.py::test_route_after_compliance_"
       ]
     },
     {
@@ -53,11 +53,15 @@
         "list_archive_items"
       ],
       "test_node_patterns": [
-        "orchestrator/tests/test_generation_outputs_repository_v1.py::",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_create_returns_public_id_and_insert_params",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_get_scopes_by_workspace_and_public_id",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_list_applies_job_workspace_and_final_filters",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_count_applies_job_and_workspace_filters",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_mark_final_transaction_updates_thread_scope_and_final_row",
         "orchestrator/tests/test_final_selection_transaction.py::",
         "orchestrator/tests/test_archive.py::",
         "orchestrator/tests/test_api_routers.py::test_generation_job_get_route_returns_404_for_cross_workspace",
-        "orchestrator/tests/test_chat_threads.py::test_chat_thread_api_owner_scope_returns_not_found"
+        "orchestrator/tests/test_api_routers.py::test_chat_thread_api_owner_scope_returns_not_found"
       ]
     },
     {
@@ -79,7 +83,7 @@
       ],
       "test_node_patterns": [
         "orchestrator/tests/test_generation_outputs_service_v1.py::",
-        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_mark_final_transaction",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_mark_final_transaction_updates_thread_scope_and_final_row",
         "orchestrator/tests/test_final_selection_transaction.py::",
         "orchestrator/tests/test_api_routers.py::test_select_final_generation_output"
       ]
@@ -146,9 +150,15 @@
         "contains_request_intent"
       ],
       "test_node_patterns": [
-        "orchestrator/tests/test_copywriting.py::",
-        "orchestrator/tests/test_marketing_graph.py::",
-        "orchestrator/tests/test_chat_threads.py::test_chat_brief_resumes_graph_with_selected_copy"
+        "orchestrator/tests/test_native_copy_policy.py::",
+        "orchestrator/tests/test_native_copy_ranking.py::",
+        "orchestrator/tests/test_native_positioning_realization.py::",
+        "orchestrator/tests/test_native_generation_budget.py::",
+        "orchestrator/tests/test_native_campaign_copy_typography_v41.py::",
+        "orchestrator/tests/test_gpt_image2_native_single_shot.py::",
+        "orchestrator/tests/test_native_creative_preflight_service.py::",
+        "orchestrator/tests/test_native_copy_open_domain_benchmark.py::",
+        "orchestrator/tests/test_native_typography_eligibility.py::"
       ]
     }
   ]

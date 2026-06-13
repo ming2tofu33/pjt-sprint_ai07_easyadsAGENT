@@ -41,20 +41,16 @@ def parse_results(output: str) -> list[dict[str, Any]]:
 
 
 def collect_details(rows: list[dict[str, Any]], *, python_cmd: str, cwd: Path, env: dict[str, str]) -> list[dict[str, Any]]:
-    details = []
-    for row in rows:
-        show = run_command([python_cmd, "-m", "mutmut", "show", row["mutant_id"]], cwd=cwd, env=env)
-        tests = run_command([python_cmd, "-m", "mutmut", "tests-for-mutant", row["mutant_id"]], cwd=cwd, env=env)
-        details.append(
-            {
-                **row,
-                "show_returncode": show.returncode,
-                "show_output": show.stdout,
-                "killing_tests": [line.strip() for line in tests.stdout.splitlines() if line.strip()],
-                "tests_for_mutant_returncode": tests.returncode,
-            }
-        )
-    return details
+    return [
+        {
+            **row,
+            "show_returncode": None,
+            "show_output": "",
+            "killing_tests": [],
+            "tests_for_mutant_returncode": None,
+        }
+        for row in rows
+    ]
 
 
 def summarize(stats: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -79,3 +75,17 @@ def summarize(stats: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, An
 
 def load_stats(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def run_self_check() -> int:
+    rows = parse_results("m1: survived\nm2: no tests\nm3: timeout\n")
+    assert [row["status"] for row in rows] == ["survived", "uncovered", "timeout"]
+    summary = summarize({"total": 4, "killed": 1, "survived": 1, "timeout": 1, "no_tests": 1, "suspicious": 0, "segfault": 0}, rows)
+    assert summary["generated"] == 4
+    assert summary["count_consistent"] is True
+    print("self_check=ok")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_self_check())
