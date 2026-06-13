@@ -1,16 +1,8 @@
-from contextlib import contextmanager
-
 from orchestrator.app.generation_jobs import service
 
 
 from unittest.mock import MagicMock
-
-@contextmanager
-def fake_db_transaction():
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    yield conn
+from orchestrator.tests.factories.generation_jobs import fake_db_transaction, make_generation_job_row
 
 
 def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
@@ -22,23 +14,12 @@ def test_mark_done_creates_local_dev_asset_and_generation_output(monkeypatch):
     events = []
     assets = []
     outputs = []
-    row = {
-        "id": "job_uuid",
-        "public_job_id": "job_db",
-        "workspace_id": "workspace_uuid",
-        "thread_id": "thread_uuid",
-        "requested_by": "demo_user",
-        "status": "queued",
-        "current_stage": "queued",
-        "progress_percent": 0,
-        "selected_reference_template_id": None,
-        "output_path": None,
-        "result_payload": None,
-        "error": {},
-        "metadata": {"public_thread_id": "thread_db"},
-        "created_at": "2026-06-02T00:00:00+00:00",
-        "updated_at": "2026-06-02T00:00:00+00:00",
-    }
+    row = make_generation_job_row(
+        public_job_id="job_db",
+        workspace_id="workspace_uuid",
+        selected_reference_template_id=None,
+        metadata={"public_thread_id": "thread_db"},
+    )
 
     def mark_done(job_id, result_payload, output_path=None, metadata=None, connection=None):
         row.update(
@@ -115,23 +96,12 @@ def test_mark_done_without_final_path_still_completes_thread(monkeypatch):
 
     events = []
     thread_updates = []
-    row = {
-        "id": "job_uuid",
-        "public_job_id": "job_db",
-        "workspace_id": "workspace_uuid",
-        "thread_id": "thread_uuid",
-        "requested_by": "demo_user",
-        "status": "queued",
-        "current_stage": "queued",
-        "progress_percent": 0,
-        "selected_reference_template_id": None,
-        "output_path": None,
-        "result_payload": None,
-        "error": {},
-        "metadata": {"public_thread_id": "thread_db"},
-        "created_at": "2026-06-02T00:00:00+00:00",
-        "updated_at": "2026-06-02T00:00:00+00:00",
-    }
+    row = make_generation_job_row(
+        public_job_id="job_db",
+        workspace_id="workspace_uuid",
+        selected_reference_template_id=None,
+        metadata={"public_thread_id": "thread_db"},
+    )
 
     def mark_done(job_id, result_payload, output_path=None, metadata=None, connection=None):
         row.update(

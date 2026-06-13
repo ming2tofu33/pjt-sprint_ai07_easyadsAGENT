@@ -2630,6 +2630,11 @@ import pytest
 from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
 from orchestrator.app.chat_threads.errors import ChatThreadHasActiveJobError
 from orchestrator.app.generation_jobs import service
+from orchestrator.tests.factories.generation_jobs import (
+    DEFAULT_WORKSPACE_ID,
+    fake_db_transaction as shared_fake_db_transaction,
+    make_generation_job_row,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -2641,39 +2646,30 @@ def reset_store__test_generation_job_service_db_backend(monkeypatch):
 
 
 def _row__test_generation_job_service_db_backend(public_job_id="job_db", status="queued", metadata=None, result_payload=None, error=None):
-    now = datetime.now(timezone.utc)
-    return {
-        "id": "job_uuid",
-        "public_job_id": public_job_id,
-        "workspace_id": "11111111-1111-1111-1111-111111111111",
-        "thread_id": "thread_uuid",
-        "requested_by": "demo_user",
-        "status": status,
-        "current_stage": "completed" if status == "done" else status,
-        "progress_percent": 100 if status == "done" else 0,
-        "selected_reference_template_id": "seed_1",
-        "output_path": "data/outputs/job_db/final_0.png" if status == "done" else None,
-        "result_payload": result_payload,
-        "error": error,
-        "created_at": now,
-        "updated_at": now,
-        "metadata": metadata or {
+    return make_generation_job_row(
+        public_job_id=public_job_id,
+        workspace_id=DEFAULT_WORKSPACE_ID,
+        status=status,
+        selected_reference_template_id="seed_1",
+        output_path="data/outputs/job_db/final_0.png" if status == "done" else None,
+        result_payload=result_payload,
+        error=error,
+        metadata=metadata
+        or {
             "public_thread_id": "thread_db",
             "requested_run_mode": "queued_only",
             "effective_run_mode": "queued_only",
             "execution_mode": "queued_only",
         },
-    }
+    )
 
 
 from unittest.mock import MagicMock
 
 @contextmanager
 def fake_db_transaction__test_generation_job_service_db_backend():
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    yield conn
+    with shared_fake_db_transaction() as conn:
+        yield conn
 
 
 def _patch_noop_side_effects(monkeypatch):
@@ -2994,43 +2990,30 @@ from orchestrator.app.generation_jobs import service
 from orchestrator.app.generation_jobs.errors import GenerationJobWorkspaceNotFound, GenerationJobWorkspaceRequired
 
 
-WORKSPACE_A = "11111111-1111-1111-1111-111111111111"
+WORKSPACE_A = DEFAULT_WORKSPACE_ID
 WORKSPACE_B = "22222222-2222-2222-2222-222222222222"
 
 
 @contextmanager
 def fake_db_transaction__test_generation_job_tenant_isolation():
-    conn = MagicMock()
-    cur = MagicMock()
-    conn.cursor.return_value.__enter__.return_value = cur
-    yield conn
+    with shared_fake_db_transaction() as conn:
+        yield conn
 
 
 def _row__test_generation_job_tenant_isolation(*, public_job_id="job_db", workspace_id=WORKSPACE_A, metadata=None):
-    now = datetime.now(timezone.utc)
-    return {
-        "id": "job_uuid",
-        "public_job_id": public_job_id,
-        "workspace_id": workspace_id,
-        "thread_id": "thread_uuid",
-        "requested_by": "user_a",
-        "status": "queued",
-        "current_stage": "queued",
-        "progress_percent": 0,
-        "selected_reference_template_id": None,
-        "output_path": None,
-        "result_payload": None,
-        "error": {},
-        "created_at": now,
-        "updated_at": now,
-        "metadata": metadata or {
+    return make_generation_job_row(
+        public_job_id=public_job_id,
+        workspace_id=workspace_id,
+        requested_by="user_a",
+        metadata=metadata
+        or {
             "public_thread_id": "thread_a",
             "requested_run_mode": "queued_only",
             "effective_run_mode": "queued_only",
             "execution_mode": "queued_only",
             "user_id": "user_a",
         },
-    }
+    )
 
 
 @pytest.fixture(autouse=True)
