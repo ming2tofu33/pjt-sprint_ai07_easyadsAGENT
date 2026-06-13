@@ -735,18 +735,57 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
         return None
 
 
-def _event_payload_task(events: list[dict]) -> str | None:
+def _event_payload_task(event: dict) -> str | None:
+    payload = event.get("payload") or {}
+    task = payload.get("task") if isinstance(payload, dict) else None
+    return str(task) if task else None
+
+
+def _first_event_payload_task(events: list[dict]) -> str | None:
     for event in events:
-        payload = event.get("payload") or {}
-        task = payload.get("task") if isinstance(payload, dict) else None
+        task = _event_payload_task(event)
         if task:
-            return str(task)
+            return task
     return None
 
 
+def _event_created_at(event: dict) -> datetime | None:
+    value = event.get("created_at")
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        parsed = _parse_iso_datetime(value)
+    else:
+        parsed = None
+    if parsed and parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _latest_background_cycle_events(events: list[dict]) -> tuple[list[dict], dict | None]:
+    indexed_events = [(index, event, _event_created_at(event)) for index, event in enumerate(events)]
+    enqueue_indexes = [
+        index for index, event, _created_at in indexed_events if str(event.get("event_type")) == "background_enqueued"
+    ]
+    if not enqueue_indexes:
+        return events, None
+    if indexed_events and all(created_at is not None for _index, _event, created_at in indexed_events):
+        ordered_events = sorted(indexed_events, key=lambda item: (item[2], item[0]))
+        anchor_position = max(
+            position
+            for position, (_index, event, _created_at) in enumerate(ordered_events)
+            if str(event.get("event_type")) == "background_enqueued"
+        )
+        anchor_event = ordered_events[anchor_position][1]
+        return [event for _index, event, _created_at in ordered_events[anchor_position:]], anchor_event
+    anchor_index = enqueue_indexes[-1]
+    return events[anchor_index:], events[anchor_index]
+
+
 def _stale_running_failure_payload(job: GenerationJobResponse, events: list[dict]) -> tuple[dict, dict]:
-    event_types = {str(event.get("event_type")) for event in events}
-    background_task = _event_payload_task(events)
+    cycle_events, anchor_event = _latest_background_cycle_events(events)
+    event_types = {str(event.get("event_type")) for event in cycle_events}
+    background_task = _event_payload_task(anchor_event) if anchor_event else _first_event_payload_task(cycle_events)
     base_metadata = {
         **(job.metadata or {}),
         "stale_running_stage": job.progress.current_stage,
