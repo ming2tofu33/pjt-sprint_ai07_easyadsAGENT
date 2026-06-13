@@ -9,6 +9,8 @@ from typing import Any
 from openai import OpenAI  # type: ignore
 
 from orchestrator.app.llm.native_copy_policy import SENSORY_LANGUAGE_CUES, build_positioning_realization_plan, direct_positioning_terms_used, score_native_copy_candidate
+from orchestrator.app.llm.native_campaign_copy_rules import contains_generic_launch_copy
+from orchestrator.app.llm.native_campaign_message_service import has_meaningful_support_basis
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.native_creative import CampaignMessagePlan, NativeCopyCandidate, NativeCopyStrategyBundle, ProductExpressionBasis
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
@@ -47,7 +49,7 @@ def coerce_native_copy_strategy_bundle(
         product_identity=product_understanding.product_name,
         verified_product_cues=list(product_understanding.verified_facts or input_evidence.explicit_user_facts),
         permissible_sensory_cues=list(product_understanding.permissible_inferences),
-        contextual_cues=[item for item in input_evidence.explicit_user_facts if item.key in {"business_context", "launch_status"}],
+        contextual_cues=[item for item in input_evidence.explicit_user_facts if item.key in {"business_context", "campaign_status", "launch_status"}],
         visual_cues=list(product_understanding.visual_observations or input_evidence.visual_observations),
         unsupported_cues=list(product_understanding.unsupported_claim_categories),
         unknown_cues=list(product_understanding.unknown_fields),
@@ -66,7 +68,8 @@ def coerce_native_copy_strategy_bundle(
     requested_count = 4
     if capacity != "single_minimal" and len(candidates) < requested_count:
         candidates.extend(_fallback_candidate_shells(product_understanding.product_name, product_ids, start=len(candidates), limit=requested_count))
-    if not _support_allowed(campaign_plan=campaign_plan, basis=basis):
+    meaningful_support = has_meaningful_support_basis(input_evidence=input_evidence, product_understanding=product_understanding)
+    if not _support_allowed(campaign_plan=campaign_plan, basis=basis, meaningful_support=meaningful_support):
         candidates = [_strip_unsupported_support(candidate) for candidate in candidates]
     elif campaign_plan and campaign_plan.support_function in {"launch_context", "brand_mood", "usage_context"}:
         candidates = [_apply_campaign_support_basis(candidate, product_ids=product_ids, campaign_plan=campaign_plan) for candidate in candidates]
@@ -111,11 +114,11 @@ def _call_openai_candidates(*, input_evidence: InputEvidenceBundle, product_unde
         "Return JSON only for NativeCopyStrategyBundle candidate generation. Generate exactly 4 Korean native typography copy candidates. "
         "The user's desired positioning is not automatically display copy. Do not simply translate positioning adjectives into headline claims. "
         "Weak literalization examples: premium->프리미엄, refined->품격 있게, elegant->우아하게, luxury->럭셔리한. "
-        "The final copy should primarily express product identity, safely inferable experience, and use context. "
+        "Campaign status is context, not automatically visible copy. Do not make New menu, New product, Now available, Introducing, or equivalent phrases the main headline unless exact approved visible copy explicitly requires it. For visual-first product introduction, prefer a concise product-centered headline. Supporting copy must add sensory, experiential, contextual, or aesthetic value and must not repeat only that the product is new. Do not generate generic launch copy such as Introducing our new product, Now available, or Korean equivalents meaning newly introduced menu. The final copy should primarily express product identity, safely inferable experience, and use context. "
         "A premium/refined impression may be carried by restrained wording, typography, spacing, composition, color, lighting, material and texture. "
         "Prefer product-centered concrete language over self-congratulatory status language. The headline may be only the product name. "
         "Supporting copy must add a different dimension from the headline; if it does not add information, use null. "
-        "Return keys: positioning_plan, candidates. Each candidate needs candidate_id, strategy, headline, supporting_copy, closing_copy, action_cta, headline_basis_ids, support_basis_ids, support_basis_type, language, positioning_realization_mode, direct_positioning_terms_used, sensory_terms_used, text_block_count, total_character_count. "
+        "Do not hardcode examples from this prompt into output. Return keys: positioning_plan, candidates. Each candidate needs candidate_id, strategy, headline, supporting_copy, closing_copy, action_cta, headline_basis_ids, support_basis_ids, support_basis_type, support_value_type, support_information_gain, support_product_specificity, language, positioning_realization_mode, direct_positioning_terms_used, sensory_terms_used, text_block_count, total_character_count. "
         f"USER REQUEST: {input_evidence.user_request_utterance or input_evidence.user_text}\n"
         f"PRODUCT IDENTITY: {product_understanding.product_name}\n"
         f"VERIFIED PRODUCT FACTS: {json.dumps([item.model_dump() for item in input_evidence.explicit_user_facts], ensure_ascii=False)}\n"
@@ -151,6 +154,9 @@ def _coerce_candidate(payload: dict[str, Any], *, index: int, product_name: str,
         headline_basis_ids=list(data.get("headline_basis_ids") or product_ids),
         support_basis_ids=list(data.get("support_basis_ids") or []),
         support_basis_type=data.get("support_basis_type") if data.get("support_basis_type") in {"none", "verified_fact", "permissible_sensory_inference", "campaign_context", "aesthetic_expression"} else ("campaign_context" if strategy == "campaign_context" and support else "none"),
+        support_value_type=data.get("support_value_type") if data.get("support_value_type") in {"none", "product_character", "sensory_expression", "serving_context", "brand_mood", "campaign_information"} else _infer_support_value_type(support=support, sensory_terms=sensory_terms, strategy=strategy),
+        support_information_gain=_coerce_score(data.get("support_information_gain"), fallback=_estimate_support_information_gain(headline=headline, support=support)),
+        support_product_specificity=_coerce_score(data.get("support_product_specificity"), fallback=_estimate_support_product_specificity(support=support, product_name=product_name, sensory_terms=sensory_terms)),
         language=data.get("language") if data.get("language") in {"korean", "english", "mixed"} else "korean",
         positioning_realization_mode=data.get("positioning_realization_mode") if data.get("positioning_realization_mode") in {"implicit", "balanced", "explicit"} else "implicit",
         direct_positioning_terms_used=list(data.get("direct_positioning_terms_used") or direct_positioning_terms_used(" ".join(texts))),
@@ -205,16 +211,19 @@ def _strip_unsupported_support(candidate: NativeCopyCandidate) -> NativeCopyCand
 def _apply_campaign_support_basis(candidate: NativeCopyCandidate, *, product_ids: list[str], campaign_plan: CampaignMessagePlan) -> NativeCopyCandidate:
     if not (candidate.supporting_copy or candidate.closing_copy):
         return candidate
-    support = candidate.supporting_copy
-    if campaign_plan.campaign_role == "new_product_introduction":
-        support = "새롭게 선보이는 메뉴입니다"
+    support = candidate.supporting_copy or candidate.closing_copy
+    if contains_generic_launch_copy(support):
+        support = None
     return candidate.model_copy(
         update={
             "supporting_copy": support,
             "closing_copy": None,
-            "support_basis_type": "campaign_context" if candidate.support_basis_type == "none" else candidate.support_basis_type,
-            "support_basis_ids": candidate.support_basis_ids or list(product_ids),
-            "text_block_count": 2,
+            "support_basis_type": "aesthetic_expression" if candidate.support_basis_type == "none" and support else candidate.support_basis_type,
+            "support_basis_ids": candidate.support_basis_ids or ([] if not support else list(product_ids)),
+            "support_value_type": _infer_support_value_type(support=support, sensory_terms=candidate.sensory_terms_used, strategy=candidate.strategy),
+            "support_information_gain": _estimate_support_information_gain(headline=candidate.headline, support=support),
+            "support_product_specificity": _estimate_support_product_specificity(support=support, product_name=candidate.headline, sensory_terms=candidate.sensory_terms_used),
+            "text_block_count": 2 if support else 1,
             "total_character_count": len(candidate.headline) + len(support or ""),
         }
     )
@@ -259,10 +268,56 @@ def _candidate_capacity(*, campaign_plan: CampaignMessagePlan | None, basis: Pro
     return "full"
 
 
-def _support_allowed(*, campaign_plan: CampaignMessagePlan | None, basis: ProductExpressionBasis) -> bool:
+def _support_allowed(*, campaign_plan: CampaignMessagePlan | None, basis: ProductExpressionBasis, meaningful_support: bool = True) -> bool:
     if campaign_plan and campaign_plan.visible_copy_mode == "headline_plus_support":
-        return True
+        return meaningful_support
+    if not meaningful_support:
+        return False
     return bool(basis.permissible_sensory_cues or basis.contextual_cues or basis.visual_cues)
+
+
+def _infer_support_value_type(*, support: str | None, sensory_terms: list[str], strategy: str) -> str:
+    if not support:
+        return "none"
+    if sensory_terms:
+        return "sensory_expression"
+    if strategy == "brand_editorial":
+        return "brand_mood"
+    if strategy == "campaign_context":
+        return "campaign_information"
+    return "product_character"
+
+
+def _estimate_support_information_gain(*, headline: str | None, support: str | None) -> float:
+    if not support:
+        return 0.0
+    headline_norm = normalize_copy(headline)
+    support_norm = normalize_copy(support)
+    if not support_norm or support_norm in headline_norm or headline_norm in support_norm:
+        return 0.15
+    overlap = len(set(headline_norm) & set(support_norm))
+    denominator = max(1, len(set(support_norm)))
+    return max(0.25, min(1.0, 1.0 - overlap / denominator))
+
+
+def _estimate_support_product_specificity(*, support: str | None, product_name: str | None, sensory_terms: list[str]) -> float:
+    if not support:
+        return 0.0
+    if contains_generic_launch_copy(support):
+        return 0.1
+    product_norm = normalize_copy(product_name)
+    support_norm = normalize_copy(support)
+    if sensory_terms:
+        return 0.85
+    return 0.75 if product_norm and product_norm in support_norm else 0.45
+
+
+def _coerce_score(value: Any, *, fallback: float) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return max(0.0, min(1.0, score))
 
 
 def _diversity_constraints(*, campaign_plan: CampaignMessagePlan | None, basis: ProductExpressionBasis) -> list[str]:

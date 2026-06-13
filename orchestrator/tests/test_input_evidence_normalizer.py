@@ -16,7 +16,8 @@ def test_text_intent_and_product_are_separated():
 
     assert bundle.input_mode == "text_only"
     assert bundle.user_intent == "menu_discovery"
-    assert [item.key for item in bundle.explicit_user_facts] == ["product_name", "launch_status", "business_context"]
+    assert [item.key for item in bundle.explicit_user_facts] == ["product_name", "campaign_status", "launch_status", "business_context"]
+    assert bundle.campaign_status == "new_menu"
     assert not bundle.visual_observations
 
 

@@ -40,7 +40,8 @@ from orchestrator.app.llm.nodes.typography_art_director import typography_art_di
 from orchestrator.app.quality_gate.final_composite_service import evaluate_final_composite
 from orchestrator.app.llm.native_copy_brief_service import generate_approved_native_copy_brief
 from orchestrator.app.llm.native_copy_candidate_service import generate_native_copy_strategy_bundle
-from orchestrator.app.llm.native_campaign_message_service import build_visual_semantic_cue_plan, plan_native_campaign_message, plan_typography_dominance
+from orchestrator.app.llm.native_campaign_message_service import build_visual_semantic_cue_plan, plan_native_campaign_message, plan_native_typography_expression, plan_typography_dominance
+from orchestrator.app.llm.native_campaign_copy_rules import clean_product_identity
 from orchestrator.app.llm.native_creative_preflight_service import review_native_creative_preflight
 from orchestrator.app.llm.native_copy_policy import (
     build_native_prompt_package,
@@ -52,6 +53,7 @@ from orchestrator.app.llm.native_copy_policy import (
     reserve_image_call,
     validate_approved_native_copy_brief,
 )
+from orchestrator.app.llm.plan_policy import build_default_plan_policy
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.native_creative import NativeGenerationReview
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
@@ -106,6 +108,7 @@ def main() -> int:
     parser.add_argument("--promotion-goal", default="product_promotion")
     parser.add_argument("--max-image-calls", type=int, default=1)
     parser.add_argument("--max-images", type=int, default=1)
+    parser.add_argument("--typography-reference-image")
     args = parser.parse_args()
 
     env_report = load_env_file(args.env_file)
@@ -752,9 +755,18 @@ def run_gpt_image2_native_single_shot(*, args: argparse.Namespace, output_dir: P
     )
     visual_semantic_plan = build_visual_semantic_cue_plan(campaign_plan=campaign_plan, input_evidence=input_bundle, product_understanding=product_model)
     typography_plan = plan_typography_dominance(campaign_plan=campaign_plan, placement=args.placement)
+    reference_typography_analysis = analyze_reference_typography_style(getattr(args, "typography_reference_image", None))
+    typography_expression_plan = plan_native_typography_expression(
+        campaign_plan=campaign_plan,
+        input_evidence=input_bundle,
+        product_understanding=product_model,
+        reference_typography_analysis=reference_typography_analysis if reference_typography_analysis.get("reference_image_found") else None,
+    )
     (case_dir / "campaign_message_plan.json").write_text(json.dumps(campaign_plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
     (case_dir / "visual_semantic_cue_plan.json").write_text(json.dumps(visual_semantic_plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
     (case_dir / "typography_dominance_plan.json").write_text(json.dumps(typography_plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "native_typography_expression_plan.json").write_text(json.dumps(typography_expression_plan.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
+    (case_dir / "reference_typography_analysis.json").write_text(json.dumps(reference_typography_analysis, ensure_ascii=False, indent=2), encoding="utf-8")
     strategy_bundle = generate_native_copy_strategy_bundle(
         input_evidence=input_bundle,
         product_understanding=product_model,
@@ -777,6 +789,8 @@ def run_gpt_image2_native_single_shot(*, args: argparse.Namespace, output_dir: P
             "campaign_message_plan": campaign_plan.model_dump(),
             "visual_semantic_cue_plan": visual_semantic_plan.model_dump(),
             "typography_dominance_plan": typography_plan.model_dump(),
+            "typography_expression_plan": typography_expression_plan.model_dump(),
+            "reference_typography_analysis": reference_typography_analysis,
         }
     )
     failures = validate_approved_native_copy_brief(brief)
@@ -797,14 +811,37 @@ def run_gpt_image2_native_single_shot(*, args: argparse.Namespace, output_dir: P
         campaign_message_plan=campaign_plan.model_dump(),
         visual_semantic_cue_plan=visual_semantic_plan.model_dump(),
         typography_dominance_plan=typography_plan.model_dump(),
+        typography_expression_plan=typography_expression_plan.model_dump(),
+        reference_typography_analysis=reference_typography_analysis,
     )
     preflight_model = review_native_creative_preflight(
         input_evidence=input_bundle,
         product_understanding=product_model,
         copy_brief=brief,
         prompt_package=package,
-        state={"user_plan": "premium"},
+        state={"user_plan": "premium", "plan_policy": build_default_plan_policy("premium").model_dump()},
     )
+    if preflight_model.decision != "approved" and _preflight_requests_support_downgrade(preflight_model):
+        brief = _downgrade_brief_to_headline_only(brief)
+        package = build_native_prompt_package(
+            product_understanding=product,
+            copy_brief=brief,
+            placement=args.placement,
+            preflight_status="approved",
+            input_evidence=evidence,
+            campaign_message_plan=campaign_plan.model_dump(),
+            visual_semantic_cue_plan=visual_semantic_plan.model_dump(),
+            typography_dominance_plan=typography_plan.model_dump(),
+            typography_expression_plan=typography_expression_plan.model_dump(),
+            reference_typography_analysis=reference_typography_analysis,
+        )
+        preflight_model = review_native_creative_preflight(
+            input_evidence=input_bundle,
+            product_understanding=product_model,
+            copy_brief=brief,
+            prompt_package=package,
+            state={"user_plan": "premium", "plan_policy": build_default_plan_policy("premium").model_dump()},
+        )
     preflight = preflight_model.model_dump()
     package = package.model_copy(update={"preflight_status": "approved" if preflight_model.decision == "approved" else "rejected"})
     (case_dir / "native_creative_prompt_package.json").write_text(json.dumps(package.model_dump(), ensure_ascii=False, indent=2), encoding="utf-8")
@@ -873,6 +910,8 @@ def run_gpt_image2_native_single_shot(*, args: argparse.Namespace, output_dir: P
         "campaign_message_plan": campaign_plan.model_dump(),
         "visual_semantic_cue_plan": visual_semantic_plan.model_dump(),
         "typography_dominance_plan": typography_plan.model_dump(),
+        "typography_expression_plan": typography_expression_plan.model_dump(),
+        "reference_typography_analysis": reference_typography_analysis,
         "visible_copy_texts": list(brief.allowed_texts),
         "non_display_visual_cues": list(visual_semantic_plan.non_display_cues),
         "campaign_role": campaign_plan.campaign_role,
@@ -906,7 +945,7 @@ def review_native_generation_with_gpt54(*, image_path: Path, package: Any, model
     prompt = (
         "Return JSON only matching NativeGenerationReview. Evaluate this single GPT Image 2 native typography poster. "
         f"Expected exact texts: {json.dumps(package.exact_allowed_texts, ensure_ascii=False)}. "
-        "Include all fields: expected_texts, detected_texts, exact_text_match_score, unexpected_text_detected, missing_text_detected, product_match_score, product_obstruction_score, hierarchy_score, typography_quality_score, composition_score, commercial_viability_score, meta_instruction_exposed, consumer_facing_copy_score, copy_semantic_quality_score, literal_positioning_language_detected, product_centered_copy_score, sensory_grounding_score, copy_sensory_grounding_score, visual_sensory_richness_score, copy_visual_sensory_alignment_score, positioning_realization_score, copy_restraint_score, headline_support_complementarity, campaign_role_fit_score, typography_dominance_fit_score, supporting_copy_value_score, visible_copy_value_score, decision, failure_reasons. "
+        "Include all fields: expected_texts, detected_texts, exact_text_match_score, unexpected_text_detected, missing_text_detected, product_match_score, product_obstruction_score, hierarchy_score, typography_quality_score, composition_score, commercial_viability_score, meta_instruction_exposed, consumer_facing_copy_score, copy_semantic_quality_score, literal_positioning_language_detected, product_centered_copy_score, sensory_grounding_score, copy_sensory_grounding_score, visual_sensory_richness_score, copy_visual_sensory_alignment_score, positioning_realization_score, copy_restraint_score, headline_support_complementarity, campaign_role_fit_score, typography_dominance_fit_score, supporting_copy_value_score, visible_copy_value_score, product_identity_clean, campaign_context_literalized, generic_launch_copy_detected, support_information_gain_score, support_product_specificity_score, typography_native_integration_score, typography_expression_alignment_score, flat_overlay_likelihood_score, headline_support_hierarchy_score, copy_product_relationship_score, decision, failure_reasons. "
         "Do not copy expected_texts into detected_texts unless you actually see them in the image. "
         "Evaluate copy and visual sensory qualities separately. copy_sensory_grounding_score judges only visible words. visual_sensory_richness_score judges only visual presentation. copy_visual_sensory_alignment_score judges whether copy and visual sensory presentation support each other. Do not give high copy sensory score merely because the image looks warm, steamy, glossy, soft, or appetizing. Check campaign role fit, typography dominance, visible copy value, extra positioning words, product match, obstruction, typography, and composition. Decide accept/manual_review/reject. Do not request regeneration."
     )
@@ -949,6 +988,16 @@ def review_native_generation_with_gpt54(*, image_path: Path, package: Any, model
             typography_dominance_fit_score=float(payload.get("typography_dominance_fit_score") or 0.0),
             supporting_copy_value_score=float(payload.get("supporting_copy_value_score") or 0.0),
             visible_copy_value_score=float(payload.get("visible_copy_value_score") or 0.0),
+            product_identity_clean=bool(payload.get("product_identity_clean", True)),
+            campaign_context_literalized=bool(payload.get("campaign_context_literalized")),
+            generic_launch_copy_detected=bool(payload.get("generic_launch_copy_detected")),
+            support_information_gain_score=float(payload.get("support_information_gain_score") or 0.0),
+            support_product_specificity_score=float(payload.get("support_product_specificity_score") or 0.0),
+            typography_native_integration_score=float(payload.get("typography_native_integration_score") or 0.0),
+            typography_expression_alignment_score=float(payload.get("typography_expression_alignment_score") or 0.0),
+            flat_overlay_likelihood_score=float(payload.get("flat_overlay_likelihood_score") or 0.0),
+            headline_support_hierarchy_score=float(payload.get("headline_support_hierarchy_score") or 0.0),
+            copy_product_relationship_score=float(payload.get("copy_product_relationship_score") or 0.0),
             decision="manual_review",
             failure_reasons=reasons,
         ), metadata
@@ -1011,6 +1060,19 @@ def _normalize_native_generation_review_payload(payload: dict[str, Any]) -> dict
     normalized.setdefault("typography_dominance_fit_score", 0.0)
     normalized.setdefault("supporting_copy_value_score", 0.0)
     normalized.setdefault("visible_copy_value_score", 0.0)
+    normalized.setdefault("product_identity_clean", True)
+    normalized.setdefault("campaign_context_literalized", False)
+    normalized.setdefault("generic_launch_copy_detected", False)
+    normalized.setdefault("support_information_gain_score", normalized.get("supporting_copy_value_score", 0.0))
+    normalized.setdefault("support_product_specificity_score", normalized.get("copy_product_relationship_score", 0.0))
+    normalized.setdefault("typography_native_integration_score", normalized.get("typography_quality_score", 0.0))
+    normalized.setdefault("typography_expression_alignment_score", normalized.get("typography_quality_score", 0.0))
+    normalized.setdefault("flat_overlay_likelihood_score", 0.0)
+    normalized.setdefault("headline_support_hierarchy_score", normalized.get("hierarchy_score", 0.0))
+    normalized.setdefault("copy_product_relationship_score", normalized.get("product_centered_copy_score", 0.0))
+    if normalized.get("campaign_context_literalized") or normalized.get("generic_launch_copy_detected") or normalized.get("product_identity_clean") is False:
+        normalized["decision"] = "manual_review" if normalized.get("decision") == "accept" else normalized.get("decision", "manual_review")
+        normalized["failure_reasons"] = sorted(set([*list(normalized.get("failure_reasons") or []), "native_campaign_copy_v4_1_review_flag"]))
     normalized.setdefault("decision", "manual_review")
     normalized.setdefault("failure_reasons", [])
     return normalized
@@ -1046,13 +1108,80 @@ def _native_v3_preimage_failures(*, brief: Any, product: dict[str, Any], user_te
 
 
 def _sanitize_native_product_identity(value: Any) -> str | None:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    text = re.split(r"\s+(?:소개|홍보|광고|만들|제작|알리|promote|introduce|create|make)\b", text, maxsplit=1, flags=re.IGNORECASE)[0].strip()
-    text = re.split(r"(?:를|을|로|으로)\s+", text, maxsplit=1)[0].strip()
-    text = re.sub(r"\s+", " ", text)
-    return text or None
+    return clean_product_identity(str(value or ""))
+
+
+def analyze_reference_typography_style(path: str | None) -> dict[str, Any]:
+    if not path:
+        return {
+            "schema_version": "reference_typography_analysis_v1",
+            "reference_image_found": False,
+            "style_summary": [],
+            "reference_texts_to_avoid": [],
+            "exact_forbidden_texts": [],
+        }
+    source = Path(path)
+    if not source.exists():
+        return {
+            "schema_version": "reference_typography_analysis_v1",
+            "reference_image_found": False,
+            "reference_image_path": str(source),
+            "style_summary": [],
+            "reference_texts_to_avoid": [],
+            "exact_forbidden_texts": [],
+            "error_code": "reference_image_not_found",
+        }
+    width = height = None
+    try:
+        with Image.open(source) as image:
+            width, height = image.size
+    except Exception:
+        pass
+    return {
+        "schema_version": "reference_typography_analysis_v1",
+        "reference_image_found": True,
+        "reference_image_path": str(source),
+        "width": width,
+        "height": height,
+        "style_family": "editorial_display",
+        "stroke_character": "moderate contrast display strokes with commercial poster rhythm",
+        "texture_direction": "subtle printed texture, integrated with lighting and product composition",
+        "style_summary": [
+            "use the reference only for typographic hierarchy and native integration",
+            "avoid copying any existing words from the reference image",
+            "prefer editorial display balance over flat UI overlay",
+        ],
+        "reference_texts_to_avoid": [],
+        "exact_forbidden_texts": [],
+    }
+
+
+def _preflight_requests_support_downgrade(preflight: Any) -> bool:
+    reasons = " ".join(str(item).lower() for item in getattr(preflight, "failure_reasons", []) or [])
+    instructions = " ".join(str(item).lower() for item in getattr(preflight, "revision_instructions", []) or [])
+    text = f"{reasons} {instructions}"
+    return "support" in text or "supporting copy" in text or "supporting_copy" in text
+
+
+def _downgrade_brief_to_headline_only(brief: Any) -> Any:
+    allowed = [brief.headline] if brief.headline else []
+    scorecard = dict(brief.candidate_scorecard or {})
+    scorecard["support_downgraded_for_preflight"] = True
+    return brief.model_copy(
+        update={
+            "supporting_copy": None,
+            "closing_copy": None,
+            "message_role": "headline_only",
+            "allowed_texts": allowed,
+            "max_text_blocks": 1,
+            "copy_claim_evidence_ids": [],
+            "support_basis_type": "none",
+            "support_value_type": "none",
+            "support_information_gain": 0.0,
+            "support_product_specificity": 0.0,
+            "candidate_scorecard": scorecard,
+        }
+    )
 
 
 def _native_run_result(args: argparse.Namespace, case_id: str, status: str, **fields: Any) -> dict[str, Any]:
