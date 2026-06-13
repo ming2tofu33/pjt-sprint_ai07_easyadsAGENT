@@ -2671,6 +2671,43 @@ def test_stale_running_payload_detects_background_started_but_stalled():
     assert metadata["background_task"] == "graph_resume"
 
 
+def test_stale_running_payload_anchors_on_latest_background_enqueue_cycle():
+    job = GenerationJobResponse(
+        job_id="job_bg_resume_never_started",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        created_at="2026-06-13T00:00:00+00:00",
+        updated_at="2026-06-13T00:00:00+00:00",
+        metadata={"execution_mode": "graph_execution", "campaign_id": "campaign_123"},
+    )
+
+    error, metadata = service._stale_running_failure_payload(
+        job,
+        [
+            {
+                "event_type": "background_enqueued",
+                "payload": {"task": "graph_resume"},
+                "created_at": "2026-06-13T00:10:00+00:00",
+            },
+            {
+                "event_type": "background_started",
+                "payload": {"task": "graph_create"},
+                "created_at": "2026-06-13T00:01:00+00:00",
+            },
+            {
+                "event_type": "background_enqueued",
+                "payload": {"task": "graph_create"},
+                "created_at": "2026-06-13T00:00:30+00:00",
+            },
+        ],
+    )
+
+    assert error["error_code"] == "generation_job_background_not_started"
+    assert metadata["execution_mode"] == "background_not_started_recovered"
+    assert metadata["background_task"] == "graph_resume"
+    assert metadata["campaign_id"] == "campaign_123"
+
+
 def test_maybe_mark_stale_generation_job_failed_keeps_fresh_running_job():
     now = datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
     fresh_job = GenerationJobResponse(
