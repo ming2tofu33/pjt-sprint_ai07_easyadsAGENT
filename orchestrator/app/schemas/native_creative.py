@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from orchestrator.app.schemas.input_evidence import EvidenceItem
+
 
 class CreativeExecutionPlan(BaseModel):
     schema_version: Literal["creative_execution_plan_v1"] = "creative_execution_plan_v1"
@@ -61,6 +63,10 @@ class ApprovedNativeCopyBrief(BaseModel):
     creative_direction_evidence_ids: list[str] = Field(default_factory=list)
     copy_claim_evidence_ids: list[str] = Field(default_factory=list)
     provider_metadata: dict = Field(default_factory=dict)
+    selected_candidate_id: str | None = None
+    positioning_realization_plan: dict = Field(default_factory=dict)
+    candidate_scorecard: dict = Field(default_factory=dict)
+    alternative_candidate_summaries: list[dict] = Field(default_factory=list)
 
 
 class NativeSourceVisualAnalysis(BaseModel):
@@ -73,6 +79,82 @@ class NativeSourceVisualAnalysis(BaseModel):
     source_suitable: bool = True
     manual_review_required: bool = False
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+PositioningChannel = Literal["product_copy", "sensory_copy", "context_copy", "visual_style", "composition", "lighting", "color", "typography", "negative_space"]
+
+
+class PositioningRealizationPlan(BaseModel):
+    requested_positioning: list[str] = Field(default_factory=list)
+    realization_mode: Literal["implicit", "balanced", "explicit"] = "implicit"
+    copy_expression_policy: Literal["avoid_direct_positioning_terms", "limited_direct_expression", "exact_user_copy"] = "avoid_direct_positioning_terms"
+    preferred_channels: list[PositioningChannel] = Field(default_factory=lambda: ["visual_style", "composition", "lighting", "color", "typography", "negative_space"])
+    copy_should_carry_positioning: bool = False
+    direct_positioning_terms_allowed: list[str] = Field(default_factory=list)
+    direct_positioning_terms_avoided: list[str] = Field(default_factory=list)
+    rationale: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.8, ge=0.0, le=1.0)
+
+
+class ProductExpressionBasis(BaseModel):
+    product_identity: str
+    verified_product_cues: list[EvidenceItem] = Field(default_factory=list)
+    permissible_sensory_cues: list[EvidenceItem] = Field(default_factory=list)
+    contextual_cues: list[EvidenceItem] = Field(default_factory=list)
+    visual_cues: list[EvidenceItem] = Field(default_factory=list)
+    unsupported_cues: list[str] = Field(default_factory=list)
+    unknown_cues: list[str] = Field(default_factory=list)
+    selected_headline_basis_ids: list[str] = Field(default_factory=list)
+    selected_support_basis_ids: list[str] = Field(default_factory=list)
+
+
+class NativeCopyCandidate(BaseModel):
+    candidate_id: str
+    strategy: Literal["product_name_first", "product_attribute_first", "sensory_first", "context_first", "minimal_identity"]
+    headline: str
+    supporting_copy: str | None = None
+    closing_copy: str | None = None
+    action_cta: str | None = None
+    headline_basis_ids: list[str] = Field(default_factory=list)
+    support_basis_ids: list[str] = Field(default_factory=list)
+    language: Literal["korean", "english", "mixed"] = "korean"
+    positioning_realization_mode: Literal["implicit", "balanced", "explicit"] = "implicit"
+    direct_positioning_terms_used: list[str] = Field(default_factory=list)
+    sensory_terms_used: list[str] = Field(default_factory=list)
+    text_block_count: int = Field(default=1, ge=1, le=2)
+    total_character_count: int = Field(default=0, ge=0, le=80)
+
+
+class NativeCopyScorecard(BaseModel):
+    candidate_id: str
+    product_identity_clarity: float = Field(ge=0.0, le=1.0)
+    product_centeredness: float = Field(ge=0.0, le=1.0)
+    sensory_specificity: float = Field(ge=0.0, le=1.0)
+    evidence_grounding: float = Field(ge=0.0, le=1.0)
+    consumer_naturalness: float = Field(ge=0.0, le=1.0)
+    positioning_alignment: float = Field(ge=0.0, le=1.0)
+    headline_strength: float = Field(ge=0.0, le=1.0)
+    support_complementarity: float = Field(ge=0.0, le=1.0)
+    restraint: float = Field(ge=0.0, le=1.0)
+    native_typography_fit: float = Field(ge=0.0, le=1.0)
+    direct_positioning_penalty: float = Field(ge=0.0, le=1.0)
+    generic_prestige_penalty: float = Field(ge=0.0, le=1.0)
+    abstract_language_penalty: float = Field(ge=0.0, le=1.0)
+    repetition_penalty: float = Field(ge=0.0, le=1.0)
+    unsupported_claim_penalty: float = Field(ge=0.0, le=1.0)
+    total_score: float = Field(ge=0.0, le=1.0)
+    blocked: bool = False
+    blocking_reasons: list[str] = Field(default_factory=list)
+
+
+class NativeCopyStrategyBundle(BaseModel):
+    product_expression_basis: ProductExpressionBasis
+    positioning_plan: PositioningRealizationPlan
+    candidates: list[NativeCopyCandidate] = Field(default_factory=list)
+    scorecards: list[NativeCopyScorecard] = Field(default_factory=list)
+    recommended_candidate_id: str | None = None
+    requires_revision: bool = False
+    revision_reasons: list[str] = Field(default_factory=list)
 
 
 class NativeCreativePromptPackage(BaseModel):
@@ -119,6 +201,10 @@ class NativeCreativePreflightReview(BaseModel):
     failure_reasons: list[str] = Field(default_factory=list)
     revision_instructions: list[str] = Field(default_factory=list)
     provider_metadata: dict = Field(default_factory=dict)
+    selected_candidate_id: str | None = None
+    positioning_realization_plan: dict = Field(default_factory=dict)
+    candidate_scorecard: dict = Field(default_factory=dict)
+    alternative_candidate_summaries: list[dict] = Field(default_factory=list)
 
 
 class NativeGenerationBudget(BaseModel):
@@ -148,5 +234,11 @@ class NativeGenerationReview(BaseModel):
     meta_instruction_exposed: bool = False
     consumer_facing_copy_score: float = Field(default=0.0, ge=0.0, le=1.0)
     copy_semantic_quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    literal_positioning_language_detected: bool = False
+    product_centered_copy_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    sensory_grounding_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    positioning_realization_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    copy_restraint_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    headline_support_complementarity: float = Field(default=0.0, ge=0.0, le=1.0)
     decision: Literal["accept", "manual_review", "reject"]
     failure_reasons: list[str] = Field(default_factory=list)
