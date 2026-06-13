@@ -21,13 +21,9 @@ from PIL import Image
 from orchestrator.app.api import chat as chat_api
 from orchestrator.app.main import app
 from orchestrator.app.t2i.schemas import T2IResult
-
-
-PNG_1X1 = (
-    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
-    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xcfP"
-    b"\x0f\x00\x03\x86\x01\x80Z4}k\x00\x00\x00\x00IEND\xaeB`\x82"
-)
+from orchestrator.tests.factories.chat_threads import make_chat_thread_row
+from orchestrator.tests.helpers.chat_threads import PNG_1X1
+from orchestrator.tests.helpers.graph_state import write_test_png
 
 
 def test_chat_start_returns_inferred_context_and_copy_candidates():
@@ -247,7 +243,7 @@ def test_photo_flow_passes_uploaded_image_to_final_t2i_request(monkeypatch, tmp_
     from orchestrator.app.llm.nodes import t2i_generation as t2i_generation_module
 
     source = tmp_path / "uploaded-menu.png"
-    Image.new("RGB", (96, 96), (230, 80, 120)).save(source)
+    write_test_png(source, color=(230, 80, 120))
     captured = {}
 
     def fake_generate_image_v1(
@@ -268,7 +264,7 @@ def test_photo_flow_passes_uploaded_image_to_final_t2i_request(monkeypatch, tmp_
         captured["metadata"] = metadata or {}
         output_path = Path(output_dir or tmp_path) / "uploaded-source-used.png"
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        Image.new("RGB", (width, height), (245, 220, 225)).save(output_path)
+        write_test_png(output_path, size=(width, height), color=(245, 220, 225))
         return T2IResult(
             engine="gpt_image_1",
             image_paths=[str(output_path)],
@@ -1277,25 +1273,7 @@ def _patch_transaction(monkeypatch, conn):
 
 
 def test_create_returns_public_thread_id(monkeypatch):
-    row = {
-        "id": "uuid-1",
-        "public_thread_id": "thread_abc",
-        "workspace_id": "ws-1",
-        "title": "Test",
-        "status": "draft",
-        "brand_kit_id": None,
-        "project_id": None,
-        "final_brief": {},
-        "active_job_id": None,
-        "final_output_id": None,
-        "last_message_at": "2026-01-01T00:00:00+00:00",
-        "archived_at": None,
-        "created_at": "2026-01-01T00:00:00+00:00",
-        "updated_at": "2026-01-01T00:00:00+00:00",
-        # The pre-insert guard counts existing threads via the same cursor;
-        # a low total keeps us under the limit so the insert proceeds.
-        "total": 0,
-    }
+    row = make_chat_thread_row()
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1331,7 +1309,7 @@ def test_create_respects_configurable_limit(monkeypatch):
         "orchestrator.app.db.repositories.chat_threads.db_settings.get_max_threads_per_workspace",
         lambda: 5,
     )
-    row = {"public_thread_id": "thread_ok", "total": 4}
+    row = make_chat_thread_row(public_thread_id="thread_ok", total=4)
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1345,7 +1323,7 @@ def test_create_respects_configurable_limit(monkeypatch):
 
 
 def test_get_by_public_id(monkeypatch):
-    row = {"id": "uuid-1", "public_thread_id": "thread_abc", "active_public_job_id": None}
+    row = make_chat_thread_row(active_public_job_id=None)
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1398,7 +1376,7 @@ def test_list_order_uses_last_message_at(monkeypatch):
 
 
 def test_update_allowlist_only(monkeypatch):
-    row = {"id": "uuid-1", "public_thread_id": "thread_abc", "title": "New", "status": "draft"}
+    row = make_chat_thread_row(title="New", status="draft")
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1412,7 +1390,7 @@ def test_update_allowlist_only(monkeypatch):
 
 
 def test_update_final_brief_uses_jsonb(monkeypatch):
-    row = {"id": "uuid-1", "public_thread_id": "thread_abc", "final_brief": {"k": "v"}}
+    row = make_chat_thread_row(final_brief={"k": "v"})
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1427,7 +1405,7 @@ def test_update_final_brief_uses_jsonb(monkeypatch):
 
 
 def test_archive_sets_status_and_archived_at(monkeypatch):
-    row = {"id": "uuid-1", "public_thread_id": "thread_abc", "status": "archived", "archived_at": "2026-01-02", "active_job_id": None}
+    row = make_chat_thread_row(status="archived", archived_at="2026-01-02", active_job_id=None)
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1444,7 +1422,7 @@ def test_archive_sets_status_and_archived_at(monkeypatch):
 
 
 def test_set_active_job_id(monkeypatch):
-    row = {"id": "uuid-1", "public_thread_id": "thread_abc", "active_job_id": "job-uuid", "status": "generating"}
+    row = make_chat_thread_row(active_job_id="job-uuid", status="generating")
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1455,7 +1433,7 @@ def test_set_active_job_id(monkeypatch):
 
 
 def test_clear_active_job_id(monkeypatch):
-    row = {"id": "uuid-1", "public_thread_id": "thread_abc", "active_job_id": None, "status": "completed"}
+    row = make_chat_thread_row(active_job_id=None, status="completed")
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1471,7 +1449,7 @@ def test_clear_active_job_id(monkeypatch):
 
 
 def test_set_final_output_id(monkeypatch):
-    row = {"id": "uuid-1", "public_thread_id": "thread_abc", "final_output_id": "out-uuid"}
+    row = make_chat_thread_row(final_output_id="out-uuid")
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1482,7 +1460,7 @@ def test_set_final_output_id(monkeypatch):
 
 
 def test_complete_generation_guards_workspace_and_expected_active_job(monkeypatch):
-    row = {"id": "uuid-1", "public_thread_id": "thread_abc", "active_job_id": None, "status": "completed"}
+    row = make_chat_thread_row(active_job_id=None, status="completed")
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
@@ -1502,7 +1480,7 @@ def test_complete_generation_guards_workspace_and_expected_active_job(monkeypatc
 
 
 def test_fail_generation_guards_workspace_and_expected_active_job(monkeypatch):
-    row = {"id": "uuid-1", "public_thread_id": "thread_abc", "active_job_id": None, "status": "failed"}
+    row = make_chat_thread_row(active_job_id=None, status="failed")
     conn = FakeConn(rows=[row])
     _patch_transaction(monkeypatch, conn)
 
