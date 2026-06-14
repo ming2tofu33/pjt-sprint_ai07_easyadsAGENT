@@ -82,18 +82,12 @@ def test_archive_detail_user_isolation(monkeypatch):
     assert res1.ad_id == "a1"
 
     # 2. ws1, u2 -> 404
-    try:
+    with pytest.raises(ArchiveItemNotFound):
         svc.get_archive_item(archive_item_id="a1", workspace_id="ws1", user_id="u2")
-        assert False, "Should raise ArchiveItemNotFound"
-    except ArchiveItemNotFound:
-        pass
 
     # 3. ws2, u1 -> 404
-    try:
+    with pytest.raises(ArchiveItemNotFound):
         svc.get_archive_item(archive_item_id="a1", workspace_id="ws2", user_id="u1")
-        assert False, "Should raise ArchiveItemNotFound"
-    except ArchiveItemNotFound:
-        pass
 
 
 def test_archive_detail_503_when_db_disabled(monkeypatch):
@@ -183,7 +177,6 @@ def test_archive_list_returns_empty_state_when_no_items(monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body["items"] == []
-    assert body["empty_state"] is not None
     assert body["empty_state"]["kind"] == "no_archive_items"
 
 
@@ -445,7 +438,6 @@ def test_sync_archive_for_job_success(monkeypatch):
 
     res = sync_archive_for_job(workspace_id="ws1", internal_job_id="job_uuid")
 
-    assert res is not None
     assert res.title == "Thread Title"
     assert res.job_id == "job_public"
 

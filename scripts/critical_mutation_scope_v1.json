@@ -1,0 +1,165 @@
+{
+  "version": 1,
+  "scopes": [
+    {
+      "scope_id": "graph-routing-state",
+      "priority": "critical",
+      "contracts": [
+        "stale-completion-active-job-guard",
+        "ocr-quality-gate-routing"
+      ],
+      "source_files": [
+        "orchestrator/app/graph/routers.py"
+      ],
+      "functions": [
+        "route_after_final_validation",
+        "route_after_final_composite_revision",
+        "route_after_ocr_gate",
+        "route_after_compliance_gate",
+        "route_after_compliance_resolution"
+      ],
+      "test_node_patterns": [
+        "orchestrator/tests/test_validation_gates.py::test_revision_router_respects_feature_flag",
+        "orchestrator/tests/test_final_composite_quality_loop.py::",
+        "orchestrator/tests/test_compliance.py::test_route_after_compliance_"
+      ]
+    },
+    {
+      "scope_id": "workspace-scope",
+      "priority": "critical",
+      "contracts": [
+        "workspace-user-isolation"
+      ],
+      "source_files": [
+        "orchestrator/app/db/repositories/generation_outputs.py",
+        "orchestrator/app/db/repositories/generation_jobs.py",
+        "orchestrator/app/db/repositories/archive_items.py",
+        "orchestrator/app/db/repositories/chat_threads.py",
+        "orchestrator/app/archive/service.py"
+      ],
+      "functions": [
+        "get_generation_output_by_public_id",
+        "list_generation_outputs",
+        "count_generation_outputs",
+        "get_generation_job_scoped_by_public_id",
+        "get_generation_job_db",
+        "list_archive_item_rows",
+        "count_archive_item_rows",
+        "get_archive_item_row",
+        "get_chat_thread_by_public_id",
+        "list_chat_threads",
+        "count_chat_threads",
+        "get_archive_item",
+        "list_archive_items"
+      ],
+      "test_node_patterns": [
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_create_returns_public_id_and_insert_params",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_get_scopes_by_workspace_and_public_id",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_list_applies_job_workspace_and_final_filters",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_count_applies_job_and_workspace_filters",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_mark_final_transaction_updates_thread_scope_and_final_row",
+        "orchestrator/tests/test_final_selection_transaction.py::",
+        "orchestrator/tests/test_archive.py::",
+        "orchestrator/tests/test_api_routers.py::test_generation_job_get_route_returns_404_for_cross_workspace",
+        "orchestrator/tests/test_api_routers.py::test_chat_thread_api_owner_scope_returns_not_found"
+      ]
+    },
+    {
+      "scope_id": "final-selection-transaction",
+      "priority": "critical",
+      "contracts": [
+        "final-output-selection-transaction"
+      ],
+      "source_files": [
+        "orchestrator/app/generation_outputs/service.py",
+        "orchestrator/app/db/repositories/generation_outputs.py",
+        "orchestrator/app/archive/service.py"
+      ],
+      "functions": [
+        "select_final_generation_output",
+        "mark_output_final",
+        "sync_archive_for_output",
+        "sync_archive_for_job"
+      ],
+      "test_node_patterns": [
+        "orchestrator/tests/test_generation_outputs_service_v1.py::",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_mark_final_transaction_updates_thread_scope_and_final_row",
+        "orchestrator/tests/test_final_selection_transaction.py::",
+        "orchestrator/tests/test_api_routers.py::test_select_final_generation_output"
+      ]
+    },
+    {
+      "scope_id": "quality-ocr",
+      "priority": "critical",
+      "contracts": [
+        "ocr-quality-gate-routing"
+      ],
+      "source_files": [
+        "orchestrator/app/quality_gate/final_composite_policy.py",
+        "orchestrator/app/quality_gate/ocr_validation.py"
+      ],
+      "functions": [
+        "actions_for_failures",
+        "primary_action_for_failures",
+        "status_for_action",
+        "normalize_ocr_text",
+        "validate_ocr_text"
+      ],
+      "test_node_patterns": [
+        "orchestrator/tests/test_validation_gates.py::"
+      ]
+    },
+    {
+      "scope_id": "compliance",
+      "priority": "critical",
+      "contracts": [
+        "compliance-decision-propagation"
+      ],
+      "source_files": [
+        "orchestrator/app/llm/nodes/copy_compliance.py"
+      ],
+      "functions": [
+        "copy_compliance_gate_node",
+        "copy_compliance_interrupt_node",
+        "copy_compliance_resolution_node",
+        "input_compliance_precheck_node",
+        "_build_safe_direction_hint",
+        "_build_summary"
+      ],
+      "test_node_patterns": [
+        "orchestrator/tests/test_compliance.py::"
+      ]
+    },
+    {
+      "scope_id": "native-copy-policy",
+      "priority": "critical",
+      "contracts": [
+        "copy-selection-copy-mode"
+      ],
+      "source_files": [
+        "orchestrator/app/llm/native_copy_policy.py"
+      ],
+      "functions": [
+        "decide_native_typography_eligibility",
+        "validate_approved_native_copy_brief",
+        "build_positioning_realization_plan",
+        "score_native_copy_candidate",
+        "build_native_prompt_package",
+        "new_native_generation_budget",
+        "reserve_image_call",
+        "contains_request_intent"
+      ],
+      "test_node_patterns": [
+        "orchestrator/tests/test_native_copy_policy.py::",
+        "orchestrator/tests/test_native_copy_ranking.py::",
+        "orchestrator/tests/test_native_positioning_realization.py::",
+        "orchestrator/tests/test_native_generation_budget.py::",
+        "orchestrator/tests/test_native_campaign_copy_typography_v41.py::",
+        "orchestrator/tests/test_gpt_image2_native_single_shot.py::",
+        "orchestrator/tests/test_native_creative_preflight_service.py::",
+        "orchestrator/tests/test_native_copy_open_domain_benchmark.py::",
+        "orchestrator/tests/test_native_typography_eligibility.py::"
+      ]
+    }
+  ]
+}
