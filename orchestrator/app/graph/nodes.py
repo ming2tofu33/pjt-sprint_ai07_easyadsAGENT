@@ -14,6 +14,7 @@ from orchestrator.app.graph.state import (
     calculate_dirty_fields,
     context_to_model,
     create_initial_marketing_state,
+    read_model,
     resolve_requested_ad_format,
     set_requested_ad_format,
     update_current_brief,
@@ -189,7 +190,7 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
     raw_selection = state.get("user_selection")
     if raw_selection is None:
         return {"status": "updating_state"}
-    selection = raw_selection if isinstance(raw_selection, UserSelectionRequest) else UserSelectionRequest(**raw_selection)
+    selection = read_model(state, "user_selection", UserSelectionRequest)
     if selection.job_id != state.get("job_id") or selection.thread_id != state.get("thread_id"):
         return {"status": "failed", "error_message": "user_selection job_id/thread_id mismatch"}
 
