@@ -24,12 +24,10 @@ from orchestrator.app.schemas.llm_marketing import (
     GenerationRoute,
     ImageFeatures,
     ImageInput,
-    ImagePrompt,
     InitialMarketingRequest,
     JobStatus,
     LayoutSpec,
     MarketingContext,
-    MarketingCopy,
     MissingField,
     OptionQuestion,
     ProgressState,
@@ -44,21 +42,17 @@ from orchestrator.app.schemas.llm_marketing import (
     UserSelectionRequest,
     ValidationReport,
     ValidatorOutput,
-    T2IRequest,
     T2IResult,
 )
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection, PlanPolicy, UserPlan
 from orchestrator.app.schemas.text_layout import (
     BackgroundValidationReport,
-    CopySpec,
     FinalValidationReport,
     ImagePromptSpec,
     ReadabilityReport,
     RenderResult,
     ResultPayload,
     SafeAreaReport,
-    TextLayoutSpec,
-    TextStyleSpec,
 )
 
 SCHEMA_VERSION = "llm_marketing_v1"
@@ -124,7 +118,7 @@ class MarketingState(TypedDict, total=False):
     option_question: dict[str, Any] | OptionQuestion | None
     ad_format_spec: dict[str, Any] | AdFormatSpec | None
     layout_spec: dict[str, Any] | LayoutSpec | None
-    marketing_copy: dict[str, Any] | MarketingCopy | None
+    marketing_copy: dict[str, Any] | None
     copywriting_output: dict[str, Any] | CopywritingOutput | None
     copy_generation_mode: CopyGenerationMode | None
     copy_candidates: list[dict[str, Any] | CopyCandidate]
@@ -148,9 +142,9 @@ class MarketingState(TypedDict, total=False):
     copy_compliance_gate: dict[str, Any] | None
     copy_compliance_resolution: dict[str, Any] | None
     custom_copy_input: dict[str, Any] | None
-    copy_spec: dict[str, Any] | CopySpec | None
-    text_layout_spec: dict[str, Any] | TextLayoutSpec | None
-    text_style_spec: dict[str, Any] | TextStyleSpec | None
+    copy_spec: dict[str, Any] | None
+    text_layout_spec: dict[str, Any] | None
+    text_style_spec: dict[str, Any] | None
     copy_visual_intent: dict[str, Any] | None
     product_copy_context: dict[str, Any] | None
     copy_presence_plan: dict[str, Any] | None
@@ -177,11 +171,11 @@ class MarketingState(TypedDict, total=False):
     layout_copy_fit_report: dict[str, Any] | None
     layout_revision_attempts: int
     image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
-    image_prompt: dict[str, Any] | ImagePrompt | None
+    image_prompt: dict[str, Any] | None
     prompt_optimization_output: dict[str, Any] | PromptOptimizationOutput | None
     user_readable_image_guide: dict[str, Any] | UserReadableImageGuide | None
     prompt_render_output: dict[str, Any] | PromptRenderOutput | None
-    t2i_request: dict[str, Any] | T2IRequest | None
+    t2i_request: dict[str, Any] | None
     t2i_result: dict[str, Any] | T2IResult | None
     background_quality_gate: dict[str, Any] | None
     final_quality_gate: dict[str, Any] | None
