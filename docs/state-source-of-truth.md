@@ -46,7 +46,79 @@ SoT는 **top-level `state["copy_generation_mode"]`**. brief의 사본은
 FE 표시용 write-only 미러이고, `copy_generation_mode_confirmed`는
 brief 전용 키(중복 아님)다.
 
-## 다음 단계 (리뷰 우선순위 ④와의 연결)
+## dict ↔ Pydantic 모델 경계 (read_model 컨벤션)
 
-이 문서의 규칙은 MarketingState dict|Model union 정리(④)의 전제다.
-④ 진행 시 brief 전용 키들을 TypedDict로 명세하는 것부터 시작할 것.
+리뷰 지적 ④ "필드가 dict|Model 유니온이라 직렬화 dict인지 모델인지
+모른다"에 대한 확정 규칙. (2026-06-14)
+
+### 규칙
+
+1. **저장 형태는 항상 dict.** LangGraph Postgres checkpointer가 state를
+   JSON 직렬화해야 하므로, MarketingState 필드의 canonical 형태는
+   `.model_dump()`된 dict다. 노드가 반환할 때 `.model_dump()`로 저장한다.
+2. **읽을 때만 모델로 파싱한다.** 노드 안에서 모델이 필요하면
+   `read_model(state, "field", Model)` 단일 헬퍼로 읽는다. 직접
+   `Model(**(state.get("field") or {}))`를 쓰지 않는다 — 그 이중성을
+   한 곳(`read_model`)에 가둔 게 이 작업의 핵심이다.
+3. `read_model`은 방어적이다: 이미 모델이면 그대로 반환, 없으면
+   빈 모델(또는 `default=None` 시 `None`)을 돌려준다. `context_to_model`도
+   이제 `read_model`에 위임한다.
+4. 따라서 read_model로 읽도록 마이그레이션한 model-backed 필드의 타입
+   주석은 `dict[str, Any] | None`이다 (`| Model`을 빼서 "저장 형태는
+   dict"임을 타입으로 표현).
+
+### 적용 범위 (이번 패스)
+
+read_model로 마이그레이션하고 주석을 정규화한 필드:
+`marketing_copy`, `copy_spec`, `text_layout_spec`, `text_style_spec`,
+`image_prompt`, `t2i_request`. `context`는 기존 `context_to_model`
+경로를 유지한다(읽기 빈도가 높고 non-None 기본값이라 별도).
+
+범위에서 의도적으로 제외한 것:
+- `orchestrator/app/llm/prompt_renderer.py`의 `ImagePromptSpec(**param)`은
+  **state 읽기가 아니라 함수 파라미터 정규화**다. 순수 라이브러리 모듈에
+  graph.state 의존을 추가하지 않기 위해 그대로 둔다. 따라서
+  `image_prompt_spec` 필드 주석도 아직 `dict | ImagePromptSpec | None`로
+  남는다(읽기 미마이그레이션).
+- 아직 `dict | Model | None`로 남은 다른 필드들(validator_output,
+  ad_format_spec, layout_spec 등)도 reader 마이그레이션이 안 된 것이므로
+  주석을 먼저 바꾸지 말 것 — read_model로 읽도록 바꾼 뒤 주석을 정규화한다.
+
+## 다음 단계 (리뷰 우선순위 ④의 잔여)
+
+이번 패스는 ad-hoc `Model(**state.get(...))` 소비 지점을 read_model로
+통일하고 6개 필드 주석을 정규화했다. 남은 작업:
+- 미마이그레이션 model-backed 필드들의 reader를 read_model로 점차 교체 후
+  주석 정규화.
+- (더 큰 과제) MarketingState를 intake/copy/image/render sub-state로 분리.
+  → **아래 "MarketingState 그룹 구조"에서 완료.**
+
+## MarketingState 그룹 구조 (sub-state, 조직화)
+
+리뷰 지적 ④의 "필드 그룹별 sub-state 분리"를 **조직화 방식**으로 적용한 결과.
+(2026-06-14)
+
+`MarketingState`는 런타임에서는 여전히 **flat dict**다 (LangGraph가 top-level
+키로 병합하고 노드들이 flat 키를 읽고 씀 — 변경 없음). 다만 소스에서는 161개
+필드를 파이프라인 단계별 10개 TypedDict로 나누고 **다중 상속**으로 합친다:
+
+| 그룹 TypedDict | 책임 |
+|---|---|
+| `JobMetaState` | 신원/테넌시/라우팅/플랜/실행 회계 |
+| `IntakeState` | 사용자 입력·브리프·에셋·product understanding |
+| `ReferenceVisionState` | 레퍼런스 템플릿·비전 전처리 |
+| `ContextValidationState` | context·validator·옵션 질문 |
+| `CopyState` | 광고 형식·카피 생성·컴플라이언스·카피/텍스트 스펙 |
+| `NativeCreativeState` | GPT-Image 네이티브 타이포 single-shot |
+| `TypographyLayoutState` | 타이포 아트디렉션·레이아웃 핏 refinement |
+| `ImagePromptT2IState` | 이미지 프롬프트·T2I 요청/결과 |
+| `QualityGateState` | 품질/OCR 게이트·재생성·후보 |
+| `RenderFinalizeState` | 렌더·검증 리포트·최종 합성·결과 |
+
+규칙:
+- 새 필드는 의미가 맞는 그룹 TypedDict에 추가한다 (flat 클래스에 직접 추가 금지).
+- 런타임 형태는 dict이므로 read_model 컨벤션(위 "dict ↔ Pydantic 모델 경계")이 그대로 적용된다.
+- `MarketingState.__annotations__`는 10개 그룹의 합집합이며, 분리 전 flat
+  클래스와 byte-identical (테스트 `test_marketing_state_shape.py`가 161필드 surface를 고정).
+- 더 깊은 변경(런타임 중첩 `state["copy"][...]`)은 의도적으로 하지 않았다 —
+  557개 접근 지점 재작성 + LangGraph reducer 커스텀이 필요해 리스크 대비 효용이 낮다.

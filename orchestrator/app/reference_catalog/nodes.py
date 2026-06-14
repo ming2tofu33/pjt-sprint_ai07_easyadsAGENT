@@ -73,12 +73,10 @@ def reference_template_resolve_node(state: MarketingState) -> dict[str, Any]:
     selection = resolve_reference_template_selection(str(template_id))
     template = selection.resolved_template
     current_brief = dict(state.get("current_brief") or {})
-    artifact_refs = list(state.get("artifact_refs") or [])
     updates: dict[str, Any] = {
         "reference_template_selection": selection.model_dump(mode="json"),
         "updated_at": now_iso(),
         "current_brief": current_brief,
-        "artifact_refs": artifact_refs,
     }
 
     if not template:
@@ -117,7 +115,7 @@ def reference_template_resolve_node(state: MarketingState) -> dict[str, Any]:
     else:
         current_brief["reference_template_warning"] = "source_image_path_missing"
 
-    artifact_refs.append(
+    updates["artifact_refs"] = [
         {
             "artifact_id": f"ref_template_{template.template_id}",
             "artifact_type": "reference_template",
@@ -125,5 +123,5 @@ def reference_template_resolve_node(state: MarketingState) -> dict[str, Any]:
             "label": template.title,
             "metadata": template_dump,
         }
-    )
+    ]
     return updates

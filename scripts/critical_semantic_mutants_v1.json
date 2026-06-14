@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "mutants": [
+    {
+      "mutant_id": "workspace-scope-remove-output-workspace-filter",
+      "scope_id": "workspace-scope",
+      "status_on_survive": "warn",
+      "classification_hint": "workspace_scope_removed",
+      "file": "orchestrator/app/db/repositories/generation_outputs.py",
+      "target_symbol": "get_generation_output_by_public_id",
+      "target_line_hint": 102,
+      "source_file_sha256": "198c543cc72bec37c5bede0103cd58350c33c7efb7310b31bd7dea018aaf3045",
+      "target_symbol_sha256": "36f42c6ec57d80eeca8c44c3eb15ed37806738b8cb8e4cf468e346d70cad28f9",
+      "source_sha256": "36f42c6ec57d80eeca8c44c3eb15ed37806738b8cb8e4cf468e346d70cad28f9",
+      "description": "Remove workspace filter from public output lookup.",
+      "candidate_test_patterns": [
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_get_scopes_by_workspace_and_public_id",
+        "orchestrator/tests/test_final_selection_transaction.py::",
+        "orchestrator/tests/test_archive.py::",
+        "orchestrator/tests/test_api_routers.py::test_generation_job_get_route_returns_404_for_cross_workspace",
+        "orchestrator/tests/test_chat_threads.py::test_chat_thread_api_owner_scope_returns_not_found"
+      ],
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "where o.public_output_id = %s and o.workspace_id = %s",
+          "new": "where o.public_output_id = %s"
+        },
+        {
+          "type": "replace_once",
+          "old": "(public_output_id, workspace_id),",
+          "new": "(public_output_id,),"
+        }
+      ]
+    },
+    {
+      "mutant_id": "workspace-scope-remove-chat-thread-workspace-filter",
+      "scope_id": "workspace-scope",
+      "status_on_survive": "warn",
+      "classification_hint": "workspace_scope_removed",
+      "file": "orchestrator/app/db/repositories/chat_threads.py",
+      "target_symbol": "get_chat_thread_by_public_id",
+      "target_line_hint": 65,
+      "source_file_sha256": "5233d16059d5a00228e8e182dceba72d6022e0e466c9d0cef59872c693007dbe",
+      "target_symbol_sha256": "55abc7ae72cf2935a8fb2c095ec82cb7b4b8f5574fa5127a669fa27a9dca96fb",
+      "source_sha256": "55abc7ae72cf2935a8fb2c095ec82cb7b4b8f5574fa5127a669fa27a9dca96fb",
+      "description": "Disable workspace filter branch from chat thread public lookup.",
+      "candidate_test_patterns": [
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::",
+        "orchestrator/tests/test_final_selection_transaction.py::",
+        "orchestrator/tests/test_archive.py::",
+        "orchestrator/tests/test_api_routers.py::test_generation_job_get_route_returns_404_for_cross_workspace",
+        "orchestrator/tests/test_chat_threads.py::test_chat_thread_api_owner_scope_returns_not_found"
+      ],
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "if workspace_id:\n        where += \" and ct.workspace_id = %s::uuid\"\n        params.append(workspace_id)",
+          "new": "if False and workspace_id:\n        where += \" and ct.workspace_id = %s::uuid\"\n        params.append(workspace_id)"
+        }
+      ]
+    },
+    {
+      "mutant_id": "final-selection-skip-sibling-clear",
+      "scope_id": "final-selection-transaction",
+      "status_on_survive": "evidence-required",
+      "classification_hint": "transaction_state_not_cleared",
+      "file": "orchestrator/app/db/repositories/generation_outputs.py",
+      "target_symbol": "mark_output_final",
+      "target_line_hint": 255,
+      "source_file_sha256": "24c2cd3fa0b53e506ac2b72e4059660420cee6359f1471b13106260dc3500d95",
+      "target_symbol_sha256": "561b316ebcde35aeb6e28e1100b5826994ec1f177236900c7f1b35769a36b9be",
+      "source_sha256": "561b316ebcde35aeb6e28e1100b5826994ec1f177236900c7f1b35769a36b9be",
+      "description": "Skip sibling final-output clear update.",
+      "candidate_test_patterns": [
+        "orchestrator/tests/test_generation_outputs_service_v1.py::",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_mark_final_transaction",
+        "orchestrator/tests/test_final_selection_transaction.py::",
+        "orchestrator/tests/test_api_routers.py::test_select_final_generation_output"
+      ],
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "            cur.execute(\"update generation_outputs set is_final = false where thread_id = %s and is_final = true\", (thread_id,))",
+          "new": "            pass"
+        }
+      ]
+    },
+    {
+      "mutant_id": "quality-gate-allow-reject",
+      "scope_id": "quality-ocr",
+      "status_on_survive": "warn",
+      "classification_hint": "fail_closed_reversed",
+      "file": "orchestrator/app/quality_gate/final_composite_policy.py",
+      "target_symbol": "status_for_action",
+      "target_line_hint": 63,
+      "source_file_sha256": "f3e49af8dd51fd08ed02db670f40caf381fc7d8d7c6d80b98883fd64af2b724e",
+      "target_symbol_sha256": "2d038e2677f2725051ed16282daadf647742c401c0ae837eebbdb38c4a269485",
+      "source_sha256": "2d038e2677f2725051ed16282daadf647742c401c0ae837eebbdb38c4a269485",
+      "description": "Reverse reject action into pass.",
+      "candidate_test_patterns": [
+        "orchestrator/tests/test_final_composite_quality_loop.py::"
+      ],
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "return \"reject\"",
+          "new": "return \"pass\""
+        }
+      ]
+    },
+    {
+      "mutant_id": "compliance-unknown-allowed",
+      "scope_id": "compliance",
+      "status_on_survive": "warn",
+      "classification_hint": "compliance_gate_weakened",
+      "file": "orchestrator/app/llm/nodes/copy_compliance.py",
+      "target_symbol": "copy_compliance_resolution_node",
+      "target_line_hint": 79,
+      "source_file_sha256": "7022fdf5234de58f5907f6b490618642ed342610cbc904a3c47203795087c508",
+      "target_symbol_sha256": "25b998c814a68d47c5407cb06546da5ba2a3fb23193715f1f0f2b3aa158901de",
+      "source_sha256": "25b998c814a68d47c5407cb06546da5ba2a3fb23193715f1f0f2b3aa158901de",
+      "description": "Allow submit-claim flow to become publication-ready.",
+      "candidate_test_patterns": [
+        "orchestrator/tests/test_compliance.py::"
+      ],
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "        return {\n            \"copy_compliance_gate\": {**gate, \"user_decision\": \"submit_claim\", \"status\": \"manual_review_required\", \"publication_ready\": False, \"evidence_submitted\": submitted},\n            \"copy_compliance_status\": \"manual_review_required\",\n            \"copy_compliance_publication_ready\": False,\n        }",
+          "new": "        return {\n            \"copy_compliance_gate\": {**gate, \"user_decision\": \"submit_claim\", \"status\": \"allowed\", \"publication_ready\": True, \"evidence_submitted\": submitted},\n            \"copy_compliance_status\": \"allowed\",\n            \"copy_compliance_publication_ready\": True,\n        }"
+        }
+      ]
+    },
+    {
+      "mutant_id": "native-copy-remove-request-leak-guard",
+      "scope_id": "native-copy-policy",
+      "status_on_survive": "warn",
+      "classification_hint": "copy_guard_removed",
+      "file": "orchestrator/app/llm/native_copy_policy.py",
+      "target_symbol": "contains_request_intent",
+      "target_line_hint": 528,
+      "source_file_sha256": "152885bfcc421af6e7095ff1f0996d4da23a07215ac766ac6cf3ffe24e12cd4f",
+      "target_symbol_sha256": "bdf77045fd0805701ed17a3621f2bfa656335821c2af8295afc719beef448096",
+      "source_sha256": "bdf77045fd0805701ed17a3621f2bfa656335821c2af8295afc719beef448096",
+      "description": "Disable raw request intent detection.",
+      "candidate_test_patterns": [
+        "orchestrator/tests/test_copywriting.py::",
+        "orchestrator/tests/test_marketing_graph.py::",
+        "orchestrator/tests/test_chat_threads.py::test_chat_brief_resumes_graph_with_selected_copy",
+        "orchestrator/tests/test_native_copy_open_domain_benchmark.py::"
+      ],
+      "operations": [
+        {
+          "type": "replace_once",
+          "old": "return _contains_request_intent(value)",
+          "new": "return False"
+        }
+      ]
+    }
+  ]
+}

@@ -682,6 +682,17 @@ def test_copy_quality_helpers():
     assert score_copy_quality({"headline": "대박 혜택!!"})["warnings"]
 
 
+def test_sanitize_copy_text_strips_leaked_meta_labels():
+    # Leaked internal label/format must be stripped, leaving only the visible copy.
+    assert sanitize_copy_text("AI추천=신메뉴 치킨, 오늘의 기대감 / Sub: 이벤트 분위기로") == "신메뉴 치킨, 오늘의 기대감"
+    assert sanitize_copy_text("Sub: 이벤트 분위기로 즐기는 저녁") == "이벤트 분위기로 즐기는 저녁"
+    assert sanitize_copy_text("Headline: 봄을 닮은 한 잔") == "봄을 닮은 한 잔"
+    # Normal copy must be left intact (no over-stripping).
+    assert sanitize_copy_text("오늘 저녁, 따뜻한 치킨 한 판") == "오늘 저녁, 따뜻한 치킨 한 판"
+    assert sanitize_copy_text("24/7 언제나 신선하게") == "24/7 언제나 신선하게"
+    assert sanitize_copy_text("추천 메뉴, 딸기라떼") == "추천 메뉴, 딸기라떼"
+
+
 # ===== from test_copy_quality_actual_batch_script.py =====
 import json
 import os

@@ -86,9 +86,9 @@ def background_validation_node(state: MarketingState) -> dict[str, Any]:
             "validation_questions": vlm_metadata_contract["available_state"].get("validation_questions", []),
         },
     )
-    artifacts = list(state.get("artifact_refs") or [])
+    artifact_update = []
     if image_path:
-        artifacts.append(
+        artifact_update.append(
             {
                 "type": "background_image",
                 "path": image_path,
@@ -97,6 +97,6 @@ def background_validation_node(state: MarketingState) -> dict[str, Any]:
         )
     return {
         "background_validation_report": report.model_dump(),
-        "artifact_refs": artifacts,
+        "artifact_refs": artifact_update,
         "status": "background_validating",
     }

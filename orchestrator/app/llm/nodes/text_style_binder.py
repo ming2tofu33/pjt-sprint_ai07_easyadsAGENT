@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.llm.copy_visual_intent import resolve_copy_visual_intent
 from orchestrator.app.llm.nodes.typography_art_director import select_typography_art_direction
 from orchestrator.app.schemas.llm_marketing import MarketingContext
@@ -109,7 +110,7 @@ TYPOGRAPHY_BY_PROFILE: dict[StyleProfile, TypographyRule] = {
 
 def text_style_binder_node(state: dict[str, Any]) -> dict[str, Any]:
     context = _context_to_model(state.get("context"))
-    intent = CopyVisualIntent(**(state.get("copy_visual_intent") or resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template")).model_dump()))
+    intent = read_model(state, "copy_visual_intent", CopyVisualIntent, default=None) or resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template"))
     profile = profile_for_intent(intent, infer_style_profile(context.brand_tone, context.promotion_goal))
     typography = TYPOGRAPHY_BY_PROFILE[profile].model_copy(deep=True)
     if intent.plate_policy == "none":

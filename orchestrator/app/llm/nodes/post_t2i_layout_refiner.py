@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.llm.copy_layout_fit import reduce_optional_copy, validate_copy_layout_fit
 from orchestrator.app.llm.layout_candidates import generate_layout_candidates, score_layout_candidate
 from orchestrator.app.schemas.text_layout import CopySpec, CopyVisualIntent, ImageLayoutAnalysis, LayoutRefinementResult, TextLayoutSpec, TextStyleSpec
@@ -11,11 +12,11 @@ from orchestrator.app.schemas.text_layout import CopySpec, CopyVisualIntent, Ima
 
 def post_t2i_layout_refiner_node(state: dict[str, Any]) -> dict[str, Any]:
     attempts = int(state.get("layout_revision_attempts") or 0)
-    copy_spec = CopySpec(**(state.get("copy_spec") or {}))
-    style_spec = TextStyleSpec(**(state.get("text_style_spec") or {}))
+    copy_spec = read_model(state, "copy_spec", CopySpec)
+    style_spec = read_model(state, "text_style_spec", TextStyleSpec)
     intent = CopyVisualIntent(**state["copy_visual_intent"]) if state.get("copy_visual_intent") else None
     if copy_spec.copy_mode == "no_copy" or not copy_spec.get_renderable():
-        current = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
+        current = read_model(state, "text_layout_spec", TextLayoutSpec)
         fit = validate_copy_layout_fit(copy_spec, current)
         result = LayoutRefinementResult(
             selected_candidate_id=current.spec_id,
@@ -28,7 +29,7 @@ def post_t2i_layout_refiner_node(state: dict[str, Any]) -> dict[str, Any]:
         return {"layout_refinement_result": result.model_dump(), "layout_copy_fit_report": fit.model_dump(), "status": "background_validating"}
     analysis_data = state.get("image_layout_analysis")
     if not analysis_data:
-        current = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
+        current = read_model(state, "text_layout_spec", TextLayoutSpec)
         fit = validate_copy_layout_fit(copy_spec, current)
         result = LayoutRefinementResult(selected_candidate_id=current.spec_id, selected_layout=current, candidates=[], action="render" if fit.overall_fit else "manual_review", retry_feedback=fit.warnings, metadata={"source_node": "post_t2i_layout_refiner", "analysis_missing": True})
         return {"layout_refinement_result": result.model_dump(), "layout_copy_fit_report": fit.model_dump(), "status": "background_validating"}
@@ -37,7 +38,7 @@ def post_t2i_layout_refiner_node(state: dict[str, Any]) -> dict[str, Any]:
     scores = [score_layout_candidate(candidate, copy_spec, analysis, reference_hint=(intent.reference_layout_hint if intent else None)) for candidate in candidates]
     ranked = sorted(zip(candidates, scores), key=lambda item: (item[1].hard_rejected, -item[1].final_score))
     selected_layout = _first_valid_layout(ranked)
-    fit = validate_copy_layout_fit(copy_spec, selected_layout or TextLayoutSpec(**(state.get("text_layout_spec") or {}))) if (selected_layout or state.get("text_layout_spec")) else None
+    fit = validate_copy_layout_fit(copy_spec, selected_layout or read_model(state, "text_layout_spec", TextLayoutSpec)) if (selected_layout or state.get("text_layout_spec")) else None
     action = "render"
     update: dict[str, Any] = {}
     retry_feedback: list[str] = []

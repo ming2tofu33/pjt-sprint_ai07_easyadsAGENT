@@ -8,12 +8,13 @@ from PIL import Image
 
 from orchestrator.app.rendering.font_catalog import resolve_font_face
 from orchestrator.app.rendering.typography_color import choose_text_color
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.schemas.text_layout import TextLayoutSpec, TextStyleSpec
 
 
 def adaptive_typography_refiner_node(state: dict[str, Any]) -> dict[str, Any]:
-    layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
-    style = TextStyleSpec(**(state.get("text_style_spec") or {}))
+    layout = read_model(state, "text_layout_spec", TextLayoutSpec)
+    style = read_model(state, "text_style_spec", TextStyleSpec)
     result = state.get("t2i_result") or {}
     image_paths = result.get("image_paths") or []
     background_path = image_paths[0] if image_paths else None

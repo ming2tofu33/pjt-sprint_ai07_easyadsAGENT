@@ -30,8 +30,37 @@ LOW_QUALITY_PHRASES = [
 ]
 
 
+# Internal reasoning/format labels that some LLM outputs leak into the visible
+# copy fields (e.g. "AI\uCD94\uCC9C=\uC2E0\uBA54\uB274 \uCE58\uD0A8 / Sub: \uC774\uBCA4\uD2B8 \uBD84\uC704\uAE30\uB85C...") instead of
+# writing clean copy. The schema already separates headline/subcopy/rationale,
+# so any such label inside a visible field is leakage.
+_META_LABEL_TOKENS = (
+    r"(?:ai\s*\uCD94\uCC9C|\uCD94\uCC9C|head(?:line)?|sub(?:copy)?|\uC11C\uBE0C\uCE74\uD53C|\uC11C\uBE0C|\uD5E4\uB4DC\uB77C\uC778|\uCE74\uD53C|rationale|reason|\uC774\uC720|\uBA54\uBAA8)"
+)
+_LEADING_LABEL_RE = re.compile(rf"^\s*{_META_LABEL_TOKENS}\s*[:=]\s*", re.IGNORECASE)
+_INLINE_LABEL_RE = re.compile(rf"\s*[/|]\s*{_META_LABEL_TOKENS}\s*[:=].*$", re.IGNORECASE)
+
+
+def strip_meta_labels(text: str) -> str:
+    """Strip leaked reasoning/format labels from user-visible copy.
+
+    Defensive second safety net behind the prompt fix: removes a trailing
+    "/ Sub: ..." style labeled segment and any leading "AI\uCD94\uCC9C=" / "Sub:" label.
+    Only recognized label tokens followed by ':' or '=' are removed, so normal
+    copy (e.g. "24/7", "\uCD94\uCC9C \uBA54\uB274") is left intact.
+    """
+    cleaned = _INLINE_LABEL_RE.sub("", text or "")
+    while True:
+        stripped = _LEADING_LABEL_RE.sub("", cleaned)
+        if stripped == cleaned:
+            break
+        cleaned = stripped
+    return cleaned.strip()
+
+
 def sanitize_copy_text(text: str) -> str:
-    cleaned = re.sub(r"[\u2600-\u27BF]+", "", text or "")
+    cleaned = strip_meta_labels(text or "")
+    cleaned = re.sub(r"[\u2600-\u27BF]+", "", cleaned)
     cleaned = re.sub(r"[\"'`~*]{2,}", "", cleaned)
     cleaned = re.sub(r"!{2,}", "!", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
