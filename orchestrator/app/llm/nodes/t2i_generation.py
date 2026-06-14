@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.graph.state import MarketingState, read_model
 from orchestrator.app.schemas.llm_marketing import ArtifactRef, GeneratedImageCandidate
 from orchestrator.app.t2i.schemas import T2IRequest
 from orchestrator.app.t2i.service import generate_image_v1
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def t2i_generation_node(state: MarketingState) -> dict[str, Any]:
-    request = T2IRequest(**(state.get("t2i_request") or {}))
+    request = read_model(state, "t2i_request", T2IRequest)
     requested_engine = request.metadata.get("requested_engine") or request.metadata.get("engine") or state.get("engine")
     metadata = {
         **request.metadata,
