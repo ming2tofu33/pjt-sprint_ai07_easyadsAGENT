@@ -8,6 +8,7 @@ from PIL import Image
 
 from orchestrator.app.llm.nodes.safe_area_gate import bbox_iou
 from orchestrator.app.llm.nodes.text_renderer import hex_to_rgb
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.schemas.text_layout import ReadabilityReport, SlotReadability, TextLayoutSpec
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ def classify_wcag_grade(ratio: float, is_large_text: bool) -> str:
 
 
 def readability_gate_node(state: "MarketingState") -> dict[str, Any]:
-    layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
+    layout = read_model(state, "text_layout_spec", TextLayoutSpec)
     result = state.get("t2i_result") or {}
     background_path = (result.get("image_paths") or [None])[0]
     slots: list[SlotReadability] = []
