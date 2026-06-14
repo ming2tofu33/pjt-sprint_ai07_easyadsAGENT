@@ -27,6 +27,10 @@ type SupabasePrincipal = {
   accountType: "guest" | "user";
 };
 
+function perfEnabled() {
+  return process.env.EASYADS_PERF_TRACE === "1";
+}
+
 function getOrchestratorBaseUrl(): string {
   return process.env.ORCHESTRATOR_BASE_URL || "http://localhost:8000";
 }
@@ -174,6 +178,13 @@ export async function proxyOrchestratorJson(
   options: ProxyOptions = {}
 ) {
   const headers = buildInternalHeaders("application/json");
+  const started = Date.now();
+  const traceId = request.headers.get("X-EasyAds-Trace-Id") || `trace_${crypto.randomUUID().replace(/-/g, "")}`;
+  const requestId = request.headers.get("X-Request-Id") || `req_${crypto.randomUUID().replace(/-/g, "")}`;
+  let authCallRequestedCount = 0;
+  let authNetworkRequestCount = 0;
+  let authDedupHitCount = 0;
+  let authDurationMs = 0;
   const init: RequestInit = {
     method,
     headers,
@@ -183,7 +194,16 @@ export async function proxyOrchestratorJson(
   try {
     let verifiedPrincipalPromise: Promise<SupabasePrincipal | null> | null = null;
     const getVerifiedPrincipal = () => {
-      verifiedPrincipalPromise ??= resolveSupabasePrincipal(request);
+      authCallRequestedCount += 1;
+      if (verifiedPrincipalPromise) {
+        authDedupHitCount += 1;
+        return verifiedPrincipalPromise;
+      }
+      const authStarted = Date.now();
+      authNetworkRequestCount += 1;
+      verifiedPrincipalPromise = resolveSupabasePrincipal(request).finally(() => {
+        authDurationMs += Date.now() - authStarted;
+      });
       return verifiedPrincipalPromise;
     };
 
@@ -246,14 +266,31 @@ export async function proxyOrchestratorJson(
     }
 
     const targetUrl = buildTargetUrl(path, request);
+    headers["X-EasyAds-Trace-Id"] = traceId;
+    headers["X-Request-Id"] = requestId;
     if (options.injectVerifiedUserIdQuery) {
       const principal = await getVerifiedPrincipal();
       applyPrincipalQueryParams(targetUrl, options.injectVerifiedUserIdQuery, principal);
     }
 
+    const upstreamStarted = Date.now();
     const response = await fetch(targetUrl.toString(), init);
+    const upstreamDuration = Date.now() - upstreamStarted;
     const payload = await response.json().catch(() => ({}));
-    return NextResponse.json(payload, { status: response.ok && options.successStatus ? options.successStatus : response.status });
+    const nextResponse = NextResponse.json(payload, { status: response.ok && options.successStatus ? options.successStatus : response.status });
+    nextResponse.headers.set("X-Request-Id", requestId);
+    if (perfEnabled()) {
+      const totalDuration = Date.now() - started;
+      nextResponse.headers.set(
+        "Server-Timing",
+        `auth;dur=${authDurationMs}, upstream;dur=${upstreamDuration}, total;dur=${totalDuration}`
+      );
+      nextResponse.headers.set("X-EasyAds-Bff-Perf", String(totalDuration));
+      nextResponse.headers.set("X-EasyAds-Bff-Auth-Calls", String(authCallRequestedCount));
+      nextResponse.headers.set("X-EasyAds-Bff-Auth-Network", String(authNetworkRequestCount));
+      nextResponse.headers.set("X-EasyAds-Bff-Auth-Dedup-Hits", String(authDedupHitCount));
+    }
+    return nextResponse;
   } catch (error) {
     const statusCode = (error as ProxyError).statusCode;
     const errorCode = (error as ProxyError).errorCode;
@@ -274,6 +311,7 @@ export async function proxyOrchestratorJson(
 export async function proxyOrchestratorBinary(request: NextRequest, path: string, cacheControl?: string) {
   const headers = buildInternalHeaders();
   const targetUrl = buildTargetUrl(path, request);
+  const started = Date.now();
 
   try {
     const response = await fetch(targetUrl.toString(), {
@@ -308,10 +346,14 @@ export async function proxyOrchestratorBinary(request: NextRequest, path: string
       responseHeaders.set("cache-control", responseCacheControl);
     }
 
-    return new Response(await response.arrayBuffer(), {
+    const nextResponse = new Response(await response.arrayBuffer(), {
       status: response.status,
       headers: responseHeaders
     });
+    if (perfEnabled()) {
+      nextResponse.headers.set("Server-Timing", `upstream;dur=${Date.now() - started}`);
+    }
+    return nextResponse;
   } catch {
     return unavailableResponse();
   }

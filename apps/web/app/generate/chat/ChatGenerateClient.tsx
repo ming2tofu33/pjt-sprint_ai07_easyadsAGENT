@@ -37,6 +37,7 @@ import {
   updateArchiveItem,
   uploadPhotoAsset,
   uploadReferenceAsset,
+  recordRenderMark,
   ApiError,
   type ChatTurnResponse,
   type GenerationJob,
@@ -376,6 +377,8 @@ function normalizeChatBrief(
     getPayloadString(payload, "imageDirection", "image_direction", "prompt_text", "visual_direction") ??
     "";
   const finalImagePath = getPayloadString(brief, "finalImagePath", "final_image_path") ?? getPayloadString(payload, "finalImagePath", "final_image_path");
+  const finalImageUrl = getPayloadString(brief, "finalImageUrl", "final_image_url") ?? getPayloadString(payload, "finalImageUrl", "final_image_url");
+  const downloadUrl = getPayloadString(brief, "downloadUrl", "download_url") ?? getPayloadString(payload, "downloadUrl", "download_url");
 
   return {
     purpose: getPayloadString(brief, "purpose", "promotion_goal") ?? context.promotionGoal,
@@ -384,7 +387,9 @@ function normalizeChatBrief(
     tone: getPayloadString(brief, "tone", "brand_tone", "selected_tone") ?? "",
     channel: getPayloadString(brief, "channel", "selected_channel_id", "requested_ad_format") ?? "",
     imageDirection,
-    finalImagePath
+    finalImagePath,
+    finalImageUrl,
+    downloadUrl
   };
 }
 
@@ -1728,6 +1733,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
   async function pollGenerationJobUntilDoneOrQuestion(initialJob: GenerationJob, initialChatIntake?: InitialChatIntakeContext): Promise<GenerationJob> {
     let currentJob = initialJob;
+    recordRenderMark("polling_started");
     dispatch({ type: "generationJobUpdated", generationJob: currentJob });
 
     if (stopForGenerationJobWaitingState(currentJob, initialChatIntake)) {
@@ -1739,6 +1745,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         await delay(GENERATION_JOB_POLL_INTERVAL_MS);
       }
       const response = await getGenerationJob(currentJob.job_id);
+      recordRenderMark(`poll_iteration_${attempt + 1}`);
       currentJob = response.job;
       dispatch({ type: "generationJobUpdated", generationJob: currentJob });
 
@@ -1768,6 +1775,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         initialChatIntake.userCustomSubcopy ?? null
       );
       setGenerationStage("brief");
+      recordRenderMark("first_data_rendered");
       lastPrimedStageRef.current = "start";
       setOptimisticSurface("chat");
       router.replace(buildChatStageHrefWithJob("start", { threadId: currentJob.thread_id }));
@@ -1775,6 +1783,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     setGenerationStage("complete");
+    recordRenderMark("final_result_visible");
     lastPrimedStageRef.current = "complete";
     clearGenerationFailureSnapshot();
     setOptimisticSurface("chat");
