@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from orchestrator.app.llm.metadata_builders import build_prompt_renderer_metadata
 from orchestrator.app.llm.prompt_renderer import render_prompt_for_engine, render_prompt_spec_for_engine
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.schemas.llm_marketing import ImagePrompt
 
 if TYPE_CHECKING:
@@ -52,7 +53,7 @@ def prompt_renderer_node(state: MarketingState) -> dict[str, Any]:
             metadata=metadata,
         )
     else:
-        image_prompt = ImagePrompt(**(state.get("image_prompt") or {}))
+        image_prompt = read_model(state, "image_prompt", ImagePrompt)
         output = render_prompt_for_engine(
             image_prompt=image_prompt,
             engine=effective_engine,

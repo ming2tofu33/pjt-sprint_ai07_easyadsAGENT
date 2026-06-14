@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.llm.metadata_builders import build_image_prompt_planner_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.visual_templates import select_visual_template
@@ -53,7 +54,7 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
     selected_reference_template = state.get("selected_reference_template") or {}
     reference_template_selection = state.get("reference_template_selection") or {}
     template_style_hint = reference_template_selection.get("style_profile_hint") or {}
-    text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
+    text_layout = read_model(state, "text_layout_spec", TextLayoutSpec)
     subject = context.item_or_service or "advertising subject"
     visual_direction = selected_visual_direction(state)
     selected_tone = selected_tone_label(state)
@@ -297,7 +298,7 @@ def clean_optional_text(value: object | None) -> str | None:
 
 def enforce_image_prompt_safety(state: MarketingState, spec: ImagePromptSpec) -> ImagePromptSpec:
     ad_format_spec = state.get("ad_format_spec") or {}
-    text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
+    text_layout = read_model(state, "text_layout_spec", TextLayoutSpec)
     negative = spec.negative_prompt_en or ""
     required_terms = ["text", "letters", "numbers", "hangul", "korean characters", "watermark", "logo", "typography", "caption", "signage"]
     missing_terms = [term for term in required_terms if term not in negative.lower()]

@@ -10,6 +10,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageStat
 from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, ResolvedFont, load_font as load_resolved_font, resolve_font, resolve_font_path
 from orchestrator.app.rendering.text_metrics import draw_text_with_tracking, fit_text_block_to_bbox, measure_text_with_tracking
 from orchestrator.app.rendering.typography_color import choose_text_color
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, RenderResult, TextLayoutSpec, TextSlot, TextStyleSpec, TypographyRenderTrace
 
 if TYPE_CHECKING:
@@ -34,7 +35,7 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         )
         return {"render_result": render_result.model_dump(), "status": "failed", "error_message": "missing background image path"}
 
-    copy_spec = CopySpec(**(state.get("copy_spec") or {}))
+    copy_spec = read_model(state, "copy_spec", CopySpec)
     layout_data, style_data = _apply_regeneration_layout_patch(state.get("text_layout_spec") or {}, state.get("text_style_spec") or {}, state.get("regeneration_patch") or {})
     layout = TextLayoutSpec(**layout_data)
     style = TextStyleSpec(**style_data)
