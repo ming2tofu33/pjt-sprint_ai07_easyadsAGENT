@@ -10,6 +10,7 @@ select
     i.*,
     j.public_job_id as j_public_job_id,
     o.public_output_id,
+    o.result_payload as output_result_payload,
     o.is_final,
     t.public_thread_id,
     a.public_url as asset_public_url,

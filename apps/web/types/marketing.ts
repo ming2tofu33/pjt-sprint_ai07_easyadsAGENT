@@ -88,6 +88,8 @@ export type ChatBrief = {
   channel: string;
   imageDirection: string;
   finalImagePath?: string | null;
+  finalImageUrl?: string | null;
+  downloadUrl?: string | null;
 };
 
 export type ReferenceTemplateFields = {

@@ -27,14 +27,19 @@ export type GeneratedCreativeSnapshot = {
 
 const GENERATED_CREATIVES_STORAGE_KEY = "easyads_generated_creatives_v1";
 
+function resolveSnapshotImageUrl(snapshot: GeneratedCreativeSnapshot): string | null {
+  return snapshot.brief.finalImageUrl || snapshot.brief.downloadUrl || buildGeneratedAssetUrl(snapshot.brief.finalImagePath);
+}
+
 function creativeFromSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative {
   const channelMatch = snapshot.brief.channel.match(/\(([^)]+)\)/);
+  const imageUrl = resolveSnapshotImageUrl(snapshot);
   return {
     id: `generated-${snapshot.jobId}`,
     title: snapshot.brief.copy,
     subtitle: `${snapshot.brief.item} · ${snapshot.brief.channel}`,
     format: channelMatch?.[1] ?? snapshot.brief.channel,
-    imageUrl: buildGeneratedAssetUrl(snapshot.brief.finalImagePath),
+    imageUrl,
     date: "방금 생성",
     tone: "strawberry",
     badge: "실제 생성",
@@ -63,7 +68,7 @@ export function readGeneratedCreatives(): MockCreative[] {
 }
 
 export function addGeneratedCreativeSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative[] {
-  if (!snapshot.brief.finalImagePath) {
+  if (!resolveSnapshotImageUrl(snapshot)) {
     return readGeneratedCreatives();
   }
   const creative = creativeFromSnapshot(snapshot);
