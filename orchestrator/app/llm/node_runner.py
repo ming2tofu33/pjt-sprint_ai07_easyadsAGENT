@@ -108,7 +108,8 @@ def fallback_with_result(
         cost_estimate=0.0,
         metadata={**safe_metadata(metadata), "fallback_used": True, "fallback_reason": reason},
     )
-    append_llm_call_result_safe(state, result)
+    if attempted_result is None:
+        append_llm_call_result_safe(state, result)
     return fallback_with_metadata(selection, selection_payload, fallback_fn, reason, safe_llm_call_result(result))
 
 

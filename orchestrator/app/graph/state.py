@@ -482,8 +482,7 @@ def merge_current_brief(left: dict[str, Any] | None, right: dict[str, Any] | Non
 
 
 def update_current_brief(current_brief: dict[str, Any] | None, updates: dict[str, Any]) -> dict[str, Any]:
-    filtered = {key: value for key, value in updates.items() if value is not None}
-    return merge_current_brief(current_brief, filtered)
+    return merge_current_brief(current_brief, updates)
 
 
 def resolve_requested_ad_format(state: dict[str, Any] | MarketingState) -> str | None:

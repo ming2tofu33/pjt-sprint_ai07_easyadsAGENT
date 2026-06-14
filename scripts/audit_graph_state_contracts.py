@@ -95,17 +95,23 @@ class StateSchemaVisitor(ast.NodeVisitor):
             self.generic_visit(node)
             return
         for stmt in node.body:
-            if not isinstance(stmt, ast.Assign):
+            if not isinstance(stmt, (ast.Assign, ast.AnnAssign)):
                 continue
-            if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name) or stmt.targets[0].id != "state":
+            if isinstance(stmt, ast.Assign):
+                if len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name) or stmt.targets[0].id != "state":
+                    continue
+                value_node = stmt.value
+            else:
+                if not isinstance(stmt.target, ast.Name) or stmt.target.id != "state":
+                    continue
+                value_node = stmt.value
+            if not isinstance(value_node, ast.Dict):
                 continue
-            if not isinstance(stmt.value, ast.Dict):
-                continue
-            for key_node, value_node in zip(stmt.value.keys, stmt.value.values):
+            for key_node, item_value_node in zip(value_node.keys, value_node.values):
                 if isinstance(key_node, ast.Constant) and isinstance(key_node.value, str):
                     key = key_node.value
-                    self.initial_exprs[key] = ast.unparse(value_node)
-                    self.initial_values[key] = literal_or_unparsed(value_node)
+                    self.initial_exprs[key] = ast.unparse(item_value_node)
+                    self.initial_values[key] = literal_or_unparsed(item_value_node)
             self.initial_key_count = len(self.initial_values)
         self.generic_visit(node)
 

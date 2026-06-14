@@ -93,3 +93,11 @@ def test_state_update_does_not_mutate_input_state():
     assert state["current_brief"] == before["current_brief"]
     assert state["messages"] == before["messages"]
     assert state["context"] == before["context"]
+
+
+def test_state_update_does_not_append_selection_message_to_graph_transcript():
+    state = _state_with_selection("promotion_goal", "discount_event")
+
+    update = state_update_node(state)
+
+    assert "messages" not in update

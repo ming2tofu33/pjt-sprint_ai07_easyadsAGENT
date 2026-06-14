@@ -1,5 +1,5 @@
 from orchestrator.app.graph.builder import build_marketing_graph
-from orchestrator.app.graph.state import append_llm_call_result, append_model_selection, create_initial_marketing_state
+from orchestrator.app.graph.state import append_llm_call_result, append_model_selection, create_initial_marketing_state, update_current_brief
 from orchestrator.app.llm.adapters.mock import MockLLMAdapter
 from orchestrator.app.llm.model_router import choose_model
 from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest
@@ -58,3 +58,26 @@ def test_existing_marketing_graph_still_runs_to_result_payload():
     assert result["user_plan"] == "free"
     assert result["plan_policy"]["user_plan"] == "free"
     assert result["result_payload"]["output_path"]
+
+
+def test_update_current_brief_allows_explicit_none_clear_and_keeps_other_keys():
+    current = {"user_custom_headline": "keep", "user_custom_subcopy": "remove"}
+
+    updated = update_current_brief(current, {"user_custom_subcopy": None})
+
+    assert updated["user_custom_headline"] == "keep"
+    assert "user_custom_subcopy" in updated
+    assert updated["user_custom_subcopy"] is None
+
+
+def test_update_current_brief_merges_cached_options_without_dropping_existing_entries():
+    current = {
+        "cached_options": {
+            "business_type": [{"value": "restaurant"}],
+        }
+    }
+
+    updated = update_current_brief(current, {"cached_options": {"item_or_service": [{"value": "bbq"}]}})
+
+    assert updated["cached_options"]["business_type"] == [{"value": "restaurant"}]
+    assert updated["cached_options"]["item_or_service"] == [{"value": "bbq"}]

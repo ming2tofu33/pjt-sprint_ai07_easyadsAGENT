@@ -141,11 +141,12 @@ def options_node(state: MarketingState) -> dict[str, Any]:
     if field is None:
         return {"status": state.get("status", "validating_context"), "option_question": None}
     question = get_option_question(field)
+    next_brief = dict(state.get("current_brief") or {})
 
     from orchestrator.app.schemas.option_suggestion import is_field_eligible
 
     if is_field_eligible(field):
-        cached = state.get("current_brief", {}).get("cached_options", {}).get(field)
+        cached = next_brief.get("cached_options", {}).get(field)
         if cached is not None:
             from orchestrator.app.schemas.llm_marketing import OptionItem
             augmented_options = [OptionItem(**o) for o in cached]
@@ -154,13 +155,12 @@ def options_node(state: MarketingState) -> dict[str, Any]:
             augmented_options = _augment_options(state, field, question)
             option_tracking = _llm_tracking_from_metadata(getattr(_augment_options, "_last_llm_metadata", None))
             next_brief = update_current_brief(
-                state.get("current_brief"),
+                next_brief,
                 {"cached_options": {field: [o.model_dump() for o in augmented_options]}},
             )
         question = question.model_copy(update={"options": augmented_options})
     else:
         option_tracking = {}
-        next_brief = dict(state.get("current_brief") or {})
 
     question = question.model_copy(update={"progress_state": build_progress_state(state.get("missing_fields", []) )})
     payload = {
@@ -272,7 +272,6 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
         "revision": int(state.get("revision", 0)) + 1,
         "status": "updating_state",
         "user_selection": None,
-        "messages": [*(state.get("messages") or []), build_message("user", str(value), {"field": field, "source": "user_selection"})],
         **extra_return,
     }
 

@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import statistics
 import subprocess
 import tempfile
@@ -46,6 +47,7 @@ SOURCE_HASH_PATHS = [
     Path(__file__),
 ]
 SCENARIOS = ("S1", "S2", "S3", "S4", "S5")
+RUNTIME_SUFFIX_RE = re.compile(r"^([a-z_]+)_([0-9a-f]{32})$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -204,10 +206,13 @@ def canonicalize(value: Any) -> Any:
         return {k: canonicalize(v) for k, v in sorted(value.items()) if k not in volatile}
     if isinstance(value, list):
         return [canonicalize(item) for item in value]
-    if isinstance(value, str) and "data/outputs/" in value:
-        suffix = value.split("data/outputs/", 1)[-1]
-        parts = suffix.replace("\\", "/").split("/")
-        return "/".join(parts[1:]) if len(parts) > 1 else suffix
+    if isinstance(value, str):
+        normalized = value.replace("\\", "/")
+        if "data/outputs/" in normalized:
+            name = Path(normalized).name
+            return f"data/outputs/<run>/{name}" if Path(name).suffix else "data/outputs/<run>/<dir>"
+        if match := RUNTIME_SUFFIX_RE.match(normalized):
+            return f"{match.group(1)}_<runtime-id>"
     if isinstance(value, str) and (value.startswith("job_") or value.startswith("thread_")):
         return "<runtime-id>"
     return value
