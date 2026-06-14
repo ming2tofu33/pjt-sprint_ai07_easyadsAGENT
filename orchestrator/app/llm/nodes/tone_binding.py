@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState, context_to_model
+from orchestrator.app.graph.state import MarketingState, context_to_model, update_current_brief
 from orchestrator.app.llm.copy_tone import get_copy_tone_profile
 from orchestrator.app.llm.metadata_builders import build_tone_binding_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -31,7 +31,7 @@ CHANNEL_RULES = {
 
 def tone_binding_node(state: MarketingState) -> dict[str, Any]:
     output, llm_metadata = run_structured_node(
-        state,
+        dict(state),
         node_name="tone_binding",
         output_schema=ToneBindingOutput,
         prompt=build_tone_binding_prompt(state),
@@ -58,9 +58,8 @@ def tone_binding_node(state: MarketingState) -> dict[str, Any]:
     )
     return {
         "tone_binding_output": output.model_dump(),
-        "current_brief": {**state.get("current_brief", {}), "tone_binding_ready": True},
-        "model_selections": state.get("model_selections", []),
-        "llm_call_results": state.get("llm_call_results", []),
+        "current_brief": update_current_brief(state.get("current_brief"), {"tone_binding_ready": True}),
+        **_llm_tracking_from_metadata(llm_metadata),
         "status": "binding_tone",
     }
 
@@ -103,3 +102,11 @@ def build_tone_binding_prompt(state: MarketingState) -> str:
         "Do not write final ad copy. "
         "Do not invent phone numbers, addresses, prices, discounts, or event periods."
     )
+
+
+def _llm_tracking_from_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    metadata = metadata or {}
+    update: dict[str, Any] = {}
+    update["model_selections"] = [metadata["model_selection"]] if metadata.get("model_selection") else []
+    update["llm_call_results"] = [metadata["llm_call_result"]] if metadata.get("llm_call_result") else []
+    return update

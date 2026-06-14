@@ -120,9 +120,9 @@ def _run_preprocess_node(state: MarketingState, image_key: str, kind: ImageInput
     result_dump = result.model_dump(mode="json")
     current_brief = dict(state.get("current_brief") or {})
     updates: dict[str, Any] = {
-        "vision_pipeline_results": [*state.get("vision_pipeline_results", []), result_dump],
+        "vision_pipeline_results": [result_dump],
         "image_preprocess_result": result.preprocess_result.model_dump(mode="json"),
-        "artifact_refs": [*state.get("artifact_refs", []), *result.artifact_refs],
+        "artifact_refs": list(result.artifact_refs),
         "current_brief": current_brief,
         "updated_at": now_iso(),
     }

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.llm.metadata_builders import build_image_prompt_planner_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.visual_templates import select_visual_template
 from orchestrator.app.schemas.llm_marketing import ImagePrompt, MarketingContext
 from orchestrator.app.schemas.text_layout import ImagePromptSpec, NormalizedBBox, TextLayoutSpec
 from orchestrator.app.t2i.prompts import COMMON_NEGATIVE_PROMPT
+from orchestrator.app.graph.state import update_current_brief
 from orchestrator.app.llm.scene_planner import build_scene_plan, build_prompt_quality_policy
 from orchestrator.app.llm.prompt_adapters import render_engine_prompt
 from orchestrator.app.llm.visual_presets import select_visual_preset
@@ -35,13 +37,11 @@ def image_prompt_planner_node(state: "MarketingState") -> dict[str, object]:
     return {
         "image_prompt_spec": spec.model_dump(),
         "image_prompt": image_prompt.model_dump(),
-        "current_brief": {
-            **state.get("current_brief", {}),
-            "image_prompt_spec_ready": True,
-            "render_text_in_image": False,
-        },
-        "model_selections": state.get("model_selections", []),
-        "llm_call_results": state.get("llm_call_results", []),
+        "current_brief": update_current_brief(
+            state.get("current_brief"),
+            {"image_prompt_spec_ready": True, "render_text_in_image": False},
+        ),
+        **_llm_tracking_from_metadata(((spec.metadata or {}).get("prompt_critic") or {}).get("llm_metadata")),
         "status": "optimizing_prompt",
     }
 
@@ -54,7 +54,7 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
     selected_reference_template = state.get("selected_reference_template") or {}
     reference_template_selection = state.get("reference_template_selection") or {}
     template_style_hint = reference_template_selection.get("style_profile_hint") or {}
-    text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
+    text_layout = read_model(state, "text_layout_spec", TextLayoutSpec)
     subject = context.item_or_service or "advertising subject"
     visual_direction = selected_visual_direction(state)
     selected_tone = selected_tone_label(state)
@@ -230,6 +230,14 @@ def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> I
     return image_prompt
 
 
+def _llm_tracking_from_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    metadata = metadata or {}
+    update: dict[str, Any] = {}
+    update["model_selections"] = [metadata["model_selection"]] if metadata.get("model_selection") else []
+    update["llm_call_results"] = [metadata["llm_call_result"]] if metadata.get("llm_call_result") else []
+    return update
+
+
 def build_prompt_critic_context(
     *,
     state: MarketingState,
@@ -290,7 +298,7 @@ def clean_optional_text(value: object | None) -> str | None:
 
 def enforce_image_prompt_safety(state: MarketingState, spec: ImagePromptSpec) -> ImagePromptSpec:
     ad_format_spec = state.get("ad_format_spec") or {}
-    text_layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
+    text_layout = read_model(state, "text_layout_spec", TextLayoutSpec)
     negative = spec.negative_prompt_en or ""
     required_terms = ["text", "letters", "numbers", "hangul", "korean characters", "watermark", "logo", "typography", "caption", "signage"]
     missing_terms = [term for term in required_terms if term not in negative.lower()]

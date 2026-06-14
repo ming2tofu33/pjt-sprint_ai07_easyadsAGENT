@@ -42,7 +42,8 @@ def run_structured_node(
         vision_required=vision_required,
         plan_policy=state.get("plan_policy"),
     )
-    append_model_selection_safe(state, selection)
+    selection_payload = selection.model_dump() if hasattr(selection, "model_dump") else selection
+    append_model_selection_safe(state, selection_payload)
 
     # TEMPORARY (free → local Gemma for eval). Normally free returns the deterministic
     # fallback here (decision step 1). When EASYADS_FREE_USE_LOCAL=1 AND the router picked
@@ -57,32 +58,33 @@ def run_structured_node(
         and selection.provider in {"local_openai_compat", "local_gemma", "local_qwen"}
     )
     if _is_free and not _free_local:
-        return fallback_with_result(state, selection, fallback_fn, "free_plan_deterministic_fallback", metadata)
+        return fallback_with_result(state, selection, fallback_fn, "free_plan_deterministic_fallback", metadata, selection_payload=selection_payload)
     if selection.selected_model_class.startswith("api_") and not settings.enable_api_call:
-        return fallback_with_result(state, selection, fallback_fn, "api_call_disabled", metadata)
+        return fallback_with_result(state, selection, fallback_fn, "api_call_disabled", metadata, selection_payload=selection_payload)
 
     allowed, guard_reason = is_api_call_allowed(state, selection, settings)
     if not allowed:
-        return fallback_with_result(state, selection, fallback_fn, guard_reason, metadata)
+        return fallback_with_result(state, selection, fallback_fn, guard_reason, metadata, selection_payload=selection_payload)
     if selection.provider == "mock":
-        return fallback_with_result(state, selection, fallback_fn, "provider_mock_fallback", metadata)
+        return fallback_with_result(state, selection, fallback_fn, "provider_mock_fallback", metadata, selection_payload=selection_payload)
 
     adapter = get_llm_adapter_safe(selection.provider, settings, allow_mock_fallback=True)
     result = adapter.invoke_structured(output_schema, prompt, selection, metadata=safe_metadata(metadata))
     record_llm_usage_from_result(state, result)
-    append_llm_call_result_safe(state, result)
+    result_payload = safe_llm_call_result(result)
+    append_llm_call_result_safe(state, result_payload)
     if result.success:
         try:
             output = validate_output(output_schema, result.output)
             return output, {
                 "llm_attempted": True,
                 "fallback_used": False,
-                "model_selection": selection.model_dump(),
-                "llm_call_result": safe_llm_call_result(result),
+                "model_selection": selection_payload,
+                "llm_call_result": result_payload,
             }
         except Exception:
-            return fallback_with_result(state, selection, fallback_fn, "structured_output_validation_failed", metadata, attempted_result=result)
-    return fallback_with_metadata(selection, fallback_fn, result.error or "llm_call_failed", result)
+            return fallback_with_result(state, selection, fallback_fn, "structured_output_validation_failed", metadata, attempted_result=result, selection_payload=selection_payload)
+    return fallback_with_metadata(selection, selection_payload, fallback_fn, result.error or "llm_call_failed", result_payload)
 
 
 def fallback_with_result(
@@ -92,6 +94,8 @@ def fallback_with_result(
     reason: str,
     metadata: dict[str, Any] | None,
     attempted_result: LLMCallResult | None = None,
+    *,
+    selection_payload: dict[str, Any],
 ) -> tuple[Any, dict[str, Any]]:
     result = attempted_result or LLMCallResult(
         success=False,
@@ -106,19 +110,19 @@ def fallback_with_result(
     )
     if attempted_result is None:
         append_llm_call_result_safe(state, result)
-    return fallback_with_metadata(selection, fallback_fn, reason, result)
+    return fallback_with_metadata(selection, selection_payload, fallback_fn, reason, safe_llm_call_result(result))
 
 
-def fallback_with_metadata(selection, fallback_fn: FallbackFn, reason: str, result: LLMCallResult) -> tuple[Any, dict[str, Any]]:
+def fallback_with_metadata(selection, selection_payload, fallback_fn: FallbackFn, reason: str, result: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
     return fallback_fn(), {
-        "llm_attempted": result.error not in {"api_call_disabled", "free_plan_deterministic_fallback"},
+        "llm_attempted": result.get("error") not in {"api_call_disabled", "free_plan_deterministic_fallback"},
         "fallback_used": True,
         "fallback_reason": reason,
         "provider": selection.provider,
         "selected_model_class": selection.selected_model_class,
         "node_name": selection.node_name,
-        "model_selection": selection.model_dump(),
-        "llm_call_result": safe_llm_call_result(result),
+        "model_selection": selection_payload,
+        "llm_call_result": result,
     }
 
 
@@ -144,13 +148,13 @@ def safe_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def append_model_selection_safe(state: dict[str, Any], selection: Any) -> None:
-    state.setdefault("model_selections", [])
-    state["model_selections"].append(selection.model_dump() if hasattr(selection, "model_dump") else selection)
+    payload = selection.model_dump() if hasattr(selection, "model_dump") else selection
+    state["model_selections"] = [*(state.get("model_selections") or []), payload]
 
 
 def append_llm_call_result_safe(state: dict[str, Any], result: Any) -> None:
-    state.setdefault("llm_call_results", [])
-    state["llm_call_results"].append(safe_llm_call_result(result))
+    payload = safe_llm_call_result(result)
+    state["llm_call_results"] = [*(state.get("llm_call_results") or []), payload]
 
 
 def record_llm_usage_from_result(state: dict[str, Any], result: Any) -> None:
@@ -185,7 +189,10 @@ def record_llm_usage_from_result(state: dict[str, Any], result: Any) -> None:
             request_status="succeeded" if getattr(result, "success", False) else "failed",
         )
     except Exception:
-        state.setdefault("usage_recording_warnings", []).append({"event_type": "llm_call", "reason": "usage_record_failed"})
+        state["usage_recording_warnings"] = [
+            *(state.get("usage_recording_warnings") or []),
+            {"event_type": "llm_call", "reason": "usage_record_failed"},
+        ]
 
 
 def safe_llm_call_result(result: Any) -> dict[str, Any]:

@@ -49,7 +49,7 @@ def interpret_brief_with_llm(state: MarketingState, text: str) -> tuple[BriefInt
         return None, {"llm_attempted": False, "fallback_used": True, "fallback_reason": "brief_interpreter_not_enabled"}
     metadata = build_brief_interpreter_metadata(state, text)
     output, llm_metadata = run_structured_node(
-        state,
+        dict(state),
         node_name="validator",
         output_schema=BriefInterpreterOutput,
         prompt=build_brief_interpreter_prompt(state, text, metadata),
