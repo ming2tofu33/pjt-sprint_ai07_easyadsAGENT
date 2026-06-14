@@ -40,6 +40,38 @@ describe("generated creative storage", () => {
     expect(readGeneratedCreatives()[0].title).toBe("봄을 닮은 한 잔");
   });
 
+  it("prefers public result URLs over local generated asset paths", () => {
+    const creatives = addGeneratedCreativeSnapshot({
+      prompt: "한우 고기 광고 만들어줘",
+      jobId: "job_r2",
+      threadId: "thread_r2",
+      context: {
+        businessType: "음식점",
+        itemOrService: "한우 고기",
+        promotionGoal: "신메뉴 출시"
+      },
+      copyCandidates: [{ id: "copy_1", headline: "최고다 한우고기" }],
+      selectedCopyId: "copy_1",
+      selectedChannelId: "instagram-feed",
+      selectedTone: "감성적인",
+      customDirection: "",
+      brief: {
+        purpose: "신메뉴 출시",
+        item: "한우 고기",
+        copy: "최고다 한우고기",
+        tone: "감성적인 분위기",
+        channel: "인스타 피드 (1:1)",
+        imageDirection: "한우 고기 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.",
+        finalImagePath: "data/outputs/job_r2/final_composite.png",
+        finalImageUrl: "https://r2.example.com/generated/final.png",
+        downloadUrl: "https://r2.example.com/generated/download.png"
+      }
+    });
+
+    expect(creatives).toHaveLength(1);
+    expect(creatives[0].imageUrl).toBe("https://r2.example.com/generated/final.png");
+  });
+
   it("does not store briefs without a generated image path", () => {
     const creatives = addGeneratedCreativeSnapshot({
       prompt: "이 사진으로 신메뉴 광고 만들어줘",
