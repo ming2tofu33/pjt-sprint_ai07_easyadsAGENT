@@ -17,7 +17,7 @@ class BriefInterpreterOutput(BaseModel):
     business_type: BriefBusinessType | None = None
     item_or_service: str | None = Field(
         default=None,
-        description="Keep verbatim in the user's original language; never transliterate Korean to romaji/English.",
+        description="Exact substring from the brief in the original script; never transliterate or translate Korean to English/romaji (e.g. '돌반지', not 'dolphinji'/'first_birthday_ring').",
     )
     promotion_goal: BriefPromotionGoal | None = None
     target_persona: str | None = None
