@@ -408,6 +408,11 @@ def build_candidate_prompt(state: MarketingState, metadata_contract: dict[str, A
         f"promotion_goal={context.promotion_goal}, brand_tone={context.brand_tone}, "
         f"forbidden_claims={tone.get('forbidden_claims', [])}. "
         "Do not invent phone numbers, addresses, prices, discounts, or event periods. "
+        "headline and subcopy must contain ONLY the final ad text. Never include labels, "
+        "prefixes, or meta such as 'AI추천=', 'Sub:', 'Headline:'. Put any reasoning in the "
+        "rationale field only. "
+        "Bad: headline='AI추천=신메뉴 치킨 / Sub: 이벤트 분위기로'. "
+        "Good: headline='신메뉴 치킨, 오늘의 기대감', subcopy='이벤트 분위기로 즐기는 저녁', rationale='신메뉴 강조 + 이벤트 톤'. "
         f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}."
     )
 

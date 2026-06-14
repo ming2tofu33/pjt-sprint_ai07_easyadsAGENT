@@ -326,6 +326,10 @@ def build_image_prompt_planner_prompt(state: MarketingState, metadata_contract: 
         f"reference_style_stub={reference_style_profile.get('ad_style_prompt')}, "
         f"reference_template={selected_reference_template.get('title')}, product_preserve_stub={product_preserve_spec.get('product_bbox')}. "
         f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}. "
+        "When the subject is a Korean food or cultural noun, do not bare-translate it; expand it "
+        "into explicit Korean visual descriptors so a Western-trained T2I model renders the right dish. "
+        "Example: '치킨' -> 'Korean-style crispy double-fried chicken with glossy soy-garlic or red gochujang glaze' "
+        "(not generic 'chicken'); '떡볶이' -> 'Korean tteokbokki, cylindrical rice cakes in glossy red gochujang sauce'. "
         "Keep all text areas clean; do not include text, letters, numbers, Hangul, logos, or watermarks."
     )
 

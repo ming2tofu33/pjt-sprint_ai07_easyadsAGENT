@@ -15,7 +15,10 @@ BriefMissingField = Literal["business_type", "item_or_service", "promotion_goal"
 
 class BriefInterpreterOutput(BaseModel):
     business_type: BriefBusinessType | None = None
-    item_or_service: str | None = None
+    item_or_service: str | None = Field(
+        default=None,
+        description="Keep verbatim in the user's original language; never transliterate Korean to romaji/English.",
+    )
     promotion_goal: BriefPromotionGoal | None = None
     target_persona: str | None = None
     tone: BriefToneLabel | None = None
