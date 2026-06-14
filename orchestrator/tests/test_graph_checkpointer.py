@@ -1,5 +1,8 @@
 """Tests for the checkpointer factory."""
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
+
 from orchestrator.app.graph.checkpointer import get_checkpointer
 
 
@@ -8,8 +11,9 @@ def test_memory_checkpointer_when_db_backend_memory(monkeypatch):
     get_checkpointer.cache_clear()
     try:
         checkpointer = get_checkpointer()
-        # InMemorySaver (or its MemorySaver alias on older langgraph).
-        assert type(checkpointer).__name__ in {"InMemorySaver", "MemorySaver"}
+        assert isinstance(checkpointer, BaseCheckpointSaver)
+        assert type(checkpointer).__name__ == "InstrumentedCheckpointer"
+        assert type(checkpointer._inner).__name__ in {"InMemorySaver", "MemorySaver"}
     finally:
         get_checkpointer.cache_clear()
 
@@ -29,10 +33,12 @@ def test_postgres_branch_is_selected(monkeypatch):
 
     monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
     monkeypatch.setenv("DATABASE_URL", "postgresql://example.invalid:5432/db")
-    sentinel = object()
+    sentinel = InMemorySaver()
     monkeypatch.setattr(cp, "_build_postgres_checkpointer", lambda: sentinel)
     cp.get_checkpointer.cache_clear()
     try:
-        assert cp.get_checkpointer() is sentinel
+        wrapped = cp.get_checkpointer()
+        assert isinstance(wrapped, BaseCheckpointSaver)
+        assert wrapped._inner is sentinel
     finally:
         cp.get_checkpointer.cache_clear()

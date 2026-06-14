@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.graph.state import MarketingState, update_current_brief
 from orchestrator.app.llm.copy_quality_v2 import generate_copy_candidates_v2, rank_copy_candidates, select_recommended_copy
 from orchestrator.app.llm.copy_fallbacks import build_message_strategy
 from orchestrator.app.llm.copy_prompts import build_copy_generation_v2_prompt
@@ -22,7 +22,7 @@ def auto_pilot_copywriting_node(state: MarketingState) -> dict[str, Any]:
         output_schema=CopyGenerationV2Output,
     )
     output, llm_metadata = run_structured_node(
-        state,
+        dict(state),
         node_name="auto_pilot_copywriting",
         output_schema=CopyGenerationV2Output,
         prompt=build_auto_pilot_prompt(state, metadata_contract),
@@ -53,13 +53,11 @@ def auto_pilot_copywriting_node(state: MarketingState) -> dict[str, Any]:
     update["copy_required"] = True
     update["text_overlay_pending"] = True
     update["copy_generation_mode"] = "auto_pilot"
-    update["model_selections"] = state.get("model_selections", [])
-    update["llm_call_results"] = state.get("llm_call_results", [])
-    update["current_brief"] = {
-        **state.get("current_brief", {}),
-        **update.get("current_brief", {}),
-        "copy_generation_mode": "auto_pilot",
-    }
+    update.update(_llm_tracking_from_metadata(llm_metadata))
+    update["current_brief"] = update_current_brief(
+        state.get("current_brief"),
+        {**(update.get("current_brief") or {}), "copy_generation_mode": "auto_pilot"},
+    )
     return update
 
 
@@ -170,3 +168,11 @@ def _context_to_model(context: dict[str, Any] | MarketingContext | None) -> Mark
     if isinstance(context, dict):
         return MarketingContext(**context)
     return MarketingContext()
+
+
+def _llm_tracking_from_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    metadata = metadata or {}
+    update: dict[str, Any] = {}
+    update["model_selections"] = [metadata["model_selection"]] if metadata.get("model_selection") else []
+    update["llm_call_results"] = [metadata["llm_call_result"]] if metadata.get("llm_call_result") else []
+    return update

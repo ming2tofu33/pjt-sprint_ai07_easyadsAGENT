@@ -11,9 +11,11 @@ from orchestrator.app.graph.state import (
     REQUIRED_CONTEXT_FIELDS,
     MarketingState,
     append_message,
+    build_message,
     calculate_dirty_fields,
     context_to_model,
     create_initial_marketing_state,
+    read_model,
     resolve_requested_ad_format,
     set_requested_ad_format,
     update_current_brief,
@@ -69,7 +71,7 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     context = MarketingContext(**context_data)
 
     missing_fields = calculate_missing_fields(context)
-    copy_mode, copy_mode_output = resolve_copy_generation_mode(state, text)
+    copy_mode, copy_mode_output = resolve_copy_generation_mode(state, text, track_in_state=False)
     if copy_mode is None and copy_mode_from_brief:
         copy_mode = copy_mode_from_brief
         copy_mode_output = CopyModeInferenceOutput(
@@ -110,22 +112,25 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     current_brief_updates = {"ready_for_planning": not bool(missing_fields), "copy_generation_mode": copy_mode}
     if requested_ad_format:
         current_brief_updates["requested_ad_format"] = requested_ad_format
-    update_current_brief(state, current_brief_updates)
+    next_brief = update_current_brief(state.get("current_brief"), current_brief_updates)
     copy_required = copy_mode != "no_copy" if copy_mode else state.get("copy_required", True)
     text_overlay_pending = copy_mode != "no_copy" if copy_mode else state.get("text_overlay_pending", True)
+    tracking = _merge_llm_tracking(
+        brief_interpreter_metadata,
+        copy_mode_output.metadata.get("llm_metadata") if copy_mode_output else None,
+    )
     return {
         "context": context.model_dump(),
         "validator_output": validator_output.model_dump(),
         "validator_metadata": validator_metadata,
         "missing_fields": missing_fields,
         "progress_state": progress_state.model_dump(),
-        "current_brief": state.get("current_brief", {}),
+        "current_brief": next_brief,
         "copy_generation_mode": copy_mode,
         "copy_mode_inference_output": copy_mode_output.model_dump() if copy_mode_output else None,
         "copy_required": copy_required,
         "text_overlay_pending": text_overlay_pending,
-        "model_selections": state.get("model_selections", []),
-        "llm_call_results": state.get("llm_call_results", []),
+        **tracking,
         "status": "validating_context",
         "option_question": None,
     }
@@ -136,23 +141,26 @@ def options_node(state: MarketingState) -> dict[str, Any]:
     if field is None:
         return {"status": state.get("status", "validating_context"), "option_question": None}
     question = get_option_question(field)
+    next_brief = dict(state.get("current_brief") or {})
 
     from orchestrator.app.schemas.option_suggestion import is_field_eligible
 
     if is_field_eligible(field):
-        cached = state.get("current_brief", {}).get("cached_options", {}).get(field)
+        cached = next_brief.get("cached_options", {}).get(field)
         if cached is not None:
             from orchestrator.app.schemas.llm_marketing import OptionItem
             augmented_options = [OptionItem(**o) for o in cached]
+            option_tracking = {}
         else:
             augmented_options = _augment_options(state, field, question)
-            update_current_brief(state, {
-                "cached_options": {
-                    **state.get("current_brief", {}).get("cached_options", {}),
-                    field: [o.model_dump() for o in augmented_options],
-                }
-            })
+            option_tracking = _llm_tracking_from_metadata(getattr(_augment_options, "_last_llm_metadata", None))
+            next_brief = update_current_brief(
+                next_brief,
+                {"cached_options": {field: [o.model_dump() for o in augmented_options]}},
+            )
         question = question.model_copy(update={"options": augmented_options})
+    else:
+        option_tracking = {}
 
     question = question.model_copy(update={"progress_state": build_progress_state(state.get("missing_fields", []) )})
     payload = {
@@ -166,11 +174,8 @@ def options_node(state: MarketingState) -> dict[str, Any]:
         "user_selection": resume_payload,
         "option_question": question.model_dump(),
         "status": "updating_state",
-        # Surface the option_suggester (#6-P7) subcall records so eval can price it,
-        # and persist the per-field option cache. Overwrite semantics (mirrors validator).
-        "model_selections": state.get("model_selections", []),
-        "llm_call_results": state.get("llm_call_results", []),
-        "current_brief": state.get("current_brief", {}),
+        "current_brief": next_brief,
+        **option_tracking,
     }
 
 
@@ -180,6 +185,7 @@ def _augment_options(state: MarketingState, field: str, question: OptionQuestion
         merge_options, passes_confidence_threshold,
     )
     output, _meta = suggest_options(state, field, question)
+    _augment_options._last_llm_metadata = _meta  # type: ignore[attr-defined]
     if output is not None and passes_confidence_threshold(output):
         return merge_options(question.options, output.options)
     return list(question.options)
@@ -189,7 +195,7 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
     raw_selection = state.get("user_selection")
     if raw_selection is None:
         return {"status": "updating_state"}
-    selection = raw_selection if isinstance(raw_selection, UserSelectionRequest) else UserSelectionRequest(**raw_selection)
+    selection = read_model(state, "user_selection", UserSelectionRequest)
     if selection.job_id != state.get("job_id") or selection.thread_id != state.get("thread_id"):
         return {"status": "failed", "error_message": "user_selection job_id/thread_id mismatch"}
 
@@ -224,7 +230,7 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
         extra[f"{field}_option_value"] = original_value
         context_data["extra"] = extra
     if field == "copy_generation_mode":
-        update_current_brief(state, {"copy_generation_mode": value, "copy_generation_mode_confirmed": True})
+        next_brief = update_current_brief(state.get("current_brief"), {"copy_generation_mode": value, "copy_generation_mode_confirmed": True})
         extra_return.update(
             {
                 "copy_generation_mode": value,
@@ -234,31 +240,33 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
         )
         updated = True
     elif field == "user_custom_headline":
-        update_current_brief(state, {"user_custom_headline": value})
+        next_brief = update_current_brief(state.get("current_brief"), {"user_custom_headline": value})
         extra_return["user_custom_headline"] = value
         updated = True
     elif field == "user_custom_subcopy":
-        update_current_brief(state, {"user_custom_subcopy": value})
+        next_brief = update_current_brief(state.get("current_brief"), {"user_custom_subcopy": value})
         extra_return["user_custom_subcopy"] = value
         updated = True
     elif field == "ad_format":
-        set_requested_ad_format(state.setdefault("current_brief", {}), extra, value)
+        next_brief, extra = set_requested_ad_format(dict(state.get("current_brief") or {}), dict(extra), value)
         context_data["extra"] = extra
         updated = True
     elif field in context_data:
+        next_brief = dict(state.get("current_brief") or {})
         context_data[field] = value
         updated = True
     else:
+        next_brief = dict(state.get("current_brief") or {})
         extra[field] = value
         context_data["extra"] = extra
         updated = True
 
     missing_fields = [item for item in state.get("missing_fields", []) if item != field] if updated else list(state.get("missing_fields", []))
-    append_message(state, "user", str(value), {"field": field, "source": "user_selection"})
-    update_current_brief(state, {field: value})
+    next_brief = update_current_brief(next_brief, {field: value})
     dirty_fields = calculate_dirty_fields(state, [field])
     return {
         "context": MarketingContext(**context_data).model_dump(),
+        "current_brief": next_brief,
         "missing_fields": missing_fields,
         "dirty_fields": dirty_fields,
         "revision": int(state.get("revision", 0)) + 1,
@@ -266,6 +274,27 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
         "user_selection": None,
         **extra_return,
     }
+
+
+def _llm_tracking_from_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    metadata = metadata or {}
+    update: dict[str, Any] = {}
+    selection = metadata.get("model_selection")
+    result = metadata.get("llm_call_result")
+    update["model_selections"] = [selection] if selection else []
+    update["llm_call_results"] = [result] if result else []
+    return update
+
+
+def _merge_llm_tracking(*metadatas: dict[str, Any] | None) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    for metadata in metadatas:
+        current = _llm_tracking_from_metadata(metadata)
+        if "model_selections" in current:
+            merged["model_selections"] = [*(merged.get("model_selections") or []), *current["model_selections"]]
+        if "llm_call_results" in current:
+            merged["llm_call_results"] = [*(merged.get("llm_call_results") or []), *current["llm_call_results"]]
+    return merged
 
 
 def display_value_for_selection(field: str, value: Any) -> Any:
@@ -283,7 +312,7 @@ def infer_marketing_context(text: str) -> dict[str, Any]:
     }
 
 
-def resolve_copy_generation_mode(state: MarketingState, text: str):
+def resolve_copy_generation_mode(state: MarketingState, text: str, *, track_in_state: bool = True):
     if state.get("copy_generation_mode"):
         return state["copy_generation_mode"], CopyModeInferenceOutput(
             copy_generation_mode=state["copy_generation_mode"],
@@ -300,8 +329,9 @@ def resolve_copy_generation_mode(state: MarketingState, text: str):
             reasoning_summary="Copy generation mode inferred from user wording.",
         )
     metadata_contract = build_copy_mode_inference_metadata(state, text)
+    runner_state = state if track_in_state else dict(state)
     output, metadata = run_structured_node(
-        state,
+        runner_state,
         node_name="copy_mode_inference",
         output_schema=CopyModeInferenceOutput,
         prompt=build_copy_mode_prompt(text, state, metadata_contract),

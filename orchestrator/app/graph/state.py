@@ -3,68 +3,37 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict, TypeVar
+from typing import Any, NotRequired, TypedDict, TypeVar
 from uuid import uuid4
+
+from pydantic import BaseModel
 
 from orchestrator.app.llm.plan_policy import build_default_plan_policy, normalize_user_plan
 from orchestrator.app.schemas.llm_marketing import (
-    AdFormatSpec,
     ArtifactRef,
     ConversationMessage,
     CopyCandidate,
     CopyGenerationMode,
-    CopyModeInferenceOutput,
-    CopywritingOutput,
     EntryMode,
-    ErrorInfo,
     GeneratedImageCandidate,
     GenerationEngine,
     GenerationRoute,
-    ImageFeatures,
-    ImageInput,
-    ImagePrompt,
     InitialMarketingRequest,
     JobStatus,
-    LayoutSpec,
     MarketingContext,
-    MarketingCopy,
     MissingField,
-    OptionQuestion,
-    ProgressState,
-    PromptOptimizationOutput,
-    PromptRenderOutput,
-    ReferenceInput,
-    ReferenceStyleSpec,
     RenderProfile,
-    TextOverlayConfig,
-    ToneBindingOutput,
-    UserReadableImageGuide,
-    UserSelectionRequest,
-    ValidationReport,
-    ValidatorOutput,
-    T2IRequest,
-    T2IResult,
 )
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection, PlanPolicy, UserPlan
-from orchestrator.app.schemas.text_layout import (
-    BackgroundValidationReport,
-    CopySpec,
-    FinalValidationReport,
-    ImagePromptSpec,
-    ReadabilityReport,
-    RenderResult,
-    ResultPayload,
-    SafeAreaReport,
-    TextLayoutSpec,
-    TextStyleSpec,
-)
 
 SCHEMA_VERSION = "llm_marketing_v1"
 REQUIRED_CONTEXT_FIELDS: list[MissingField] = ["business_type", "item_or_service", "promotion_goal", "ad_format"]
 OPTIONAL_CONTEXT_FIELDS: list[MissingField] = ["brand_tone", "target_persona", "region_type", "usp", "time_context"]
 
 
-class MarketingState(TypedDict, total=False):
+class JobMetaState(TypedDict, total=False):
+    """Identity, tenancy, routing, plan policy, and run accounting."""
     schema_version: str
     job_id: str
     thread_id: str
@@ -76,24 +45,28 @@ class MarketingState(TypedDict, total=False):
     organization_id: str | None
     user_plan: UserPlan | str
     plan_policy: dict[str, Any] | PlanPolicy
-    model_selections: list[dict[str, Any] | ModelSelection]
-    llm_call_results: list[dict[str, Any] | LLMCallResult]
+    model_selections: Annotated[list[dict[str, Any] | ModelSelection], append_state_items]
+    llm_call_results: Annotated[list[dict[str, Any] | LLMCallResult], append_state_items]
     revision: int
     status: JobStatus
     entry_mode: EntryMode
     generation_route: GenerationRoute
     engine: GenerationEngine
     render_profile: RenderProfile
-    progress_state: dict[str, Any] | ProgressState | None
+    progress_state: dict[str, Any] | None
+
+
+class IntakeState(TypedDict, total=False):
+    """User input, conversation/brief, asset inputs, and product understanding."""
     user_input: str
     prompt_json: dict[str, Any] | None
     messages: list[dict[str, Any] | ConversationMessage]
     conversation_summary: str | None
     current_brief: dict[str, Any]
     dirty_fields: list[str]
-    user_selection: dict[str, Any] | UserSelectionRequest | None
-    image_input: dict[str, Any] | ImageInput | None
-    reference_input: dict[str, Any] | ReferenceInput | None
+    user_selection: dict[str, Any] | None
+    image_input: dict[str, Any] | None
+    reference_input: dict[str, Any] | None
     source_asset_id: str | None
     reference_asset_id: str | None
     source_image_path: str | None
@@ -107,23 +80,35 @@ class MarketingState(TypedDict, total=False):
     product_understanding_confidence: float | None
     product_understanding_provider_metadata: dict[str, Any] | None
     vision_preprocess_mode: str | None
+
+
+class ReferenceVisionState(TypedDict, total=False):
+    """Reference template selection and vision preprocessing artifacts."""
     selected_reference_template_id: str | None
     selected_reference_template: dict[str, Any] | None
     reference_template_selection: dict[str, Any] | None
-    vision_pipeline_results: list[dict[str, Any]]
+    vision_pipeline_results: Annotated[list[dict[str, Any]], append_state_items]
     image_preprocess_result: dict[str, Any] | None
-    image_features: dict[str, Any] | ImageFeatures | None
+    image_features: dict[str, Any] | None
     reference_style_profile: dict[str, Any] | None
     product_preserve_spec: dict[str, Any] | None
-    reference_style: dict[str, Any] | ReferenceStyleSpec | None
+    reference_style: dict[str, Any] | None
+
+
+class ContextValidationState(TypedDict, total=False):
+    """Resolved marketing context, validator output, and option questions."""
     context: dict[str, Any] | MarketingContext
-    validator_output: dict[str, Any] | ValidatorOutput | None
+    validator_output: dict[str, Any] | None
     missing_fields: list[MissingField]
-    option_question: dict[str, Any] | OptionQuestion | None
-    ad_format_spec: dict[str, Any] | AdFormatSpec | None
-    layout_spec: dict[str, Any] | LayoutSpec | None
-    marketing_copy: dict[str, Any] | MarketingCopy | None
-    copywriting_output: dict[str, Any] | CopywritingOutput | None
+    option_question: dict[str, Any] | None
+
+
+class CopyState(TypedDict, total=False):
+    """Ad format, copy generation, compliance, and copy/text specs."""
+    ad_format_spec: dict[str, Any] | None
+    layout_spec: dict[str, Any] | None
+    marketing_copy: dict[str, Any] | None
+    copywriting_output: dict[str, Any] | None
     copy_generation_mode: CopyGenerationMode | None
     copy_candidates: list[dict[str, Any] | CopyCandidate]
     copy_candidate_origin: str | None
@@ -136,8 +121,8 @@ class MarketingState(TypedDict, total=False):
     user_custom_subcopy: str | None
     copy_required: bool
     text_overlay_pending: bool
-    tone_binding_output: dict[str, Any] | ToneBindingOutput | None
-    copy_mode_inference_output: dict[str, Any] | CopyModeInferenceOutput | None
+    tone_binding_output: dict[str, Any] | None
+    copy_mode_inference_output: dict[str, Any] | None
     copy_selection: dict[str, Any] | None
     input_compliance_risk: dict[str, Any] | None
     copy_compliance: list[dict[str, Any]]
@@ -146,9 +131,9 @@ class MarketingState(TypedDict, total=False):
     copy_compliance_gate: dict[str, Any] | None
     copy_compliance_resolution: dict[str, Any] | None
     custom_copy_input: dict[str, Any] | None
-    copy_spec: dict[str, Any] | CopySpec | None
-    text_layout_spec: dict[str, Any] | TextLayoutSpec | None
-    text_style_spec: dict[str, Any] | TextStyleSpec | None
+    copy_spec: dict[str, Any] | None
+    text_layout_spec: dict[str, Any] | None
+    text_style_spec: dict[str, Any] | None
     copy_visual_intent: dict[str, Any] | None
     product_copy_context: dict[str, Any] | None
     copy_presence_plan: dict[str, Any] | None
@@ -156,6 +141,10 @@ class MarketingState(TypedDict, total=False):
     interaction_copy_plan: dict[str, Any] | None
     minimal_copy_candidates: list[dict[str, Any]]
     selected_minimal_copy_candidate_id: str | None
+
+
+class NativeCreativeState(TypedDict, total=False):
+    """GPT-Image native typography single-shot pipeline."""
     creative_execution_plan: dict[str, Any] | None
     native_typography_eligibility: dict[str, Any] | None
     approved_native_copy_brief: dict[str, Any] | None
@@ -166,6 +155,10 @@ class MarketingState(TypedDict, total=False):
     native_generation_result: dict[str, Any] | None
     native_generation_review: dict[str, Any] | None
     native_generation_status: str | None
+
+
+class TypographyLayoutState(TypedDict, total=False):
+    """Typography art direction and layout-fit refinement."""
     typography_art_direction: dict[str, Any] | None
     font_catalog_summary: list[dict[str, Any]]
     adaptive_typography_report: dict[str, Any] | None
@@ -174,13 +167,21 @@ class MarketingState(TypedDict, total=False):
     layout_refinement_result: dict[str, Any] | None
     layout_copy_fit_report: dict[str, Any] | None
     layout_revision_attempts: int
-    image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
-    image_prompt: dict[str, Any] | ImagePrompt | None
-    prompt_optimization_output: dict[str, Any] | PromptOptimizationOutput | None
-    user_readable_image_guide: dict[str, Any] | UserReadableImageGuide | None
-    prompt_render_output: dict[str, Any] | PromptRenderOutput | None
-    t2i_request: dict[str, Any] | T2IRequest | None
-    t2i_result: dict[str, Any] | T2IResult | None
+
+
+class ImagePromptT2IState(TypedDict, total=False):
+    """Image prompt construction and text-to-image request/result."""
+    image_prompt_spec: dict[str, Any] | None
+    image_prompt: dict[str, Any] | None
+    prompt_optimization_output: dict[str, Any] | None
+    user_readable_image_guide: dict[str, Any] | None
+    prompt_render_output: dict[str, Any] | None
+    t2i_request: dict[str, Any] | None
+    t2i_result: dict[str, Any] | None
+
+
+class QualityGateState(TypedDict, total=False):
+    """Quality + OCR gates, regeneration, and image candidates."""
     background_quality_gate: dict[str, Any] | None
     final_quality_gate: dict[str, Any] | None
     quality_gate_attempts: int
@@ -197,13 +198,17 @@ class MarketingState(TypedDict, total=False):
     regeneration_patch: dict[str, Any] | None
     candidates: list[dict[str, Any] | GeneratedImageCandidate]
     selected_candidate_id: str | None
-    background_validation_report: dict[str, Any] | BackgroundValidationReport | None
-    safe_area_report: dict[str, Any] | SafeAreaReport | None
-    readability_report: dict[str, Any] | ReadabilityReport | None
-    render_result: dict[str, Any] | RenderResult | None
-    text_overlay_config: dict[str, Any] | TextOverlayConfig | None
+
+
+class RenderFinalizeState(TypedDict, total=False):
+    """Rendering, validation reports, final composite revision, and result."""
+    background_validation_report: dict[str, Any] | None
+    safe_area_report: dict[str, Any] | None
+    readability_report: dict[str, Any] | None
+    render_result: dict[str, Any] | None
+    text_overlay_config: dict[str, Any] | None
     final_image_path: str | None
-    final_validation_report: dict[str, Any] | FinalValidationReport | None
+    final_validation_report: dict[str, Any] | None
     final_composite_quality_report: dict[str, Any] | None
     final_composite_revision_plan: dict[str, Any] | None
     final_composite_revision_patch: dict[str, Any] | None
@@ -219,13 +224,36 @@ class MarketingState(TypedDict, total=False):
     final_background_regeneration_attempts: int
     validation_report: dict[str, Any] | ValidationReport | None
     result_payload: dict[str, Any] | ResultPayload | None
+    artifact_refs: Annotated[list[dict[str, Any] | ArtifactRef], append_state_items]
+    validation_report: dict[str, Any] | None
+    result_payload: dict[str, Any] | None
     artifact_refs: list[dict[str, Any] | ArtifactRef]
     error_message: str | None
-    error_info: dict[str, Any] | ErrorInfo | None
+    error_info: dict[str, Any] | None
     created_at: str
     updated_at: str
     latency_ms: int | None
     route: NotRequired[GenerationRoute]
+
+
+class MarketingState(
+    JobMetaState,
+    IntakeState,
+    ReferenceVisionState,
+    ContextValidationState,
+    CopyState,
+    NativeCreativeState,
+    TypographyLayoutState,
+    ImagePromptT2IState,
+    QualityGateState,
+    RenderFinalizeState,
+    total=False,
+):
+    """Full LangGraph state — flat at runtime; organized into the sub-state
+    groups above for navigability. Composition is by multiple inheritance, so
+    ``__annotations__`` is the union of all groups and the runtime shape is the
+    same flat dict every node already reads/writes. See docs/state-source-of-truth.md.
+    """
 
 
 def now_iso() -> str:
@@ -238,10 +266,38 @@ def model_to_dict(value: Any) -> Any:
     return value
 
 
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
+_UNSET = object()
+
+
+def read_model(
+    state: dict[str, Any],
+    key: str,
+    model_cls: type[_ModelT],
+    *,
+    default: Any = _UNSET,
+) -> _ModelT | None:
+    """Read a state field as a Pydantic model — the one coercion entry point.
+
+    State fields are stored as serialized dicts (LangGraph checkpointer needs
+    JSON-able state); nodes parse to a model at point of use. This replaces
+    ad-hoc `Model(**(state.get(key) or {}))` so the dict|model duality lives
+    in exactly one place.
+
+    - Existing model instance is returned untouched (idempotent).
+    - Missing/None value: returns an empty `model_cls()` by default, or `None`
+      if `default=None` was passed explicitly.
+    """
+    value = state.get(key)
+    if isinstance(value, model_cls):
+        return value
+    if not value:
+        return None if default is None else model_cls()
+    return model_cls(**value)
+
+
 def context_to_model(context: dict[str, Any] | MarketingContext | None) -> MarketingContext:
-    if isinstance(context, MarketingContext):
-        return context
-    return MarketingContext(**(context or {}))
+    return read_model({"context": context}, "context", MarketingContext)
 
 
 def route_for_entry_mode(entry_mode: EntryMode) -> GenerationRoute:
@@ -260,6 +316,12 @@ def engine_for_render_profile(render_profile: RenderProfile) -> GenerationEngine
     if render_profile == "premium_api":
         return "gpt_image_1"
     return "sd35_large"
+
+
+def append_state_items(left: list[Any] | None, right: list[Any] | None) -> list[Any]:
+    if not right:
+        return list(left or [])
+    return [*(left or []), *right]
 
 
 def create_initial_marketing_state(request: InitialMarketingRequest) -> MarketingState:
@@ -288,6 +350,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
     }
     copy_required = request.copy_generation_mode != "no_copy"
     text_overlay_pending = request.copy_generation_mode != "no_copy"
+    initial_message = build_message("user", request.user_input)
     state: MarketingState = {
         "schema_version": SCHEMA_VERSION,
         "job_id": job_id,
@@ -310,7 +373,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "progress_state": None,
         "user_input": request.user_input,
         "prompt_json": request.prompt_json,
-        "messages": [],
+        "messages": [initial_message],
         "conversation_summary": None,
         "current_brief": current_brief,
         "dirty_fields": [],
@@ -437,36 +500,45 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "updated_at": timestamp,
         "latency_ms": None,
     }
-    append_message(state, "user", request.user_input)
     state["dirty_fields"] = calculate_dirty_fields(state, list(current_brief))
     return state
 
 
-def append_message(state: MarketingState, role: str, content: str, metadata: dict[str, Any] | None = None) -> None:
-    state.setdefault("messages", [])
-    message = ConversationMessage(role=role, content=content, created_at=now_iso(), metadata=metadata or {})
-    state["messages"].append(message.model_dump())
-    state["updated_at"] = now_iso()
+def build_message(role: str, content: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    return ConversationMessage(role=role, content=content, created_at=now_iso(), metadata=metadata or {}).model_dump()
 
 
-def append_model_selection(state: MarketingState, selection: dict[str, Any] | ModelSelection) -> None:
-    state.setdefault("model_selections", [])
-    state["model_selections"].append(model_to_dict(selection))
-    state["updated_at"] = now_iso()
+def append_message(_state: MarketingState, role: str, content: str, metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    return [build_message(role, content, metadata)]
 
 
-def append_llm_call_result(state: MarketingState, result: dict[str, Any] | LLMCallResult) -> None:
-    state.setdefault("llm_call_results", [])
-    state["llm_call_results"].append(model_to_dict(result))
-    state["updated_at"] = now_iso()
+def append_model_selection(_state: MarketingState, selection: dict[str, Any] | ModelSelection) -> list[dict[str, Any]]:
+    return [model_to_dict(selection)]
 
 
-def update_current_brief(state: MarketingState, updates: dict[str, Any]) -> None:
-    state.setdefault("current_brief", {})
-    for key, value in updates.items():
-        if value is not None:
-            state["current_brief"][key] = value
-    state["updated_at"] = now_iso()
+def append_llm_call_result(_state: MarketingState, result: dict[str, Any] | LLMCallResult) -> list[dict[str, Any]]:
+    return [model_to_dict(result)]
+
+
+def merge_current_brief(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
+    merged = dict(left or {})
+    for key, value in (right or {}).items():
+        if value is None:
+            merged[key] = None
+            continue
+        if (
+            isinstance(value, dict)
+            and isinstance(merged.get(key), dict)
+            and key in {"cached_options"}
+        ):
+            merged[key] = {**merged[key], **value}
+            continue
+        merged[key] = value
+    return merged
+
+
+def update_current_brief(current_brief: dict[str, Any] | None, updates: dict[str, Any]) -> dict[str, Any]:
+    return merge_current_brief(current_brief, updates)
 
 
 def resolve_requested_ad_format(state: dict[str, Any] | MarketingState) -> str | None:
@@ -494,15 +566,20 @@ def resolve_requested_ad_format(state: dict[str, Any] | MarketingState) -> str |
     return None
 
 
-def set_requested_ad_format(current_brief: dict[str, Any], context_extra: dict[str, Any], value: str) -> None:
+def set_requested_ad_format(
+    current_brief: dict[str, Any] | None, context_extra: dict[str, Any] | None, value: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Write-through setter: keep the two ad_format mirrors consistent.
 
     current_brief.requested_ad_format is the UI read-model copy;
     context.extra.ad_format is the business-context copy. Writing them
     anywhere else by hand is how they diverged — always use this.
     """
-    current_brief["requested_ad_format"] = value
-    context_extra["ad_format"] = value
+    brief = current_brief if isinstance(current_brief, dict) else {}
+    extra = context_extra if isinstance(context_extra, dict) else {}
+    brief["requested_ad_format"] = value
+    extra["ad_format"] = value
+    return brief, extra
 
 
 def backfill_requested_ad_format(
