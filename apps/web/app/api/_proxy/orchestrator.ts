@@ -27,6 +27,10 @@ type SupabasePrincipal = {
   accountType: "guest" | "user";
 };
 
+function perfEnabled() {
+  return process.env.NEXT_PUBLIC_EASYADS_PERF_TRACE === "1";
+}
+
 function getOrchestratorBaseUrl(): string {
   return process.env.ORCHESTRATOR_BASE_URL || "http://localhost:8000";
 }
@@ -174,6 +178,7 @@ export async function proxyOrchestratorJson(
   options: ProxyOptions = {}
 ) {
   const headers = buildInternalHeaders("application/json");
+  const started = Date.now();
   const init: RequestInit = {
     method,
     headers,
@@ -251,9 +256,16 @@ export async function proxyOrchestratorJson(
       applyPrincipalQueryParams(targetUrl, options.injectVerifiedUserIdQuery, principal);
     }
 
+    const upstreamStarted = Date.now();
     const response = await fetch(targetUrl.toString(), init);
+    const upstreamDuration = Date.now() - upstreamStarted;
     const payload = await response.json().catch(() => ({}));
-    return NextResponse.json(payload, { status: response.ok && options.successStatus ? options.successStatus : response.status });
+    const nextResponse = NextResponse.json(payload, { status: response.ok && options.successStatus ? options.successStatus : response.status });
+    if (perfEnabled()) {
+      nextResponse.headers.set("Server-Timing", `upstream;dur=${upstreamDuration}`);
+      nextResponse.headers.set("X-EasyAds-Bff-Perf", String(Date.now() - started));
+    }
+    return nextResponse;
   } catch (error) {
     const statusCode = (error as ProxyError).statusCode;
     const errorCode = (error as ProxyError).errorCode;
@@ -274,6 +286,7 @@ export async function proxyOrchestratorJson(
 export async function proxyOrchestratorBinary(request: NextRequest, path: string, cacheControl?: string) {
   const headers = buildInternalHeaders();
   const targetUrl = buildTargetUrl(path, request);
+  const started = Date.now();
 
   try {
     const response = await fetch(targetUrl.toString(), {
@@ -308,10 +321,14 @@ export async function proxyOrchestratorBinary(request: NextRequest, path: string
       responseHeaders.set("cache-control", responseCacheControl);
     }
 
-    return new Response(await response.arrayBuffer(), {
+    const nextResponse = new Response(await response.arrayBuffer(), {
       status: response.status,
       headers: responseHeaders
     });
+    if (perfEnabled()) {
+      nextResponse.headers.set("Server-Timing", `upstream;dur=${Date.now() - started}`);
+    }
+    return nextResponse;
   } catch {
     return unavailableResponse();
   }

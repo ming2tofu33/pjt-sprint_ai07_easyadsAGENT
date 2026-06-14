@@ -12,6 +12,7 @@ import type {
   ReferenceTemplateFields
 } from "@/types/marketing";
 import { getSupabaseAuthorizationHeader, type RequestHeaders } from "@/lib/supabase/session";
+import { estimateJsonSizeBytes, measureWebPerf, perfTraceEnabled, recordWebPerfEvent } from "@/lib/performance";
 
 const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "");
 
@@ -21,6 +22,23 @@ function normalizeBaseUrl(baseUrl: string): string {
 
 function buildBffUrl(path: string): string {
   return `${BFF_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+export function recordRenderMark(markName: string) {
+  if (!perfTraceEnabled() || typeof window === "undefined") {
+    return;
+  }
+  performance.mark(markName);
+  recordWebPerfEvent({
+    schema_version: 1,
+    event_type: "frontend_render_mark",
+    component: "web",
+    operation: markName,
+    started_at: new Date().toISOString(),
+    duration_ms: 0,
+    status: "ok",
+    metadata: {}
+  });
 }
 
 function buildBffUrlWithParams(path: string, params?: ReferenceQueryParams): string {
@@ -395,30 +413,43 @@ type RawArchiveMutationResponse = {
 };
 
 async function postJson<TResponse>(path: string, body: unknown, headers: RequestHeaders = {}): Promise<TResponse> {
-  const response = await fetch(buildBffUrl(path), {
-    method: "POST",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify(body)
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw apiErrorFrom(response, payload);
-  }
-  return payload as TResponse;
+  return measureWebPerf(
+    "frontend_request",
+    `POST ${path}`,
+    async () => {
+      const response = await fetch(buildBffUrl(path), {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body)
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw apiErrorFrom(response, payload);
+      }
+      return payload as TResponse;
+    },
+    { route_template: path, method: "POST", response_size_bytes: estimateJsonSizeBytes(body) }
+  );
 }
 
 async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
   const url = buildBffUrlWithParams(path, params);
-
-  const response = await fetch(url, {
-    method: "DELETE",
-    headers: { accept: "application/json", ...headers }
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw apiErrorFrom(response, payload);
-  }
-  return payload as TResponse;
+  return measureWebPerf(
+    "frontend_request",
+    `DELETE ${path}`,
+    async () => {
+      const response = await fetch(url, {
+        method: "DELETE",
+        headers: { accept: "application/json", ...headers }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw apiErrorFrom(response, payload);
+      }
+      return payload as TResponse;
+    },
+    { route_template: path, method: "DELETE" }
+  );
 }
 
 function compactPayload(payload: object): Record<string, unknown> {
@@ -427,29 +458,42 @@ function compactPayload(payload: object): Record<string, unknown> {
 
 async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
   const url = buildBffUrlWithParams(path, params);
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: { accept: "application/json", ...headers }
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw apiErrorFrom(response, payload);
-  }
-  return payload as TResponse;
+  return measureWebPerf(
+    "frontend_request",
+    `GET ${path}`,
+    async () => {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: { accept: "application/json", ...headers }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw apiErrorFrom(response, payload);
+      }
+      return payload as TResponse;
+    },
+    { route_template: path, method: "GET" }
+  );
 }
 
 async function patchJson<TResponse>(path: string, body: unknown, headers: RequestHeaders = {}): Promise<TResponse> {
-  const response = await fetch(buildBffUrl(path), {
-    method: "PATCH",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify(body)
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw apiErrorFrom(response, payload);
-  }
-  return payload as TResponse;
+  return measureWebPerf(
+    "frontend_request",
+    `PATCH ${path}`,
+    async () => {
+      const response = await fetch(buildBffUrl(path), {
+        method: "PATCH",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body)
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw apiErrorFrom(response, payload);
+      }
+      return payload as TResponse;
+    },
+    { route_template: path, method: "PATCH", response_size_bytes: estimateJsonSizeBytes(body) }
+  );
 }
 
 export class ApiError extends Error {

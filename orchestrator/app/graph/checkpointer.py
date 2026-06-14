@@ -11,6 +11,34 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
+from orchestrator.app.observability.performance import estimate_json_size_bytes, perf_span, perf_trace_enabled, top_channels
+
+
+class InstrumentedCheckpointer:
+    def __init__(self, inner: Any):
+        self._inner = inner
+
+    def __getattr__(self, name: str) -> Any:
+        target = getattr(self._inner, name)
+        if name not in {"put", "put_writes", "aput", "aput_writes", "get", "aget", "list"} or not callable(target):
+            return target
+
+        def wrapper(*args, **kwargs):
+            if not perf_trace_enabled():
+                return target(*args, **kwargs)
+            metadata = {
+                "operation": name,
+                "arg_count": len(args),
+                "kwarg_keys": sorted(kwargs.keys()),
+            }
+            if args:
+                metadata["checkpoint_size_bytes"] = estimate_json_size_bytes(args[-1])
+                metadata["top_channels"] = top_channels(args[-1])
+            with perf_span("checkpoint_save", operation=name, metadata=metadata):
+                return target(*args, **kwargs)
+
+        return wrapper
+
 
 def _build_postgres_checkpointer() -> Any:
     from langgraph.checkpoint.postgres import PostgresSaver
@@ -38,9 +66,9 @@ def get_checkpointer() -> Any:
     from orchestrator.app.db.settings import is_postgres_enabled
 
     if is_postgres_enabled():
-        return _build_postgres_checkpointer()
+        return InstrumentedCheckpointer(_build_postgres_checkpointer())
     try:
         from langgraph.checkpoint.memory import InMemorySaver
     except ImportError:  # pragma: no cover - older langgraph naming
         from langgraph.checkpoint.memory import MemorySaver as InMemorySaver
-    return InMemorySaver()
+    return InstrumentedCheckpointer(InMemorySaver())
