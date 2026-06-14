@@ -14,6 +14,8 @@ from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 from typing import Any, Callable
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
 from orchestrator.app.db.session import db_transaction
 from orchestrator.app.graph.builder import _instrument_node
 from orchestrator.app.graph.checkpointer import InstrumentedCheckpointer
@@ -146,12 +148,40 @@ class FakeConnection:
         return FakeCursor()
 
 
-class FakeCheckpointerInner:
+class FakeCheckpointSaver(BaseCheckpointSaver):
+    def __init__(self):
+        from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+        super().__init__(serde=JsonPlusSerializer())
+
+    @property
+    def config_specs(self):
+        return []
+
+    def get_tuple(self, config):
+        return {"config": config}
+
     def put(self, config, checkpoint, metadata, new_versions):
         return checkpoint
 
+    def get(self, config):
+        return {"config": config}
+
+    def list(self, config, *, filter=None, before=None, limit=None):
+        yield {"snapshot": 1}
+        yield {"snapshot": 2}
+
     def put_writes(self, config, writes, task_id, task_path=""):
         return writes
+
+    def delete_thread(self, thread_id: str) -> None:
+        return None
+
+    def get_next_version(self, current, channel):
+        return 1 if current is None else current + 1
+
+    async def aget_tuple(self, config):
+        return {"config": config}
 
     async def aput(self, config, checkpoint, metadata, new_versions):
         return checkpoint
@@ -159,11 +189,15 @@ class FakeCheckpointerInner:
     async def aget(self, config):
         return {"config": config}
 
-    def get(self, config):
-        return {"config": config}
+    async def alist(self, config, *, filter=None, before=None, limit=None):
+        yield {"snapshot": 1}
+        yield {"snapshot": 2}
 
-    def list(self, *args, **kwargs):
-        return [{"snapshot": 1}, {"snapshot": 2}]
+    async def aput_writes(self, config, writes, task_id, task_path=""):
+        return None
+
+    async def adelete_thread(self, thread_id: str) -> None:
+        return None
 
 
 def _sync_node(name: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -179,11 +213,11 @@ def _exercise_db() -> None:
 
 
 def _exercise_checkpoint() -> None:
-    checkpointer = InstrumentedCheckpointer(FakeCheckpointerInner())
+    checkpointer = InstrumentedCheckpointer(FakeCheckpointSaver())
     checkpointer.put({}, {"values": [1, 2, 3]}, {}, {})
     checkpointer.put_writes({}, [{"field": "headline"}], "task_1")
     checkpointer.get({"thread_id": "thread_1"})
-    checkpointer.list()
+    list(checkpointer.list({"thread_id": "thread_1"}))
 
 
 def run_scenario_a_dashboard() -> None:

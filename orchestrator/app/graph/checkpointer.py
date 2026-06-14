@@ -11,12 +11,19 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
 from orchestrator.app.observability.performance import estimate_json_size_bytes, perf_span, perf_trace_enabled, top_channels
 
 
-class InstrumentedCheckpointer:
-    def __init__(self, inner: Any):
+class InstrumentedCheckpointer(BaseCheckpointSaver):
+    def __init__(self, inner: BaseCheckpointSaver):
+        super().__init__(serde=inner.serde)
         self._inner = inner
+
+    @property
+    def config_specs(self):
+        return self._inner.config_specs
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
@@ -30,79 +37,117 @@ class InstrumentedCheckpointer:
             "top_channels": top_channels(payload),
         }
 
-    def put(self, config, checkpoint, metadata, new_versions):
-        target = self._inner.put
+    def get_tuple(self, config):
         if not perf_trace_enabled():
-            return target(config, checkpoint, metadata, new_versions)
-        with perf_span("checkpoint_write", operation="put", metadata=self._metadata("put", checkpoint, size_field="checkpoint_size_bytes")):
-            return target(config, checkpoint, metadata, new_versions)
-
-    def put_writes(self, config, writes, task_id, task_path=""):
-        target = self._inner.put_writes
-        if not perf_trace_enabled():
-            return target(config, writes, task_id, task_path=task_path)
-        with perf_span("checkpoint_write_batch", operation="put_writes", metadata=self._metadata("put_writes", writes, size_field="writes_size_bytes")):
-            return target(config, writes, task_id, task_path=task_path)
-
-    async def aput(self, config, checkpoint, metadata, new_versions):
-        target = self._inner.aput
-        if not perf_trace_enabled():
-            return await target(config, checkpoint, metadata, new_versions)
-        with perf_span("checkpoint_write", operation="aput", metadata=self._metadata("aput", checkpoint, size_field="checkpoint_size_bytes")):
-            return await target(config, checkpoint, metadata, new_versions)
-
-    async def aput_writes(self, config, writes, task_id, task_path=""):
-        target = self._inner.aput_writes
-        if not perf_trace_enabled():
-            return await target(config, writes, task_id, task_path=task_path)
-        with perf_span("checkpoint_write_batch", operation="aput_writes", metadata=self._metadata("aput_writes", writes, size_field="writes_size_bytes")):
-            return await target(config, writes, task_id, task_path=task_path)
+            return self._inner.get_tuple(config)
+        with perf_span("checkpoint_read", operation="get_tuple", metadata={"operation": "get_tuple"}):
+            return self._inner.get_tuple(config)
 
     def get(self, config):
-        target = self._inner.get
         if not perf_trace_enabled():
-            return target(config)
+            return self._inner.get(config)
         with perf_span("checkpoint_read", operation="get", metadata={"operation": "get"}):
-            return target(config)
+            return self._inner.get(config)
+
+    def list(self, config, *, filter=None, before=None, limit=None):
+        iterator = self._inner.list(config, filter=filter, before=before, limit=limit)
+        if not perf_trace_enabled():
+            yield from iterator
+            return
+        with perf_span("checkpoint_list", operation="list", metadata={"operation": "list"}):
+            yield from iterator
+
+    def put(self, config, checkpoint, metadata, new_versions):
+        if not perf_trace_enabled():
+            return self._inner.put(config, checkpoint, metadata, new_versions)
+        with perf_span(
+            "checkpoint_write",
+            operation="put",
+            metadata=self._metadata("put", checkpoint, size_field="checkpoint_size_bytes"),
+        ):
+            return self._inner.put(config, checkpoint, metadata, new_versions)
+
+    def put_writes(self, config, writes, task_id, task_path=""):
+        if not perf_trace_enabled():
+            return self._inner.put_writes(config, writes, task_id, task_path=task_path)
+        with perf_span(
+            "checkpoint_write_batch",
+            operation="put_writes",
+            metadata=self._metadata("put_writes", writes, size_field="writes_size_bytes"),
+        ):
+            return self._inner.put_writes(config, writes, task_id, task_path=task_path)
+
+    def delete_thread(self, thread_id: str) -> None:
+        return self._inner.delete_thread(thread_id)
+
+    def get_next_version(self, current, channel):
+        return self._inner.get_next_version(current, channel)
+
+    async def aget_tuple(self, config):
+        if not perf_trace_enabled():
+            return await self._inner.aget_tuple(config)
+        with perf_span("checkpoint_read", operation="aget_tuple", metadata={"operation": "aget_tuple"}):
+            return await self._inner.aget_tuple(config)
 
     async def aget(self, config):
-        target = self._inner.aget
         if not perf_trace_enabled():
-            return await target(config)
+            return await self._inner.aget(config)
         with perf_span("checkpoint_read", operation="aget", metadata={"operation": "aget"}):
-            return await target(config)
+            return await self._inner.aget(config)
 
-    def list(self, *args, **kwargs):
-        target = self._inner.list
+    async def alist(self, config, *, filter=None, before=None, limit=None):
+        iterator = self._inner.alist(config, filter=filter, before=before, limit=limit)
         if not perf_trace_enabled():
-            return target(*args, **kwargs)
-        with perf_span("checkpoint_list", operation="list", metadata={"operation": "list"}):
-            return list(target(*args, **kwargs))
+            async for item in iterator:
+                yield item
+            return
+        with perf_span("checkpoint_list", operation="alist", metadata={"operation": "alist"}):
+            async for item in iterator:
+                yield item
+
+    async def aput(self, config, checkpoint, metadata, new_versions):
+        if not perf_trace_enabled():
+            return await self._inner.aput(config, checkpoint, metadata, new_versions)
+        with perf_span(
+            "checkpoint_write",
+            operation="aput",
+            metadata=self._metadata("aput", checkpoint, size_field="checkpoint_size_bytes"),
+        ):
+            return await self._inner.aput(config, checkpoint, metadata, new_versions)
+
+    async def aput_writes(self, config, writes, task_id, task_path=""):
+        if not perf_trace_enabled():
+            return await self._inner.aput_writes(config, writes, task_id, task_path=task_path)
+        with perf_span(
+            "checkpoint_write_batch",
+            operation="aput_writes",
+            metadata=self._metadata("aput_writes", writes, size_field="writes_size_bytes"),
+        ):
+            return await self._inner.aput_writes(config, writes, task_id, task_path=task_path)
+
+    async def adelete_thread(self, thread_id: str) -> None:
+        return await self._inner.adelete_thread(thread_id)
 
 
-def _build_postgres_checkpointer() -> Any:
+def _build_postgres_checkpointer() -> BaseCheckpointSaver:
     from langgraph.checkpoint.postgres import PostgresSaver
     from psycopg.rows import dict_row
     from psycopg_pool import ConnectionPool
 
     from orchestrator.app.db.settings import get_database_url
 
-    # PostgresSaver requires autocommit connections with dict_row factory.
-    # The pool lives for the process lifetime (singleton via get_checkpointer).
     pool = ConnectionPool(
         get_database_url(required=True),
         max_size=4,
         kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
     )
     checkpointer = PostgresSaver(pool)
-    # Idempotent: creates checkpoints/checkpoint_blobs/checkpoint_writes tables
-    # and runs the library's own schema migrations on first call.
     checkpointer.setup()
     return checkpointer
 
 
 @lru_cache(maxsize=1)
-def get_checkpointer() -> Any:
+def get_checkpointer() -> BaseCheckpointSaver:
     from orchestrator.app.db.settings import is_postgres_enabled
 
     if is_postgres_enabled():
