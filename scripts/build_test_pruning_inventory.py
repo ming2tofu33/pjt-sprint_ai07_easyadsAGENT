@@ -236,6 +236,19 @@ class AstTestInfo:
     weak_assertion_patterns: list[str]
 
 
+@dataclass(frozen=True)
+class ReplacementDecision:
+    replacement_test: str | None
+    replacement_contract_id: str | None
+    replacement_is_protected: bool
+    replacement_layer: str | None
+    replacement_markers: list[str]
+    replacement_assertion_strength: str | None
+    same_layer_replacement: bool
+    cross_layer_replacement: bool
+    layer_responsibility_equivalent: bool
+
+
 def extract_ast_test_info(test_file: Path) -> dict[tuple[str | None, str], AstTestInfo]:
     source = test_file.read_text(encoding="utf-8-sig")
     tree = ast.parse(source)
@@ -298,6 +311,33 @@ def find_automated_scope_memberships(mutation_dir: Path, scope_rows: list[dict[s
     return memberships, survivor_count, uncovered_count
 
 
+def assertion_strength(assertion_fingerprints: list[str], weak_assertion_patterns: list[str]) -> str:
+    assert_count = len(assertion_fingerprints)
+    weak_count = len(set(weak_assertion_patterns))
+    if assert_count >= 3 and weak_count == 0:
+        return "strong"
+    if assert_count >= 1 and weak_count <= 1:
+        return "medium"
+    return "weak"
+
+
+def strength_rank(level: str | None) -> int:
+    return {"weak": 0, "medium": 1, "strong": 2}.get(level or "", -1)
+
+
+def same_layer_equivalent(candidate_layer: str, replacement_layer: str, contract_id: str | None) -> bool:
+    if candidate_layer == replacement_layer:
+        return True
+    if not contract_id:
+        return False
+    terms = contract_id.lower()
+    if {candidate_layer, replacement_layer} <= {"contract", "integration"} and any(term in terms for term in ("schema", "api", "route", "response", "request")):
+        return True
+    if {candidate_layer, replacement_layer} <= {"unit", "integration"} and any(term in terms for term in ("service", "repository", "adapter", "policy")):
+        return True
+    return False
+
+
 def score_candidate(item: dict[str, Any]) -> int:
     score = 0
     reason = item["reason"].lower()
@@ -334,18 +374,56 @@ def choose_replacement(
     *,
     live_nodes: set[str],
     stale_nodes: set[str],
-    protected_nodes: set[str],
-) -> tuple[str | None, str | None]:
+    node_inventory: dict[str, dict[str, Any]],
+) -> ReplacementDecision:
     if not contract_id or contract_id not in contracts:
-        return None, None
+        return ReplacementDecision(None, None, False, None, [], None, False, False, False)
     row = contracts[contract_id]
     owner_tests: list[str] = []
     for layer_name in ("api", "service", "repository", "graph", "policy", "schema"):
         owner_tests.extend(row.get("layers", {}).get(layer_name, []))
-    for owner in owner_tests:
-        if owner != node_id and owner in live_nodes and owner not in stale_nodes and owner not in protected_nodes:
-            return owner, contract_id
-    return None, None
+    candidate_item = node_inventory.get(node_id, {})
+    candidate_layer = candidate_item.get("layer", "unknown")
+    candidate_strength = candidate_item.get("assertion_strength")
+    ranked_owners: list[tuple[Any, ...]] = []
+    for owner in sorted(dict.fromkeys(owner_tests)):
+        if owner == node_id or owner not in live_nodes or owner in stale_nodes:
+            continue
+        owner_item = node_inventory.get(owner)
+        if not owner_item:
+            continue
+        owner_strength = owner_item.get("assertion_strength")
+        if strength_rank(owner_strength) < strength_rank(candidate_strength):
+            continue
+        same_layer = owner_item.get("layer") == candidate_layer
+        equivalent = same_layer_equivalent(candidate_layer, owner_item.get("layer", "unknown"), contract_id)
+        ranked_owners.append(
+            (
+                0 if same_layer else 1,
+                0 if equivalent else 1,
+                -strength_rank(owner_strength),
+                owner_item.get("candidate_status") != "protected",
+                -len(owner_item.get("markers", [])),
+                owner,
+            )
+        )
+    if not ranked_owners:
+        return ReplacementDecision(None, None, False, None, [], None, False, False, False)
+    selected_owner = sorted(ranked_owners)[0][-1]
+    owner_item = node_inventory[selected_owner]
+    same_layer = owner_item.get("layer") == candidate_layer
+    equivalent = same_layer_equivalent(candidate_layer, owner_item.get("layer", "unknown"), contract_id)
+    return ReplacementDecision(
+        replacement_test=selected_owner,
+        replacement_contract_id=contract_id,
+        replacement_is_protected=owner_item.get("candidate_status") == "protected",
+        replacement_layer=owner_item.get("layer"),
+        replacement_markers=owner_item.get("markers", []),
+        replacement_assertion_strength=owner_item.get("assertion_strength"),
+        same_layer_replacement=same_layer,
+        cross_layer_replacement=not same_layer,
+        layer_responsibility_equivalent=equivalent,
+    )
 
 
 def build_report(summary: dict[str, Any], compatibility: dict[str, Any], output_dir: Path) -> None:
@@ -437,6 +515,26 @@ def run_self_check() -> int:
         duplicate_hint=None,
     )
     assert review == "review"
+    assert assertion_strength(["a", "b", "c"], []) == "strong"
+    assert assertion_strength(["a"], ["weak_pattern"]) == "medium"
+    assert assertion_strength([], ["weak_pattern"]) == "weak"
+    contracts = {"contract-x": {"layers": {"service": ["test_b", "test_a"]}}}
+    node_inventory = {
+        "test_a": {"layer": "unit", "assertion_strength": "strong", "candidate_status": "protected", "markers": ["regression"]},
+        "test_b": {"layer": "integration", "assertion_strength": "medium", "candidate_status": "review", "markers": []},
+        "test_c": {"layer": "unit", "assertion_strength": "medium", "candidate_status": "review", "markers": []},
+    }
+    decision = choose_replacement(
+        "test_c",
+        "contract-x",
+        contracts,
+        live_nodes={"test_a", "test_b", "test_c"},
+        stale_nodes=set(),
+        node_inventory=node_inventory,
+    )
+    assert decision.replacement_test == "test_a"
+    assert decision.replacement_is_protected is True
+    assert decision.same_layer_replacement is True
     print("self_check=ok")
     return 0
 
@@ -591,8 +689,9 @@ def main() -> int:
     rejected_rows: list[dict[str, Any]] = []
     stale_rows: list[dict[str, Any]] = []
     stale_node_ids = set(stale_branch_nodes) | set(stale_weak_assertion_nodes)
-    protected_node_ids: set[str] = set()
     review_counter = 0
+    node_inventory: dict[str, dict[str, Any]] = {}
+    pending_rows: list[dict[str, Any]] = []
 
     for node_id in live_nodes:
         file_path, class_path, function_name, parameter_id = split_node_id(node_id)
@@ -615,39 +714,8 @@ def main() -> int:
         related_files = {row["target_file"] for row in mutation_join if node_id in row.get("candidate_tests", []) or node_id in row.get("branch_context_owner_tests", [])}
         critical_gap = any(path in critical_gap_files for path in related_files)
         stale = node_id in stale_branch_nodes or node_id in stale_weak_assertion_nodes or any(scope in stale_scopes for scope in automated_scope_ids)
-        replacement_test, replacement_contract_id = choose_replacement(
-            node_id,
-            contract_id,
-            contracts,
-            live_nodes=live_node_set,
-            stale_nodes=stale_node_ids,
-            protected_nodes=protected_node_ids,
-        )
-        candidate_status = classify_candidate_status(
-            markers=markers,
-            contract_id=contract_id,
-            unique_branch_count=int(unique_row.get("unique_branch_count", 0)),
-            semantic_unique_kill_count=len(semantic_unique),
-            semantic_survivors=semantic_survivors,
-            suite_interaction=suite_interaction,
-            critical_gap=critical_gap,
-            stale=stale,
-            automated_uncovered=automated_scope_uncovered_count > 0,
-            replacement_test=replacement_test,
-            duplicate_hint=duplicate_hint.get("classification"),
-        )
-        protected_traits_set = (
-            set(markers).intersection(PROTECTED_MARKERS)
-            | set(markers).intersection(HIGH_RISK_MARKERS)
-            | set((contracts.get(contract_id, {}) or {}).get("protected_traits", []))
-        )
-        if stale:
-            protected_traits_set.add("stale_evidence")
-        protected_traits = sorted(protected_traits_set)
-        category = duplicate_hint.get("classification") or (removal_rows[0]["decision"] if removal_rows else "not_candidate")
-        reason = duplicate_hint.get("reason") or (removal_rows[0]["reason"] if removal_rows else "no_removal_signal")
-        evidence_status = "stale" if stale else ("partial" if not markers_row or not branch_row or ast_info is None else "complete")
         duration_value = duration_map.get(node_id)
+        evidence_status = "stale" if stale else ("partial" if not markers_row or not branch_row or ast_info is None else "complete")
         item = {
             "node_id": node_id,
             "file": file_path,
@@ -678,32 +746,90 @@ def main() -> int:
             "automated_unique_kill_known": False,
             "duration_seconds": duration_value,
             "warning_count": warning_total,
-            "protected_traits": sorted(dict.fromkeys(protected_traits)),
             "evidence_status": evidence_status,
-            "candidate_status": candidate_status if candidate_status != "stale" else "not_candidate",
         }
+        item["assertion_strength"] = assertion_strength(item["assertion_fingerprints"], item["weak_assertion_patterns"])
+        candidate_status = classify_candidate_status(
+            markers=markers,
+            contract_id=contract_id,
+            unique_branch_count=int(unique_row.get("unique_branch_count", 0)),
+            semantic_unique_kill_count=len(semantic_unique),
+            semantic_survivors=semantic_survivors,
+            suite_interaction=suite_interaction,
+            critical_gap=critical_gap,
+            stale=stale,
+            automated_uncovered=automated_scope_uncovered_count > 0,
+            replacement_test="pending",
+            duplicate_hint=duplicate_hint.get("classification"),
+        )
+        item["candidate_status"] = candidate_status if candidate_status != "stale" else "not_candidate"
+        node_inventory[node_id] = item
+        pending_rows.append(
+            {
+                "item": item,
+                "stale": stale,
+                "category": duplicate_hint.get("classification") or (removal_rows[0]["decision"] if removal_rows else "not_candidate"),
+                "reason": duplicate_hint.get("reason") or (removal_rows[0]["reason"] if removal_rows else "no_removal_signal"),
+                "deletion_action": "remove_parameter_case" if parameter_id else ("manual_review" if candidate_status == "review" else "remove_test_function"),
+            }
+        )
+
+    for pending in pending_rows:
+        item = pending["item"]
+        node_id = item["node_id"]
+        stale = pending["stale"]
+        protected_traits_set = (
+            set(item["markers"]).intersection(PROTECTED_MARKERS)
+            | set(item["markers"]).intersection(HIGH_RISK_MARKERS)
+            | set((contracts.get(item["contract_id"], {}) or {}).get("protected_traits", []))
+        )
+        if stale:
+            protected_traits_set.add("stale_evidence")
+        item["protected_traits"] = sorted(dict.fromkeys(protected_traits_set))
         inventory.append(item)
-        duplicate_groups[(contract_id, item["branch_signature"], tuple(item["assertion_fingerprints"]), layer, ",".join(markers))].append(node_id)
+        duplicate_groups[
+            (
+                item["contract_id"],
+                item["branch_signature"],
+                tuple(item["assertion_fingerprints"]),
+                item["layer"],
+                ",".join(item["markers"]),
+            )
+        ].append(node_id)
 
         if stale:
             stale_rows.append({**item, "stale_reasons": ["stale_node_or_scope"]})
             continue
-        if candidate_status == "protected":
+        if item["candidate_status"] == "protected":
             protected_rows.append(item)
-            protected_node_ids.add(node_id)
             continue
 
-        deletion_action = "remove_parameter_case" if parameter_id else ("manual_review" if candidate_status == "review" else "remove_test_function")
+        replacement = choose_replacement(
+            node_id,
+            item["contract_id"],
+            contracts,
+            live_nodes=live_node_set,
+            stale_nodes=stale_node_ids,
+            node_inventory=node_inventory,
+        )
         review_counter += 1
         candidate = {
             "candidate_id": f"candidate-{review_counter:03d}",
             "node_id": node_id,
-            "deletion_action": deletion_action,
-            "target_parameter_id": parameter_id,
-            "category": category,
-            "reason": reason,
-            "replacement_test": replacement_test,
-            "replacement_contract_id": replacement_contract_id,
+            "deletion_action": pending["deletion_action"],
+            "target_parameter_id": item["parameter_id"],
+            "category": pending["category"],
+            "reason": pending["reason"],
+            "replacement_test": replacement.replacement_test,
+            "replacement_contract_id": replacement.replacement_contract_id,
+            "replacement_is_protected": replacement.replacement_is_protected,
+            "replacement_layer": replacement.replacement_layer,
+            "replacement_markers": replacement.replacement_markers,
+            "replacement_assertion_strength": replacement.replacement_assertion_strength,
+            "same_layer_replacement": replacement.same_layer_replacement,
+            "cross_layer_replacement": replacement.cross_layer_replacement,
+            "layer_responsibility_equivalent": replacement.layer_responsibility_equivalent,
+            "assertion_strength": item["assertion_strength"],
             "unique_branch_count": item["unique_branch_count"],
             "shared_branch_count": item["shared_branch_count"],
             "semantic_unique_kill_count": item["semantic_unique_kill_count"],
@@ -712,14 +838,14 @@ def main() -> int:
             "automated_scope_ids": item["automated_scope_ids"],
             "automated_scope_survivor_count": item["automated_scope_survivor_count"],
             "automated_evidence_level": item["automated_evidence_level"],
-            "risk": "low" if candidate_status == "low_risk_candidate" else "medium",
+            "risk": "low" if (replacement.same_layer_replacement and not replacement.cross_layer_replacement and item["candidate_status"] == "low_risk_candidate") else "medium",
             "priority_score": 0,
-            "evidence_status": evidence_status,
+            "evidence_status": item["evidence_status"],
             "approved_for_deletion": False,
             "review_required": True,
         }
         candidate["priority_score"] = score_candidate({**item, **candidate})
-        if candidate_status == "low_risk_candidate":
+        if item["candidate_status"] == "low_risk_candidate" and replacement.same_layer_replacement and not replacement.cross_layer_replacement:
             candidate_rows.append(candidate)
         else:
             manual_review_rows.append(candidate)
