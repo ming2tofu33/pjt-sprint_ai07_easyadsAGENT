@@ -91,4 +91,34 @@ read_model로 마이그레이션하고 주석을 정규화한 필드:
 - 미마이그레이션 model-backed 필드들의 reader를 read_model로 점차 교체 후
   주석 정규화.
 - (더 큰 과제) MarketingState를 intake/copy/image/render sub-state로 분리.
-  그때 brief 전용 키들을 TypedDict로 명세하는 것부터 시작할 것.
+  → **아래 "MarketingState 그룹 구조"에서 완료.**
+
+## MarketingState 그룹 구조 (sub-state, 조직화)
+
+리뷰 지적 ④의 "필드 그룹별 sub-state 분리"를 **조직화 방식**으로 적용한 결과.
+(2026-06-14)
+
+`MarketingState`는 런타임에서는 여전히 **flat dict**다 (LangGraph가 top-level
+키로 병합하고 노드들이 flat 키를 읽고 씀 — 변경 없음). 다만 소스에서는 161개
+필드를 파이프라인 단계별 10개 TypedDict로 나누고 **다중 상속**으로 합친다:
+
+| 그룹 TypedDict | 책임 |
+|---|---|
+| `JobMetaState` | 신원/테넌시/라우팅/플랜/실행 회계 |
+| `IntakeState` | 사용자 입력·브리프·에셋·product understanding |
+| `ReferenceVisionState` | 레퍼런스 템플릿·비전 전처리 |
+| `ContextValidationState` | context·validator·옵션 질문 |
+| `CopyState` | 광고 형식·카피 생성·컴플라이언스·카피/텍스트 스펙 |
+| `NativeCreativeState` | GPT-Image 네이티브 타이포 single-shot |
+| `TypographyLayoutState` | 타이포 아트디렉션·레이아웃 핏 refinement |
+| `ImagePromptT2IState` | 이미지 프롬프트·T2I 요청/결과 |
+| `QualityGateState` | 품질/OCR 게이트·재생성·후보 |
+| `RenderFinalizeState` | 렌더·검증 리포트·최종 합성·결과 |
+
+규칙:
+- 새 필드는 의미가 맞는 그룹 TypedDict에 추가한다 (flat 클래스에 직접 추가 금지).
+- 런타임 형태는 dict이므로 read_model 컨벤션(위 "dict ↔ Pydantic 모델 경계")이 그대로 적용된다.
+- `MarketingState.__annotations__`는 10개 그룹의 합집합이며, 분리 전 flat
+  클래스와 byte-identical (테스트 `test_marketing_state_shape.py`가 161필드 surface를 고정).
+- 더 깊은 변경(런타임 중첩 `state["copy"][...]`)은 의도적으로 하지 않았다 —
+  557개 접근 지점 재작성 + LangGraph reducer 커스텀이 필요해 리스크 대비 효용이 낮다.

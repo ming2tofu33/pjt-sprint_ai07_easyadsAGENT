@@ -32,7 +32,8 @@ REQUIRED_CONTEXT_FIELDS: list[MissingField] = ["business_type", "item_or_service
 OPTIONAL_CONTEXT_FIELDS: list[MissingField] = ["brand_tone", "target_persona", "region_type", "usp", "time_context"]
 
 
-class MarketingState(TypedDict, total=False):
+class JobMetaState(TypedDict, total=False):
+    """Identity, tenancy, routing, plan policy, and run accounting."""
     schema_version: str
     job_id: str
     thread_id: str
@@ -53,6 +54,10 @@ class MarketingState(TypedDict, total=False):
     engine: GenerationEngine
     render_profile: RenderProfile
     progress_state: dict[str, Any] | None
+
+
+class IntakeState(TypedDict, total=False):
+    """User input, conversation/brief, asset inputs, and product understanding."""
     user_input: str
     prompt_json: dict[str, Any] | None
     messages: list[dict[str, Any] | ConversationMessage]
@@ -75,6 +80,10 @@ class MarketingState(TypedDict, total=False):
     product_understanding_confidence: float | None
     product_understanding_provider_metadata: dict[str, Any] | None
     vision_preprocess_mode: str | None
+
+
+class ReferenceVisionState(TypedDict, total=False):
+    """Reference template selection and vision preprocessing artifacts."""
     selected_reference_template_id: str | None
     selected_reference_template: dict[str, Any] | None
     reference_template_selection: dict[str, Any] | None
@@ -84,10 +93,18 @@ class MarketingState(TypedDict, total=False):
     reference_style_profile: dict[str, Any] | None
     product_preserve_spec: dict[str, Any] | None
     reference_style: dict[str, Any] | None
+
+
+class ContextValidationState(TypedDict, total=False):
+    """Resolved marketing context, validator output, and option questions."""
     context: dict[str, Any] | MarketingContext
     validator_output: dict[str, Any] | None
     missing_fields: list[MissingField]
     option_question: dict[str, Any] | None
+
+
+class CopyState(TypedDict, total=False):
+    """Ad format, copy generation, compliance, and copy/text specs."""
     ad_format_spec: dict[str, Any] | None
     layout_spec: dict[str, Any] | None
     marketing_copy: dict[str, Any] | None
@@ -124,6 +141,10 @@ class MarketingState(TypedDict, total=False):
     interaction_copy_plan: dict[str, Any] | None
     minimal_copy_candidates: list[dict[str, Any]]
     selected_minimal_copy_candidate_id: str | None
+
+
+class NativeCreativeState(TypedDict, total=False):
+    """GPT-Image native typography single-shot pipeline."""
     creative_execution_plan: dict[str, Any] | None
     native_typography_eligibility: dict[str, Any] | None
     approved_native_copy_brief: dict[str, Any] | None
@@ -134,6 +155,10 @@ class MarketingState(TypedDict, total=False):
     native_generation_result: dict[str, Any] | None
     native_generation_review: dict[str, Any] | None
     native_generation_status: str | None
+
+
+class TypographyLayoutState(TypedDict, total=False):
+    """Typography art direction and layout-fit refinement."""
     typography_art_direction: dict[str, Any] | None
     font_catalog_summary: list[dict[str, Any]]
     adaptive_typography_report: dict[str, Any] | None
@@ -142,6 +167,10 @@ class MarketingState(TypedDict, total=False):
     layout_refinement_result: dict[str, Any] | None
     layout_copy_fit_report: dict[str, Any] | None
     layout_revision_attempts: int
+
+
+class ImagePromptT2IState(TypedDict, total=False):
+    """Image prompt construction and text-to-image request/result."""
     image_prompt_spec: dict[str, Any] | None
     image_prompt: dict[str, Any] | None
     prompt_optimization_output: dict[str, Any] | None
@@ -149,6 +178,10 @@ class MarketingState(TypedDict, total=False):
     prompt_render_output: dict[str, Any] | None
     t2i_request: dict[str, Any] | None
     t2i_result: dict[str, Any] | None
+
+
+class QualityGateState(TypedDict, total=False):
+    """Quality + OCR gates, regeneration, and image candidates."""
     background_quality_gate: dict[str, Any] | None
     final_quality_gate: dict[str, Any] | None
     quality_gate_attempts: int
@@ -165,6 +198,10 @@ class MarketingState(TypedDict, total=False):
     regeneration_patch: dict[str, Any] | None
     candidates: list[dict[str, Any] | GeneratedImageCandidate]
     selected_candidate_id: str | None
+
+
+class RenderFinalizeState(TypedDict, total=False):
+    """Rendering, validation reports, final composite revision, and result."""
     background_validation_report: dict[str, Any] | None
     safe_area_report: dict[str, Any] | None
     readability_report: dict[str, Any] | None
@@ -197,6 +234,26 @@ class MarketingState(TypedDict, total=False):
     updated_at: str
     latency_ms: int | None
     route: NotRequired[GenerationRoute]
+
+
+class MarketingState(
+    JobMetaState,
+    IntakeState,
+    ReferenceVisionState,
+    ContextValidationState,
+    CopyState,
+    NativeCreativeState,
+    TypographyLayoutState,
+    ImagePromptT2IState,
+    QualityGateState,
+    RenderFinalizeState,
+    total=False,
+):
+    """Full LangGraph state — flat at runtime; organized into the sub-state
+    groups above for navigability. Composition is by multiple inheritance, so
+    ``__annotations__`` is the union of all groups and the runtime shape is the
+    same flat dict every node already reads/writes. See docs/state-source-of-truth.md.
+    """
 
 
 def now_iso() -> str:
