@@ -195,13 +195,7 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
     raw_selection = state.get("user_selection")
     if raw_selection is None:
         return {"status": "updating_state"}
-    selection = read_model(
-        state,
-        "user_selection",
-        UserSelectionRequest,
-    )
-    if selection is None:
-        return {"status": "updating_state"}
+    selection = read_model(state, "user_selection", UserSelectionRequest)
     if selection.job_id != state.get("job_id") or selection.thread_id != state.get("thread_id"):
         return {"status": "failed", "error_message": "user_selection job_id/thread_id mismatch"}
 

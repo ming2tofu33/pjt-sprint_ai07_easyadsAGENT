@@ -4,62 +4,28 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Annotated, Any, NotRequired, TypedDict, TypeVar
+from typing import Any, NotRequired, TypedDict, TypeVar
 from uuid import uuid4
 
 from pydantic import BaseModel
 
 from orchestrator.app.llm.plan_policy import build_default_plan_policy, normalize_user_plan
 from orchestrator.app.schemas.llm_marketing import (
-    AdFormatSpec,
     ArtifactRef,
     ConversationMessage,
     CopyCandidate,
     CopyGenerationMode,
-    CopyModeInferenceOutput,
-    CopywritingOutput,
     EntryMode,
-    ErrorInfo,
     GeneratedImageCandidate,
     GenerationEngine,
     GenerationRoute,
-    ImageFeatures,
-    ImageInput,
-    ImagePrompt,
     InitialMarketingRequest,
     JobStatus,
-    LayoutSpec,
     MarketingContext,
-    MarketingCopy,
     MissingField,
-    OptionQuestion,
-    ProgressState,
-    PromptOptimizationOutput,
-    PromptRenderOutput,
-    ReferenceInput,
-    ReferenceStyleSpec,
     RenderProfile,
-    TextOverlayConfig,
-    ToneBindingOutput,
-    UserReadableImageGuide,
-    UserSelectionRequest,
-    ValidationReport,
-    ValidatorOutput,
-    T2IRequest,
-    T2IResult,
 )
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection, PlanPolicy, UserPlan
-from orchestrator.app.schemas.text_layout import (
-    BackgroundValidationReport,
-    CopySpec,
-    FinalValidationReport,
-    ImagePromptSpec,
-    ReadabilityReport,
-    RenderResult,
-    ResultPayload,
-    SafeAreaReport,
-    TextLayoutSpec,
-    TextStyleSpec,
-)
 
 SCHEMA_VERSION = "llm_marketing_v1"
 REQUIRED_CONTEXT_FIELDS: list[MissingField] = ["business_type", "item_or_service", "promotion_goal", "ad_format"]
@@ -86,16 +52,16 @@ class MarketingState(TypedDict, total=False):
     generation_route: GenerationRoute
     engine: GenerationEngine
     render_profile: RenderProfile
-    progress_state: dict[str, Any] | ProgressState | None
+    progress_state: dict[str, Any] | None
     user_input: str
     prompt_json: dict[str, Any] | None
     messages: list[dict[str, Any] | ConversationMessage]
     conversation_summary: str | None
     current_brief: dict[str, Any]
     dirty_fields: list[str]
-    user_selection: dict[str, Any] | UserSelectionRequest | None
-    image_input: dict[str, Any] | ImageInput | None
-    reference_input: dict[str, Any] | ReferenceInput | None
+    user_selection: dict[str, Any] | None
+    image_input: dict[str, Any] | None
+    reference_input: dict[str, Any] | None
     source_asset_id: str | None
     reference_asset_id: str | None
     source_image_path: str | None
@@ -114,18 +80,18 @@ class MarketingState(TypedDict, total=False):
     reference_template_selection: dict[str, Any] | None
     vision_pipeline_results: Annotated[list[dict[str, Any]], append_state_items]
     image_preprocess_result: dict[str, Any] | None
-    image_features: dict[str, Any] | ImageFeatures | None
+    image_features: dict[str, Any] | None
     reference_style_profile: dict[str, Any] | None
     product_preserve_spec: dict[str, Any] | None
-    reference_style: dict[str, Any] | ReferenceStyleSpec | None
+    reference_style: dict[str, Any] | None
     context: dict[str, Any] | MarketingContext
-    validator_output: dict[str, Any] | ValidatorOutput | None
+    validator_output: dict[str, Any] | None
     missing_fields: list[MissingField]
-    option_question: dict[str, Any] | OptionQuestion | None
-    ad_format_spec: dict[str, Any] | AdFormatSpec | None
-    layout_spec: dict[str, Any] | LayoutSpec | None
-    marketing_copy: dict[str, Any] | MarketingCopy | None
-    copywriting_output: dict[str, Any] | CopywritingOutput | None
+    option_question: dict[str, Any] | None
+    ad_format_spec: dict[str, Any] | None
+    layout_spec: dict[str, Any] | None
+    marketing_copy: dict[str, Any] | None
+    copywriting_output: dict[str, Any] | None
     copy_generation_mode: CopyGenerationMode | None
     copy_candidates: list[dict[str, Any] | CopyCandidate]
     copy_candidate_origin: str | None
@@ -138,8 +104,8 @@ class MarketingState(TypedDict, total=False):
     user_custom_subcopy: str | None
     copy_required: bool
     text_overlay_pending: bool
-    tone_binding_output: dict[str, Any] | ToneBindingOutput | None
-    copy_mode_inference_output: dict[str, Any] | CopyModeInferenceOutput | None
+    tone_binding_output: dict[str, Any] | None
+    copy_mode_inference_output: dict[str, Any] | None
     copy_selection: dict[str, Any] | None
     input_compliance_risk: dict[str, Any] | None
     copy_compliance: list[dict[str, Any]]
@@ -148,9 +114,9 @@ class MarketingState(TypedDict, total=False):
     copy_compliance_gate: dict[str, Any] | None
     copy_compliance_resolution: dict[str, Any] | None
     custom_copy_input: dict[str, Any] | None
-    copy_spec: dict[str, Any] | CopySpec | None
-    text_layout_spec: dict[str, Any] | TextLayoutSpec | None
-    text_style_spec: dict[str, Any] | TextStyleSpec | None
+    copy_spec: dict[str, Any] | None
+    text_layout_spec: dict[str, Any] | None
+    text_style_spec: dict[str, Any] | None
     copy_visual_intent: dict[str, Any] | None
     product_copy_context: dict[str, Any] | None
     copy_presence_plan: dict[str, Any] | None
@@ -176,13 +142,13 @@ class MarketingState(TypedDict, total=False):
     layout_refinement_result: dict[str, Any] | None
     layout_copy_fit_report: dict[str, Any] | None
     layout_revision_attempts: int
-    image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
-    image_prompt: dict[str, Any] | ImagePrompt | None
-    prompt_optimization_output: dict[str, Any] | PromptOptimizationOutput | None
-    user_readable_image_guide: dict[str, Any] | UserReadableImageGuide | None
-    prompt_render_output: dict[str, Any] | PromptRenderOutput | None
-    t2i_request: dict[str, Any] | T2IRequest | None
-    t2i_result: dict[str, Any] | T2IResult | None
+    image_prompt_spec: dict[str, Any] | None
+    image_prompt: dict[str, Any] | None
+    prompt_optimization_output: dict[str, Any] | None
+    user_readable_image_guide: dict[str, Any] | None
+    prompt_render_output: dict[str, Any] | None
+    t2i_request: dict[str, Any] | None
+    t2i_result: dict[str, Any] | None
     background_quality_gate: dict[str, Any] | None
     final_quality_gate: dict[str, Any] | None
     quality_gate_attempts: int
@@ -199,13 +165,13 @@ class MarketingState(TypedDict, total=False):
     regeneration_patch: dict[str, Any] | None
     candidates: list[dict[str, Any] | GeneratedImageCandidate]
     selected_candidate_id: str | None
-    background_validation_report: dict[str, Any] | BackgroundValidationReport | None
-    safe_area_report: dict[str, Any] | SafeAreaReport | None
-    readability_report: dict[str, Any] | ReadabilityReport | None
-    render_result: dict[str, Any] | RenderResult | None
-    text_overlay_config: dict[str, Any] | TextOverlayConfig | None
+    background_validation_report: dict[str, Any] | None
+    safe_area_report: dict[str, Any] | None
+    readability_report: dict[str, Any] | None
+    render_result: dict[str, Any] | None
+    text_overlay_config: dict[str, Any] | None
     final_image_path: str | None
-    final_validation_report: dict[str, Any] | FinalValidationReport | None
+    final_validation_report: dict[str, Any] | None
     final_composite_quality_report: dict[str, Any] | None
     final_composite_revision_plan: dict[str, Any] | None
     final_composite_revision_patch: dict[str, Any] | None
@@ -222,8 +188,11 @@ class MarketingState(TypedDict, total=False):
     validation_report: dict[str, Any] | ValidationReport | None
     result_payload: dict[str, Any] | ResultPayload | None
     artifact_refs: Annotated[list[dict[str, Any] | ArtifactRef], append_state_items]
+    validation_report: dict[str, Any] | None
+    result_payload: dict[str, Any] | None
+    artifact_refs: list[dict[str, Any] | ArtifactRef]
     error_message: str | None
-    error_info: dict[str, Any] | ErrorInfo | None
+    error_info: dict[str, Any] | None
     created_at: str
     updated_at: str
     latency_ms: int | None
@@ -251,6 +220,17 @@ def read_model(
     *,
     default: Any = _UNSET,
 ) -> _ModelT | None:
+    """Read a state field as a Pydantic model — the one coercion entry point.
+
+    State fields are stored as serialized dicts (LangGraph checkpointer needs
+    JSON-able state); nodes parse to a model at point of use. This replaces
+    ad-hoc `Model(**(state.get(key) or {}))` so the dict|model duality lives
+    in exactly one place.
+
+    - Existing model instance is returned untouched (idempotent).
+    - Missing/None value: returns an empty `model_cls()` by default, or `None`
+      if `default=None` was passed explicitly.
+    """
     value = state.get(key)
     if isinstance(value, model_cls):
         return value
