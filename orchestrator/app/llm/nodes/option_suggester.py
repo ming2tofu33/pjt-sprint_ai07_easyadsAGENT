@@ -25,7 +25,7 @@ def suggest_options(
     prompt = build_option_suggester_prompt(state, field, static_question)
     
     output, llm_metadata = run_structured_node(
-        state,
+        dict(state),
         node_name="option_suggester",
         output_schema=OptionSuggestionOutput,
         prompt=prompt,

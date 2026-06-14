@@ -25,7 +25,8 @@ def test_state_update_maps_item_option_value_to_display_label():
 
     assert update["context"]["item_or_service"] == "예약 서비스"
     assert update["context"]["extra"]["item_or_service_option_value"] == "reservation_service"
-    assert state["current_brief"]["item_or_service"] == "예약 서비스"
+    assert update["current_brief"]["item_or_service"] == "예약 서비스"
+    assert "item_or_service" not in state["current_brief"]
     assert "item_or_service" not in update["missing_fields"]
 
 
@@ -34,7 +35,8 @@ def test_state_update_applies_ad_format_to_extra_and_current_brief():
     update = state_update_node(state)
 
     assert update["context"]["extra"]["ad_format"] == "instagram_feed"
-    assert state["current_brief"]["requested_ad_format"] == "instagram_feed"
+    assert update["current_brief"]["requested_ad_format"] == "instagram_feed"
+    assert state["current_brief"]["requested_ad_format"] is None
 
 
 def test_state_update_handles_custom_text():
@@ -76,3 +78,18 @@ def test_state_update_handles_copy_generation_mode_flags():
     assert update["copy_generation_mode"] == "no_copy"
     assert update["copy_required"] is False
     assert update["text_overlay_pending"] is False
+
+
+def test_state_update_does_not_mutate_input_state():
+    state = _state_with_selection("promotion_goal", "discount_event")
+    before = {
+        "current_brief": dict(state["current_brief"]),
+        "messages": list(state["messages"]),
+        "context": dict(state["context"]),
+    }
+
+    state_update_node(state)
+
+    assert state["current_brief"] == before["current_brief"]
+    assert state["messages"] == before["messages"]
+    assert state["context"] == before["context"]

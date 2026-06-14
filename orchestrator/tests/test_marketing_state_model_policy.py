@@ -28,11 +28,13 @@ def test_model_tracking_helpers_append_dicts():
     selection = choose_model("validator", "free")
     result = MockLLMAdapter().invoke_text("hello", selection)
 
-    append_model_selection(state, selection)
-    append_llm_call_result(state, result)
+    selection_delta = append_model_selection(state, selection)
+    result_delta = append_llm_call_result(state, result)
 
-    assert state["model_selections"][0]["node_name"] == "validator"
-    assert state["llm_call_results"][0]["success"] is True
+    assert selection_delta[0]["node_name"] == "validator"
+    assert result_delta[0]["success"] is True
+    assert state["model_selections"] == []
+    assert state["llm_call_results"] == []
 
 
 def test_existing_marketing_graph_still_runs_to_result_payload():

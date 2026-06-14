@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict
 from uuid import uuid4
 
 from orchestrator.app.llm.plan_policy import build_default_plan_policy, normalize_user_plan
@@ -76,8 +76,8 @@ class MarketingState(TypedDict, total=False):
     organization_id: str | None
     user_plan: UserPlan | str
     plan_policy: dict[str, Any] | PlanPolicy
-    model_selections: list[dict[str, Any] | ModelSelection]
-    llm_call_results: list[dict[str, Any] | LLMCallResult]
+    model_selections: Annotated[list[dict[str, Any] | ModelSelection], append_state_items]
+    llm_call_results: Annotated[list[dict[str, Any] | LLMCallResult], append_state_items]
     revision: int
     status: JobStatus
     entry_mode: EntryMode
@@ -110,7 +110,7 @@ class MarketingState(TypedDict, total=False):
     selected_reference_template_id: str | None
     selected_reference_template: dict[str, Any] | None
     reference_template_selection: dict[str, Any] | None
-    vision_pipeline_results: list[dict[str, Any]]
+    vision_pipeline_results: Annotated[list[dict[str, Any]], append_state_items]
     image_preprocess_result: dict[str, Any] | None
     image_features: dict[str, Any] | ImageFeatures | None
     reference_style_profile: dict[str, Any] | None
@@ -219,7 +219,7 @@ class MarketingState(TypedDict, total=False):
     final_background_regeneration_attempts: int
     validation_report: dict[str, Any] | ValidationReport | None
     result_payload: dict[str, Any] | ResultPayload | None
-    artifact_refs: list[dict[str, Any] | ArtifactRef]
+    artifact_refs: Annotated[list[dict[str, Any] | ArtifactRef], append_state_items]
     error_message: str | None
     error_info: dict[str, Any] | ErrorInfo | None
     created_at: str
@@ -262,6 +262,12 @@ def engine_for_render_profile(render_profile: RenderProfile) -> GenerationEngine
     return "sd35_large"
 
 
+def append_state_items(left: list[Any] | None, right: list[Any] | None) -> list[Any]:
+    if not right:
+        return list(left or [])
+    return [*(left or []), *right]
+
+
 def create_initial_marketing_state(request: InitialMarketingRequest) -> MarketingState:
     timestamp = now_iso()
     job_id = request.job_id or f"job_{uuid4().hex}"
@@ -288,6 +294,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
     }
     copy_required = request.copy_generation_mode != "no_copy"
     text_overlay_pending = request.copy_generation_mode != "no_copy"
+    initial_message = build_message("user", request.user_input)
     state: MarketingState = {
         "schema_version": SCHEMA_VERSION,
         "job_id": job_id,
@@ -310,7 +317,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "progress_state": None,
         "user_input": request.user_input,
         "prompt_json": request.prompt_json,
-        "messages": [],
+        "messages": [initial_message],
         "conversation_summary": None,
         "current_brief": current_brief,
         "dirty_fields": [],
@@ -437,36 +444,46 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "updated_at": timestamp,
         "latency_ms": None,
     }
-    append_message(state, "user", request.user_input)
     state["dirty_fields"] = calculate_dirty_fields(state, list(current_brief))
     return state
 
 
-def append_message(state: MarketingState, role: str, content: str, metadata: dict[str, Any] | None = None) -> None:
-    state.setdefault("messages", [])
-    message = ConversationMessage(role=role, content=content, created_at=now_iso(), metadata=metadata or {})
-    state["messages"].append(message.model_dump())
-    state["updated_at"] = now_iso()
+def build_message(role: str, content: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    return ConversationMessage(role=role, content=content, created_at=now_iso(), metadata=metadata or {}).model_dump()
 
 
-def append_model_selection(state: MarketingState, selection: dict[str, Any] | ModelSelection) -> None:
-    state.setdefault("model_selections", [])
-    state["model_selections"].append(model_to_dict(selection))
-    state["updated_at"] = now_iso()
+def append_message(_state: MarketingState, role: str, content: str, metadata: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    return [build_message(role, content, metadata)]
 
 
-def append_llm_call_result(state: MarketingState, result: dict[str, Any] | LLMCallResult) -> None:
-    state.setdefault("llm_call_results", [])
-    state["llm_call_results"].append(model_to_dict(result))
-    state["updated_at"] = now_iso()
+def append_model_selection(_state: MarketingState, selection: dict[str, Any] | ModelSelection) -> list[dict[str, Any]]:
+    return [model_to_dict(selection)]
 
 
-def update_current_brief(state: MarketingState, updates: dict[str, Any]) -> None:
-    state.setdefault("current_brief", {})
-    for key, value in updates.items():
-        if value is not None:
-            state["current_brief"][key] = value
-    state["updated_at"] = now_iso()
+def append_llm_call_result(_state: MarketingState, result: dict[str, Any] | LLMCallResult) -> list[dict[str, Any]]:
+    return [model_to_dict(result)]
+
+
+def merge_current_brief(left: dict[str, Any] | None, right: dict[str, Any] | None) -> dict[str, Any]:
+    merged = dict(left or {})
+    for key, value in (right or {}).items():
+        if value is None:
+            merged[key] = None
+            continue
+        if (
+            isinstance(value, dict)
+            and isinstance(merged.get(key), dict)
+            and key in {"cached_options"}
+        ):
+            merged[key] = {**merged[key], **value}
+            continue
+        merged[key] = value
+    return merged
+
+
+def update_current_brief(current_brief: dict[str, Any] | None, updates: dict[str, Any]) -> dict[str, Any]:
+    filtered = {key: value for key, value in updates.items() if value is not None}
+    return merge_current_brief(current_brief, filtered)
 
 
 def resolve_requested_ad_format(state: dict[str, Any] | MarketingState) -> str | None:
@@ -494,15 +511,20 @@ def resolve_requested_ad_format(state: dict[str, Any] | MarketingState) -> str |
     return None
 
 
-def set_requested_ad_format(current_brief: dict[str, Any], context_extra: dict[str, Any], value: str) -> None:
+def set_requested_ad_format(
+    current_brief: dict[str, Any] | None, context_extra: dict[str, Any] | None, value: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Write-through setter: keep the two ad_format mirrors consistent.
 
     current_brief.requested_ad_format is the UI read-model copy;
     context.extra.ad_format is the business-context copy. Writing them
     anywhere else by hand is how they diverged — always use this.
     """
-    current_brief["requested_ad_format"] = value
-    context_extra["ad_format"] = value
+    brief = current_brief if isinstance(current_brief, dict) else {}
+    extra = context_extra if isinstance(context_extra, dict) else {}
+    brief["requested_ad_format"] = value
+    extra["ad_format"] = value
+    return brief, extra
 
 
 def backfill_requested_ad_format(
