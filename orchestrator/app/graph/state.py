@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict, TypeVar
 from uuid import uuid4
+
+from pydantic import BaseModel
 
 from orchestrator.app.llm.plan_policy import build_default_plan_policy, normalize_user_plan
 from orchestrator.app.schemas.llm_marketing import (
@@ -238,10 +240,38 @@ def model_to_dict(value: Any) -> Any:
     return value
 
 
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
+_UNSET = object()
+
+
+def read_model(
+    state: dict[str, Any],
+    key: str,
+    model_cls: type[_ModelT],
+    *,
+    default: Any = _UNSET,
+) -> _ModelT | None:
+    """Read a state field as a Pydantic model — the one coercion entry point.
+
+    State fields are stored as serialized dicts (LangGraph checkpointer needs
+    JSON-able state); nodes parse to a model at point of use. This replaces
+    ad-hoc `Model(**(state.get(key) or {}))` so the dict|model duality lives
+    in exactly one place.
+
+    - Existing model instance is returned untouched (idempotent).
+    - Missing/None value: returns an empty `model_cls()` by default, or `None`
+      if `default=None` was passed explicitly.
+    """
+    value = state.get(key)
+    if isinstance(value, model_cls):
+        return value
+    if not value:
+        return None if default is None else model_cls()
+    return model_cls(**value)
+
+
 def context_to_model(context: dict[str, Any] | MarketingContext | None) -> MarketingContext:
-    if isinstance(context, MarketingContext):
-        return context
-    return MarketingContext(**(context or {}))
+    return read_model({"context": context}, "context", MarketingContext)
 
 
 def route_for_entry_mode(entry_mode: EntryMode) -> GenerationRoute:
