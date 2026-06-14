@@ -144,12 +144,16 @@ def classify_domain(file_path: str) -> str:
     return "unknown"
 
 
-def split_node_id(node_id: str) -> tuple[str, str, str | None]:
+def split_node_id(node_id: str) -> tuple[str, str | None, str, str | None]:
     file_part, rest = node_id.split("::", 1)
+    parameter_id = None
     if "[" in rest and rest.endswith("]"):
-        function, param = rest.split("[", 1)
-        return file_part, function, param[:-1]
-    return file_part, rest, None
+        rest, param = rest.split("[", 1)
+        parameter_id = param[:-1]
+    parts = rest.split("::")
+    if len(parts) == 1:
+        return file_part, None, parts[0], parameter_id
+    return file_part, "::".join(parts[:-1]), parts[-1], parameter_id
 
 
 def normalize_marker_payload(marker_nodes: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -232,27 +236,37 @@ class AstTestInfo:
     weak_assertion_patterns: list[str]
 
 
-def extract_ast_test_info(test_file: Path) -> dict[str, AstTestInfo]:
+def extract_ast_test_info(test_file: Path) -> dict[tuple[str | None, str], AstTestInfo]:
     source = test_file.read_text(encoding="utf-8-sig")
     tree = ast.parse(source)
     lines = source.splitlines()
-    result: dict[str, AstTestInfo] = {}
+    result: dict[tuple[str | None, str], AstTestInfo] = {}
+
+    def record_test(node: ast.FunctionDef | ast.AsyncFunctionDef, class_path: str | None) -> None:
+        if not node.name.startswith("test_"):
+            return
+        start = node.lineno - 1
+        end = node.end_lineno or node.lineno
+        body = "\n".join(lines[start:end])
+        assert_fps: list[str] = []
+        for child in ast.walk(node):
+            if isinstance(child, ast.Assert):
+                snippet = ast.get_source_segment(source, child) or ast.dump(child, include_attributes=False)
+                assert_fps.append(sha256_text(snippet)[:12])
+        result[(class_path, node.name)] = AstTestInfo(
+            function=node.name,
+            body_hash=sha256_text(body),
+            assertion_fingerprints=sorted(dict.fromkeys(assert_fps)),
+            weak_assertion_patterns=[],
+        )
+
     for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
-            start = node.lineno - 1
-            end = node.end_lineno or node.lineno
-            body = "\n".join(lines[start:end])
-            assert_fps: list[str] = []
-            for child in ast.walk(node):
-                if isinstance(child, ast.Assert):
-                    snippet = ast.get_source_segment(source, child) or ast.dump(child, include_attributes=False)
-                    assert_fps.append(sha256_text(snippet)[:12])
-            result[node.name] = AstTestInfo(
-                function=node.name,
-                body_hash=sha256_text(body),
-                assertion_fingerprints=sorted(dict.fromkeys(assert_fps)),
-                weak_assertion_patterns=[],
-            )
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            record_test(node, None)
+        elif isinstance(node, ast.ClassDef):
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    record_test(child, node.name)
     return result
 
 
@@ -271,12 +285,12 @@ def load_automated_scope_rows(mutation_dir: Path) -> list[dict[str, Any]]:
     return load_json(mutation_dir / "automated_scope_summary.json")["scopes"]
 
 
-def find_automated_scope_memberships(scope_rows: list[dict[str, Any]], node_id: str) -> tuple[list[str], int, int]:
+def find_automated_scope_memberships(mutation_dir: Path, scope_rows: list[dict[str, Any]], node_id: str) -> tuple[list[str], int, int]:
     memberships: list[str] = []
     survivor_count = 0
     uncovered_count = 0
     for row in scope_rows:
-        runtime_nodes = load_json(REPO_ROOT / "data/test_optimization/critical_mutation_v1" / "runtime" / row["scope_id"] / "resolved_test_nodes.json", default={"resolved_test_nodes": []})
+        runtime_nodes = load_json(mutation_dir / "runtime" / row["scope_id"] / "resolved_test_nodes.json", default={"resolved_test_nodes": []})
         if node_id in runtime_nodes.get("resolved_test_nodes", []):
             memberships.append(row["scope_id"])
             survivor_count += int(row.get("survived", 0))
@@ -313,7 +327,15 @@ def score_candidate(item: dict[str, Any]) -> int:
     return score
 
 
-def choose_replacement(node_id: str, contract_id: str | None, contracts: dict[str, dict[str, Any]]) -> tuple[str | None, str | None]:
+def choose_replacement(
+    node_id: str,
+    contract_id: str | None,
+    contracts: dict[str, dict[str, Any]],
+    *,
+    live_nodes: set[str],
+    stale_nodes: set[str],
+    protected_nodes: set[str],
+) -> tuple[str | None, str | None]:
     if not contract_id or contract_id not in contracts:
         return None, None
     row = contracts[contract_id]
@@ -321,9 +343,9 @@ def choose_replacement(node_id: str, contract_id: str | None, contracts: dict[st
     for layer_name in ("api", "service", "repository", "graph", "policy", "schema"):
         owner_tests.extend(row.get("layers", {}).get(layer_name, []))
     for owner in owner_tests:
-        if owner != node_id:
+        if owner != node_id and owner in live_nodes and owner not in stale_nodes and owner not in protected_nodes:
             return owner, contract_id
-    return None, contract_id
+    return None, None
 
 
 def build_report(summary: dict[str, Any], compatibility: dict[str, Any], output_dir: Path) -> None:
@@ -387,6 +409,20 @@ def run_self_check() -> int:
         duplicate_hint="duplicate_candidate",
     )
     assert low_risk == "low_risk_candidate"
+    stale = classify_candidate_status(
+        markers=[],
+        contract_id=None,
+        unique_branch_count=0,
+        semantic_unique_kill_count=0,
+        semantic_survivors=[],
+        suite_interaction=False,
+        critical_gap=False,
+        stale=True,
+        automated_uncovered=False,
+        replacement_test="x",
+        duplicate_hint="duplicate_candidate",
+    )
+    assert stale == "stale"
     review = classify_candidate_status(
         markers=[],
         contract_id=None,
@@ -504,8 +540,9 @@ def main() -> int:
     weak_candidates = load_json(assertion_quality_dir / "removal_candidates.json").get("findings", [])
     stale_weak_assertion_nodes = sorted({row["node_id"] for row in weak_candidates if row["node_id"] not in live_node_set})
 
+    compatibility_status = "compatible" if not stale_scopes and not stale_branch_nodes and not stale_weak_assertion_nodes else "partial"
     compatibility = {
-        "status": "compatible",
+        "status": compatibility_status,
         "current_commit": current_commit,
         "mutation_source_commit": summary["source_commit"],
         "production_diff_files": production_diff_files,
@@ -541,8 +578,8 @@ def main() -> int:
     test_files = sorted({Path(split_node_id(node_id)[0]) for node_id in live_nodes})
     ast_cache = {file_path.as_posix(): extract_ast_test_info(REPO_ROOT / file_path) for file_path in test_files}
     for node_id, findings in assertion_findings.items():
-        file_path, function_name, _ = split_node_id(node_id)
-        info = ast_cache.get(file_path, {}).get(function_name)
+        file_path, class_path, function_name, _ = split_node_id(node_id)
+        info = ast_cache.get(file_path, {}).get((class_path, function_name))
         if info:
             info.weak_assertion_patterns.extend(row["pattern"] for row in findings)
 
@@ -550,22 +587,26 @@ def main() -> int:
     inventory: list[dict[str, Any]] = []
     protected_rows: list[dict[str, Any]] = []
     candidate_rows: list[dict[str, Any]] = []
+    manual_review_rows: list[dict[str, Any]] = []
     rejected_rows: list[dict[str, Any]] = []
     stale_rows: list[dict[str, Any]] = []
+    stale_node_ids = set(stale_branch_nodes) | set(stale_weak_assertion_nodes)
+    protected_node_ids: set[str] = set()
+    review_counter = 0
 
     for node_id in live_nodes:
-        file_path, function_name, parameter_id = split_node_id(node_id)
+        file_path, class_path, function_name, parameter_id = split_node_id(node_id)
         markers_row = marker_nodes.get(node_id, {})
         markers = sorted(markers_row.get("all_markers", []))
         layer = next((marker for marker in markers if marker in LAYER_MARKERS), "unknown")
         contract_id = node_to_contract.get(node_id)
         branch_row = branch_contexts.get(node_id, {})
         unique_row = unique_branches.get(node_id, {})
-        ast_info = ast_cache.get(file_path, {}).get(function_name)
+        ast_info = ast_cache.get(file_path, {}).get((class_path, function_name))
         weak_rows = assertion_findings.get(node_id, [])
         removal_rows = removal_candidates.get(node_id, [])
         duplicate_hint = duplicate_candidates.get(node_id, {})
-        automated_scope_ids, automated_scope_survivor_count, automated_scope_uncovered_count = find_automated_scope_memberships(automated_scope_rows, node_id)
+        automated_scope_ids, automated_scope_survivor_count, automated_scope_uncovered_count = find_automated_scope_memberships(mutation_dir, automated_scope_rows, node_id)
         semantic_unique = semantic_unique_map.get(node_id, [])
         semantic_shared = semantic_shared_map.get(node_id, [])
         semantic_survivors = semantic_survivor_map.get(node_id, [])
@@ -574,7 +615,14 @@ def main() -> int:
         related_files = {row["target_file"] for row in mutation_join if node_id in row.get("candidate_tests", []) or node_id in row.get("branch_context_owner_tests", [])}
         critical_gap = any(path in critical_gap_files for path in related_files)
         stale = node_id in stale_branch_nodes or node_id in stale_weak_assertion_nodes or any(scope in stale_scopes for scope in automated_scope_ids)
-        replacement_test, replacement_contract_id = choose_replacement(node_id, contract_id, contracts)
+        replacement_test, replacement_contract_id = choose_replacement(
+            node_id,
+            contract_id,
+            contracts,
+            live_nodes=live_node_set,
+            stale_nodes=stale_node_ids,
+            protected_nodes=protected_node_ids,
+        )
         candidate_status = classify_candidate_status(
             markers=markers,
             contract_id=contract_id,
@@ -588,19 +636,22 @@ def main() -> int:
             replacement_test=replacement_test,
             duplicate_hint=duplicate_hint.get("classification"),
         )
-        protected_traits = sorted(
+        protected_traits_set = (
             set(markers).intersection(PROTECTED_MARKERS)
             | set(markers).intersection(HIGH_RISK_MARKERS)
             | set((contracts.get(contract_id, {}) or {}).get("protected_traits", []))
-            | {"stale_evidence"} if stale else set()
         )
+        if stale:
+            protected_traits_set.add("stale_evidence")
+        protected_traits = sorted(protected_traits_set)
         category = duplicate_hint.get("classification") or (removal_rows[0]["decision"] if removal_rows else "not_candidate")
         reason = duplicate_hint.get("reason") or (removal_rows[0]["reason"] if removal_rows else "no_removal_signal")
-        evidence_status = "stale" if stale else ("partial" if not markers_row or not branch_row else "complete")
+        evidence_status = "stale" if stale else ("partial" if not markers_row or not branch_row or ast_info is None else "complete")
         duration_value = duration_map.get(node_id)
         item = {
             "node_id": node_id,
             "file": file_path,
+            "class_path": class_path,
             "function": function_name,
             "parameter_id": parameter_id,
             "is_parameterized": parameter_id is not None,
@@ -639,11 +690,13 @@ def main() -> int:
             continue
         if candidate_status == "protected":
             protected_rows.append(item)
+            protected_node_ids.add(node_id)
             continue
 
         deletion_action = "remove_parameter_case" if parameter_id else ("manual_review" if candidate_status == "review" else "remove_test_function")
+        review_counter += 1
         candidate = {
-            "candidate_id": f"candidate-{len(candidate_rows) + 1:03d}",
+            "candidate_id": f"candidate-{review_counter:03d}",
             "node_id": node_id,
             "deletion_action": deletion_action,
             "target_parameter_id": parameter_id,
@@ -666,9 +719,12 @@ def main() -> int:
             "review_required": True,
         }
         candidate["priority_score"] = score_candidate({**item, **candidate})
-        candidate_rows.append(candidate)
+        if candidate_status == "low_risk_candidate":
+            candidate_rows.append(candidate)
+        else:
+            manual_review_rows.append(candidate)
 
-    candidate_node_ids = {row["node_id"] for row in candidate_rows}
+    candidate_node_ids = {row["node_id"] for row in candidate_rows} | {row["node_id"] for row in manual_review_rows}
     protected_node_ids = {row["node_id"] for row in protected_rows}
     for item in inventory:
         if item["node_id"] in candidate_node_ids or item["node_id"] in protected_node_ids or any(row["node_id"] == item["node_id"] for row in stale_rows):
@@ -723,8 +779,9 @@ def main() -> int:
         )
 
     candidate_rows.sort(key=lambda row: (row["risk"], -row["priority_score"], row["node_id"]))
+    manual_review_rows.sort(key=lambda row: (row["risk"], -row["priority_score"], row["node_id"]))
     low_risk = [row for row in candidate_rows if row["risk"] == "low"]
-    manual_review = [row for row in candidate_rows if row["risk"] != "low"]
+    manual_review = manual_review_rows
     batches_dir = output_dir / "batches"
     batches_dir.mkdir(parents=True, exist_ok=True)
     batch_specs = [
@@ -738,7 +795,8 @@ def main() -> int:
     batch_plan_rows = []
     assigned: set[str] = set()
     for filename, label, predicate, limit in batch_specs:
-        selected = [row for row in candidate_rows if row["node_id"] not in assigned and predicate(row)]
+        source_rows = manual_review_rows if filename in {"batch-03.json", "batch-04.json", "batch-05.json", "batch-06-optional.json"} else candidate_rows
+        selected = [row for row in source_rows if row["node_id"] not in assigned and predicate(row)]
         if filename != "batch-06-optional.json":
             selected = selected[:limit]
         for row in selected:
@@ -761,6 +819,7 @@ def main() -> int:
     write_json(output_dir / "test_node_inventory.json", inventory_payload)
     write_json(output_dir / "protected_test_inventory.json", {"tests": protected_rows})
     write_json(output_dir / "deletion_candidate_inventory.json", {"candidates": candidate_rows})
+    write_json(output_dir / "manual_review_inventory.json", {"candidates": manual_review_rows})
     write_json(output_dir / "rejected_candidate_inventory.json", {"tests": rejected_rows})
     write_json(output_dir / "stale_evidence_inventory.json", {"tests": stale_rows})
     write_json(output_dir / "duplicate_clusters.json", {"clusters": duplicate_clusters})
