@@ -23,7 +23,7 @@ def copy_spec_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         }
     marketing_copy = read_model(state, "marketing_copy", MarketingCopy)
     context = _context_to_model(state.get("context"))
-    intent = CopyVisualIntent(**(state.get("copy_visual_intent") or resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template")).model_dump()))
+    intent = read_model(state, "copy_visual_intent", CopyVisualIntent, default=None) or resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template"))
     items: list[CopyItem] = [
         CopyItem(role="headline", text=marketing_copy.headline, priority=1),
     ]
