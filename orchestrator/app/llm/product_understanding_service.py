@@ -29,7 +29,7 @@ def generate_product_understanding(bundle: InputEvidenceBundle, *, state: dict[s
     )
     fallback = lambda: build_minimal_product_understanding(bundle)
     output, metadata = run_structured_node(
-        state,
+        dict(state),
         node_name="product_understanding",
         output_schema=ProductUnderstanding,
         prompt=prompt,

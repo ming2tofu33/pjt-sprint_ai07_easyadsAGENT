@@ -153,9 +153,9 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         warnings=warnings + overflow_errors,
         metadata={"source_node": "text_renderer", "has_text_overlay": rendered_count > 0, "overflow_detected": bool(overflow_errors), "typography_render_traces": render_traces},
     )
-    artifacts = list(state.get("artifact_refs") or [])
+    artifact_update = []
     if overflow_errors:
-        artifacts.append(
+        artifact_update.append(
             {
                 "type": "validation_preview",
                 "path": str(preview_path),
@@ -163,7 +163,7 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
             }
         )
     else:
-        artifacts.append(
+        artifact_update.append(
             {
                 "type": "final_image",
                 "path": str(final_path),
@@ -174,7 +174,7 @@ def text_renderer_node(state: "MarketingState") -> dict[str, Any]:
         "final_image_path": None if overflow_errors else str(final_path),
         "render_result": render_result.model_dump(),
         "text_overlay_pending": False,
-        "artifact_refs": artifacts,
+        "artifact_refs": artifact_update,
         "status": "failed" if overflow_errors else "overlaying_text",
         "error_message": "; ".join(overflow_errors) if overflow_errors else None,
     }
