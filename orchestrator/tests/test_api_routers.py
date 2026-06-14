@@ -742,6 +742,419 @@ def client__test_api_generation_jobs_router() -> TestClient:
     return create_app_client()
 
 
+def test_run_graph_job_background_records_start_and_delegates(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    calls = []
+    request = GenerationJobCreateRequest(userInput="Create an ad", runMode="graph_job")
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(router, "execute_generation_job_graph", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    router._run_graph_job_background(
+        "job_123",
+        request,
+        "workspace_123",
+        "user_123",
+    )
+
+    assert [event[0][1] for event in events] == ["background_started", "background_delegated"]
+    assert events[0][0][0] == "job_123"
+    assert events[0][1]["payload"] == {"task": "graph_create"}
+    assert calls == [(("job_123", request), {})]
+
+
+def test_resume_graph_job_background_records_start_and_delegates(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    calls = []
+    request = GenerationJobAnswerRequest(userCustomHeadline="직접 입력")
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(router, "resume_generation_job_graph", lambda *args, **kwargs: calls.append((args, kwargs)))
+
+    router._resume_graph_job_background(
+        "job_123",
+        request,
+        allow_running=True,
+        workspace_id="workspace_123",
+        user_id="user_123",
+    )
+
+    assert [event[0][1] for event in events] == ["background_started", "background_delegated"]
+    assert events[0][1]["payload"] == {"task": "graph_resume"}
+    assert calls == [
+        (
+            ("job_123", request),
+            {"allow_running": True, "workspace_id": "workspace_123", "user_id": "user_123"},
+        )
+    ]
+
+
+def test_run_graph_job_background_marks_failed_on_exception(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    failures = []
+    request = GenerationJobCreateRequest(userInput="Create an ad", runMode="graph_job")
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(router, "mark_generation_job_failed", lambda *args, **kwargs: failures.append((args, kwargs)))
+
+    def raise_error(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(router, "execute_generation_job_graph", raise_error)
+
+    with pytest.raises(RuntimeError):
+        router._run_graph_job_background("job_123", request, "workspace_123", "user_123")
+
+    assert [event[0][1] for event in events] == ["background_started", "background_failed"]
+    assert failures == [
+        (
+            ("job_123", {"error_code": "generation_job_background_task_failed", "message": "Background graph create task failed: boom"}),
+            {"workspace_id": "workspace_123", "user_id": "user_123"},
+        )
+    ]
+
+
+def test_run_graph_job_background_preserves_original_error_when_mark_failed_raises(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    request = GenerationJobCreateRequest(userInput="Create an ad", runMode="graph_job")
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+
+    def raise_execute_error(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    def raise_mark_failed_error(*args, **kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(router, "execute_generation_job_graph", raise_execute_error)
+    monkeypatch.setattr(router, "mark_generation_job_failed", raise_mark_failed_error)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        router._run_graph_job_background("job_123", request, "workspace_123", "user_123")
+
+    assert [event[0][1] for event in events] == ["background_started", "background_failed"]
+
+
+def test_run_graph_job_background_marks_failed_when_failure_event_recording_raises(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    failures = []
+    request = GenerationJobCreateRequest(userInput="Create an ad", runMode="graph_job")
+
+    def record_event(job_id, event_type, **kwargs):
+        if event_type == "background_failed":
+            raise RuntimeError("telemetry down")
+
+    def raise_error(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", record_event)
+    monkeypatch.setattr(router, "mark_generation_job_failed", lambda *args, **kwargs: failures.append((args, kwargs)))
+    monkeypatch.setattr(router, "execute_generation_job_graph", raise_error)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        router._run_graph_job_background("job_123", request, "workspace_123", "user_123")
+
+    assert failures == [
+        (
+            ("job_123", {"error_code": "generation_job_background_task_failed", "message": "Background graph create task failed: boom"}),
+            {"workspace_id": "workspace_123", "user_id": "user_123"},
+        )
+    ]
+
+
+def test_resume_graph_job_background_marks_failed_on_exception(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    failures = []
+    request = GenerationJobAnswerRequest(userCustomHeadline="직접 입력")
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+    monkeypatch.setattr(router, "mark_generation_job_failed", lambda *args, **kwargs: failures.append((args, kwargs)))
+
+    def raise_error(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(router, "resume_generation_job_graph", raise_error)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        router._resume_graph_job_background(
+            "job_123",
+            request,
+            allow_running=True,
+            workspace_id="workspace_123",
+            user_id="user_123",
+        )
+
+    assert [event[0][1] for event in events] == ["background_started", "background_failed"]
+    assert failures == [
+        (
+            ("job_123", {"error_code": "generation_job_background_task_failed", "message": "Background graph resume task failed: boom"}),
+            {"workspace_id": "workspace_123", "user_id": "user_123"},
+        )
+    ]
+
+
+def test_resume_graph_job_background_preserves_original_error_when_mark_failed_raises(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    request = GenerationJobAnswerRequest(userCustomHeadline="직접 입력")
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+
+    def raise_resume_error(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    def raise_mark_failed_error(*args, **kwargs):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(router, "resume_generation_job_graph", raise_resume_error)
+    monkeypatch.setattr(router, "mark_generation_job_failed", raise_mark_failed_error)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        router._resume_graph_job_background(
+            "job_123",
+            request,
+            allow_running=True,
+            workspace_id="workspace_123",
+            user_id="user_123",
+        )
+
+    assert [event[0][1] for event in events] == ["background_started", "background_failed"]
+
+
+def test_resume_graph_job_background_marks_failed_when_failure_event_recording_raises(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    failures = []
+    request = GenerationJobAnswerRequest(userCustomHeadline="직접 입력")
+
+    def record_event(job_id, event_type, **kwargs):
+        if event_type == "background_failed":
+            raise RuntimeError("telemetry down")
+
+    def raise_error(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", record_event)
+    monkeypatch.setattr(router, "mark_generation_job_failed", lambda *args, **kwargs: failures.append((args, kwargs)))
+    monkeypatch.setattr(router, "resume_generation_job_graph", raise_error)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        router._resume_graph_job_background(
+            "job_123",
+            request,
+            allow_running=True,
+            workspace_id="workspace_123",
+            user_id="user_123",
+        )
+
+    assert failures == [
+        (
+            ("job_123", {"error_code": "generation_job_background_task_failed", "message": "Background graph resume task failed: boom"}),
+            {"workspace_id": "workspace_123", "user_id": "user_123"},
+        )
+    ]
+
+
+def test_create_graph_job_route_records_background_enqueue(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    tasks = []
+    job = GenerationJobResponse(
+        job_id="job_123",
+        thread_id="thread_123",
+        user_id="user_123",
+        status="queued",
+        progress=GenerationProgress(progress_percent=0, current_stage="queued", stage_order=[]),
+        created_at="2026-06-13T00:00:00+00:00",
+        updated_at="2026-06-13T00:00:00+00:00",
+        metadata={},
+    )
+
+    class FakeBackgroundTasks:
+        def add_task(self, func, *args, **kwargs):
+            tasks.append((func, args, kwargs))
+
+    monkeypatch.setattr(router, "create_generation_job", lambda request: job)
+    monkeypatch.setattr(router, "should_route_generation_job_to_modal", lambda request: False)
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+
+    request = GenerationJobCreateRequest(
+        userInput="Create an ad",
+        runMode="graph_job",
+        workspaceId="workspace_123",
+        userId="user_123",
+        accountType="user",
+    )
+
+    response = router.create_generation_job_route(
+        request,
+        FakeBackgroundTasks(),
+        router.RequestPrincipal(user_id="user_123", workspace_id="workspace_123", account_type="user"),
+    )
+
+    assert response.job.job_id == "job_123"
+    assert events[0][0][:2] == ("job_123", "background_enqueued")
+    assert events[0][1]["payload"] == {"task": "graph_create", "source": "create_route"}
+    assert events[0][1]["workspace_id"] == "workspace_123"
+    assert events[0][1]["user_id"] == "user_123"
+    assert tasks[0][0] is router._run_graph_job_background
+    assert tasks[0][1] == (job.job_id, request, "workspace_123", "user_123")
+    assert tasks[0][2] == {}
+
+
+def test_create_graph_job_route_schedules_background_when_enqueue_event_recording_raises(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    tasks = []
+    job = GenerationJobResponse(
+        job_id="job_123",
+        thread_id="thread_123",
+        user_id="user_123",
+        status="queued",
+        progress=GenerationProgress(progress_percent=0, current_stage="queued", stage_order=[]),
+        created_at="2026-06-13T00:00:00+00:00",
+        updated_at="2026-06-13T00:00:00+00:00",
+        metadata={},
+    )
+
+    class FakeBackgroundTasks:
+        def add_task(self, func, *args, **kwargs):
+            tasks.append((func, args, kwargs))
+
+    def raise_telemetry(*args, **kwargs):
+        raise RuntimeError("telemetry down")
+
+    monkeypatch.setattr(router, "create_generation_job", lambda request: job)
+    monkeypatch.setattr(router, "should_route_generation_job_to_modal", lambda request: False)
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", raise_telemetry)
+
+    request = GenerationJobCreateRequest(
+        userInput="Create an ad",
+        runMode="graph_job",
+        workspaceId="workspace_123",
+        userId="user_123",
+        accountType="user",
+    )
+
+    response = router.create_generation_job_route(
+        request,
+        FakeBackgroundTasks(),
+        router.RequestPrincipal(user_id="user_123", workspace_id="workspace_123", account_type="user"),
+    )
+
+    assert response.job.job_id == "job_123"
+    assert tasks == [(router._run_graph_job_background, (job.job_id, request, "workspace_123", "user_123"), {})]
+
+
+def test_answer_graph_job_route_records_background_enqueue(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    events = []
+    tasks = []
+    waiting_job = GenerationJobResponse(
+        job_id="job_123",
+        thread_id="thread_123",
+        user_id="user_123",
+        status="waiting_user_input",
+        progress=GenerationProgress(progress_percent=50, current_stage="waiting_user_input", stage_order=[]),
+        created_at="2026-06-13T00:00:00+00:00",
+        updated_at="2026-06-13T00:00:00+00:00",
+        metadata={},
+    )
+    running_job = waiting_job.model_copy(
+        update={
+            "status": "running",
+            "progress": GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        }
+    )
+
+    class FakeBackgroundTasks:
+        def add_task(self, func, *args, **kwargs):
+            tasks.append((func, args, kwargs))
+
+    monkeypatch.setattr(router, "get_generation_job_scoped", lambda *args, **kwargs: waiting_job)
+    monkeypatch.setattr(router, "mark_generation_job_running", lambda *args, **kwargs: running_job)
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: events.append((args, kwargs)))
+
+    request = GenerationJobAnswerRequest(userCustomHeadline="직접 입력", userCustomSubcopy="설명")
+
+    response = router.answer_generation_job_route(
+        "job_123",
+        request,
+        FakeBackgroundTasks(),
+        "workspace_123",
+        router.RequestPrincipal(user_id="user_123", workspace_id="workspace_123", account_type="user"),
+    )
+
+    assert response.job.job_id == "job_123"
+    assert events[0][0][:2] == ("job_123", "background_enqueued")
+    assert events[0][1]["payload"] == {"task": "graph_resume", "source": "answer_route"}
+    assert events[0][1]["workspace_id"] == "workspace_123"
+    assert events[0][1]["user_id"] == "user_123"
+    assert tasks[0][0] is router._resume_graph_job_background
+    assert tasks[0][1] == ("job_123", request)
+    assert tasks[0][2] == {"allow_running": True, "workspace_id": "workspace_123", "user_id": "user_123"}
+
+
+def test_answer_graph_job_route_schedules_background_when_enqueue_event_recording_raises(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+
+    tasks = []
+    waiting_job = GenerationJobResponse(
+        job_id="job_123",
+        thread_id="thread_123",
+        user_id="user_123",
+        status="waiting_user_input",
+        progress=GenerationProgress(progress_percent=50, current_stage="waiting_user_input", stage_order=[]),
+        created_at="2026-06-13T00:00:00+00:00",
+        updated_at="2026-06-13T00:00:00+00:00",
+        metadata={},
+    )
+    running_job = waiting_job.model_copy(
+        update={
+            "status": "running",
+            "progress": GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        }
+    )
+
+    class FakeBackgroundTasks:
+        def add_task(self, func, *args, **kwargs):
+            tasks.append((func, args, kwargs))
+
+    def raise_telemetry(*args, **kwargs):
+        raise RuntimeError("telemetry down")
+
+    monkeypatch.setattr(router, "get_generation_job_scoped", lambda *args, **kwargs: waiting_job)
+    monkeypatch.setattr(router, "mark_generation_job_running", lambda *args, **kwargs: running_job)
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", raise_telemetry)
+
+    request = GenerationJobAnswerRequest(userCustomHeadline="직접 입력", userCustomSubcopy="설명")
+
+    response = router.answer_generation_job_route(
+        "job_123",
+        request,
+        FakeBackgroundTasks(),
+        "workspace_123",
+        router.RequestPrincipal(user_id="user_123", workspace_id="workspace_123", account_type="user"),
+    )
+
+    assert response.job.job_id == "job_123"
+    assert tasks == [
+        (
+            router._resume_graph_job_background,
+            ("job_123", request),
+            {"allow_running": True, "workspace_id": "workspace_123", "user_id": "user_123"},
+        )
+    ]
+
+
 def test_openapi_registers_generation_jobs_and_existing_routes():
     schema = create_app().openapi()
 
@@ -1418,6 +1831,7 @@ def test_generation_job_answer_route_recovers_scope_from_existing_job_without_he
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.mark_generation_job_running", fake_mark_running)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.resume_generation_job_graph", fake_resume)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.record_generation_job_lifecycle_event", lambda *args, **kwargs: None)
 
     response = TestClient(create_app()).post(
         "/api/v1/generation-jobs/job_waiting/answer",
@@ -1458,6 +1872,7 @@ def test_generation_job_answer_route_passes_guest_account_type_to_workspace_reso
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.get_generation_job_scoped", fake_get_generation_job)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.mark_generation_job_running", lambda job_id, stage="planning", **kwargs: job)
     monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.resume_generation_job_graph", lambda *args, **kwargs: job)
+    monkeypatch.setattr("orchestrator.app.api.routers.generation_jobs.record_generation_job_lifecycle_event", lambda *args, **kwargs: None)
 
     response = TestClient(create_app()).post(
         "/api/v1/generation-jobs/job_waiting/answer",

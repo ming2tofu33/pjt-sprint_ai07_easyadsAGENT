@@ -2046,6 +2046,51 @@ def test_postgres_mark_failed_updates_row_thread_and_event(monkeypatch):
     assert snapshots[0]["metadata"]["detail"] == "missing package"
 
 
+def test_postgres_record_generation_job_lifecycle_event_records_scoped_event(monkeypatch):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(service, "db_transaction", fake_db_transaction__test_generation_job_persistence_db_backend)
+    events = []
+    row = _row__test_generation_job_persistence_db_backend()
+    row["workspace_id"] = "workspace_uuid"
+
+    monkeypatch.setattr(
+        service,
+        "_resolve_db_workspace_for_public_access",
+        lambda requested_workspace_id=None, user_id=None, connection=None: "workspace_uuid",
+    )
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "get_generation_job_scoped_by_public_id",
+        lambda job_id, workspace_id, connection=None, for_update=False: row,
+    )
+    monkeypatch.setattr(
+        service.generation_job_event_repo,
+        "record_generation_job_event",
+        lambda **kwargs: events.append(kwargs) or {"id": "event_uuid"},
+    )
+
+    service.record_generation_job_lifecycle_event(
+        "job_db",
+        "background_enqueued",
+        message="graph_resume",
+        payload={"task": "graph_resume", "source": "answer_route"},
+        workspace_id="workspace_uuid",
+        user_id="user_uuid",
+    )
+
+    assert events == [
+        {
+            "workspace_id": "workspace_uuid",
+            "thread_id": "thread_uuid",
+            "job_id": "job_uuid",
+            "event_type": "background_enqueued",
+            "message": "graph_resume",
+            "payload": {"task": "graph_resume", "source": "answer_route"},
+            "connection": events[0]["connection"],
+        }
+    ]
+
+
 # ===== from test_generation_job_r2_persistence.py =====
 from contextlib import contextmanager
 
@@ -2579,6 +2624,90 @@ def test_memory_mark_failed_snapshot_keeps_error_message_and_detail():
     assert snapshot.metadata["detail"] == "No module named 'langgraph.checkpoint.postgres'"
 
 
+def test_stale_running_payload_detects_background_never_started():
+    job = GenerationJobResponse(
+        job_id="job_bg_never_started",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        created_at="2026-06-13T00:00:00+00:00",
+        updated_at="2026-06-13T00:00:00+00:00",
+        metadata={"execution_mode": "graph_execution"},
+    )
+
+    error, metadata = service._stale_running_failure_payload(
+        job,
+        [{"event_type": "background_enqueued", "payload": {"task": "graph_resume"}}],
+    )
+
+    assert error["error_code"] == "generation_job_background_not_started"
+    assert error["message"] == "Generation job worker did not start."
+    assert "no background_started event" in error["detail"]
+    assert metadata["execution_mode"] == "background_not_started_recovered"
+    assert metadata["background_task"] == "graph_resume"
+
+
+def test_stale_running_payload_detects_background_started_but_stalled():
+    job = GenerationJobResponse(
+        job_id="job_bg_stalled",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        created_at="2026-06-13T00:00:00+00:00",
+        updated_at="2026-06-13T00:00:00+00:00",
+        metadata={"execution_mode": "graph_execution"},
+    )
+
+    error, metadata = service._stale_running_failure_payload(
+        job,
+        [
+            {"event_type": "background_enqueued", "payload": {"task": "graph_resume"}},
+            {"event_type": "background_started", "payload": {"task": "graph_resume"}},
+        ],
+    )
+
+    assert error["error_code"] == "generation_job_background_stalled"
+    assert error["message"] == "Generation job stalled while preparing the request."
+    assert "background_started event was recorded" in error["detail"]
+    assert metadata["execution_mode"] == "background_stalled_recovered"
+    assert metadata["background_task"] == "graph_resume"
+
+
+def test_stale_running_payload_anchors_on_latest_background_enqueue_cycle():
+    job = GenerationJobResponse(
+        job_id="job_bg_resume_never_started",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        created_at="2026-06-13T00:00:00+00:00",
+        updated_at="2026-06-13T00:00:00+00:00",
+        metadata={"execution_mode": "graph_execution", "campaign_id": "campaign_123"},
+    )
+
+    error, metadata = service._stale_running_failure_payload(
+        job,
+        [
+            {
+                "event_type": "background_enqueued",
+                "payload": {"task": "graph_resume"},
+                "created_at": "2026-06-13T00:10:00+00:00",
+            },
+            {
+                "event_type": "background_started",
+                "payload": {"task": "graph_create"},
+                "created_at": "2026-06-13T00:01:00+00:00",
+            },
+            {
+                "event_type": "background_enqueued",
+                "payload": {"task": "graph_create"},
+                "created_at": "2026-06-13T00:00:30+00:00",
+            },
+        ],
+    )
+
+    assert error["error_code"] == "generation_job_background_not_started"
+    assert metadata["execution_mode"] == "background_not_started_recovered"
+    assert metadata["background_task"] == "graph_resume"
+    assert metadata["campaign_id"] == "campaign_123"
+
+
 def test_maybe_mark_stale_generation_job_failed_keeps_fresh_running_job():
     now = datetime(2026, 6, 8, 9, 0, tzinfo=timezone.utc)
     fresh_job = GenerationJobResponse(
@@ -2614,6 +2743,50 @@ def test_maybe_mark_stale_generation_job_failed_fails_old_running_job():
     assert result.error.error_code == "generation_job_stale_running"
     assert result.metadata["execution_mode"] == "stale_running_recovered"
     assert result.metadata["stale_running_stage"] == "planning"
+
+
+def test_maybe_mark_stale_generation_job_failed_uses_background_lifecycle_events(monkeypatch):
+    now = datetime(2026, 6, 13, 9, 0, tzinfo=timezone.utc)
+    stale_job = GenerationJobResponse(
+        job_id="job_stale_background",
+        status="running",
+        progress=GenerationProgress(progress_percent=50, current_stage="planning", stage_order=[]),
+        created_at=(now - timedelta(minutes=30)).isoformat(),
+        updated_at=(now - timedelta(minutes=30)).isoformat(),
+        metadata={"execution_mode": "graph_execution"},
+    )
+    captured = {}
+
+    monkeypatch.setattr(
+        service.generation_job_event_repo,
+        "list_generation_job_events_by_public_job_id",
+        lambda job_id, limit=20: [{"event_type": "background_enqueued", "payload": {"task": "graph_resume"}}],
+    )
+
+    def fake_mark_failed(job_id, error, metadata=None, **kwargs):
+        captured.update({"job_id": job_id, "error": error, "metadata": metadata, "kwargs": kwargs})
+        return stale_job.model_copy(
+            update={
+                "status": "failed",
+                "progress": GenerationProgress(progress_percent=50, current_stage="failed", stage_order=[]),
+            }
+        )
+
+    monkeypatch.setattr(service, "mark_generation_job_failed", fake_mark_failed)
+
+    result = service.maybe_mark_stale_generation_job_failed(
+        stale_job,
+        workspace_id="workspace_uuid",
+        user_id="user_uuid",
+        now=now,
+    )
+
+    assert result.status == "failed"
+    assert captured["job_id"] == "job_stale_background"
+    assert captured["error"]["error_code"] == "generation_job_background_not_started"
+    assert captured["metadata"]["execution_mode"] == "background_not_started_recovered"
+    assert captured["metadata"]["background_task"] == "graph_resume"
+    assert captured["kwargs"] == {"workspace_id": "workspace_uuid", "user_id": "user_uuid"}
 
 
 def test_graph_job_snapshot_preserves_selected_engine():
