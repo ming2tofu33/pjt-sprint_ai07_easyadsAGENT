@@ -376,6 +376,8 @@ function normalizeChatBrief(
     getPayloadString(payload, "imageDirection", "image_direction", "prompt_text", "visual_direction") ??
     "";
   const finalImagePath = getPayloadString(brief, "finalImagePath", "final_image_path") ?? getPayloadString(payload, "finalImagePath", "final_image_path");
+  const finalImageUrl = getPayloadString(brief, "finalImageUrl", "final_image_url") ?? getPayloadString(payload, "finalImageUrl", "final_image_url");
+  const downloadUrl = getPayloadString(brief, "downloadUrl", "download_url") ?? getPayloadString(payload, "downloadUrl", "download_url");
 
   return {
     purpose: getPayloadString(brief, "purpose", "promotion_goal") ?? context.promotionGoal,
@@ -384,7 +386,9 @@ function normalizeChatBrief(
     tone: getPayloadString(brief, "tone", "brand_tone", "selected_tone") ?? "",
     channel: getPayloadString(brief, "channel", "selected_channel_id", "requested_ad_format") ?? "",
     imageDirection,
-    finalImagePath
+    finalImagePath,
+    finalImageUrl,
+    downloadUrl
   };
 }
 

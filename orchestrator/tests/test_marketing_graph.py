@@ -219,7 +219,15 @@ def test_marketing_graph_runs_to_mock_t2i_when_context_is_complete():
         assert result[key]
     assert result["prompt_render_output"]["engine"] == "mock"
     assert result["t2i_result"]["engine"] == "mock"
-    assert len(result["t2i_result"]["image_paths"]) >= 1
+    assert result["copy_generation_mode"] == "auto_pilot"
+    assert result["copy_spec"]["copy_mode"] == "standard"
+    assert result["copy_spec"]["items"][0]["role"] == "headline"
+    assert result["text_layout_spec"]["template"]
+    assert result["t2i_request"]["metadata"]["render_text_in_image"] is False
+    assert result["t2i_request"]["metadata"]["reserved_text_areas"]
+    assert len(result["t2i_request"]["metadata"]["reserved_text_areas"]) == len(result["text_layout_spec"]["reserved_text_areas"])
+    assert result["t2i_result"]["image_paths"]
+    assert result["t2i_result"]["image_paths"][0].endswith(".png")
     assert result["candidates"][0]["engine"] == "mock"
     image_parts = Path(result["t2i_result"]["image_paths"][0]).parts
     assert "data" in image_parts
@@ -258,7 +266,9 @@ def test_marketing_graph_resume_continues_to_mock_t2i():
 
     assert resumed["status"] == "done"
     assert resumed["t2i_result"]["engine"] == "mock"
-    assert resumed["t2i_result"]["image_paths"]
+    assert resumed["copy_generation_mode"] == "auto_pilot"
+    assert resumed["copy_spec"]["copy_mode"] == "standard"
+    assert resumed["t2i_result"]["image_paths"][0].endswith(".png")
 
 
 # ===== from test_marketing_graph_node_utilization.py =====

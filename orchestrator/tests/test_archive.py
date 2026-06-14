@@ -82,18 +82,12 @@ def test_archive_detail_user_isolation(monkeypatch):
     assert res1.ad_id == "a1"
 
     # 2. ws1, u2 -> 404
-    try:
+    with pytest.raises(ArchiveItemNotFound):
         svc.get_archive_item(archive_item_id="a1", workspace_id="ws1", user_id="u2")
-        assert False, "Should raise ArchiveItemNotFound"
-    except ArchiveItemNotFound:
-        pass
 
     # 3. ws2, u1 -> 404
-    try:
+    with pytest.raises(ArchiveItemNotFound):
         svc.get_archive_item(archive_item_id="a1", workspace_id="ws2", user_id="u1")
-        assert False, "Should raise ArchiveItemNotFound"
-    except ArchiveItemNotFound:
-        pass
 
 
 def test_archive_detail_503_when_db_disabled(monkeypatch):
@@ -183,7 +177,6 @@ def test_archive_list_returns_empty_state_when_no_items(monkeypatch):
     assert resp.status_code == 200
     body = resp.json()
     assert body["items"] == []
-    assert body["empty_state"] is not None
     assert body["empty_state"]["kind"] == "no_archive_items"
 
 
@@ -445,7 +438,6 @@ def test_sync_archive_for_job_success(monkeypatch):
 
     res = sync_archive_for_job(workspace_id="ws1", internal_job_id="job_uuid")
 
-    assert res is not None
     assert res.title == "Thread Title"
     assert res.job_id == "job_public"
 
@@ -553,14 +545,14 @@ def test_list_count_and_soft_delete_archive_items(monkeypatch):
     assert deleted["id"] == "archive_uuid"
 
 
-def test_archive_list_query_omits_output_payload_by_default(monkeypatch):
+def test_archive_list_query_includes_output_payload_for_url_hydration(monkeypatch):
     conn = FakeConnection()
     monkeypatch.setattr(repo, "db_transaction", fake_transaction)
 
     repo.list_archive_item_rows(workspace_id="workspace_uuid", limit=20, offset=0, connection=conn)
 
     sql = conn.cursor_obj.calls[0][0]
-    assert "o.result_payload as output_result_payload" not in sql
+    assert "o.result_payload as output_result_payload" in sql
 
 
 def test_archive_item_queries_can_filter_by_creator(monkeypatch):

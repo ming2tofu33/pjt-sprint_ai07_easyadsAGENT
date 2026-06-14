@@ -820,6 +820,46 @@ describe("ChatGenerateClient", () => {
     ).toThrow("완성된 광고 브리프 정보가 비어 있어요");
   });
 
+  it("preserves public result URLs when converting completed generation jobs", async () => {
+    const chatClientModule = (await import("./ChatGenerateClient")) as typeof import("./ChatGenerateClient") & {
+      generationJobToChatTurnResponse: (job: unknown, copyGenerationMode?: "suggest_candidates") => {
+        type: "brief_ready";
+        brief: {
+          finalImagePath?: string | null;
+          finalImageUrl?: string | null;
+          downloadUrl?: string | null;
+        };
+      };
+    };
+
+    const response = chatClientModule.generationJobToChatTurnResponse({
+      job_id: "job_with_r2_url",
+      thread_id: "thread_with_r2_url",
+      status: "done",
+      progress: { progress_percent: 100, current_stage: "completed" },
+      result_payload: {
+        final_image_path: "data/outputs/job_with_r2_url/final.png",
+        final_image_url: "https://r2.example.com/generated/final.png",
+        download_url: "https://r2.example.com/generated/download.png",
+        final_brief: {
+          promotion_goal: "신메뉴 출시",
+          item_or_service: "한우 고기",
+          headline: "최고다 한우고기",
+          brand_tone: "감성적인",
+          selected_channel_id: "인스타 피드 (1:1)",
+          visual_direction: "한우 고기 중심의 깔끔한 광고 배경과 문구 여백을 구성해요."
+        }
+      },
+      metadata: {},
+      created_at: "2026-06-14T00:00:00.000Z",
+      updated_at: "2026-06-14T00:00:00.000Z"
+    });
+
+    expect(response.brief.finalImagePath).toBe("data/outputs/job_with_r2_url/final.png");
+    expect(response.brief.finalImageUrl).toBe("https://r2.example.com/generated/final.png");
+    expect(response.brief.downloadUrl).toBe("https://r2.example.com/generated/download.png");
+  });
+
   it("restores waiting graph question from a thread snapshot", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({

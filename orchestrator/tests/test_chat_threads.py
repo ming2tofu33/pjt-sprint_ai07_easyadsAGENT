@@ -327,7 +327,9 @@ def test_photo_flow_passes_uploaded_image_to_final_t2i_request(monkeypatch, tmp_
     assert captured["engine_preference"] == "gpt_image_1"
     assert captured["metadata"]["source_image_path"] == str(source)
     assert captured["metadata"]["vision_pipeline_enabled"] is True
-    assert brief_response.json()["brief"]["finalImagePath"].endswith("final_composite.png")
+    brief_payload = brief_response.json()["brief"]
+    assert brief_payload["copy"]
+    assert brief_payload["finalImagePath"].endswith("final_composite.png")
 
 
 def test_chat_start_no_copy_returns_brief_ready_response():
@@ -348,7 +350,7 @@ def test_chat_start_no_copy_returns_brief_ready_response():
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "no_copy"
     assert payload["brief"]["copy"] == "문구 없이 이미지로만"
-    assert payload["brief"]["finalImagePath"]
+    assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
 def test_photo_start_no_copy_returns_brief_ready_response(tmp_path):
@@ -372,7 +374,7 @@ def test_photo_start_no_copy_returns_brief_ready_response(tmp_path):
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "no_copy"
     assert payload["brief"]["copy"] == "문구 없이 이미지로만"
-    assert payload["brief"]["finalImagePath"]
+    assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
 def test_chat_start_auto_pilot_returns_brief_ready_response():
@@ -394,7 +396,7 @@ def test_chat_start_auto_pilot_returns_brief_ready_response():
     assert payload["copyGenerationMode"] == "auto_pilot"
     assert payload["brief"]["copy"]
     assert payload["brief"]["copy"] != "문구 없이 이미지로만"
-    assert payload["brief"]["finalImagePath"]
+    assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
 def test_photo_start_auto_pilot_returns_brief_ready_response(tmp_path):
@@ -419,7 +421,7 @@ def test_photo_start_auto_pilot_returns_brief_ready_response(tmp_path):
     assert payload["copyGenerationMode"] == "auto_pilot"
     assert payload["brief"]["copy"]
     assert payload["brief"]["copy"] != "문구 없이 이미지로만"
-    assert payload["brief"]["finalImagePath"]
+    assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
 def test_chat_start_custom_copy_returns_brief_ready_response():
@@ -442,7 +444,7 @@ def test_chat_start_custom_copy_returns_brief_ready_response():
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "custom_input"
     assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값"
-    assert payload["brief"]["finalImagePath"]
+    assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
 def test_photo_start_custom_copy_returns_brief_ready_response(tmp_path):
@@ -468,7 +470,7 @@ def test_photo_start_custom_copy_returns_brief_ready_response(tmp_path):
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "custom_input"
     assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값"
-    assert payload["brief"]["finalImagePath"]
+    assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
 def test_chat_answer_resumes_to_next_turn():
@@ -566,7 +568,7 @@ def test_chat_brief_resumes_graph_with_selected_copy():
     assert payload["brief"]["tone"] == "상큼한 분위기"
     assert payload["brief"]["imageDirection"] == "상큼한 분위기를 살려 딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요."
     assert payload["brief"]["copy"]
-    assert payload["brief"]["finalImagePath"]
+    assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
 def test_chat_brief_resumes_graph_with_frontend_choices(monkeypatch):
@@ -1094,7 +1096,6 @@ def test_get_chat_thread_with_workspace_falls_back_to_owning_workspace(monkeypat
 
     result = chat_service.get_chat_thread_with_workspace("thread_generated")
 
-    assert result is not None
     thread, workspace_id = result
     assert thread.thread_id == "thread_generated"
     assert workspace_id == "workspace_actual"
