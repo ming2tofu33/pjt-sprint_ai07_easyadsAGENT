@@ -114,11 +114,6 @@ def build_brief_interpreter_prompt(state: MarketingState, text: str, metadata: d
         "Interpret a Korean small-business advertising brief into BriefInterpreterOutput. "
         "Use only facts present in the user brief. Do not invent phone numbers, addresses, prices, "
         "discounts, dates, medical claims, or performance guarantees. "
-        "Copy product/brand/proper nouns as the exact substring from the user's brief — same "
-        "characters, same script. Korean stays Korean: never transliterate (e.g. 'dolphinji') and "
-        "never translate the meaning into English (e.g. 'first_birthday_ring'). Do not snake_case it. "
-        "Example: brief '돌반지 할인' -> item_or_service='돌반지' (correct); "
-        "'dolphinji' or 'first_birthday_ring' (both wrong). "
         f"User brief: {text[:800]}. "
         f"metadata_contract={metadata_contract_to_prompt_json(metadata)}."
     )

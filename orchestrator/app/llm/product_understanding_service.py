@@ -20,7 +20,6 @@ def generate_product_understanding(bundle: InputEvidenceBundle, *, state: dict[s
         "Every verified fact must reference an existing evidence item. "
         "Do not invent price, discounts, ingredients, origin, manufacturing method, certification, efficacy, health effects, beauty effects, numeric claims, scarcity, or social proof. "
         "product_name is the product identity only; put launch/campaign words in campaign_modifiers. "
-        "Keep product_name as the exact original characters; for Korean names keep the Korean ('돌반지' stays '돌반지'), never transliterate ('dolphinji') and never translate the meaning into English ('first_birthday_ring'). English snake_case belongs only in normalized_product_type, never in product_name. "
         "normalized_product_type must be a valid English snake_case product type when the product identity is known, including for non-English product names. "
         "If an explicit product mention exists and there is no identity conflict, classify it into the provided top-level broad-category taxonomy using general category knowledge. "
         "Do not return broad_category='other' for a clearly named food, beverage, beauty, fashion, home, technology, education, hospitality, automotive, or local service product. "
