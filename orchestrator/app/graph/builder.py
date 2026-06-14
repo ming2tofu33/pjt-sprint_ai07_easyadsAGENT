@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import inspect
+from functools import wraps
+
 from langgraph.graph import END, StateGraph
 
 try:
@@ -67,31 +70,46 @@ from orchestrator.app.llm.nodes.typography_art_director import typography_art_di
 from orchestrator.app.llm.nodes.tone_binding import tone_binding_node
 from orchestrator.app.reference_catalog.nodes import reference_template_resolve_node
 from orchestrator.app.vision.nodes import product_preprocess_node, reference_preprocess_node
-from orchestrator.app.observability.performance import estimate_json_size_bytes, perf_span
+from orchestrator.app.observability.performance import estimate_json_size_bytes, perf_span, perf_trace_enabled
 
 
 def _instrument_node(node_name, fn):
-    def wrapped(state):
+    def build_metadata(state):
         input_size = estimate_json_size_bytes(state)
-        input_keys = len(state) if isinstance(state, dict) else None
-        with perf_span(
-            "graph_node",
-            operation=node_name,
-            metadata={
-                "node_name": node_name,
-                "input_key_count": input_keys,
-                "input_state_size_bytes": input_size,
-                "size_method": "json_estimate" if input_size is not None else "unavailable",
-            },
-        ) as timer:
+        return {
+            "node_name": node_name,
+            "input_key_count": len(state) if isinstance(state, dict) else None,
+            "input_state_size_bytes": input_size,
+            "size_method": "json_estimate" if input_size is not None else "unavailable",
+        }
+
+    def finish_metadata(timer, result):
+        output_size = estimate_json_size_bytes(result)
+        timer.metadata = {
+            **(timer.metadata or {}),
+            "output_key_count": len(result) if isinstance(result, dict) else None,
+            "output_state_size_bytes": output_size,
+        }
+
+    if inspect.iscoroutinefunction(fn):
+        @wraps(fn)
+        async def async_wrapped(state):
+            if not perf_trace_enabled():
+                return await fn(state)
+            with perf_span("graph_node", operation=node_name, metadata=build_metadata(state)) as timer:
+                result = await fn(state)
+                finish_metadata(timer, result)
+                return result
+
+        return async_wrapped
+
+    @wraps(fn)
+    def wrapped(state):
+        if not perf_trace_enabled():
+            return fn(state)
+        with perf_span("graph_node", operation=node_name, metadata=build_metadata(state)) as timer:
             result = fn(state)
-            output_keys = len(result) if isinstance(result, dict) else None
-            output_size = estimate_json_size_bytes(result)
-            timer.metadata = {
-                **(timer.metadata or {}),
-                "output_key_count": output_keys,
-                "output_delta_size_bytes": output_size,
-            }
+            finish_metadata(timer, result)
             return result
 
     return wrapped

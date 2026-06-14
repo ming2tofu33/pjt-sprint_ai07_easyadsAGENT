@@ -28,7 +28,7 @@ type SupabasePrincipal = {
 };
 
 function perfEnabled() {
-  return process.env.NEXT_PUBLIC_EASYADS_PERF_TRACE === "1";
+  return process.env.EASYADS_PERF_TRACE === "1";
 }
 
 function getOrchestratorBaseUrl(): string {
@@ -179,6 +179,12 @@ export async function proxyOrchestratorJson(
 ) {
   const headers = buildInternalHeaders("application/json");
   const started = Date.now();
+  const traceId = request.headers.get("X-EasyAds-Trace-Id") || `trace_${crypto.randomUUID().replace(/-/g, "")}`;
+  const requestId = request.headers.get("X-Request-Id") || `req_${crypto.randomUUID().replace(/-/g, "")}`;
+  let authCallRequestedCount = 0;
+  let authNetworkRequestCount = 0;
+  let authDedupHitCount = 0;
+  let authDurationMs = 0;
   const init: RequestInit = {
     method,
     headers,
@@ -188,7 +194,16 @@ export async function proxyOrchestratorJson(
   try {
     let verifiedPrincipalPromise: Promise<SupabasePrincipal | null> | null = null;
     const getVerifiedPrincipal = () => {
-      verifiedPrincipalPromise ??= resolveSupabasePrincipal(request);
+      authCallRequestedCount += 1;
+      if (verifiedPrincipalPromise) {
+        authDedupHitCount += 1;
+        return verifiedPrincipalPromise;
+      }
+      const authStarted = Date.now();
+      authNetworkRequestCount += 1;
+      verifiedPrincipalPromise = resolveSupabasePrincipal(request).finally(() => {
+        authDurationMs += Date.now() - authStarted;
+      });
       return verifiedPrincipalPromise;
     };
 
@@ -251,6 +266,8 @@ export async function proxyOrchestratorJson(
     }
 
     const targetUrl = buildTargetUrl(path, request);
+    headers["X-EasyAds-Trace-Id"] = traceId;
+    headers["X-Request-Id"] = requestId;
     if (options.injectVerifiedUserIdQuery) {
       const principal = await getVerifiedPrincipal();
       applyPrincipalQueryParams(targetUrl, options.injectVerifiedUserIdQuery, principal);
@@ -261,9 +278,17 @@ export async function proxyOrchestratorJson(
     const upstreamDuration = Date.now() - upstreamStarted;
     const payload = await response.json().catch(() => ({}));
     const nextResponse = NextResponse.json(payload, { status: response.ok && options.successStatus ? options.successStatus : response.status });
+    nextResponse.headers.set("X-Request-Id", requestId);
     if (perfEnabled()) {
-      nextResponse.headers.set("Server-Timing", `upstream;dur=${upstreamDuration}`);
-      nextResponse.headers.set("X-EasyAds-Bff-Perf", String(Date.now() - started));
+      const totalDuration = Date.now() - started;
+      nextResponse.headers.set(
+        "Server-Timing",
+        `auth;dur=${authDurationMs}, upstream;dur=${upstreamDuration}, total;dur=${totalDuration}`
+      );
+      nextResponse.headers.set("X-EasyAds-Bff-Perf", String(totalDuration));
+      nextResponse.headers.set("X-EasyAds-Bff-Auth-Calls", String(authCallRequestedCount));
+      nextResponse.headers.set("X-EasyAds-Bff-Auth-Network", String(authNetworkRequestCount));
+      nextResponse.headers.set("X-EasyAds-Bff-Auth-Dedup-Hits", String(authDedupHitCount));
     }
     return nextResponse;
   } catch (error) {

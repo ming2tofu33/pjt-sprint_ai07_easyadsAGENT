@@ -416,19 +416,24 @@ async function postJson<TResponse>(path: string, body: unknown, headers: Request
   return measureWebPerf(
     "frontend_request",
     `POST ${path}`,
-    async () => {
+    async (span) => {
       const response = await fetch(buildBffUrl(path), {
         method: "POST",
         headers: { "content-type": "application/json", ...headers },
         body: JSON.stringify(body)
       });
       const payload = await response.json().catch(() => ({}));
+      span.addMetadata({
+        request_size_bytes: estimateJsonSizeBytes(body),
+        response_size_bytes: estimateJsonSizeBytes(payload),
+        response_size_method: "json_estimate"
+      });
       if (!response.ok) {
         throw apiErrorFrom(response, payload);
       }
       return payload as TResponse;
     },
-    { route_template: path, method: "POST", response_size_bytes: estimateJsonSizeBytes(body) }
+    { route_template: path, method: "POST" }
   );
 }
 
@@ -437,12 +442,16 @@ async function deleteJson<TResponse>(path: string, params?: ReferenceQueryParams
   return measureWebPerf(
     "frontend_request",
     `DELETE ${path}`,
-    async () => {
+    async (span) => {
       const response = await fetch(url, {
         method: "DELETE",
         headers: { accept: "application/json", ...headers }
       });
       const payload = await response.json().catch(() => ({}));
+      span.addMetadata({
+        response_size_bytes: estimateJsonSizeBytes(payload),
+        response_size_method: "json_estimate"
+      });
       if (!response.ok) {
         throw apiErrorFrom(response, payload);
       }
@@ -461,12 +470,16 @@ async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, h
   return measureWebPerf(
     "frontend_request",
     `GET ${path}`,
-    async () => {
+    async (span) => {
       const response = await fetch(url, {
         method: "GET",
         headers: { accept: "application/json", ...headers }
       });
       const payload = await response.json().catch(() => ({}));
+      span.addMetadata({
+        response_size_bytes: estimateJsonSizeBytes(payload),
+        response_size_method: "json_estimate"
+      });
       if (!response.ok) {
         throw apiErrorFrom(response, payload);
       }
@@ -480,19 +493,24 @@ async function patchJson<TResponse>(path: string, body: unknown, headers: Reques
   return measureWebPerf(
     "frontend_request",
     `PATCH ${path}`,
-    async () => {
+    async (span) => {
       const response = await fetch(buildBffUrl(path), {
         method: "PATCH",
         headers: { "content-type": "application/json", ...headers },
         body: JSON.stringify(body)
       });
       const payload = await response.json().catch(() => ({}));
+      span.addMetadata({
+        request_size_bytes: estimateJsonSizeBytes(body),
+        response_size_bytes: estimateJsonSizeBytes(payload),
+        response_size_method: "json_estimate"
+      });
       if (!response.ok) {
         throw apiErrorFrom(response, payload);
       }
       return payload as TResponse;
     },
-    { route_template: path, method: "PATCH", response_size_bytes: estimateJsonSizeBytes(body) }
+    { route_template: path, method: "PATCH" }
   );
 }
 

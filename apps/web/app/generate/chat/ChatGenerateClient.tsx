@@ -37,6 +37,7 @@ import {
   updateArchiveItem,
   uploadPhotoAsset,
   uploadReferenceAsset,
+  recordRenderMark,
   ApiError,
   type ChatTurnResponse,
   type GenerationJob,
@@ -1732,6 +1733,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
   async function pollGenerationJobUntilDoneOrQuestion(initialJob: GenerationJob, initialChatIntake?: InitialChatIntakeContext): Promise<GenerationJob> {
     let currentJob = initialJob;
+    recordRenderMark("polling_started");
     dispatch({ type: "generationJobUpdated", generationJob: currentJob });
 
     if (stopForGenerationJobWaitingState(currentJob, initialChatIntake)) {
@@ -1743,6 +1745,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         await delay(GENERATION_JOB_POLL_INTERVAL_MS);
       }
       const response = await getGenerationJob(currentJob.job_id);
+      recordRenderMark(`poll_iteration_${attempt + 1}`);
       currentJob = response.job;
       dispatch({ type: "generationJobUpdated", generationJob: currentJob });
 
@@ -1772,6 +1775,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         initialChatIntake.userCustomSubcopy ?? null
       );
       setGenerationStage("brief");
+      recordRenderMark("first_data_rendered");
       lastPrimedStageRef.current = "start";
       setOptimisticSurface("chat");
       router.replace(buildChatStageHrefWithJob("start", { threadId: currentJob.thread_id }));
@@ -1779,6 +1783,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     setGenerationStage("complete");
+    recordRenderMark("final_result_visible");
     lastPrimedStageRef.current = "complete";
     clearGenerationFailureSnapshot();
     setOptimisticSurface("chat");

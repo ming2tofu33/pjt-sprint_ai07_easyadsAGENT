@@ -22,8 +22,9 @@ from orchestrator.app.api.routers.validation_feedback import router as validatio
 from orchestrator.app.api.schemas.common import ErrorResponse
 from orchestrator.app.observability.performance import (
     bind_perf_context,
-    ensure_request_id,
-    ensure_trace_id,
+    build_event,
+    new_request_id,
+    new_trace_id,
     record_perf_event,
     reset_perf_context,
 )
@@ -39,46 +40,44 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def performance_middleware(request: Request, call_next):
-        trace_id = request.headers.get("X-EasyAds-Trace-Id") or ensure_trace_id()
-        request_id = request.headers.get("X-Request-Id") or ensure_request_id()
+        trace_id = request.headers.get("X-EasyAds-Trace-Id") or new_trace_id()
+        request_id = request.headers.get("X-Request-Id") or new_request_id()
         tokens = bind_perf_context(trace_id=trace_id, request_id=request_id)
         started_at = __import__("time").perf_counter_ns()
+        response = None
+        exception_type = None
         try:
             response = await call_next(request)
+            response.headers.setdefault("X-Request-Id", request_id)
+            return response
+        except Exception as exc:
+            exception_type = type(exc).__name__
+            raise
         finally:
             duration_ms = (__import__("time").perf_counter_ns() - started_at) / 1_000_000
             route_template = request.scope.get("route").path if request.scope.get("route") else request.url.path
-            status_code = getattr(locals().get("response"), "status_code", 500)
+            status_code = getattr(response, "status_code", 500)
             size_bytes = None
-            content_length = getattr(locals().get("response"), "headers", {}).get("content-length") if locals().get("response") else None
+            content_length = response.headers.get("content-length") if response is not None else None
             if content_length and str(content_length).isdigit():
                 size_bytes = int(content_length)
             record_perf_event(
-                {
-                    "schema_version": 1,
-                    "event_type": "api_request",
-                    "trace_id": trace_id,
-                    "request_id": request_id,
-                    "scenario_id": None,
-                    "run_id": None,
-                    "cold_or_warm": None,
-                    "component": "orchestrator",
-                    "operation": f"{request.method} {route_template}",
-                    "started_at": None,
-                    "duration_ms": round(duration_ms, 3),
-                    "status": "ok" if status_code < 500 else "error",
-                    "metadata": {
+                build_event(
+                    "api_request",
+                    operation=f"{request.method} {route_template}",
+                    duration_ms=duration_ms,
+                    status="ok" if exception_type is None and status_code < 500 else "error",
+                    metadata={
                         "method": request.method,
                         "route_template": route_template,
                         "status_code": status_code,
                         "response_size_bytes": size_bytes,
                         "content_length_source": "header" if size_bytes is not None else "unavailable",
+                        "exception_type": exception_type,
                     },
-                }
+                )
             )
             reset_perf_context(tokens)
-        response.headers.setdefault("X-Request-Id", request_id)
-        return response
 
     app.include_router(chat_router)
     app.include_router(photo_router)

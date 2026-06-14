@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import threading
+from atexit import register as atexit_register
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -24,6 +25,8 @@ SCENARIO_ID_CTX: ContextVar[str | None] = ContextVar("easyads_perf_scenario_id",
 RUN_ID_CTX: ContextVar[str | None] = ContextVar("easyads_perf_run_id", default=None)
 COLD_WARM_CTX: ContextVar[str | None] = ContextVar("easyads_perf_cold_or_warm", default=None)
 _WRITE_LOCK = threading.Lock()
+_EVENT_BUFFER: list[str] = []
+_BUFFER_LIMIT = 100
 
 
 def perf_trace_enabled() -> bool:
@@ -48,6 +51,14 @@ def now_iso() -> str:
 
 def _process_events_path() -> Path:
     return perf_output_dir() / f"events-{os.getpid()}.jsonl"
+
+
+def new_trace_id() -> str:
+    return f"trace_{uuid4().hex}"
+
+
+def new_request_id() -> str:
+    return f"req_{uuid4().hex}"
 
 
 def stable_hash(value: str | None) -> str | None:
@@ -160,7 +171,7 @@ def ensure_trace_id() -> str:
     trace_id = TRACE_ID_CTX.get()
     if trace_id:
         return trace_id
-    trace_id = f"trace_{uuid4().hex}"
+    trace_id = new_trace_id()
     TRACE_ID_CTX.set(trace_id)
     return trace_id
 
@@ -169,7 +180,7 @@ def ensure_request_id() -> str:
     request_id = REQUEST_ID_CTX.get()
     if request_id:
         return request_id
-    request_id = f"req_{uuid4().hex}"
+    request_id = new_request_id()
     REQUEST_ID_CTX.set(request_id)
     return request_id
 
@@ -210,10 +221,36 @@ def record_perf_event(event: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event, ensure_ascii=False, default=str) + "\n"
         with _WRITE_LOCK:
-            with path.open("a", encoding="utf-8") as handle:
-                handle.write(line)
+            _EVENT_BUFFER.append(line)
+            if len(_EVENT_BUFFER) >= _BUFFER_LIMIT:
+                _flush_locked(path)
     except Exception:
         logger.debug("performance instrumentation failed", exc_info=True)
+
+
+def _flush_locked(path: Path | None = None) -> None:
+    if not _EVENT_BUFFER:
+        return
+    target = path or _process_events_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a", encoding="utf-8") as handle:
+        handle.writelines(_EVENT_BUFFER)
+    _EVENT_BUFFER.clear()
+
+
+def flush_perf_events() -> None:
+    if not perf_trace_enabled():
+        return
+    try:
+        with _WRITE_LOCK:
+            _flush_locked()
+    except Exception:
+        logger.debug("performance flush failed", exc_info=True)
+
+
+def clear_perf_event_buffer() -> None:
+    with _WRITE_LOCK:
+        _EVENT_BUFFER.clear()
 
 
 @dataclass
@@ -262,3 +299,6 @@ def perf_span(
         raise
     else:
         timer.finish()
+
+
+atexit_register(flush_perf_events)
