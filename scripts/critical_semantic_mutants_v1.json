@@ -9,12 +9,13 @@
       "file": "orchestrator/app/db/repositories/generation_outputs.py",
       "target_symbol": "get_generation_output_by_public_id",
       "target_line_hint": 102,
-      "source_file_sha256": "24c2cd3fa0b53e506ac2b72e4059660420cee6359f1471b13106260dc3500d95",
+      "source_file_sha256": "198c543cc72bec37c5bede0103cd58350c33c7efb7310b31bd7dea018aaf3045",
       "target_symbol_sha256": "36f42c6ec57d80eeca8c44c3eb15ed37806738b8cb8e4cf468e346d70cad28f9",
       "source_sha256": "36f42c6ec57d80eeca8c44c3eb15ed37806738b8cb8e4cf468e346d70cad28f9",
       "description": "Remove workspace filter from public output lookup.",
       "candidate_test_patterns": [
         "orchestrator/tests/test_generation_outputs_repository_v1.py::",
+        "orchestrator/tests/test_generation_outputs_repository_v1.py::test_generation_output_get_scopes_by_workspace_and_public_id",
         "orchestrator/tests/test_final_selection_transaction.py::",
         "orchestrator/tests/test_archive.py::",
         "orchestrator/tests/test_api_routers.py::test_generation_job_get_route_returns_404_for_cross_workspace",
@@ -41,7 +42,7 @@
       "file": "orchestrator/app/db/repositories/chat_threads.py",
       "target_symbol": "get_chat_thread_by_public_id",
       "target_line_hint": 65,
-      "source_file_sha256": "f31beec0d6b382031d4240f401f9e962aea171b19b8d697da859631bf63f81dd",
+      "source_file_sha256": "5233d16059d5a00228e8e182dceba72d6022e0e466c9d0cef59872c693007dbe",
       "target_symbol_sha256": "55abc7ae72cf2935a8fb2c095ec82cb7b4b8f5574fa5127a669fa27a9dca96fb",
       "source_sha256": "55abc7ae72cf2935a8fb2c095ec82cb7b4b8f5574fa5127a669fa27a9dca96fb",
       "description": "Disable workspace filter branch from chat thread public lookup.",
@@ -94,12 +95,12 @@
       "file": "orchestrator/app/quality_gate/final_composite_policy.py",
       "target_symbol": "status_for_action",
       "target_line_hint": 63,
-      "source_file_sha256": "b175f3bd3ed274c4a832bd48ca2e4495b336138397739e667e4450e26cacdfbf",
+      "source_file_sha256": "f3e49af8dd51fd08ed02db670f40caf381fc7d8d7c6d80b98883fd64af2b724e",
       "target_symbol_sha256": "2d038e2677f2725051ed16282daadf647742c401c0ae837eebbdb38c4a269485",
       "source_sha256": "2d038e2677f2725051ed16282daadf647742c401c0ae837eebbdb38c4a269485",
       "description": "Reverse reject action into pass.",
       "candidate_test_patterns": [
-        "orchestrator/tests/test_validation_gates.py::"
+        "orchestrator/tests/test_final_composite_quality_loop.py::"
       ],
       "operations": [
         {
@@ -140,14 +141,15 @@
       "file": "orchestrator/app/llm/native_copy_policy.py",
       "target_symbol": "contains_request_intent",
       "target_line_hint": 528,
-      "source_file_sha256": "ccee72e0a663c2eac5d4a69a0331781b18c4eca5fb908c9c765c6e4c927d0154",
+      "source_file_sha256": "152885bfcc421af6e7095ff1f0996d4da23a07215ac766ac6cf3ffe24e12cd4f",
       "target_symbol_sha256": "bdf77045fd0805701ed17a3621f2bfa656335821c2af8295afc719beef448096",
       "source_sha256": "bdf77045fd0805701ed17a3621f2bfa656335821c2af8295afc719beef448096",
       "description": "Disable raw request intent detection.",
       "candidate_test_patterns": [
         "orchestrator/tests/test_copywriting.py::",
         "orchestrator/tests/test_marketing_graph.py::",
-        "orchestrator/tests/test_chat_threads.py::test_chat_brief_resumes_graph_with_selected_copy"
+        "orchestrator/tests/test_chat_threads.py::test_chat_brief_resumes_graph_with_selected_copy",
+        "orchestrator/tests/test_native_copy_open_domain_benchmark.py::"
       ],
       "operations": [
         {
