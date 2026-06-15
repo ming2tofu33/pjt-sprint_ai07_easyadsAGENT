@@ -4417,6 +4417,71 @@ describe("ChatGenerateClient", () => {
     expect(screen.queryByText("사진 속 메뉴를 오늘의 신메뉴로")).toBeNull();
   });
 
+  it("polls a pending photo intake job instead of treating it as an empty brief", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.uploadPhotoAsset).mockClear();
+    vi.mocked(api.startPhotoGeneration).mockClear();
+    vi.mocked(api.createGenerationJob).mockClear();
+    vi.mocked(api.getGenerationJob).mockClear();
+    vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "photo_pending",
+        thread_id: "photo_pending_thread",
+        status: "running",
+        progress: { progress_percent: 45, current_stage: "normalizing_input" },
+        result_payload: null,
+        metadata: {},
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    vi.mocked(api.getGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "photo_pending",
+        thread_id: "photo_pending_thread",
+        status: "done",
+        progress: { progress_percent: 100, current_stage: "completed" },
+        result_payload: {
+          context: {
+            businessType: "카페",
+            itemOrService: "딸기라떼",
+            promotionGoal: "신메뉴 출시"
+          },
+          brief: {
+            purpose: "신메뉴 출시",
+            item: "딸기라떼",
+            copy: "봄을 닮은 한 잔",
+            tone: "상큼한 분위기",
+            channel: "인스타 피드 (1:1)",
+            imageDirection: "딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요."
+          },
+          copyGenerationMode: "suggest_candidates"
+        },
+        metadata: {},
+        created_at: "2026-06-05T00:00:00.000Z",
+        updated_at: "2026-06-05T00:00:00.000Z"
+      }
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="photo" />);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "menu.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("광고 사진 선택"), { target: { files: [file] } });
+    fireEvent.change(screen.getByLabelText("사진 광고 요청 입력"), {
+      target: { value: "이 사진으로 신메뉴 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
+
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("photo_pending"));
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    expect(screen.queryByText("완성된 광고 브리프 정보가 비어 있어요. 다시 시도해주세요.")).toBeNull();
+    expect(api.startPhotoGeneration).not.toHaveBeenCalled();
+  });
+
   it("passes uploaded photo sourceAssetId to the final generation job", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.uploadPhotoAsset).mockClear();

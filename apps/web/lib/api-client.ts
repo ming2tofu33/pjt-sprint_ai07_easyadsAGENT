@@ -650,11 +650,19 @@ async function uploadImageToR2(file: File, kind: "source" | "reference"): Promis
     sizeBytes: file.size
   }, authHeaders);
   const asset = mapAssetResponse(presign.asset);
-  const uploadResponse = await fetch(presign.upload.url, {
-    method: presign.upload.method,
-    headers: presign.upload.headers ?? { "Content-Type": file.type || "image/png" },
-    body: file
-  });
+  let uploadResponse: Response;
+  try {
+    uploadResponse = await fetch(presign.upload.url, {
+      method: presign.upload.method,
+      headers: presign.upload.headers ?? { "Content-Type": file.type || "image/png" },
+      body: file
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new ApiError("이미지 스토리지 업로드가 브라우저에서 차단됐어요. R2 CORS 설정을 확인해주세요.", { status: 0 });
+    }
+    throw error;
+  }
   if (!uploadResponse.ok) {
     throw new ApiError("레퍼런스 이미지를 스토리지에 업로드하지 못했어요.", { status: uploadResponse.status });
   }

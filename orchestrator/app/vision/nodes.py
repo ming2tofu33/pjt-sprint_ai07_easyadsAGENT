@@ -120,12 +120,14 @@ def _run_preprocess_node(state: MarketingState, image_key: str, kind: ImageInput
     result_dump = result.model_dump(mode="json")
     current_brief = dict(state.get("current_brief") or {})
     updates: dict[str, Any] = {
+        image_key: image_path,
         "vision_pipeline_results": [result_dump],
         "image_preprocess_result": result.preprocess_result.model_dump(mode="json"),
         "artifact_refs": list(result.artifact_refs),
         "current_brief": current_brief,
         "updated_at": now_iso(),
     }
+    current_brief[image_key] = image_path
     if kind == "reference_style" and result.reference_style_profile:
         updates["reference_style_profile"] = result.reference_style_profile.model_dump(mode="json")
         current_brief["reference_style_ready"] = True

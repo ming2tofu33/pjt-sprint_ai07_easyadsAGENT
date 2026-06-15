@@ -235,7 +235,7 @@ def build_marketing_graph(checkpointer=None):
     graph.add_conditional_edges(
         "product_preprocess",
         route_after_product_preprocess,
-        {"reference_preprocess": "reference_preprocess", "validator": "input_evidence_normalizer"},
+        {"reference_preprocess": "reference_preprocess", "validator": "input_evidence_normalizer", "result": "result"},
     )
     graph.add_edge("reference_preprocess", "input_evidence_normalizer")
     graph.add_edge("input_evidence_normalizer", "product_understanding")
