@@ -24,6 +24,7 @@ export type ThreadSnapshotRestoreState = {
   customDirection: string;
   userCustomHeadline: string;
   userCustomSubcopy: string;
+  sourceAssetId: string | null;
   sourceImagePath: string | null;
   referenceImagePath: string | null;
   selectedReferenceTemplateId: string | null;
@@ -285,6 +286,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     customDirection: firstString(payload.custom_direction, payload.customDirection),
     userCustomHeadline: firstString(payload.user_custom_headline, payload.userCustomHeadline, currentBrief.user_custom_headline),
     userCustomSubcopy: firstString(payload.user_custom_subcopy, payload.userCustomSubcopy, currentBrief.user_custom_subcopy),
+    sourceAssetId: firstString(payload.source_asset_id, payload.sourceAssetId, currentBrief.source_asset_id, currentBrief.sourceAssetId) || null,
     sourceImagePath: firstString(payload.source_image_path, payload.sourceImagePath) || null,
     referenceImagePath: firstString(payload.reference_image_path, payload.referenceImagePath) || null,
     selectedReferenceTemplateId:
