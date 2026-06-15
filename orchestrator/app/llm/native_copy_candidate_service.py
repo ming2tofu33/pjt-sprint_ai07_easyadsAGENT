@@ -8,6 +8,7 @@ from typing import Any
 
 from openai import OpenAI  # type: ignore
 
+from orchestrator.app.t2i.settings import get_openai_api_key
 from orchestrator.app.llm.native_copy_policy import SENSORY_LANGUAGE_CUES, build_positioning_realization_plan, direct_positioning_terms_used, score_native_copy_candidate
 from orchestrator.app.llm.native_campaign_copy_rules import contains_generic_launch_copy
 from orchestrator.app.llm.native_campaign_message_service import has_meaningful_support_basis
@@ -113,6 +114,14 @@ def _call_openai_candidates(*, input_evidence: InputEvidenceBundle, product_unde
     prompt = (
         "Return JSON only for NativeCopyStrategyBundle candidate generation. Generate exactly 4 Korean native typography copy candidates. "
         "The user's desired positioning is not automatically display copy. Do not simply translate positioning adjectives into headline claims. "
+        "The user's utterance is a meta-request to create an advertisement. DO NOT copy the user's utterance into the headline verbatim. "
+        "The headline and supporting copy must be rewritten as genuine advertising copy. "
+        "Prohibited meta-instruction leakage: 홍보하고 싶어, 광고해줘, 만들어줘, 소개하고 싶어, 손님 많이 오게, I want to promote, create an ad for. "
+        "EXAMPLES OF TRANSFORMING REQUESTS:\n"
+        "- BAD: '삼겹살집 회식 손님 많이 오게 포스터 만들어줘' -> GOOD: '즐거운 회식은 삼겹살집에서'\n"
+        "- BAD: '망고 빙수 홍보하고 싶어' -> GOOD: '달콤하고 시원한 망고 빙수'\n"
+        "- BAD: '예약 방문 유도해줘' -> GOOD: '지금 바로 예약하세요'\n"
+        "Ensure the product identity remains clear and central to the copy. "
         "Weak literalization examples: premium->프리미엄, refined->품격 있게, elegant->우아하게, luxury->럭셔리한. "
         "Campaign status is context, not automatically visible copy. Do not make New menu, New product, Now available, Introducing, or equivalent phrases the main headline unless exact approved visible copy explicitly requires it. For visual-first product introduction, prefer a concise product-centered headline. Supporting copy must add sensory, experiential, contextual, or aesthetic value and must not repeat only that the product is new. Do not generate generic launch copy such as Introducing our new product, Now available, or Korean equivalents meaning newly introduced menu. The final copy should primarily express product identity, safely inferable experience, and use context. "
         "A premium/refined impression may be carried by restrained wording, typography, spacing, composition, color, lighting, material and texture. "
@@ -130,7 +139,7 @@ def _call_openai_candidates(*, input_evidence: InputEvidenceBundle, product_unde
         f"EXACT USER COPY: {json.dumps(input_evidence.user_exact_display_copy, ensure_ascii=False)}\n"
         f"UNSUPPORTED CLAIMS: {json.dumps(product_understanding.unsupported_claim_categories, ensure_ascii=False)}"
     )
-    response = OpenAI(timeout=90).responses.create(model="gpt-5.4", input=prompt, temperature=0)
+    response = OpenAI(api_key=get_openai_api_key(), timeout=90).responses.create(model="gpt-5.4", input=prompt, temperature=0)
     payload = json.loads(getattr(response, "output_text", "") or "{}")
     payload.setdefault("provider_metadata", {"provider": "openai", "model": "gpt-5.4", "latency_ms": int((time.perf_counter() - started) * 1000)})
     return payload

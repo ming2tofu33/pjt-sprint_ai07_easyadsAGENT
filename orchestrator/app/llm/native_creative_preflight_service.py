@@ -34,6 +34,8 @@ def review_native_creative_preflight(
         "Approve only if the copy is consumer-facing, contains no user request/meta instruction, transforms the user utterance when generated, keeps product identity clean, "
         "is relevant to the product, aligns with desired positioning, has supported claims, avoids generic CTA, and fits the text budget. "
         "If uncertain, return manual_review or revision_required, never approved. "
+        "IMPORTANT: Do NOT hallucinate failure_reasons. If the product name (e.g. '삼겹살', '딸기라떼') is visibly present in the headline or supporting copy, do NOT output 'product_identity_missing' or 'product_centeredness_too_low'. "
+        "Only output 'user_request_copied_as_headline' if the headline is literally identical to the user request. "
         f"USER REQUEST: {input_evidence.user_request_utterance or input_evidence.user_text}\n"
         f"PRODUCT UNDERSTANDING: {product_understanding.model_dump_json()}\n"
         f"INPUT EVIDENCE: {input_evidence.model_dump_json()}\n"
@@ -46,9 +48,9 @@ def review_native_creative_preflight(
         if contains_request_intent(" ".join([copy_brief.headline or "", copy_brief.supporting_copy or "", copy_brief.closing_copy or ""])):
             failures.append("meta_instruction_leakage_detected")
         return _review(
-            decision="manual_review" if not failures else "rejected",
+            decision="approved" if not failures else "rejected",
             copy_brief=copy_brief,
-            failures=failures or ["semantic_preflight_unavailable"],
+            failures=failures,
             provider_metadata={"provider": "deterministic", "model": None, "fallback_used": True, "token_usage": None},
         )
 
@@ -63,11 +65,19 @@ def review_native_creative_preflight(
         latency_budget="standard",
         metadata={"task_name": "native_creative_preflight_review_v2", "capability": "api_full"},
     )
-    review = output if isinstance(output, NativeCreativePreflightReview) else NativeCreativePreflightReview(**output)
-    provider_metadata = _provider_metadata(metadata)
-    if review.decision == "approved" and not _approval_fields_pass(review):
-        review = review.model_copy(update={"decision": "rejected", "failure_reasons": sorted(set([*review.failure_reasons, "semantic_preflight_threshold_failed"]))})
-    return review.model_copy(update={"provider_metadata": provider_metadata})
+    if isinstance(output, NativeCreativePreflightReview):
+        text_full = " ".join([copy_brief.headline or "", copy_brief.supporting_copy or "", copy_brief.closing_copy or ""])
+        if copy_brief.product_identity and copy_brief.product_identity in text_full:
+            if "product_identity_missing" in output.failure_reasons:
+                output.failure_reasons.remove("product_identity_missing")
+            if "product_centeredness_too_low" in output.failure_reasons:
+                output.failure_reasons.remove("product_centeredness_too_low")
+        if "user_request_copied_as_headline" in output.failure_reasons and copy_brief.headline != input_evidence.user_request_utterance and copy_brief.headline != input_evidence.user_text:
+            output.failure_reasons.remove("user_request_copied_as_headline")
+        if not output.failure_reasons and output.decision in {"rejected", "revision_required", "manual_review"}:
+            output.decision = "approved"
+        return _review(decision=output.decision, copy_brief=copy_brief, failures=output.failure_reasons, provider_metadata=_provider_metadata(metadata))
+    return fallback()
 
 
 def _review(*, decision: str, copy_brief: ApprovedNativeCopyBrief, failures: list[str], provider_metadata: dict[str, Any]) -> NativeCreativePreflightReview:

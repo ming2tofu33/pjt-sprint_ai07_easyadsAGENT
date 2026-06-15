@@ -55,6 +55,7 @@ def _call_openai_format_plan(
     approved_copy: ApprovedNativeCopyBrief,
 ) -> dict[str, Any]:
     from openai import OpenAI  # type: ignore
+    from orchestrator.app.t2i.settings import get_openai_api_key
 
     started = time.perf_counter()
     prompt = _build_format_plan_prompt(
@@ -63,7 +64,7 @@ def _call_openai_format_plan(
         product_understanding=product_understanding,
         approved_copy=approved_copy,
     )
-    response = OpenAI(timeout=90).responses.create(
+    response = OpenAI(api_key=get_openai_api_key(), timeout=90).responses.create(
         model="gpt-5.4",
         input=prompt,
         temperature=0,

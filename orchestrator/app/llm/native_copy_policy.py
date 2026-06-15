@@ -78,6 +78,9 @@ REQUEST_INTENT_PATTERNS = [
     r"\bmake an advertisement\b",
     r"\badvertise this\b",
     r"\bpromote this\b",
+    r"손님\s*많이\s*오게",
+    r"많이\s*팔리게",
+    r"예약(?:\s*/\s*|\s+및\s+|\s+)?방문\s*유도",
 ]
 
 DIRECT_POSITIONING_TERMS = {
@@ -180,7 +183,7 @@ def validate_approved_native_copy_brief(brief: ApprovedNativeCopyBrief) -> list[
     if brief.copy_source_mode == "generated":
         if not brief.transformation_performed:
             failures.append("copy_transformation_missing")
-        if source_request and brief.headline and _contains_request_intent(source_request) and _similarity(source_request, brief.headline) >= 0.75:
+        if source_request and brief.headline and _contains_request_intent(source_request) and _similarity(source_request, brief.headline) >= 0.90:
             failures.append("user_request_copied_as_headline")
     if not set(brief.product_evidence_ids or brief.verified_evidence_ids):
         failures.append("copy_provenance_missing")

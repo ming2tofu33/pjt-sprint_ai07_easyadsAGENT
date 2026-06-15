@@ -38,12 +38,13 @@ def run_vision_pipeline_mvp(
         artifacts.append({"type": "preprocessed_preview", "path": preprocess_result.preview_path, "metadata": {"source": "vision_preprocess"}})
     if kind == "reference_style":
         try:
-            import os
             from openai import OpenAI
             from orchestrator.app.vision.vlm_extractor import extract_features_with_vlm
-            
-            if os.getenv("OPENAI_API_KEY"):
-                client = OpenAI()
+            from orchestrator.app.t2i.settings import get_openai_api_key
+
+            api_key = get_openai_api_key()
+            if api_key:
+                client = OpenAI(api_key=api_key)
                 reference_profile = extract_features_with_vlm(preprocess_result.preprocessed_artifact_path, client)
         except Exception:
             pass

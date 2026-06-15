@@ -662,6 +662,16 @@ def mark_generation_job_done(
     return updated
 
 
+def _coerce_error_detail(detail: object) -> str | None:
+    """ErrorResponse.detail은 str|None 계약. 업스트림 노드가 reason 리스트를 흘려보내도
+    pydantic string_type 크래시 대신 합쳐서 보존한다(원래 에러가 가려지던 버그 방지)."""
+    if detail is None or isinstance(detail, str):
+        return detail
+    if isinstance(detail, (list, tuple)):
+        return "; ".join(str(item) for item in detail)
+    return str(detail)
+
+
 def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None = None, *, workspace_id: str | None = None, user_id: str | None = None) -> GenerationJobResponse | None:
     if _use_postgres_backend():
         return _mark_generation_job_failed_db(job_id, error, metadata=metadata, workspace_id=workspace_id, user_id=user_id)
@@ -678,7 +688,7 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
             error_code=str(error.get("error_code") or "generation_job_execution_failed"),
             error_type=error.get("error_type"),
             message=str(error.get("message") or "Generation job execution failed."),
-            detail=error.get("detail"),
+            detail=_coerce_error_detail(error.get("detail")),
         ),
         metadata=merged_metadata,
     )
@@ -1906,7 +1916,7 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
         "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
         "error_type": error.get("error_type"),
         "message": str(error.get("message") or "Generation job execution failed."),
-        "detail": error.get("detail"),
+        "detail": _coerce_error_detail(error.get("detail")),
     }
     with db_transaction() as conn:
         if workspace_id is not None or user_id is not None:
