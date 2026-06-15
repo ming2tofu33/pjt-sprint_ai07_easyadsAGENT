@@ -70,19 +70,56 @@ describe("GenerationJobInterruptStep", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "직접 문구 입력" }));
+    fireEvent.click(screen.getByRole("button", { name: "직접 문구 입력 선택" }));
     fireEvent.change(screen.getByLabelText("생성 재개 메인 문구 입력"), {
       target: { value: "내가 쓴 딸기라떼 문구" },
     });
     fireEvent.change(screen.getByLabelText("생성 재개 보조 문구 입력"), {
       target: { value: "오늘 오후 한정" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "문구로 생성 이어가기" }));
+    fireEvent.click(screen.getByRole("button", { name: "선택 완료" }));
 
     expect(onSubmitCustomCopy).toHaveBeenCalledWith({
       userCustomHeadline: "내가 쓴 딸기라떼 문구",
       userCustomSubcopy: "오늘 오후 한정",
       label: "내가 쓴 딸기라떼 문구 / 오늘 오후 한정",
     });
+  });
+
+  it("requires an explicit 선택 완료 click and does not pre-select the recommendation", () => {
+    const onSelectCopyCandidate = vi.fn();
+    const interrupt: ParsedGenerationJobInterrupt = {
+      type: "copy_candidate_selection",
+      candidates: [
+        { id: "copy_1", headline: "추천 문구", subcopy: null, cta: "확인하기" },
+        { id: "copy_2", headline: "두 번째 문구", subcopy: null, cta: "확인하기" },
+      ],
+      recommendedCandidateId: "copy_1",
+      copyCandidateOrigin: "rule_based",
+      raw: { type: "copy_candidate_selection" },
+    };
+
+    render(
+      <GenerationJobInterruptStep
+        interrupt={interrupt}
+        onBack={vi.fn()}
+        onSelectCopyCandidate={onSelectCopyCandidate}
+        onSubmitCustomCopy={vi.fn()}
+      />
+    );
+
+    // Nothing pre-selected: 선택 완료 disabled, no card aria-pressed.
+    const submit = screen.getByRole("button", { name: "선택 완료" });
+    expect(submit).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: /추천 문구 선택/ })).toHaveProperty("ariaPressed", "false");
+
+    // Clicking a card selects locally but does not submit.
+    fireEvent.click(screen.getByRole("button", { name: /두 번째 문구 선택/ }));
+    expect(onSelectCopyCandidate).not.toHaveBeenCalled();
+    expect(submit).toHaveProperty("disabled", false);
+
+    // Only 선택 완료 submits the chosen candidate.
+    fireEvent.click(submit);
+    expect(onSelectCopyCandidate).toHaveBeenCalledWith({ selectedCopyId: "copy_2", label: "두 번째 문구" });
   });
 });

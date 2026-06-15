@@ -122,13 +122,15 @@ export function GenerationJobInterruptStep({
 }: GenerationJobInterruptStepProps) {
   const [headline, setHeadline] = useState("");
   const [subcopy, setSubcopy] = useState("");
-  const [isCustomCopyOpen, setIsCustomCopyOpen] = useState(false);
+  // Local selection: nothing pre-selected so the AI recommendation is shown as a
+  // badge only, never as an already-checked card. Submission happens on "선택 완료".
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
   const fields = useMemo(
     () => (interrupt.type === "custom_copy_input" && interrupt.fields.length > 0 ? interrupt.fields : fallbackCustomFields),
     [interrupt]
   );
   const shouldShowCustomCopyEditor =
-    interrupt.type === "custom_copy_input" || (interrupt.type === "copy_candidate_selection" && isCustomCopyOpen);
+    interrupt.type === "custom_copy_input" || (interrupt.type === "copy_candidate_selection" && selectedOptionId === "custom");
 
   function submitCustomCopy() {
     const nextHeadline = headline.trim();
@@ -141,6 +143,21 @@ export function GenerationJobInterruptStep({
       userCustomSubcopy: nextSubcopy || undefined,
       label: nextSubcopy ? `${nextHeadline} / ${nextSubcopy}` : nextHeadline
     });
+  }
+
+  function submitSelection() {
+    if (isLoading || !selectedOptionId || interrupt.type !== "copy_candidate_selection") {
+      return;
+    }
+    if (selectedOptionId === "custom") {
+      submitCustomCopy();
+      return;
+    }
+    const selected = interrupt.candidates.find((candidate) => candidate.id === selectedOptionId);
+    if (!selected) {
+      return;
+    }
+    onSelectCopyCandidate({ selectedCopyId: selected.id, label: selected.headline });
   }
 
   const content = (
@@ -176,15 +193,19 @@ export function GenerationJobInterruptStep({
                 <button
                   key={candidate.id}
                   type="button"
-                  className={`${styles.copyCard} ${recommended ? styles.copyCardSelected : ""}`}
+                  className={`${styles.copyCard} ${selectedOptionId === candidate.id ? styles.copyCardSelected : ""}`}
                   aria-label={`${candidate.headline} 선택`}
+                  aria-pressed={selectedOptionId === candidate.id}
                   disabled={isLoading || complianceDisabled}
-                  onClick={() => onSelectCopyCandidate({ selectedCopyId: candidate.id, label: candidate.headline })}
+                  onClick={() => setSelectedOptionId(candidate.id)}
                 >
                   <span className={styles.copyNumber}>{index + 1}</span>
                   <span className={styles.copyContent}>
-                    <span>{candidate.headline}</span>
-                    {copyDetail ? <small>{copyDetail}</small> : recommended ? <small>추천</small> : null}
+                    <span>
+                      {candidate.headline}
+                      {recommended ? <small> · AI 추천</small> : null}
+                    </span>
+                    {copyDetail ? <small>{copyDetail}</small> : null}
                     {shouldShowCandidateCompliance(complianceStatus) ? (
                       <span className={styles.candidateComplianceLine}>
                         <span
@@ -197,20 +218,29 @@ export function GenerationJobInterruptStep({
                       </span>
                     ) : null}
                   </span>
-                  {recommended ? <Check size={19} aria-hidden="true" /> : <span />}
+                  {selectedOptionId === candidate.id ? <Check size={19} aria-hidden="true" /> : <span />}
                 </button>
               );
             })}
+            <button
+              key="custom"
+              type="button"
+              className={`${styles.copyCard} ${styles.copyCandidateManualButton} ${selectedOptionId === "custom" ? styles.copyCardSelected : ""}`}
+              aria-label="직접 문구 입력 선택"
+              aria-pressed={selectedOptionId === "custom"}
+              disabled={isLoading}
+              onClick={() => setSelectedOptionId("custom")}
+            >
+              <span className={styles.copyNumber}>
+                <PenLine size={17} aria-hidden="true" />
+              </span>
+              <span className={styles.copyContent}>
+                <span>직접 문구 입력</span>
+                <small>원하는 문구를 직접 작성</small>
+              </span>
+              {selectedOptionId === "custom" ? <Check size={19} aria-hidden="true" /> : <span />}
+            </button>
           </div>
-          <button
-            className={`${styles.secondaryButton} ${styles.copyCandidateManualButton}`}
-            type="button"
-            disabled={isLoading}
-            onClick={() => setIsCustomCopyOpen((current) => !current)}
-          >
-            <PenLine size={17} aria-hidden="true" />
-            {isCustomCopyOpen ? "직접 입력 닫기" : "직접 문구 입력"}
-          </button>
         </>
       ) : null}
 
@@ -242,16 +272,30 @@ export function GenerationJobInterruptStep({
               );
             })}
           </div>
-          <button
-            className={styles.primaryButton}
-            type="button"
-            disabled={isLoading || !headline.trim()}
-            onClick={submitCustomCopy}
-          >
-            <Send size={18} aria-hidden="true" />
-            문구로 생성 이어가기
-          </button>
+          {interrupt.type === "custom_copy_input" ? (
+            <button
+              className={styles.primaryButton}
+              type="button"
+              disabled={isLoading || !headline.trim()}
+              onClick={submitCustomCopy}
+            >
+              <Send size={18} aria-hidden="true" />
+              문구로 생성 이어가기
+            </button>
+          ) : null}
         </>
+      ) : null}
+
+      {interrupt.type === "copy_candidate_selection" ? (
+        <button
+          className={styles.primaryButton}
+          type="button"
+          disabled={isLoading || !selectedOptionId || (selectedOptionId === "custom" && !headline.trim())}
+          onClick={submitSelection}
+        >
+          <Send size={18} aria-hidden="true" />
+          선택 완료
+        </button>
       ) : null}
 
       {interrupt.type === "copy_compliance_review" ? (
