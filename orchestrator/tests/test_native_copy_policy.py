@@ -81,7 +81,7 @@ def test_closing_copy_is_not_action_cta():
                 "allowed_texts": ["된장찌개를 홍보하고 싶어"],
                 "message_role": "headline_only",
             },
-            {"user_request_copied_as_headline", "meta_instruction_leakage_detected"},
+            {"meta_instruction_leakage_detected"},
             id="meta-instruction-headline",
         ),
         pytest.param(

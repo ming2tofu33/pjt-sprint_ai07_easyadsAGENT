@@ -88,7 +88,7 @@ class GPTImageActualEngine:
             raise T2IEngineUnavailableError("OpenAI SDK is unavailable.") from exc
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        client = OpenAI(api_key=get_openai_api_key(), max_retries=0)
+        client = OpenAI(max_retries=0)
         response = client.images.generate(
             model="gpt-image-2",
             prompt=prompt_package.final_prompt,

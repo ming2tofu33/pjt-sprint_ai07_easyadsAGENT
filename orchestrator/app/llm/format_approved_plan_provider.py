@@ -64,7 +64,7 @@ def _call_openai_format_plan(
         product_understanding=product_understanding,
         approved_copy=approved_copy,
     )
-    response = OpenAI(api_key=get_openai_api_key(), timeout=90).responses.create(
+    response = OpenAI(timeout=90).responses.create(
         model="gpt-5.4",
         input=prompt,
         temperature=0,

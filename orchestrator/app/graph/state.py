@@ -79,6 +79,8 @@ class IntakeState(TypedDict, total=False):
     product_understanding_confidence: float | None
     product_understanding_provider_metadata: dict[str, Any] | None
     vision_preprocess_mode: str | None
+    renderer_mode: str | None
+    render_options: dict[str, Any] | None
 
 
 class ReferenceVisionState(TypedDict, total=False):
@@ -170,6 +172,8 @@ class TypographyLayoutState(TypedDict, total=False):
     layout_refinement_result: dict[str, Any] | None
     layout_copy_fit_report: dict[str, Any] | None
     layout_revision_attempts: int
+    poster_layout_spec: dict[str, Any] | None
+    image_analysis: dict[str, Any] | None
 
 
 class ImagePromptT2IState(TypedDict, total=False):
