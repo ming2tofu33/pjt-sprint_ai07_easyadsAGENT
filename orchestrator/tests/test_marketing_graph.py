@@ -620,6 +620,12 @@ def test_marketing_graph_node_utilization_matrix_covers_all_nodes(monkeypatch, t
         "gpt_image_2_native_single_shot",
         "native_generation_review",
         "native_result_adapter",
+        "poster_layout_planner",
+        "image_aware_quality_gate",
+        "design_recommendation",
+        "poster_renderer",
+        "html_text_renderer",
+        "image_analysis",
     })
     assert covered_nodes == graph_node_names
 

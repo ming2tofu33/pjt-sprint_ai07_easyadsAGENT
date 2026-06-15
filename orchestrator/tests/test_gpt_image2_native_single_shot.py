@@ -32,6 +32,7 @@ def test_gpt_image2_native_single_shot_uses_one_generate_no_retry(monkeypatch, t
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "true")
     monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "true")
+    monkeypatch.setenv("T2I_DEFAULT_ENGINE", "gpt_image_2")
 
     brief = ApprovedNativeCopyBrief(
         headline="고급진 된장찌개",
@@ -163,6 +164,7 @@ def _install_fake_openai(monkeypatch, tmp_path):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "true")
     monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "true")
+    monkeypatch.setenv("T2I_DEFAULT_ENGINE", "gpt_image_2")
     return captured
 
 
