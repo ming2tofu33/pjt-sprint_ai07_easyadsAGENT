@@ -34,4 +34,12 @@ describe("generation job interrupt contract", () => {
     expect(parsed?.type === "copy_compliance_review" ? parsed.status : null).toBe("evidence_required");
     expect(parsed?.type === "copy_compliance_review" ? parsed.actions[0]?.id : null).toBe("use_suggestion");
   });
+
+  it("parses compliance rewrite suggestions", () => {
+    const parsed = parseGenerationJobInterrupt(fixtures.copyComplianceReview);
+
+    expect(parsed?.type).toBe("copy_compliance_review");
+    if (parsed?.type !== "copy_compliance_review") return;
+    expect(parsed.findings[0]?.suggestions?.[0]?.text).toBe("정성껏 준비한 고기 한 접시");
+  });
 });

@@ -76,6 +76,8 @@ function shouldShowCandidateCompliance(status: string | null | undefined): boole
 function ComplianceFinding({ finding }: { finding: ComplianceFindingFE }) {
   const severity = finding.severity ?? "warn";
   const displayReason = finding.hitl_question ?? finding.reason;
+  const validatedSuggestions = (finding.suggestions ?? []).filter((suggestion) => suggestion.text?.trim());
+  const legacySuggestion = finding.suggested_text && validatedSuggestions.length === 0 ? finding.suggested_text : null;
   return (
     <div className={styles.complianceFindingCard} data-severity={severity}>
       <div className={styles.complianceFindingHeader}>
@@ -88,12 +90,22 @@ function ComplianceFinding({ finding }: { finding: ComplianceFindingFE }) {
         <p className={styles.complianceMatchedText}>&ldquo;{finding.matched_text}&rdquo;</p>
       )}
       {displayReason && <p className={styles.complianceReason}>{displayReason}</p>}
-      {finding.suggested_text && (
+      {validatedSuggestions.length > 0 ? (
         <div className={styles.complianceSuggestion}>
           <span className={styles.complianceSuggestionLabel}>제안</span>
-          <span>{finding.suggested_text}</span>
+          <div>
+            {validatedSuggestions.map((suggestion, index) => (
+              <p key={suggestion.id ?? index}>{suggestion.text}</p>
+            ))}
+          </div>
         </div>
-      )}
+      ) : null}
+      {legacySuggestion ? (
+        <div className={styles.complianceSuggestion}>
+          <span className={styles.complianceSuggestionLabel}>제안</span>
+          <span>{legacySuggestion}</span>
+        </div>
+      ) : null}
       {finding.legal_basis && finding.legal_basis.length > 0 && (
         <ul className={styles.complianceLegalBasis}>
           {finding.legal_basis.map((b, i) => (

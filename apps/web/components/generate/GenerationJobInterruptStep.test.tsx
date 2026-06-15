@@ -122,4 +122,45 @@ describe("GenerationJobInterruptStep", () => {
     fireEvent.click(submit);
     expect(onSelectCopyCandidate).toHaveBeenCalledWith({ selectedCopyId: "copy_2", label: "두 번째 문구" });
   });
+
+  it("renders validated compliance suggestions before legacy suggested text", () => {
+    const interrupt: ParsedGenerationJobInterrupt = {
+      type: "copy_compliance_review",
+      status: "evidence_required",
+      summary: "광고 문구에 확인이 필요한 표현이 있어요.",
+      actions: [{ id: "use_suggestion", label: "안전한 문구로 수정", available: true }],
+      findings: [
+        {
+          finding_id: "finding_1",
+          field: "headline",
+          matched_text: "최고",
+          severity: "evidence_required",
+          reason: "객관적 근거가 필요한 최상급 표현입니다.",
+          suggested_text: "고객 만족 코칭 프로그램",
+          suggestions: [
+            {
+              id: "suggestion_1",
+              text: "정성껏 준비한 고기 한 접시",
+              validation_status: "pass",
+              rationale: "재검수를 통과했어요.",
+            },
+          ],
+        },
+      ],
+      raw: { type: "copy_compliance_review" },
+    };
+
+    render(
+      <GenerationJobInterruptStep
+        interrupt={interrupt}
+        onBack={vi.fn()}
+        onSelectCopyCandidate={vi.fn()}
+        onSubmitCustomCopy={vi.fn()}
+        onComplianceAction={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("정성껏 준비한 고기 한 접시")).toBeTruthy();
+    expect(screen.queryByText("고객 만족 코칭 프로그램")).toBeNull();
+  });
 });
