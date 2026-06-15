@@ -1,6 +1,10 @@
-from orchestrator.app.llm.native_copy_brief_service import generate_approved_native_copy_brief
+from orchestrator.app.llm.native_copy_brief_service import (
+    generate_approved_native_copy_brief,
+    resolve_approved_primary_copy,
+)
 from orchestrator.app.llm.native_copy_policy import plan_gpt_image2_native_single_shot
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
+from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 
 
@@ -80,3 +84,77 @@ def test_native_copy_brief_service_rejects_raw_user_request_headline():
 
     assert brief.compliance_status == "rejected"
     assert "user_request_copied_as_headline" in brief.rejection_reasons
+
+
+def _approved_adapter():
+    class Adapter:
+        def generate_native_copy_brief(self, **kwargs):
+            return {
+                "headline": "자동 생성 헤드라인",
+                "supporting_copy": "자동 생성 서브카피",
+                "language": "korean",
+                "message_role": "headline_plus_support",
+                "allowed_texts": ["자동 생성 헤드라인", "자동 생성 서브카피"],
+                "forbidden_texts": [],
+                "max_text_blocks": 2,
+                "max_total_characters": 48,
+                "verified_evidence_ids": ["e1"],
+                "unsupported_claim_categories": [],
+                "compliance_status": "approved",
+                "rejection_reasons": [],
+            }
+
+    return Adapter()
+
+
+def _serum_inputs():
+    evidence = InputEvidenceBundle(input_mode="text_only", user_text="시카 세럼 상세페이지", explicit_product_mentions=["시카 세럼"], overall_confidence=0.9)
+    product = ProductUnderstanding(product_name="시카 세럼", normalized_product_type="cica_serum", broad_category="beauty_and_personal_care", category_path=["beauty_and_personal_care", "cica_serum"], product_name_evidence_ids=["e1"], confidence=0.9)
+    return evidence, product
+
+
+def test_resolve_approved_primary_copy_prefers_exact_custom_fields():
+    brief = ApprovedNativeCopyBrief(headline="자동 헤드라인", supporting_copy="자동 서브카피", language="korean", message_role="headline_plus_support", allowed_texts=["자동 헤드라인", "자동 서브카피"], max_text_blocks=2, max_total_characters=48, compliance_status="approved")
+    state = {"user_custom_headline": "시카 진정 세럼", "user_custom_subcopy": "민감한 피부를 편안하게 감싸는 진정 케어"}
+
+    headline, supporting, mode = resolve_approved_primary_copy(state=state, approved_copy=brief)
+
+    assert headline == "시카 진정 세럼"
+    assert supporting == "민감한 피부를 편안하게 감싸는 진정 케어"
+    assert mode == "user_exact"
+
+
+def test_resolve_approved_primary_copy_falls_back_to_generated_copy():
+    brief = ApprovedNativeCopyBrief(headline="자동 헤드라인", supporting_copy="자동 서브카피", language="korean", message_role="headline_plus_support", allowed_texts=["자동 헤드라인", "자동 서브카피"], max_text_blocks=2, max_total_characters=48, compliance_status="approved")
+
+    headline, supporting, mode = resolve_approved_primary_copy(state={}, approved_copy=brief)
+
+    assert headline == "자동 헤드라인"
+    assert supporting == "자동 서브카피"
+    assert mode == "generated"
+
+
+def test_brief_preserves_exact_custom_headline_and_subcopy():
+    evidence, product = _serum_inputs()
+    state = {
+        "native_copy_adapter": _approved_adapter(),
+        "user_custom_headline": "시카 진정 세럼",
+        "user_custom_subcopy": "민감한 피부를 편안하게 감싸는 진정 케어",
+    }
+
+    brief = generate_approved_native_copy_brief(input_evidence=evidence, product_understanding=product, execution_plan=plan_gpt_image2_native_single_shot(), source_visual_analysis=None, state=state)
+
+    assert brief.headline == "시카 진정 세럼"
+    assert brief.supporting_copy == "민감한 피부를 편안하게 감싸는 진정 케어"
+    assert brief.copy_source_mode == "user_exact"
+    assert brief.allowed_texts[:2] == ["시카 진정 세럼", "민감한 피부를 편안하게 감싸는 진정 케어"]
+
+
+def test_brief_uses_generated_copy_when_no_custom_fields():
+    evidence, product = _serum_inputs()
+    state = {"native_copy_adapter": _approved_adapter()}
+
+    brief = generate_approved_native_copy_brief(input_evidence=evidence, product_understanding=product, execution_plan=plan_gpt_image2_native_single_shot(), source_visual_analysis=None, state=state)
+
+    assert brief.headline == "자동 생성 헤드라인"
+    assert brief.supporting_copy == "자동 생성 서브카피"

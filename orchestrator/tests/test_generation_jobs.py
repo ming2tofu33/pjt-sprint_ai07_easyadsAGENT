@@ -3313,3 +3313,55 @@ def test_postgres_scoped_get_hides_cross_workspace_job(monkeypatch):
 
     assert found is not None
     assert calls == [("job_db", WORKSPACE_A)]
+
+
+# ===== Task 1: frontend-neutral request contract =====
+# Confirms the existing web/BFF request (camelCase aliases) lands as canonical
+# graph-state values without any apps/web or apps/bff change. No new request
+# field is introduced; gpt_image_2 stays the selected engine.
+def test_graph_receives_web_request_contract_with_custom_copy_selected_ad_format_and_engine(monkeypatch):
+    from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+    from orchestrator.app.generation_jobs.service import create_generation_job
+    from orchestrator.app.generation_jobs.execution import execute_generation_job_graph
+
+    received_payload = {}
+
+    class MockGraph:
+        def invoke(self, payload: dict, config: dict | None = None) -> dict:
+            nonlocal received_payload
+            received_payload = dict(payload)
+            state = dict(payload)
+            state["status"] = "done"
+            state["result_payload"] = {
+                "final_image_path": "/fake/contract.png",
+                "final_brief": {"user_input": state["user_input"]},
+            }
+            state["final_image_path"] = "/fake/contract.png"
+            return state
+
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+
+    # camelCase fields exactly as the existing web/BFF client already sends them.
+    request = GenerationJobCreateRequest(
+        userInput="시카 세럼 상세페이지를 만들어줘. 피부 진정과 수분 충전을 강조해줘.",
+        runMode="graph_job",
+        adFormat="product_detail",
+        userCustomHeadline="시카 진정 세럼",
+        userCustomSubcopy="민감한 피부를 편안하게 감싸는 진정 케어",
+        metadata={
+            "selected_engine": "gpt_image_2",
+            "requested_engine": "gpt_image_2",
+            "t2i_engine": "gpt_image_2",
+        },
+    )
+    job = create_generation_job(request)
+    executed = execute_generation_job_graph(job.job_id, request)
+
+    assert executed.status == "done"
+    assert received_payload["user_input"] == "시카 세럼 상세페이지를 만들어줘. 피부 진정과 수분 충전을 강조해줘."
+    assert received_payload["selected_ad_format"] == "product_detail"
+    assert received_payload["user_custom_headline"] == "시카 진정 세럼"
+    assert received_payload["user_custom_subcopy"] == "민감한 피부를 편안하게 감싸는 진정 케어"
+    # selected engine remains gpt_image_2 in the execution metadata.
+    assert received_payload["engine"] == "gpt_image_2"
+    assert received_payload["current_brief"]["requested_engine"] == "gpt_image_2"
