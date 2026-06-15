@@ -152,6 +152,32 @@ describe("api-client photo generation", () => {
     await expect(uploadPhotoAsset(file)).rejects.toThrow("사진 용량이 너무 커요. 더 작은 사진으로 다시 시도해주세요.");
   });
 
+  it("shows a friendly message when direct R2 upload is blocked by the browser", async () => {
+    const sourceAssetId = "asset_11111111111111111111111111111111";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/assets/uploads/presign") {
+        return jsonResponse({
+          asset: { assetId: sourceAssetId, kind: "source", status: "pending" },
+          upload: { method: "PUT", url: "https://r2.example.com/source.png", headers: { "Content-Type": "image/png" } }
+        });
+      }
+      if (url === "https://r2.example.com/source.png") {
+        throw new TypeError("Failed to fetch");
+      }
+      return jsonResponse({
+        sourceImagePath: "data/uploads/photo_1.png",
+        fileName: "menu.png",
+        mimeType: "image/png",
+        sizeBytes: 3
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File([new Uint8Array([1, 2, 3])], "menu.png", { type: "image/png" });
+
+    await expect(uploadPhotoAsset(file)).rejects.toThrow("이미지 스토리지 업로드가 브라우저에서 차단됐어요. R2 CORS 설정을 확인해주세요.");
+  });
+
   it("normalizes a trailing slash in the BFF base URL", async () => {
     vi.resetModules();
     vi.stubEnv("NEXT_PUBLIC_BFF_BASE_URL", "https://bff.example.com/");

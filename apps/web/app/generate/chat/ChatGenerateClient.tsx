@@ -807,6 +807,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [currentThreadIsArchived, setCurrentThreadIsArchived] = useState(false);
   const activeThreadRef = useRef({ threadId: "", conversationMessageCount: 0 });
   const finalGenerationJobIdsRef = useRef<Set<string>>(new Set());
+  const inlinePollingJobIdsRef = useRef<Set<string>>(new Set());
   const appSurface = optimisticSurface ?? initialSurface;
   const prepareMissingGeneratingRoute = useCallback(() => {
     dispatch({ type: "reset" });
@@ -1022,7 +1023,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         setGenerationStage("brief");
         lastPrimedStageRef.current = "start";
         setOptimisticSurface("chat");
-        void pollGenerationJobUntilDoneOrQuestion(pendingTurn.generationJob, initialChatIntakeFromTurnSnapshot(pendingTurn));
+        if (!inlinePollingJobIdsRef.current.has(pendingTurn.generationJob.job_id)) {
+          void pollGenerationJobUntilDoneOrQuestion(pendingTurn.generationJob, initialChatIntakeFromTurnSnapshot(pendingTurn));
+        }
         return;
       }
 
@@ -1623,20 +1626,36 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           copy_generation_mode: input.copyGenerationMode ?? null
         }
       });
-      const turnResponse = generationJobToChatTurnResponse(response.job, input.copyGenerationMode);
-      writeChatTurnSnapshot({
+      const shouldPoll = shouldPollInitialGenerationJob(response.job);
+      const turnResponse = shouldPoll ? null : generationJobToChatTurnResponse(response.job, input.copyGenerationMode);
+      const initialChatIntake: InitialChatIntakeContext = {
         prompt: input.prompt,
-        response: shouldPollInitialGenerationJob(response.job) ? null : turnResponse,
-        generationJob: response.job,
         copyGenerationMode: input.copyGenerationMode,
         imageGenerationEngine,
         sourceAssetId: upload.sourceAssetId ?? null,
         sourceImagePath: upload.sourceImagePath,
         referenceImagePath: input.referenceImagePath ?? null,
+        selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? null,
+        selectedReferenceTemplateTitle: null,
         userCustomHeadline: input.userCustomHeadline ?? null,
         userCustomSubcopy: input.userCustomSubcopy ?? null
+      };
+      writeChatTurnSnapshot({
+        ...initialChatIntake,
+        response: turnResponse,
+        generationJob: response.job,
       });
       lastPrimedStageRef.current = null;
+      if (shouldPoll) {
+        setOptimisticSurface("chat");
+        inlinePollingJobIdsRef.current.add(response.job.job_id);
+        try {
+          await pollGenerationJobUntilDoneOrQuestion(response.job, initialChatIntake);
+        } finally {
+          inlinePollingJobIdsRef.current.delete(response.job.job_id);
+        }
+        return;
+      }
       navigateTo("chat", "start");
     } catch (error) {
       throw new Error(error instanceof Error ? error.message : "사진 기반 생성 요청에 실패했습니다. 파일과 서버 연결을 확인해주세요.");

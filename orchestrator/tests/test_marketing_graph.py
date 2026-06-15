@@ -630,6 +630,7 @@ from pathlib import Path
 from PIL import Image
 
 from orchestrator.app.graph.builder import build_marketing_graph
+from orchestrator.app.graph.routers import route_after_product_preprocess
 
 
 def _base(job_id: str, **extra):
@@ -825,6 +826,17 @@ def test_marketing_graph_with_source_image_runs_product_preprocess_to_result(tmp
     assert result["t2i_request"]["input_image_paths"] == [str(source)]
     assert metadata["product_preserve_spec"]["metadata"]["sam_used"] is False
     assert result["result_payload"]["output_path"]
+
+
+def test_route_after_product_preprocess_failure_goes_to_result():
+    route = route_after_product_preprocess(
+        {
+            "status": "failed",
+            "error_message": "asset_resolution_failed: Asset not found",
+        }
+    )
+
+    assert route == "result"
 
 
 def test_marketing_graph_with_reference_image_runs_reference_preprocess_to_result(tmp_path):

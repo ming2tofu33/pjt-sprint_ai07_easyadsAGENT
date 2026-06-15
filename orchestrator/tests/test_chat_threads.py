@@ -255,7 +255,7 @@ def test_photo_start_can_return_option_question(monkeypatch):
 
 def test_photo_start_option_question_can_resume_via_chat_answer(tmp_path):
     source = tmp_path / "menu.png"
-    source.write_bytes(PNG_1X1)
+    write_test_png(source, color=(230, 80, 120))
     client = TestClient(app)
     start = client.post(
         "/v1/marketing/photo/start",
@@ -400,7 +400,7 @@ def test_chat_start_no_copy_returns_brief_ready_response():
 
 def test_photo_start_no_copy_returns_brief_ready_response(tmp_path):
     source = tmp_path / "menu.png"
-    source.write_bytes(PNG_1X1)
+    write_test_png(source, color=(230, 80, 120))
     client = TestClient(app)
 
     response = client.post(
@@ -446,7 +446,7 @@ def test_chat_start_auto_pilot_returns_brief_ready_response():
 
 def test_photo_start_auto_pilot_returns_brief_ready_response(tmp_path):
     source = tmp_path / "menu.png"
-    source.write_bytes(PNG_1X1)
+    write_test_png(source, color=(230, 80, 120))
     client = TestClient(app)
 
     response = client.post(
@@ -494,7 +494,7 @@ def test_chat_start_custom_copy_returns_brief_ready_response():
 
 def test_photo_start_custom_copy_returns_brief_ready_response(tmp_path):
     source = tmp_path / "menu.png"
-    source.write_bytes(PNG_1X1)
+    write_test_png(source, color=(230, 80, 120))
     client = TestClient(app)
 
     response = client.post(
