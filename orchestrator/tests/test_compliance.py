@@ -1094,6 +1094,55 @@ def test_compliance_finding_instantiates():
     assert f.rag_context is None
 
 
+def test_compliance_rewrite_candidate_instantiates():
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+
+    candidate = ComplianceRewriteCandidate(
+        text="정성껏 준비한 고기 한 접시",
+        rationale="최상급 표현을 제거하고 상품 맥락을 유지했습니다.",
+    )
+
+    assert candidate.text == "정성껏 준비한 고기 한 접시"
+    assert candidate.rationale.startswith("최상급")
+
+
+def test_compliance_validated_suggestion_instantiates():
+    from orchestrator.app.compliance.schemas import ComplianceValidatedSuggestion
+
+    suggestion = ComplianceValidatedSuggestion(
+        id="suggestion_1",
+        text="정성껏 준비한 고기 한 접시",
+        validation_status="pass",
+        rationale="재검수를 통과했습니다.",
+    )
+
+    assert suggestion.id == "suggestion_1"
+    assert suggestion.validation_status == "pass"
+
+
+def test_compliance_finding_accepts_suggestions():
+    from orchestrator.app.compliance.schemas import ComplianceFinding, ComplianceValidatedSuggestion
+
+    finding = ComplianceFinding(
+        finding_id="finding_1",
+        field="headline",
+        rule_id="KR-GENERAL-SUPERLATIVE-001",
+        severity="evidence_required",
+        matched_text="최고",
+        reason="실증 없는 최상급 표현",
+        suggestions=[
+            ComplianceValidatedSuggestion(
+                id="suggestion_1",
+                text="좋은 고기",
+                validation_status="pass",
+                rationale="위험 표현을 완화했습니다.",
+            )
+        ],
+    )
+
+    assert finding.suggestions[0].text == "좋은 고기"
+
+
 def test_copy_compliance_state_defaults():
     from orchestrator.app.compliance.schemas import CopyComplianceState
 

@@ -39,6 +39,45 @@ class ComplianceRule(BaseModel):
     examples: list[RuleExample] = Field(default_factory=list)
 
 
+ComplianceRewriteStrategy = Literal[
+    "soften_superlative",
+    "remove_guarantee",
+    "remove_medical_claim",
+    "request_evidence",
+    "manual_edit_required",
+]
+
+
+class ComplianceRewriteContext(BaseModel):
+    business_type: str | None = None
+    item_or_service: str | None = None
+    promotion_goal: str | None = None
+    ad_format: str | None = None
+    channel: str | None = None
+
+
+class ComplianceRewritePlan(BaseModel):
+    rule_id: str
+    field: str
+    matched_text: str
+    strategy: ComplianceRewriteStrategy
+    instruction: str
+    safe_hints: list[str] = Field(default_factory=list)
+    forbidden_claims: list[str] = Field(default_factory=list)
+
+
+class ComplianceRewriteCandidate(BaseModel):
+    text: str
+    rationale: str = ""
+
+
+class ComplianceValidatedSuggestion(BaseModel):
+    id: str
+    text: str
+    validation_status: Literal["pass", "warn"]
+    rationale: str = ""
+
+
 class ComplianceFinding(BaseModel):
     finding_id: str
     field: Literal["headline", "sub_copy", "cta"]
@@ -55,6 +94,8 @@ class ComplianceFinding(BaseModel):
     rag_chunk_id: str | None = None
     rag_retrieval_score: float | None = None
     rag_context: dict[str, Any] | None = None
+    suggestions: list[ComplianceValidatedSuggestion] = Field(default_factory=list)
+    rewrite_plan: ComplianceRewritePlan | None = None
 
 
 class CopyComplianceState(BaseModel):
@@ -68,3 +109,4 @@ class CopyComplianceState(BaseModel):
     interrupt_payload: dict[str, Any] | None = None
     evidence_submitted: list[dict[str, Any]] = Field(default_factory=list)
     revision_count: int = 0
+    rewrite_attempts: list[dict[str, Any]] = Field(default_factory=list)
