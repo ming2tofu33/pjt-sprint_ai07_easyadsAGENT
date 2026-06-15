@@ -1208,6 +1208,34 @@ def test_blocked_copy_has_suggested_copy():
     assert result.suggested_copy.get("headline") != "독소 배출 딸기라떼"
 
 
+def test_superlative_suggestion_preserves_original_product_context():
+    result = _svc__test_compliance_service().check_copy(
+        {"headline": "최고다 고기!", "subcopy": "맛도 좋고 보기도 좋은 1등급 고기"},
+        business_type="restaurant",
+    )
+
+    assert result.status == "evidence_required"
+    assert result.suggested_copy is not None
+    suggested_headline = result.suggested_copy.get("headline", "")
+    assert "고기" in suggested_headline
+    assert "최고" not in suggested_headline
+    assert "고객 만족 코칭 프로그램" not in suggested_headline
+
+
+def test_superlative_finding_suggested_text_uses_contextual_rewrite():
+    result = _svc__test_compliance_service().check_copy(
+        {"headline": "최고다 고기!", "subcopy": "맛도 좋고 보기도 좋은 1등급 고기"},
+        business_type="restaurant",
+    )
+
+    finding = result.findings[0]
+    assert finding.matched_text == "최고"
+    assert finding.suggested_text is not None
+    assert "고기" in finding.suggested_text
+    assert "최고" not in finding.suggested_text
+    assert "고객 만족 코칭 프로그램" not in finding.suggested_text
+
+
 def test_pass_copy_has_no_suggested_copy():
     result = _svc__test_compliance_service().check_copy({"headline": "기분 좋은 딸기라떼"}, business_type="cafe")
     assert result.suggested_copy is None

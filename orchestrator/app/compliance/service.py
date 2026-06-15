@@ -12,6 +12,11 @@ from orchestrator.app.compliance.rewrite_strategy import RewriteStrategy, Static
 from orchestrator.app.compliance.schemas import ComplianceFinding, CopyComplianceState
 
 _PUBLICATION_READY_STATUSES = {"pass", "warn"}
+_COPY_KEY_BY_FINDING_FIELD = {
+    "headline": "headline",
+    "sub_copy": "subcopy",
+    "cta": "cta",
+}
 
 
 class ComplianceService:
@@ -32,6 +37,7 @@ class ComplianceService:
     ) -> CopyComplianceState:
         domains = self._classifier.get_domains(business_type)
         findings = self._checker.scan(copy, domains)
+        self._attach_suggestions(copy, findings, domains)
         status = aggregate_status(findings)
 
         suggested_copy = None
@@ -60,12 +66,26 @@ class ComplianceService:
         suggested = dict(copy)
         domain = domains[0] if domains else "general_ad"
         for finding in findings:
-            field_copy_key = "subcopy" if finding.field == "sub_copy" else finding.field
+            field_copy_key = _COPY_KEY_BY_FINDING_FIELD.get(finding.field, finding.field)
             original_text = suggested.get(field_copy_key) or ""
-            suggestion = self._rewriter.suggest(finding, original_text, domain)
+            suggestion = finding.suggested_text or self._rewriter.suggest(finding, original_text, domain)
             if suggestion:
                 suggested[field_copy_key] = suggestion
         return suggested if suggested != copy else None
+
+    def _attach_suggestions(
+        self,
+        copy: dict[str, Any],
+        findings: list[ComplianceFinding],
+        domains: list[str],
+    ) -> None:
+        domain = domains[0] if domains else "general_ad"
+        for finding in findings:
+            field_copy_key = _COPY_KEY_BY_FINDING_FIELD.get(finding.field, finding.field)
+            original_text = copy.get(field_copy_key) or ""
+            suggestion = self._rewriter.suggest(finding, original_text, domain)
+            if suggestion:
+                finding.suggested_text = suggestion
 
 
 @lru_cache(maxsize=1)
