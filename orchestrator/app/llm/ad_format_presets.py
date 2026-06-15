@@ -5,6 +5,16 @@ from __future__ import annotations
 from orchestrator.app.schemas.llm_marketing import AdFormatSpec
 
 
+NATIVE_TYPOGRAPHY_SUPPORTED_TEXT_FORMATS = frozenset({
+    "banner",
+    "poster",
+    "flyer",
+    "product_detail",
+    "instagram_feed",
+    "instagram_story",
+})
+
+
 AD_FORMAT_PRESETS: dict[str, dict[str, object]] = {
     "instagram_feed": {
         "platform": "instagram",

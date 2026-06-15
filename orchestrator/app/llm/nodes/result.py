@@ -18,7 +18,12 @@ def result_node(state: MarketingState) -> dict[str, Any]:
         or state.get("copy_required") is False
         or (state.get("copy_spec") or {}).get("copy_mode") == "no_copy"
     )
-    if no_copy:
+    native_typography = bool((t2i_result.get("metadata") or {}).get("native_typography"))
+    if native_typography:
+        output_path = state.get("final_image_path") or background_path
+        final_image_path = output_path
+        has_text_overlay = False
+    elif no_copy:
         output_path = background_path
         final_image_path = state.get("final_image_path") if state.get("final_image_path") != background_path else None
         has_text_overlay = False
@@ -28,6 +33,17 @@ def result_node(state: MarketingState) -> dict[str, Any]:
         has_text_overlay = bool(output_path)
 
     status = "done" if output_path else "failed"
+    render_result = state.get("render_result") or {}
+    render_metadata = dict(render_result.get("metadata") or {})
+    result_metadata = {
+        "source_node": "result",
+        "render_text_in_image": False,
+        "tlfp_enabled": not native_typography,
+        "native_typography": native_typography,
+        "error": None if output_path else upstream_error,
+    }
+    if render_metadata:
+        result_metadata["render_metadata"] = render_metadata
     artifacts = list(state.get("artifact_refs") or [])
     artifact_update = []
     if output_path:
@@ -67,10 +83,7 @@ def result_node(state: MarketingState) -> dict[str, Any]:
         artifact_refs=artifacts,
         compliance=_build_copy_compliance_payload(state),
         metadata={
-            "source_node": "result",
-            "render_text_in_image": False,
-            "tlfp_enabled": True,
-            "error": None if output_path else upstream_error,
+            **result_metadata,
             "ocr_gate": ocr_gate_payload,
             "requiresManualReview": requires_manual_review,
             "qualityRejected": quality_rejected,

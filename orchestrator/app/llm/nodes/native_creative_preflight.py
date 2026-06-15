@@ -4,28 +4,61 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import read_model
-from orchestrator.app.llm.native_copy_policy import build_native_prompt_package, decide_native_typography_eligibility, validate_approved_native_copy_brief
+from orchestrator.app.graph.state import read_model, resolve_requested_ad_format
+from orchestrator.app.llm.native_copy_policy import (
+    build_native_prompt_package,
+    decide_native_typography_eligibility,
+    new_native_generation_budget,
+    resolve_visible_text_source_by_format,
+    validate_approved_native_copy_brief,
+)
 from orchestrator.app.llm.native_creative_preflight_service import review_native_creative_preflight
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
-from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief, NativeCreativePreflightReview
+from orchestrator.app.schemas.native_creative import (
+    ApprovedNativeCopyBrief,
+    NativeCreativePreflightReview,
+)
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 
 
 def native_creative_preflight_node(state: dict[str, Any]) -> dict[str, Any]:
     brief = read_model(state, "approved_native_copy_brief", ApprovedNativeCopyBrief)
     product = state.get("product_understanding") or {}
+    input_evidence = state.get("input_evidence_bundle") or {"schema_version": "input_evidence_bundle_v1", "input_mode": "text_only", "overall_confidence": 0.0}
+
+    ad_format = resolve_requested_ad_format(state) or ""
+
+    # Task 7: format-specific plan isolation. Extended visible text is authorized
+    # only through the matching isolated plan; contamination / conflict / missing
+    # required plan fails closed before any prompt package is produced.
+    isolation = resolve_visible_text_source_by_format(
+        ad_format=ad_format,
+        flyer_approved_copy_plan=state.get("flyer_approved_copy_plan"),
+        flyer_promotional_approved_copy_plan=state.get("flyer_promotional_approved_copy_plan"),
+        product_detail_approved_feature_plan=state.get("product_detail_approved_feature_plan"),
+    )
+    if isolation.status == "fail":
+        return _isolation_failed_result(state, brief, product, input_evidence, isolation)
+
     failures = validate_approved_native_copy_brief(brief)
     eligibility = decide_native_typography_eligibility(brief)
-    input_evidence = state.get("input_evidence_bundle") or {"schema_version": "input_evidence_bundle_v1", "input_mode": "text_only", "overall_confidence": 0.0}
+    # Exact user-approved copy is authoritative and is not re-judged by the
+    # generated-copy heuristics (same rule as the brief stage). Generated copy
+    # still must clear validation + eligibility.
+    brief_ok = brief.copy_source_mode == "user_exact" or (not failures and eligibility.eligible)
+    # Task 8: the package carries only the matching format's visible text + grammar.
     package = build_native_prompt_package(
         product_understanding=product,
         copy_brief=brief,
         placement=str((state.get("ad_format_spec") or {}).get("ad_format") or "restaurant_poster"),
-        preflight_status="approved" if not failures and eligibility.eligible else "rejected",
+        preflight_status="approved" if brief_ok else "rejected",
         input_evidence=input_evidence,
+        ad_format=ad_format,
+        product_detail_approved_feature_plan=state.get("product_detail_approved_feature_plan"),
+        flyer_approved_copy_plan=state.get("flyer_approved_copy_plan"),
+        flyer_promotional_approved_copy_plan=state.get("flyer_promotional_approved_copy_plan"),
     )
-    if failures or not eligibility.eligible:
+    if not brief_ok:
         review = NativeCreativePreflightReview(
             decision="rejected",
             copy_grounded=bool(brief.product_evidence_ids or brief.verified_evidence_ids),
@@ -52,7 +85,36 @@ def native_creative_preflight_node(state: dict[str, Any]) -> dict[str, Any]:
         "native_typography_eligibility": eligibility.model_dump(),
         "native_creative_preflight_review": review.model_dump(),
         "native_creative_prompt_package": package.model_dump(),
+        "native_generation_budget": new_native_generation_budget(request_fingerprint=package.prompt_sha256).model_dump(),
         "native_generation_status": "preflight_approved" if decision == "approved" else "rejected",
+    }
+
+
+def _isolation_failed_result(state: dict[str, Any], brief, product: dict[str, Any], input_evidence, isolation) -> dict[str, Any]:
+    """Fail closed on format contamination: never emit an approved package."""
+    package = build_native_prompt_package(
+        product_understanding=product,
+        copy_brief=brief,
+        placement=str((state.get("ad_format_spec") or {}).get("ad_format") or "restaurant_poster"),
+        preflight_status="manual_review" if isolation.decision == "manual_review" else "rejected",
+        input_evidence=input_evidence,
+    )
+    review = NativeCreativePreflightReview(
+        decision="manual_review" if isolation.decision == "manual_review" else "rejected",
+        copy_grounded=bool(brief.product_evidence_ids or brief.verified_evidence_ids),
+        claims_supported=True,
+        language_natural=False,
+        generic_cta_absent=True,
+        text_budget_valid=True,
+        native_typography_suitable=False,
+        product_visual_direction_valid=False,
+        failure_reasons=list(isolation.failure_codes),
+        revision_instructions=[],
+    )
+    return {
+        "native_creative_preflight_review": review.model_dump(),
+        "native_creative_prompt_package": package.model_dump(),
+        "native_generation_status": isolation.decision,
     }
 
 

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from langgraph.graph import END
 
-from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.graph.state import MarketingState, resolve_requested_ad_format
+from orchestrator.app.llm.ad_format_presets import NATIVE_TYPOGRAPHY_SUPPORTED_TEXT_FORMATS
 from orchestrator.app.ocr_gate import settings as ocr_settings
 
 
@@ -77,6 +78,14 @@ def route_by_copy_presence(state: MarketingState) -> str:
         or copy_spec.get("copy_mode") == "no_copy"
     ):
         return "result"
+        
+    renderer_mode = state.get("renderer_mode", "simple_text")
+    if renderer_mode == "poster_components":
+        return "image_analysis"
+        
+    if state.get("rendering_engine") == "html":
+        return "html_text_renderer"
+        
     return "text_renderer"
 
 
@@ -152,8 +161,24 @@ def route_after_compliance_gate(state: MarketingState) -> str:
     evidence_required / blocked → interrupt 발생."""
     status = state.get("copy_compliance_status")
     if status in {None, "pass", "warn", "rewritten_by_user_choice"}:
+        if should_use_native_typography_lane(state):
+            return "creative_execution_planner"
         return "copy_spec_parser"
     return "copy_compliance_interrupt"
+
+
+def should_use_native_typography_lane(state: MarketingState) -> bool:
+    engine = str(state.get("engine") or state.get("preferred_engine") or "").strip().lower()
+    ad_format = resolve_requested_ad_format(state)
+    return engine in {"gpt_image_2", "gpt-image-2"} and ad_format in NATIVE_TYPOGRAPHY_SUPPORTED_TEXT_FORMATS
+
+
+def route_after_native_copy_brief(state: MarketingState) -> str:
+    return "native_creative_preflight" if state.get("native_generation_status") == "copy_approved" else "native_result_adapter"
+
+
+def route_after_native_preflight(state: MarketingState) -> str:
+    return "gpt_image_2_native_single_shot" if state.get("native_generation_status") == "preflight_approved" else "native_result_adapter"
 
 
 def route_after_compliance_resolution(state: MarketingState) -> str:
@@ -164,6 +189,8 @@ def route_after_compliance_resolution(state: MarketingState) -> str:
         return END
     if decision == "edit_manually":
         return "custom_copy_input"
+    if should_use_native_typography_lane(state):
+        return "creative_execution_planner"
     return "copy_spec_parser"
 
 
