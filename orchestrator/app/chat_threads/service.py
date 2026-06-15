@@ -228,10 +228,25 @@ def update_chat_thread(
     return _update_chat_thread_memory(thread_id, request, user_id=user_id)
 
 
-def archive_chat_thread(thread_id: str, user_id: str | None = None, account_type: str | None = None) -> ChatThreadResponse | None:
+def archive_chat_thread(
+    thread_id: str,
+    user_id: str | None = None,
+    account_type: str | None = None,
+    force: bool = False,
+) -> ChatThreadResponse | None:
     if _use_postgres():
-        return _archive_chat_thread_db(thread_id, user_id=user_id, account_type=account_type)
-    return _archive_chat_thread_memory(thread_id, user_id=user_id)
+        return _archive_chat_thread_db(thread_id, user_id=user_id, account_type=account_type, force=force)
+    return _archive_chat_thread_memory(thread_id, user_id=user_id, force=force)
+
+
+def restore_chat_thread(
+    thread_id: str,
+    user_id: str | None = None,
+    account_type: str | None = None,
+) -> ChatThreadResponse | None:
+    if _use_postgres():
+        return _restore_chat_thread_db(thread_id, user_id=user_id, account_type=account_type)
+    return _restore_chat_thread_memory(thread_id, user_id=user_id)
 
 
 def append_chat_message(
@@ -423,17 +438,40 @@ def _update_chat_thread_memory(thread_id: str, request: ChatThreadUpdateRequest,
         return ChatThreadResponse(**updated)
 
 
-def _archive_chat_thread_memory(thread_id: str, user_id: str | None = None) -> ChatThreadResponse | None:
+def _archive_chat_thread_memory(thread_id: str, user_id: str | None = None, force: bool = False) -> ChatThreadResponse | None:
     with _STORE_LOCK:
         data = _CHAT_THREADS.get(thread_id)
         if not data or not _owner_matches(data, user_id):
             return None
         if data.get("archived_at"):
             return ChatThreadResponse(**data)
-        if data.get("active_job_id"):
+        if data.get("active_job_id") and not force:
             raise ChatThreadHasActiveJobError()
         now = _now_iso()
         updated = {**data, "status": "archived", "archived_at": now, "active_job_id": None, "updated_at": now}
+        _CHAT_THREADS[thread_id] = updated
+        return ChatThreadResponse(**updated)
+
+
+def _restore_chat_thread_memory(thread_id: str, user_id: str | None = None) -> ChatThreadResponse | None:
+    with _STORE_LOCK:
+        data = _CHAT_THREADS.get(thread_id)
+        if not data or not _owner_matches(data, user_id):
+            return None
+        if not data.get("archived_at"):
+            return ChatThreadResponse(**data)
+        max_threads = db_settings.get_max_threads_per_workspace()
+        active_count = sum(
+            1
+            for item in _CHAT_THREADS.values()
+            if _owner_matches(item, user_id) and not item.get("archived_at") and item["thread_id"] != thread_id
+        )
+        if active_count >= max_threads:
+            raise ChatThreadLimitReachedError(
+                f"Workspace already has the maximum of {max_threads} active chat threads."
+            )
+        now = _now_iso()
+        updated = {**data, "status": "draft", "archived_at": None, "updated_at": now}
         _CHAT_THREADS[thread_id] = updated
         return ChatThreadResponse(**updated)
 
@@ -687,16 +725,42 @@ def _update_chat_thread_db(
     return _thread_row_to_response(row)
 
 
-def _archive_chat_thread_db(thread_id: str, user_id: str | None = None, account_type: str | None = None) -> ChatThreadResponse | None:
+def _archive_chat_thread_db(
+    thread_id: str,
+    user_id: str | None = None,
+    account_type: str | None = None,
+    force: bool = False,
+) -> ChatThreadResponse | None:
     workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     existing = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
     if not existing:
         return None
     if existing.get("archived_at"):
         return _thread_row_to_response(existing)
-    if existing.get("active_job_id"):
+    if existing.get("active_job_id") and not force:
         raise ChatThreadHasActiveJobError()
-    row = chat_thread_repo.archive_chat_thread(thread_id, workspace_id=workspace_id)
+    row = chat_thread_repo.archive_chat_thread(thread_id, workspace_id=workspace_id, force=force)
+    return _thread_row_to_response(row) if row else None
+
+
+def _restore_chat_thread_db(
+    thread_id: str,
+    user_id: str | None = None,
+    account_type: str | None = None,
+) -> ChatThreadResponse | None:
+    workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
+    existing = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
+    if not existing:
+        return None
+    if not existing.get("archived_at"):
+        return _thread_row_to_response(existing)
+    max_threads = db_settings.get_max_threads_per_workspace()
+    active_count = chat_thread_repo.count_chat_threads(workspace_id=workspace_id, include_archived=False)
+    if active_count >= max_threads:
+        raise ChatThreadLimitReachedError(
+            f"Workspace already has the maximum of {max_threads} active chat threads."
+        )
+    row = chat_thread_repo.restore_chat_thread(thread_id, workspace_id=workspace_id)
     return _thread_row_to_response(row) if row else None
 
 

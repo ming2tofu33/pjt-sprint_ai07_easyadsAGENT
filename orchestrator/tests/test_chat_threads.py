@@ -937,6 +937,7 @@ from orchestrator.app.chat_threads.service import (
     list_chat_threads,
     clear_thread_active_job,
     reset_chat_thread_store_for_tests,
+    restore_chat_thread,
     set_thread_active_job,
     set_thread_final_output,
     update_chat_thread,
@@ -1019,6 +1020,54 @@ def test_memory_thread_limit_frees_slot_after_archive():
     assert fresh.thread_id
 
 
+def test_restore_chat_thread_reopens_archived_thread():
+    created = create_chat_thread(ChatThreadCreateRequest(user_id="restore_user", title="복원 테스트"))
+    archived = archive_chat_thread(created.thread_id, user_id="restore_user", force=True)
+
+    restored = restore_chat_thread(archived.thread_id, user_id="restore_user")
+
+    assert restored is not None
+    assert restored.thread_id == created.thread_id
+    assert restored.archived_at is None
+    assert restored.status == "draft"
+
+
+def test_restore_chat_thread_keeps_active_limit():
+    threads = [
+        create_chat_thread(ChatThreadCreateRequest(user_id="restore_limit_user", title=f"A {index}"))
+        for index in range(3)
+    ]
+    archived = archive_chat_thread(threads[0].thread_id, user_id="restore_limit_user", force=True)
+    create_chat_thread(ChatThreadCreateRequest(user_id="restore_limit_user", title="replacement"))
+
+    with pytest.raises(ChatThreadLimitReachedError):
+        restore_chat_thread(archived.thread_id, user_id="restore_limit_user")
+
+
+def test_restore_chat_thread_route_reopens_archived_thread():
+    client = TestClient(app)
+    created = client.post(
+        "/api/v1/chat-threads",
+        json={"title": "복원 라우트 테스트", "userId": "restore-route-user", "accountType": "guest"},
+    ).json()["thread"]
+    archive = client.post(
+        f"/api/v1/chat-threads/{created['thread_id']}/archive?userId=restore-route-user&accountType=guest",
+        json={"force": True},
+    )
+    assert archive.status_code == 200
+
+    response = client.post(
+        f"/api/v1/chat-threads/{created['thread_id']}/restore?userId=restore-route-user&accountType=guest",
+        json={},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["thread"]["thread_id"] == created["thread_id"]
+    assert payload["thread"]["archived_at"] is None
+    assert payload["thread"]["status"] == "draft"
+
+
 def test_final_brief_and_message_payload_are_sanitized():
     thread = create_chat_thread(
         ChatThreadCreateRequest(
@@ -1044,6 +1093,18 @@ def test_active_thread_cannot_be_archived():
 
     with pytest.raises(ChatThreadHasActiveJobError):
         archive_chat_thread(thread.thread_id, user_id="user_a")
+
+
+def test_active_thread_can_be_force_archived():
+    thread = create_chat_thread(ChatThreadCreateRequest(user_id="user_a", title="Blocked active"))
+    set_thread_active_job(thread.thread_id, "job_uuid", "job_public")
+
+    archived = archive_chat_thread(thread.thread_id, user_id="user_a", force=True)
+
+    assert archived is not None
+    assert archived.status == "archived"
+    assert archived.active_job_id is None
+    assert archived.archived_at is not None
 
 
 def test_user_message_reopens_completed_thread_but_keeps_final_output():
@@ -1460,6 +1521,20 @@ def test_archive_sets_status_and_archived_at(monkeypatch):
     sql, _ = conn._cursor._executed[0]
     assert "archived_at = now()" in sql.lower()
     assert "active_job_id = null" in sql.lower()
+
+
+def test_archive_can_clear_active_job_when_forced(monkeypatch):
+    row = make_chat_thread_row(status="archived", archived_at="2026-01-02", active_job_id=None)
+    conn = FakeConn(rows=[row])
+    _patch_transaction(monkeypatch, conn)
+
+    result = repo__test_chat_threads_repository.archive_chat_thread("thread_abc", force=True)
+
+    assert result["status"] == "archived"
+    sql, params = conn._cursor._executed[0]
+    assert "active_job_id = null" in sql.lower()
+    assert "active_job_id is null" in sql.lower()
+    assert True in params
 
 
 # ---------------------------------------------------------------------------

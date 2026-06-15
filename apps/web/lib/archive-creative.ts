@@ -33,6 +33,8 @@ export function archiveItemToCreative(item: ArchiveItem): MockCreative | null {
 
   return {
     id: item.adId,
+    jobId: item.jobId,
+    outputId: item.outputId,
     title: item.title,
     subtitle,
     format: item.adFormat || item.platform || "이미지",

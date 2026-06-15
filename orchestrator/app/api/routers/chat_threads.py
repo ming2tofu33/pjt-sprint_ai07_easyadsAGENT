@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Body, Query, status
 
 from orchestrator.app.api.errors import raise_api_error
 from orchestrator.app.api.schemas.chat_threads import (
@@ -13,6 +13,8 @@ from orchestrator.app.api.schemas.chat_threads import (
     ChatThreadCreateResponse,
     ChatThreadGetResponse,
     ChatThreadListResponse,
+    ChatThreadArchiveRequest,
+    ChatThreadRestoreRequest,
     ChatThreadUpdateRequest,
     ChatThreadStateGetResponse,
 )
@@ -166,11 +168,39 @@ def update_chat_thread_route(
 )
 def archive_chat_thread_route(
     thread_id: str,
+    request: ChatThreadArchiveRequest = Body(default_factory=ChatThreadArchiveRequest),
     user_id: str | None = Query(default=None, alias="userId"),
     account_type: str | None = Query(default=None, alias="accountType"),
 ) -> ChatThreadGetResponse:
     try:
-        thread = chat_service.archive_chat_thread(thread_id, **_user_scope_kwargs(user_id, account_type))
+        thread = chat_service.archive_chat_thread(
+            thread_id,
+            force=request.force,
+            **_user_scope_kwargs(user_id, account_type),
+        )
+    except ChatThreadServiceError as exc:
+        _handle_service_error(exc, thread_id)
+        return  # type: ignore[return-value]
+    if not thread:
+        _not_found(thread_id)
+    return ChatThreadGetResponse(thread=thread)
+
+
+@router.post(
+    "/chat-threads/{thread_id}/restore",
+    response_model=ChatThreadGetResponse,
+)
+def restore_chat_thread_route(
+    thread_id: str,
+    request: ChatThreadRestoreRequest = Body(default_factory=ChatThreadRestoreRequest),
+    user_id: str | None = Query(default=None, alias="userId"),
+    account_type: str | None = Query(default=None, alias="accountType"),
+) -> ChatThreadGetResponse:
+    try:
+        thread = chat_service.restore_chat_thread(
+            thread_id,
+            **_user_scope_kwargs(user_id, account_type),
+        )
     except ChatThreadServiceError as exc:
         _handle_service_error(exc, thread_id)
         return  # type: ignore[return-value]

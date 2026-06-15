@@ -66,6 +66,14 @@ class ChatThreadUpdateRequest(BaseModel):
         return v.strip() if v else v
 
 
+class ChatThreadArchiveRequest(BaseModel):
+    force: bool = False
+
+
+class ChatThreadRestoreRequest(BaseModel):
+    pass
+
+
 class ChatMessageCreateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 

@@ -157,6 +157,7 @@ def update_chat_thread(
 def archive_chat_thread(
     public_thread_id: str,
     workspace_id: str | None = None,
+    force: bool = False,
     connection: object | None = None,
 ) -> dict | None:
     with db_transaction(connection) as conn:
@@ -170,7 +171,30 @@ def archive_chat_thread(
                     updated_at = now()
                 where public_thread_id = %s
                   and (%s::uuid is null or workspace_id = %s::uuid)
-                  and active_job_id is null
+                  and (%s::boolean = true or active_job_id is null)
+                returning *
+                """,
+                (public_thread_id, workspace_id, workspace_id, force),
+            )
+            return cur.fetchone()
+
+
+def restore_chat_thread(
+    public_thread_id: str,
+    workspace_id: str | None = None,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                update chat_threads
+                set status = 'draft',
+                    archived_at = null,
+                    updated_at = now()
+                where public_thread_id = %s
+                  and archived_at is not null
+                  and (%s::uuid is null or workspace_id = %s::uuid)
                 returning *
                 """,
                 (public_thread_id, workspace_id, workspace_id),
