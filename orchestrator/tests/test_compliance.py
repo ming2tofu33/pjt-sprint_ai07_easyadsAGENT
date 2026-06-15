@@ -373,6 +373,19 @@ def test_gate_evidence_required_for_superlative():
     assert update["copy_compliance_publication_ready"] is False
 
 
+def test_copy_compliance_gate_enables_contextual_rewrite_only_for_gate():
+    state = _state__test_compliance_gate_branch(business_type="restaurant", headline="최고다 고기!")
+    state["context"]["item_or_service"] = "고기"
+    state["context"]["promotion_goal"] = "방문 유도"
+    state["user_plan"] = "premium"
+
+    update = copy_compliance_gate_node(state)
+
+    gate = update["copy_compliance_gate"]
+    assert gate["findings"][0]["suggested_text"]
+    assert "rewrite_attempts" in gate
+
+
 def test_gate_stores_gate_dict_in_state():
     state = _state__test_compliance_gate_branch(business_type="cafe", headline="기분 좋은 딸기라떼")
     update = copy_compliance_gate_node(state)
@@ -394,6 +407,55 @@ def test_gate_does_not_modify_marketing_copy():
     state = _state__test_compliance_gate_branch(business_type="cafe", headline="독소 배출 딸기라떼")
     update = copy_compliance_gate_node(state)
     assert "marketing_copy" not in update
+
+
+def test_copy_compliance_interrupt_serializes_suggestions(monkeypatch):
+    from orchestrator.app.llm.nodes import copy_compliance as node
+
+    captured = {}
+
+    def fake_interrupt(payload):
+        captured["payload"] = payload
+        return {"action": "use_suggestion"}
+
+    monkeypatch.setattr(node, "interrupt", fake_interrupt)
+    state = _state__test_compliance_gate_branch(business_type="restaurant", headline="최고다 고기!")
+    state.update(
+        {
+            "job_id": "job_1",
+            "thread_id": "thread_1",
+            "copy_compliance_status": "evidence_required",
+            "copy_compliance_gate": {
+                "findings": [
+                    {
+                        "finding_id": "finding_1",
+                        "field": "headline",
+                        "matched_text": "최고",
+                        "severity": "evidence_required",
+                        "detection_method": "pattern",
+                        "confidence": 1.0,
+                        "reason": "실증 없는 최상급 표현",
+                        "legal_basis": [],
+                        "suggested_text": "정성껏 준비한 고기 한 접시",
+                        "suggestions": [
+                            {
+                                "id": "suggestion_1",
+                                "text": "정성껏 준비한 고기 한 접시",
+                                "validation_status": "pass",
+                                "rationale": "재검수 통과",
+                            }
+                        ],
+                    }
+                ],
+                "publication_ready": False,
+            },
+        }
+    )
+
+    node.copy_compliance_interrupt_node(state)
+
+    finding = captured["payload"]["findings"][0]
+    assert finding["suggestions"][0]["text"] == "정성껏 준비한 고기 한 접시"
 
 
 # ── copy_compliance_resolution_node ──────────────────────────
