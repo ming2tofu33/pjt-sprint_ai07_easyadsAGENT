@@ -380,13 +380,53 @@ describe("generate chat routes", () => {
 
     const response = await app.inject({
       method: "POST",
-      url: "/api/chat-threads/thread_1/archive"
+      url: "/api/chat-threads/thread_1/archive",
+      payload: { force: true }
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.json().thread.status).toBe("archived");
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://orchestrator/api/v1/chat-threads/thread_1/archive",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ force: true })
+      })
+    );
+    await app.close();
+  });
+
+  it("restores archived chat threads through the orchestrator", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        success: true,
+        thread: {
+          thread_id: "thread_1",
+          title: "딸기라떼 광고",
+          status: "draft",
+          final_brief: {},
+          active_job_id: null,
+          has_final_output: false,
+          last_message_at: "2026-06-07T00:00:00+00:00",
+          archived_at: null,
+          created_at: "2026-06-07T00:00:00+00:00",
+          updated_at: "2026-06-08T00:00:00+00:00"
+        }
+      })
+    );
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/chat-threads/thread_1/restore",
+      payload: {}
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().thread.status).toBe("draft");
+    expect(response.json().thread.archived_at).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/chat-threads/thread_1/restore",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({})

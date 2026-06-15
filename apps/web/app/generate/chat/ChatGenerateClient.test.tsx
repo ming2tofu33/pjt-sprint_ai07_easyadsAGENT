@@ -618,6 +618,21 @@ vi.mock("@/lib/api-client", () => ({
     threads: [],
     total: 0
   })),
+  getChatThread: vi.fn(async (threadId: string) => ({
+    success: true,
+    thread: {
+      thread_id: threadId,
+      title: "불러온 작업방",
+      status: "draft",
+      final_brief: {},
+      active_job_id: null,
+      has_final_output: false,
+      last_message_at: "2026-06-07T00:00:00+00:00",
+      archived_at: null,
+      created_at: "2026-06-07T00:00:00+00:00",
+      updated_at: "2026-06-07T00:00:00+00:00"
+    }
+  })),
   getChatThreadState: vi.fn(async () => ({
     success: true,
     snapshot: {
@@ -664,6 +679,21 @@ vi.mock("@/lib/api-client", () => ({
       archived_at: "2026-06-07T00:00:00+00:00",
       created_at: "2026-06-07T00:00:00+00:00",
       updated_at: "2026-06-07T00:00:00+00:00"
+    }
+  })),
+  restoreChatThread: vi.fn(async (threadId: string) => ({
+    success: true,
+    thread: {
+      thread_id: threadId,
+      title: "복원된 작업방",
+      status: "draft",
+      final_brief: {},
+      active_job_id: null,
+      has_final_output: false,
+      last_message_at: "2026-06-07T00:00:00+00:00",
+      archived_at: null,
+      created_at: "2026-06-07T00:00:00+00:00",
+      updated_at: "2026-06-08T00:00:00+00:00"
     }
   })),
   updateArchiveItem: vi.fn(async (archiveItemId: string, input: { status: "saved" | "favorite" }) => ({
@@ -1202,7 +1232,7 @@ describe("ChatGenerateClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "삭제" }));
 
-    await waitFor(() => expect(api.archiveChatThread).toHaveBeenCalledWith("thread_waiting"));
+    await waitFor(() => expect(api.archiveChatThread).toHaveBeenCalledWith("thread_waiting", { force: true }));
     await waitFor(() => expect(navigationMock.push).toHaveBeenCalledWith("/studio"));
   });
 
@@ -2478,6 +2508,7 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "오늘만 더 달콤한 신메뉴 선택" }));
+    fireEvent.click(screen.getByRole("button", { name: /선택 완료/ }));
 
     await waitFor(() => expect(api.answerGenerationJob).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
@@ -3121,10 +3152,115 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="studio" />);
 
     await waitFor(() => expect(screen.getByText("딸기라떼 신메뉴 광고")).toBeTruthy());
-    expect(api.listChatThreads).toHaveBeenCalledWith({ limit: 5, includeTotal: false });
+    expect(api.listChatThreads).toHaveBeenCalledWith({ limit: 20, includeTotal: false, includeArchived: true });
     fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
 
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?threadId=thread_strawberry");
+  });
+
+  it("separates active and archived studio workspaces", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listChatThreads).mockResolvedValueOnce({
+      success: true,
+      threads: [
+        {
+          thread_id: "thread_active",
+          title: "딸기라떼 신메뉴 광고",
+          status: "draft",
+          brand_kit_id: null,
+          project_id: null,
+          final_brief: {},
+          active_job_id: null,
+          has_final_output: false,
+          last_message_at: "2026-06-07T00:00:00+00:00",
+          archived_at: null,
+          created_at: "2026-06-07T00:00:00+00:00",
+          updated_at: "2026-06-07T00:00:00+00:00"
+        },
+        {
+          thread_id: "thread_archived",
+          title: "보관된 카페 광고",
+          status: "archived",
+          brand_kit_id: null,
+          project_id: null,
+          final_brief: {},
+          active_job_id: null,
+          has_final_output: false,
+          last_message_at: "2026-06-01T00:00:00+00:00",
+          archived_at: "2026-06-08T00:00:00+00:00",
+          created_at: "2026-06-01T00:00:00+00:00",
+          updated_at: "2026-06-08T00:00:00+00:00"
+        }
+      ],
+      total: 2
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="studio" />);
+
+    await waitFor(() => expect(screen.getByText("딸기라떼 신메뉴 광고")).toBeTruthy());
+    expect(screen.queryByText("보관된 카페 광고")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "보관됨" }));
+
+    await waitFor(() => expect(screen.getByText("보관된 카페 광고")).toBeTruthy());
+    expect(screen.queryByText("딸기라떼 신메뉴 광고")).toBeNull();
+    expect(screen.getByRole("button", { name: "보기" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "보관된 카페 광고 작업방 삭제" })).toBeNull();
+  });
+
+  it("restores archived studio workspaces into the active tab", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listChatThreads).mockResolvedValueOnce({
+      success: true,
+      threads: [
+        {
+          thread_id: "thread_archived_restore",
+          title: "보관된 카페 광고",
+          status: "archived",
+          brand_kit_id: null,
+          project_id: null,
+          final_brief: {},
+          active_job_id: null,
+          has_final_output: false,
+          last_message_at: "2026-06-01T00:00:00+00:00",
+          archived_at: "2026-06-08T00:00:00+00:00",
+          created_at: "2026-06-01T00:00:00+00:00",
+          updated_at: "2026-06-08T00:00:00+00:00"
+        }
+      ],
+      total: 1
+    });
+    vi.mocked(api.restoreChatThread).mockResolvedValueOnce({
+      success: true,
+      thread: {
+        thread_id: "thread_archived_restore",
+        title: "보관된 카페 광고",
+        status: "draft",
+        brand_kit_id: null,
+        project_id: null,
+        final_brief: {},
+        active_job_id: null,
+        has_final_output: false,
+        last_message_at: "2026-06-01T00:00:00+00:00",
+        archived_at: null,
+        created_at: "2026-06-01T00:00:00+00:00",
+        updated_at: "2026-06-09T00:00:00+00:00"
+      }
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="studio" />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "보관됨" }));
+    await waitFor(() => expect(screen.getByText("보관된 카페 광고")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "복원" }));
+
+    await waitFor(() => expect(api.restoreChatThread).toHaveBeenCalledWith("thread_archived_restore"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "진행 중" }).getAttribute("aria-selected")).toBe("true"));
+    expect(screen.getByText("보관된 카페 광고")).toBeTruthy();
   });
 
   it("shows a workspace load error instead of an empty studio state", async () => {
@@ -3202,13 +3338,105 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("딸기라떼 신메뉴 광고")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "딸기라떼 신메뉴 광고 작업방 삭제" }));
     expect(screen.getByRole("dialog", { name: "이 작업방을 삭제할까요?" })).toBeTruthy();
-    expect(screen.getByText("완성된 이미지는 보관함에 남아요.", { exact: false })).toBeTruthy();
+    expect(screen.getByText("보관됨으로 이동해요.", { exact: false })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "삭제" }));
 
-    await waitFor(() => expect(api.archiveChatThread).toHaveBeenCalledWith("thread_strawberry"));
+    await waitFor(() => expect(api.archiveChatThread).toHaveBeenCalledWith("thread_strawberry", { force: true }));
     await waitFor(() => expect(screen.queryByText("딸기라떼 신메뉴 광고")).toBeNull());
     expect(screen.getByText("아직 이어갈 작업방이 없어요")).toBeTruthy();
+  });
+
+  it("opens archived threads as read-only workspaces", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.getChatThread).mockResolvedValueOnce({
+      success: true,
+      thread: {
+        thread_id: "thread_archived_readonly",
+        title: "보관된 원육 광고",
+        status: "archived",
+        brand_kit_id: null,
+        project_id: null,
+        final_brief: {},
+        active_job_id: null,
+        has_final_output: false,
+        last_message_at: "2026-06-06T00:00:00+00:00",
+        archived_at: "2026-06-08T00:00:00+00:00",
+        created_at: "2026-06-06T00:00:00+00:00",
+        updated_at: "2026-06-08T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
+      success: true,
+      snapshot: {
+        snapshot_id: "snapshot_archived_readonly",
+        thread_id: "thread_archived_readonly",
+        job_id: "job_archived_readonly",
+        snapshot_version: 1,
+        schema_version: 1,
+        snapshot_kind: "waiting_user_input",
+        state_payload: {
+          user_input: "원육 광고 만들어줘",
+          pending_interrupt: {
+            option_question: {
+              field: "business_type",
+              question: "어떤 업종의 광고인가요?",
+              options: [
+                { id: "restaurant", label: "음식점/식당", value: "restaurant" },
+                { id: "cafe", label: "카페", value: "cafe" }
+              ]
+            }
+          },
+          current_brief: {
+            promotion_goal: "신메뉴 출시",
+            item_or_service: "원육",
+            headline: "오늘 저녁, 원육 한 판",
+            brand_tone: "감성적인",
+            selected_channel_id: "instagram-feed",
+            visual_direction: "원육 중심의 피드 광고"
+          }
+        },
+        changed_fields: [],
+        reference_template_snapshot: {},
+        brand_kit_snapshot: {},
+        metadata: {},
+        created_at: "2026-06-06T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({
+      success: true,
+      total: 2,
+      messages: [
+        {
+          message_id: "msg_archived_user",
+          thread_id: "thread_archived_readonly",
+          sequence_no: 1,
+          role: "user",
+          content: "원육 광고 만들어줘",
+          payload: {},
+          created_at: "2026-06-06T00:00:00+00:00"
+        },
+        {
+          message_id: "msg_archived_assistant",
+          thread_id: "thread_archived_readonly",
+          sequence_no: 2,
+          role: "assistant",
+          content: "아래 내용으로 이해했어요.",
+          payload: {},
+          created_at: "2026-06-06T00:01:00+00:00"
+        }
+      ]
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    searchParamsMock.value = new URLSearchParams("threadId=thread_archived_readonly");
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(screen.getByText("보관된 작업방이에요")).toBeTruthy());
+    expect(screen.getByText("원육 광고 만들어줘")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /이 내용으로 이미지 생성/ })).toBeNull();
+    expect(screen.queryByLabelText("브리프 추가 요청 입력")).toBeNull();
   });
 
   it("opens the photo flow from the home dashboard", async () => {
@@ -3868,6 +4096,64 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(api.deleteArchiveItem).toHaveBeenCalledWith("archive_db_1"));
     await waitFor(() => expect(screen.queryByRole("button", { name: "DB 저장 광고 실제 생성 결과 보기" })).toBeNull());
     expect(screen.getByText("DB 저장 광고 항목을 보관함에서 삭제했어요.")).toBeTruthy();
+  });
+
+  it("deduplicates browser generated items when the persisted archive has the same job", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listArchiveItems).mockResolvedValueOnce({
+      items: [
+        {
+          adId: "archive_db_1",
+          jobId: "job_db_1",
+          title: "DB 저장 광고",
+          imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_db_1%2Ffinal.png",
+          thumbnailUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_db_1%2Ffinal.png",
+          status: "saved",
+          adFormat: "1:1",
+          platform: "인스타 피드",
+          source: "generated",
+          savedAt: "2026-06-05T00:00:00+00:00",
+          metadata: {
+            subtitle: "카페 · 인스타 피드",
+            fileName: "final.png",
+            fileType: "PNG",
+            tags: ["카페", "피드"]
+          }
+        }
+      ],
+      pagination: { limit: 20, offset: 0, total: 1, hasMore: false }
+    });
+    window.localStorage.setItem(
+      "easyads_generated_creatives_v1",
+      JSON.stringify([
+        {
+          id: "generated-job_db_1",
+          title: "브라우저 임시 광고",
+          subtitle: "카페 · 인스타 피드",
+          format: "1:1",
+          imageUrl: "/api/generated-assets?path=data%2Foutputs%2Fjob_db_1%2Ffinal.png",
+          date: "방금 생성",
+          tone: "strawberry",
+          badge: "실제 생성",
+          status: "saved",
+          channel: "인스타 피드",
+          fileName: "final.png",
+          fileType: "PNG",
+          storage: "브라우저 임시 보관함",
+          savedAt: "방금 생성",
+          tags: ["카페", "피드"]
+        }
+      ])
+    );
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="ads" />);
+
+    expect(screen.getByText("브라우저 임시 광고")).toBeTruthy();
+    await waitFor(() => expect(api.listArchiveItems).toHaveBeenCalledWith({ limit: 20, includeTotal: false }));
+    await waitFor(() => expect(screen.getByText("DB 저장 광고")).toBeTruthy());
+    expect(screen.queryByText("브라우저 임시 광고")).toBeNull();
   });
 
   it("shows cached archive items immediately while refreshing persisted archive items", async () => {

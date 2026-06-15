@@ -36,6 +36,7 @@ function creativeFromSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative
   const imageUrl = resolveSnapshotImageUrl(snapshot);
   return {
     id: `generated-${snapshot.jobId}`,
+    jobId: snapshot.jobId,
     title: snapshot.brief.copy,
     subtitle: `${snapshot.brief.item} · ${snapshot.brief.channel}`,
     format: channelMatch?.[1] ?? snapshot.brief.channel,

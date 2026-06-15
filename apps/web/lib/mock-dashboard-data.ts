@@ -2,6 +2,8 @@ export type CreativeTone = "strawberry" | "mint" | "cream" | "sunny" | "peach";
 
 export type MockCreative = {
   id: string;
+  jobId?: string | null;
+  outputId?: string | null;
   title: string;
   subtitle: string;
   format: string;

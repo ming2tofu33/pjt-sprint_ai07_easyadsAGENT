@@ -23,7 +23,8 @@ import {
   uploadPhotoAsset,
   uploadReferenceImageToR2,
   createAdminReferenceTemplate,
-  listAdminReferenceTemplates
+  listAdminReferenceTemplates,
+  restoreChatThread
 } from "./api-client";
 
 function jsonResponse(payload: unknown, init: ResponseInit = {}) {
@@ -888,9 +889,9 @@ describe("api-client backend contract routes", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await listChatThreads({ limit: 5, includeTotal: false });
+    await listChatThreads({ limit: 5, includeTotal: false, includeArchived: true });
 
-    expect(fetchMock.mock.calls[0][0]).toBe("/api/chat-threads?limit=5&include_total=false");
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/chat-threads?limit=5&include_total=false&include_archived=true");
   });
 
 
@@ -1053,15 +1054,55 @@ describe("api-client backend contract routes", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await archiveChatThread("thread_1");
+    const response = await archiveChatThread("thread_1", { force: true });
 
     expect(fetchMock.mock.calls[0][0]).toBe("/api/chat-threads/thread_1/archive");
+    expect(fetchMock.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ force: true })
+      })
+    );
+    expect(response.thread.status).toBe("archived");
+  });
+
+  it("restores archived chat threads through the BFF", async () => {
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession: async () => ({ data: { session: { access_token: "access_token_1" } } })
+        }
+      })
+    }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        success: true,
+        thread: {
+          thread_id: "thread_1",
+          title: "딸기라떼 광고",
+          status: "draft",
+          final_brief: {},
+          active_job_id: null,
+          has_final_output: false,
+          last_message_at: "2026-06-07T00:00:00+00:00",
+          archived_at: null,
+          created_at: "2026-06-07T00:00:00+00:00",
+          updated_at: "2026-06-08T00:00:00+00:00"
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await restoreChatThread("thread_1");
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/chat-threads/thread_1/restore");
     expect(fetchMock.mock.calls[0][1]).toEqual(
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({})
       })
     );
-    expect(response.thread.status).toBe("archived");
+    expect(response.thread.status).toBe("draft");
+    expect(response.thread.archived_at).toBeNull();
   });
 });
