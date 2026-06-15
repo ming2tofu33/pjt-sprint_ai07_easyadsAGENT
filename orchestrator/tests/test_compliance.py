@@ -1279,6 +1279,55 @@ def test_rewrite_planner_superlative_forbidden_claims_include_matched_risks():
     assert "1위" in plan.forbidden_claims
 
 
+def test_compliance_llm_rewriter_falls_back_without_state():
+    from orchestrator.app.compliance.llm_rewriter import ComplianceLLMRewriter
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.schemas import ComplianceRewriteContext
+
+    rules = load_rules()
+    finding = PatternMatcher(rules).scan({"headline": "최고다 고기!"}, ["general_ad"])[0]
+    plan = ComplianceRewritePlanner({rule.rule_id: rule for rule in rules}).plan(finding)
+
+    output = ComplianceLLMRewriter().rewrite(
+        original_text="최고다 고기!",
+        finding=finding,
+        plan=plan,
+        context=ComplianceRewriteContext(business_type="restaurant", item_or_service="고기"),
+        state=None,
+    )
+
+    assert output.candidates == []
+    assert output.fallback_reason == "state_missing"
+
+
+def test_compliance_llm_rewriter_uses_injected_adapter():
+    from orchestrator.app.compliance.llm_rewriter import ComplianceLLMRewriter
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate, ComplianceRewriteContext
+
+    class Adapter:
+        def rewrite(self, **kwargs):
+            return [ComplianceRewriteCandidate(text="정성껏 준비한 고기 한 접시", rationale="맥락 유지")]
+
+    rules = load_rules()
+    finding = PatternMatcher(rules).scan({"headline": "최고다 고기!"}, ["general_ad"])[0]
+    plan = ComplianceRewritePlanner({rule.rule_id: rule for rule in rules}).plan(finding)
+
+    output = ComplianceLLMRewriter(adapter=Adapter()).rewrite(
+        original_text="최고다 고기!",
+        finding=finding,
+        plan=plan,
+        context=ComplianceRewriteContext(business_type="restaurant", item_or_service="고기"),
+        state={"user_plan": "premium"},
+    )
+
+    assert output.candidates[0].text == "정성껏 준비한 고기 한 접시"
+
+
 def test_copy_compliance_state_defaults():
     from orchestrator.app.compliance.schemas import CopyComplianceState
 
