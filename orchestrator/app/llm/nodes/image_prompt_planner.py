@@ -64,7 +64,7 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
     scene = f"clean commercial advertising background for {subject}; {visual_template.background_style}"
     if visual_direction:
         scene = f"{scene}; follow this user visual direction: {visual_direction}"
-    composition = f"{visual_template.composition}. {build_composition(reserved_text)} Main subject zone: {visual_template.main_subject_zone}."
+    composition = f"{visual_template.composition}. {build_composition(reserved_text, getattr(text_layout, 'template', None))} Main subject zone: {visual_template.main_subject_zone}."
     style_hint = reference_style_profile.get("ad_style_prompt")
     template_hint = build_reference_template_hint(selected_reference_template, template_style_hint)
     product_hint = build_product_preserve_hint(product_preserve_spec)
@@ -376,7 +376,11 @@ def infer_copy_space_from_reserved_areas(reserved_areas: list[NormalizedBBox]) -
     return "center"
 
 
-def build_composition(reserved_text: str) -> str:
+def build_composition(reserved_text: str, template: str | None = None) -> str:
+    if template == "left_text_right_product":
+        return "Rule of thirds, main subject strongly shifted to the right. Vast, minimalist, and uncluttered negative space on the left side for text layout. Clean background, studio lighting."
+    if template == "right_text_left_product":
+        return "Rule of thirds, main subject strongly shifted to the left. Vast, minimalist, and uncluttered negative space on the right side for text layout. Clean background, studio lighting."
     if not reserved_text:
         return "Use a clean product-focused composition with no text and no typography."
     return (

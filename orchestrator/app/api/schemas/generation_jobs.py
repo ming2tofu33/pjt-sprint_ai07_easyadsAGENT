@@ -69,6 +69,7 @@ class GenerationJobCreateRequest(BaseModel):
     user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
     user_plan: str = Field(default="free", alias="userPlan")
     ad_format: str | None = Field(default=None, alias="adFormat")
+    renderer_mode: str | None = Field(default=None, alias="rendererMode")
     run_mode: GenerationRunMode = Field(default="queued_only", alias="runMode")
     metadata: dict[str, Any] = Field(default_factory=dict)
 

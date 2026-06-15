@@ -198,6 +198,11 @@ class InitialMarketingRequest(BaseModel):
     reference_image_path: str | None = None
     vision_preprocess_mode: str | None = None
     selected_reference_template_id: str | None = None
+    renderer_mode: str | None = None
+    requested_template_id: str | None = None
+    requested_asset_id: str | None = None
+    poster_layout_spec: dict[str, Any] | None = None
+    render_options: dict[str, Any] | None = None
     render_profile: RenderProfile = "balanced"
     requested_ad_format: str | None = None
     requested_platform: str | None = None

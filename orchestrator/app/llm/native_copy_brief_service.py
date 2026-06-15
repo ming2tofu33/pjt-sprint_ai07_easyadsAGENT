@@ -286,6 +286,7 @@ def _clean(value: Any) -> str | None:
 
 def _call_openai_native_copy(*, input_evidence: InputEvidenceBundle, product_understanding: ProductUnderstanding, execution_plan: CreativeExecutionPlan) -> dict[str, Any]:
     from openai import OpenAI  # type: ignore
+    from orchestrator.app.t2i.settings import get_openai_api_key
 
     started = time.perf_counter()
     prompt = (
@@ -294,13 +295,18 @@ def _call_openai_native_copy(*, input_evidence: InputEvidenceBundle, product_und
         "headline is required unless compliance_status is rejected. "
         "The user's utterance is a request to create an advertisement, not customer-facing display copy. "
         "First separate product identity, desired positioning, campaign intent, exact display copy if explicitly supplied, and non-display instructions. "
-        "Unless copy_source_mode=user_exact, do not copy the user's utterance into headline, do not paraphrase the system request as display copy, and do not expose request verbs or campaign instructions. "
-        "The headline must speak to the consumer, not describe what the user wants the system to do. "
-        "Prohibited meta-instruction leakage: 홍보하고 싶어, 광고해줘, 만들어줘, 소개하고 싶어, I want to promote, create an ad for. "
+        "Unless copy_source_mode=user_exact, DO NOT copy the user's utterance into headline verbatim. "
+        "The headline and supporting copy must be rewritten as genuine advertising copy that speaks to the consumer, not a description of what the user wants the system to do. "
+        "Prohibited meta-instruction leakage: 홍보하고 싶어, 광고해줘, 만들어줘, 소개하고 싶어, 손님 많이 오게, I want to promote, create an ad for. "
+        "EXAMPLES OF TRANSFORMING REQUESTS:\n"
+        "- BAD: '삼겹살집 회식 손님 많이 오게 포스터 만들어줘' -> GOOD: '즐거운 회식은 삼겹살집에서'\n"
+        "- BAD: '망고 빙수 홍보하고 싶어' -> GOOD: '달콤하고 시원한 망고 빙수'\n"
+        "- BAD: '예약 방문 유도해줘' -> GOOD: '지금 바로 예약하세요'\n"
+        "Ensure the product identity (e.g. 삼겹살집 / 삼겹살 회식) remains clear and central to the copy. "
         "Use requested positioning as creative direction, not as an unverified product claim. "
         "Return product_identity, campaign_intent, desired_positioning, non_display_instructions, copy_source_mode, transformation_performed, product_evidence_ids, creative_direction_evidence_ids, and copy_claim_evidence_ids. "
         "Use only verified evidence and ProductUnderstanding. Max two text blocks. No action CTA unless a verified destination exists; default action_cta null. "
-        "No price, discount, date, address, phone, ingredient amount, efficacy, guarantee, generic CTA, or unsupported claim. "
+        "No price, discount, date, address, phone, ingredient amount, efficacy, guarantee, generic CTA, or unsupported operational info. "
         "Input sections follow. "
         f"USER REQUEST: {input_evidence.user_request_utterance or input_evidence.user_text}\n"
         f"PRODUCT IDENTITY: {product_understanding.product_name}\n"
@@ -312,7 +318,7 @@ def _call_openai_native_copy(*, input_evidence: InputEvidenceBundle, product_und
         f"UNSUPPORTED CLAIMS: {json.dumps(product_understanding.unsupported_claim_categories, ensure_ascii=False)}\n"
         f"ExecutionPlan: {execution_plan.model_dump_json()} InputEvidenceBundle: {input_evidence.model_dump_json()} ProductUnderstanding: {product_understanding.model_dump_json()}"
     )
-    response = OpenAI(timeout=90).responses.create(model="gpt-5.4", input=prompt, temperature=0)
+    response = OpenAI(api_key=get_openai_api_key(), timeout=90).responses.create(model="gpt-5.4", input=prompt, temperature=0)
     payload = json.loads(getattr(response, "output_text", "") or "{}")
     payload.setdefault("provider_metadata", {"provider": "openai", "model": "gpt-5.4", "fallback_used": False, "token_usage": _usage_dict(response), "latency_ms": int((time.perf_counter() - started) * 1000)})
     return payload

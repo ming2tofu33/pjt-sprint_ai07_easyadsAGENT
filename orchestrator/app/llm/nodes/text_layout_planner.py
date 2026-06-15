@@ -67,6 +67,15 @@ def build_text_layout_spec(copy_spec: CopySpec, template: str, width: int, heigh
         if role not in renderable_roles:
             continue
         item = next(item for item in copy_spec.get_renderable() if item.role == role)
+        
+        overlay_treatment = style_spec.typography.default_overlay
+        if role == "cta":
+            cta_mode = copy_spec.metadata.get("cta_mode", "text")
+            if cta_mode == "button":
+                overlay_treatment = "solid_panel"
+            else:
+                overlay_treatment = "plain" if overlay_treatment == "solid_panel" else overlay_treatment
+                
         slots.append(
             TextSlot(
                 slot_id=f"slot_{role}",
@@ -78,7 +87,7 @@ def build_text_layout_spec(copy_spec: CopySpec, template: str, width: int, heigh
                 alignment=alignment_for_role(role, template, intent),
                 anchor=anchor_for_role(role, intent),
                 text_color=style_spec.typography.text_color_on_dark,
-                overlay_treatment=overlay_for_role(role, style_spec, intent),
+                overlay_treatment=overlay_treatment if role == "cta" else overlay_for_role(role, style_spec, intent),
                 overlay_color=overlay_color_for_role(role, style_spec, intent),
                 overlay_opacity=overlay_opacity_for_role(role, style_spec, intent),
                 max_lines=2 if role == "headline" else 3,

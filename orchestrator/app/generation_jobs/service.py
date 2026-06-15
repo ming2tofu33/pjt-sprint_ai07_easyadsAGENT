@@ -328,6 +328,7 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
         for k in request.model_fields_set:
             if k in [
                 "ad_format",
+                "renderer_mode",
                 "copy_generation_mode",
                 "selected_reference_template_id",
                 "source_image_path",
@@ -661,6 +662,16 @@ def mark_generation_job_done(
     return updated
 
 
+def _coerce_error_detail(detail: object) -> str | None:
+    """ErrorResponse.detail은 str|None 계약. 업스트림 노드가 reason 리스트를 흘려보내도
+    pydantic string_type 크래시 대신 합쳐서 보존한다(원래 에러가 가려지던 버그 방지)."""
+    if detail is None or isinstance(detail, str):
+        return detail
+    if isinstance(detail, (list, tuple)):
+        return "; ".join(str(item) for item in detail)
+    return str(detail)
+
+
 def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None = None, *, workspace_id: str | None = None, user_id: str | None = None) -> GenerationJobResponse | None:
     if _use_postgres_backend():
         return _mark_generation_job_failed_db(job_id, error, metadata=metadata, workspace_id=workspace_id, user_id=user_id)
@@ -677,7 +688,7 @@ def mark_generation_job_failed(job_id: str, error: dict, metadata: dict | None =
             error_code=str(error.get("error_code") or "generation_job_execution_failed"),
             error_type=error.get("error_type"),
             message=str(error.get("message") or "Generation job execution failed."),
-            detail=error.get("detail"),
+            detail=_coerce_error_detail(error.get("detail")),
         ),
         metadata=merged_metadata,
     )
@@ -1479,6 +1490,8 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             "source_asset_id": request.source_asset_id,
             "reference_asset_id": request.reference_asset_id,
             "ad_format": request.ad_format,
+            "renderer_mode": request.renderer_mode,
+            "workspace_id": str(workspace["id"]),
             "public_thread_id": thread.get("public_thread_id"),
             "engine_preference": engine_preference,
             "t2i_engine": engine_preference,
@@ -1533,6 +1546,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
         for k in request.model_fields_set:
             if k in [
                 "ad_format",
+                "renderer_mode",
                 "copy_generation_mode",
                 "selected_reference_template_id",
                 "source_image_path",
@@ -1902,7 +1916,7 @@ def _mark_generation_job_failed_db(job_id: str, error: dict, metadata: dict | No
         "error_code": str(error.get("error_code") or "generation_job_execution_failed"),
         "error_type": error.get("error_type"),
         "message": str(error.get("message") or "Generation job execution failed."),
-        "detail": error.get("detail"),
+        "detail": _coerce_error_detail(error.get("detail")),
     }
     with db_transaction() as conn:
         if workspace_id is not None or user_id is not None:

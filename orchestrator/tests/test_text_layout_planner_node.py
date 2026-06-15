@@ -37,7 +37,8 @@ def test_text_layout_planner_bbox_ranges_and_reserved_sync():
         assert bbox["x"] + bbox["w"] <= 1
         assert bbox["y"] + bbox["h"] <= 1
     product = spec["product_zone"]
-    assert product["x"] < 0.30
+    assert product["y"] >= 0.10
+    assert product["x"] < 0.50  # Product is on the left in dynamic_side_split
     assert product["w"] <= 0.50
     assert spec["auto_find_empty_space"] is True
     assert {slot["alignment"] for slot in spec["slots"]} == {"auto"}
