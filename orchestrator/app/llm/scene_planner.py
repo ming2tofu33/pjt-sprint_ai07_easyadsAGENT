@@ -65,8 +65,10 @@ def resolve_business_type(
     text = (user_input or "").lower()
     if any(k in text for k in ["cafe", "dessert", "bakery", "카페", "디저트", "베이커리"]):
         return "cafe"
-    if any(k in text for k in ["bbq", "restaurant", "korean_food", "meat", "고기", "갈비", "삼겹살", "식당", "맛집"]):
+    if any(k in text for k in ["bbq", "korean_food", "meat", "고기", "갈비", "삼겹살", "숯불"]):
         return "restaurant_bbq"
+    if any(k in text for k in ["restaurant", "식당", "맛집", "치킨", "피자", "food", "음식", "dining"]):
+        return "restaurant"
         
     beauty_resolved = resolve_beauty_subtype("beauty", text)
     if beauty_resolved and beauty_resolved != "beauty_skincare":

@@ -111,6 +111,41 @@ def test_user_provided_discount_or_location_is_not_treated_as_invented_fact():
     assert not warnings
 
 
+def test_romanized_item_recovered_from_korean_source():
+    # LLM romanized/translated the Korean product noun; recover the user's Korean term.
+    output = BriefInterpreterOutput(
+        business_type="retail",
+        item_or_service="doljabi_ring",
+        promotion_goal="discount_event",
+        confidence=0.95,
+    )
+
+    updates, warnings = build_context_updates_from_brief_interpreter(
+        output,
+        source_text="돌잡이 반지 할인 이벤트",
+    )
+
+    assert updates["item_or_service"] == "돌잡이 반지"
+    assert any("recovered from source" in w for w in warnings)
+
+
+def test_korean_item_kept_when_not_romanized():
+    output = BriefInterpreterOutput(
+        business_type="retail",
+        item_or_service="돌반지",
+        promotion_goal="discount_event",
+        confidence=0.95,
+    )
+
+    updates, warnings = build_context_updates_from_brief_interpreter(
+        output,
+        source_text="돌반지 할인",
+    )
+
+    assert updates["item_or_service"] == "돌반지"
+    assert not warnings
+
+
 def test_unprovided_phone_or_discount_is_blocked_as_invented_fact():
     output = BriefInterpreterOutput(
         business_type="restaurant",
