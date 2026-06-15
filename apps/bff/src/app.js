@@ -62,6 +62,10 @@ const chatAnswerSchema = z.object({
   customText: z.string().optional()
 });
 
+const chatThreadArchiveSchema = z.object({
+  force: z.boolean().optional()
+});
+
 const supportedPhotoMimeTypes = ["image/png", "image/jpeg", "image/webp"];
 const BFF_SRC_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_UPLOAD_DIR = path.resolve(BFF_SRC_DIR, "..", "..", "..", "data", "uploads");
@@ -604,11 +608,25 @@ export function buildApp(options = {}) {
   });
 
   app.post("/api/chat-threads/:threadId/archive", async (request) => {
+    const parsed = chatThreadArchiveSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      return { success: false, error: "invalid_request", details: parsed.error.flatten() };
+    }
     const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
     const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
     return proxyJson({
       fetchImpl,
       url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/archive${queryString}`, principal, { userKey: "userId", accountKey: "accountType" }),
+      body: { force: parsed.data.force === true }
+    });
+  });
+
+  app.post("/api/chat-threads/:threadId/restore", async (request) => {
+    const queryString = request.url.includes("?") ? request.url.slice(request.url.indexOf("?")) : "";
+    const principal = await resolveSupabasePrincipal({ request, fetchImpl, supabaseUrl, supabaseAnonKey });
+    return proxyJson({
+      fetchImpl,
+      url: appendPrincipalQueryParams(`${orchestratorBaseUrl}/api/v1/chat-threads/${encodeURIComponent(request.params.threadId)}/restore${queryString}`, principal, { userKey: "userId", accountKey: "accountType" }),
       body: {}
     });
   });
