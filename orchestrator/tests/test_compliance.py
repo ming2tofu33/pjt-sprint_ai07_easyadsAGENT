@@ -1386,6 +1386,88 @@ def test_candidate_validator_ignores_other_original_field_risks():
     assert suggestions[0].validation_status == "pass"
 
 
+def test_compliance_service_does_not_call_llm_when_copy_passes():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.industry_classifier import IndustryClassifier
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+    from orchestrator.app.compliance.service import ComplianceService
+
+    class Adapter:
+        def __init__(self):
+            self.calls = 0
+
+        def rewrite(self, **kwargs):
+            self.calls += 1
+            return [ComplianceRewriteCandidate(text="불필요한 호출", rationale="호출되면 안 됨")]
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    adapter = Adapter()
+    service = ComplianceService(
+        checker=checker,
+        rewriter=None,
+        classifier=IndustryClassifier(),
+        rewrite_planner=ComplianceRewritePlanner({rule.rule_id: rule for rule in rules}),
+        llm_rewriter_adapter=adapter,
+        candidate_validator=ComplianceCandidateValidator(checker),
+    )
+
+    result = service.check_copy(
+        {"headline": "기분 좋은 고기 한 접시"},
+        business_type="restaurant",
+        enable_contextual_rewrite=True,
+        state={"user_plan": "premium"},
+    )
+
+    assert result.status == "pass"
+    assert adapter.calls == 0
+
+
+def test_compliance_service_attaches_validated_llm_suggestion_when_finding_exists():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.industry_classifier import IndustryClassifier
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate, ComplianceRewriteContext
+    from orchestrator.app.compliance.service import ComplianceService
+
+    class Adapter:
+        def rewrite(self, **kwargs):
+            return [
+                ComplianceRewriteCandidate(text="최고의 고기", rationale="아직 위험함"),
+                ComplianceRewriteCandidate(text="정성껏 준비한 고기 한 접시", rationale="위험 표현 제거"),
+            ]
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    service = ComplianceService(
+        checker=checker,
+        rewriter=None,
+        classifier=IndustryClassifier(),
+        rewrite_planner=ComplianceRewritePlanner({rule.rule_id: rule for rule in rules}),
+        llm_rewriter_adapter=Adapter(),
+        candidate_validator=ComplianceCandidateValidator(checker),
+    )
+
+    result = service.check_copy(
+        {"headline": "최고다 고기!"},
+        business_type="restaurant",
+        enable_contextual_rewrite=True,
+        rewrite_context=ComplianceRewriteContext(business_type="restaurant", item_or_service="고기"),
+        state={"user_plan": "premium"},
+    )
+
+    assert result.findings[0].suggestions[0].text == "정성껏 준비한 고기 한 접시"
+    assert result.findings[0].suggested_text == "정성껏 준비한 고기 한 접시"
+    assert result.findings[0].rewrite_plan is not None
+    assert result.rewrite_attempts[0]["validated_count"] == 1
+    assert result.suggested_copy == {"headline": "정성껏 준비한 고기 한 접시"}
+
+
 def test_copy_compliance_state_defaults():
     from orchestrator.app.compliance.schemas import CopyComplianceState
 
