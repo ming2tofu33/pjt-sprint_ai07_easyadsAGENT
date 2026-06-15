@@ -67,7 +67,15 @@
         "field": "headline",
         "matched_text": "최고",
         "severity": "evidence_required",
-        "reason": "객관적 근거가 필요한 최상급 표현입니다."
+        "reason": "객관적 근거가 필요한 최상급 표현입니다.",
+        "suggestions": [
+          {
+            "id": "suggestion_1",
+            "text": "정성껏 준비한 고기 한 접시",
+            "validation_status": "pass",
+            "rationale": "최상급 표현을 제거하고 상품 맥락을 유지했어요."
+          }
+        ]
       }
     ],
     "actions": [

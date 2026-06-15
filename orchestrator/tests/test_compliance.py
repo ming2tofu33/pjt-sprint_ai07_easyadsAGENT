@@ -373,6 +373,19 @@ def test_gate_evidence_required_for_superlative():
     assert update["copy_compliance_publication_ready"] is False
 
 
+def test_copy_compliance_gate_enables_contextual_rewrite_only_for_gate():
+    state = _state__test_compliance_gate_branch(business_type="restaurant", headline="최고다 고기!")
+    state["context"]["item_or_service"] = "고기"
+    state["context"]["promotion_goal"] = "방문 유도"
+    state["user_plan"] = "premium"
+
+    update = copy_compliance_gate_node(state)
+
+    gate = update["copy_compliance_gate"]
+    assert gate["findings"][0]["suggested_text"]
+    assert "rewrite_attempts" in gate
+
+
 def test_gate_stores_gate_dict_in_state():
     state = _state__test_compliance_gate_branch(business_type="cafe", headline="기분 좋은 딸기라떼")
     update = copy_compliance_gate_node(state)
@@ -394,6 +407,55 @@ def test_gate_does_not_modify_marketing_copy():
     state = _state__test_compliance_gate_branch(business_type="cafe", headline="독소 배출 딸기라떼")
     update = copy_compliance_gate_node(state)
     assert "marketing_copy" not in update
+
+
+def test_copy_compliance_interrupt_serializes_suggestions(monkeypatch):
+    from orchestrator.app.llm.nodes import copy_compliance as node
+
+    captured = {}
+
+    def fake_interrupt(payload):
+        captured["payload"] = payload
+        return {"action": "use_suggestion"}
+
+    monkeypatch.setattr(node, "interrupt", fake_interrupt)
+    state = _state__test_compliance_gate_branch(business_type="restaurant", headline="최고다 고기!")
+    state.update(
+        {
+            "job_id": "job_1",
+            "thread_id": "thread_1",
+            "copy_compliance_status": "evidence_required",
+            "copy_compliance_gate": {
+                "findings": [
+                    {
+                        "finding_id": "finding_1",
+                        "field": "headline",
+                        "matched_text": "최고",
+                        "severity": "evidence_required",
+                        "detection_method": "pattern",
+                        "confidence": 1.0,
+                        "reason": "실증 없는 최상급 표현",
+                        "legal_basis": [],
+                        "suggested_text": "정성껏 준비한 고기 한 접시",
+                        "suggestions": [
+                            {
+                                "id": "suggestion_1",
+                                "text": "정성껏 준비한 고기 한 접시",
+                                "validation_status": "pass",
+                                "rationale": "재검수 통과",
+                            }
+                        ],
+                    }
+                ],
+                "publication_ready": False,
+            },
+        }
+    )
+
+    node.copy_compliance_interrupt_node(state)
+
+    finding = captured["payload"]["findings"][0]
+    assert finding["suggestions"][0]["text"] == "정성껏 준비한 고기 한 접시"
 
 
 # ── copy_compliance_resolution_node ──────────────────────────
@@ -1094,6 +1156,380 @@ def test_compliance_finding_instantiates():
     assert f.rag_context is None
 
 
+def test_compliance_rewrite_candidate_instantiates():
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+
+    candidate = ComplianceRewriteCandidate(
+        text="정성껏 준비한 고기 한 접시",
+        rationale="최상급 표현을 제거하고 상품 맥락을 유지했습니다.",
+    )
+
+    assert candidate.text == "정성껏 준비한 고기 한 접시"
+    assert candidate.rationale.startswith("최상급")
+
+
+def test_compliance_validated_suggestion_instantiates():
+    from orchestrator.app.compliance.schemas import ComplianceValidatedSuggestion
+
+    suggestion = ComplianceValidatedSuggestion(
+        id="suggestion_1",
+        text="정성껏 준비한 고기 한 접시",
+        validation_status="pass",
+        rationale="재검수를 통과했습니다.",
+    )
+
+    assert suggestion.id == "suggestion_1"
+    assert suggestion.validation_status == "pass"
+
+
+def test_compliance_finding_accepts_suggestions():
+    from orchestrator.app.compliance.schemas import ComplianceFinding, ComplianceValidatedSuggestion
+
+    finding = ComplianceFinding(
+        finding_id="finding_1",
+        field="headline",
+        rule_id="KR-GENERAL-SUPERLATIVE-001",
+        severity="evidence_required",
+        matched_text="최고",
+        reason="실증 없는 최상급 표현",
+        suggestions=[
+            ComplianceValidatedSuggestion(
+                id="suggestion_1",
+                text="좋은 고기",
+                validation_status="pass",
+                rationale="위험 표현을 완화했습니다.",
+            )
+        ],
+    )
+
+    assert finding.suggestions[0].text == "좋은 고기"
+
+
+def test_compliance_rewrite_plan_and_attempts_are_serialized():
+    from orchestrator.app.compliance.schemas import (
+        ComplianceFinding,
+        ComplianceRewritePlan,
+        CopyComplianceState,
+    )
+
+    plan = ComplianceRewritePlan(
+        rule_id="KR-GENERAL-SUPERLATIVE-001",
+        field="headline",
+        matched_text="최고",
+        strategy="soften_superlative",
+        instruction="최상급 표현을 완화합니다.",
+    )
+    state = CopyComplianceState(
+        status="evidence_required",
+        findings=[
+            ComplianceFinding(
+                finding_id="finding_1",
+                field="headline",
+                rule_id="KR-GENERAL-SUPERLATIVE-001",
+                severity="evidence_required",
+                matched_text="최고",
+                reason="실증 없는 최상급 표현",
+                rewrite_plan=plan,
+            )
+        ],
+        rewrite_attempts=[
+            {"rule_id": "KR-GENERAL-SUPERLATIVE-001", "validated_count": 1}
+        ],
+        publication_ready=False,
+    )
+
+    payload = state.model_dump(mode="json")
+    assert payload["findings"][0]["rewrite_plan"]["strategy"] == "soften_superlative"
+    assert payload["rewrite_attempts"][0]["validated_count"] == 1
+
+
+def test_compliance_rewrite_plan_rejects_unknown_copy_field():
+    import pytest
+    from pydantic import ValidationError
+
+    from orchestrator.app.compliance.schemas import ComplianceRewritePlan
+
+    with pytest.raises(ValidationError):
+        ComplianceRewritePlan(
+            rule_id="KR-GENERAL-SUPERLATIVE-001",
+            field="body",
+            matched_text="최고",
+            strategy="soften_superlative",
+            instruction="최상급 표현을 완화합니다.",
+        )
+
+
+def test_rewrite_planner_maps_superlative_rule_to_softening_strategy():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "최고다 고기!"}, ["general_ad"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert plan.rule_id == "KR-GENERAL-SUPERLATIVE-001"
+    assert plan.strategy == "soften_superlative"
+    assert "최상급" in plan.instruction
+
+
+def test_rewrite_planner_preserves_rule_safe_hints():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "국내 1위 카페"}, ["general_ad"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert "보장·절대 표현 대신 경험·기대·제안 표현으로" in plan.safe_hints
+
+
+def test_rewrite_planner_does_not_treat_ambiguous_food_warn_as_medical_claim():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "디톡스 딸기라떼"}, ["food"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert findings[0].rule_id == "KR-FOOD-AMBIGUOUS-001"
+    assert plan.strategy == "manual_edit_required"
+    assert "독소 배출" not in plan.forbidden_claims
+
+
+def test_rewrite_planner_maps_food_medical_claim_to_remove_medical_claim():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "독소 배출 딸기라떼"}, ["food"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert findings[0].rule_id == "KR-FOOD-MEDICAL-CLAIM-001"
+    assert plan.strategy == "remove_medical_claim"
+    assert "독소 배출" in plan.forbidden_claims
+
+
+def test_rewrite_planner_superlative_forbidden_claims_include_matched_risks():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "국내 1위 카페"}, ["general_ad"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert "최고" in plan.forbidden_claims
+    assert "1위" in plan.forbidden_claims
+
+
+def test_compliance_llm_rewriter_falls_back_without_state():
+    from orchestrator.app.compliance.llm_rewriter import ComplianceLLMRewriter
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.schemas import ComplianceRewriteContext
+
+    rules = load_rules()
+    finding = PatternMatcher(rules).scan({"headline": "최고다 고기!"}, ["general_ad"])[0]
+    plan = ComplianceRewritePlanner({rule.rule_id: rule for rule in rules}).plan(finding)
+
+    output = ComplianceLLMRewriter().rewrite(
+        original_text="최고다 고기!",
+        finding=finding,
+        plan=plan,
+        context=ComplianceRewriteContext(business_type="restaurant", item_or_service="고기"),
+        state=None,
+    )
+
+    assert output.candidates == []
+    assert output.fallback_reason == "state_missing"
+
+
+def test_compliance_llm_rewriter_uses_injected_adapter():
+    from orchestrator.app.compliance.llm_rewriter import ComplianceLLMRewriter
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate, ComplianceRewriteContext
+
+    class Adapter:
+        def rewrite(self, **kwargs):
+            return [ComplianceRewriteCandidate(text="정성껏 준비한 고기 한 접시", rationale="맥락 유지")]
+
+    rules = load_rules()
+    finding = PatternMatcher(rules).scan({"headline": "최고다 고기!"}, ["general_ad"])[0]
+    plan = ComplianceRewritePlanner({rule.rule_id: rule for rule in rules}).plan(finding)
+
+    output = ComplianceLLMRewriter(adapter=Adapter()).rewrite(
+        original_text="최고다 고기!",
+        finding=finding,
+        plan=plan,
+        context=ComplianceRewriteContext(business_type="restaurant", item_or_service="고기"),
+        state={"user_plan": "premium"},
+    )
+
+    assert output.candidates[0].text == "정성껏 준비한 고기 한 접시"
+
+
+def test_candidate_validator_keeps_pass_candidate():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+
+    rules = load_rules()
+    validator = ComplianceCandidateValidator(PatternMatcher(rules))
+
+    suggestions = validator.validate(
+        original_copy={"headline": "최고다 고기!"},
+        field="headline",
+        candidates=[ComplianceRewriteCandidate(text="정성껏 준비한 고기 한 접시", rationale="맥락 유지")],
+        domains=["general_ad"],
+    )
+
+    assert suggestions[0].text == "정성껏 준비한 고기 한 접시"
+    assert suggestions[0].validation_status == "pass"
+
+
+def test_candidate_validator_drops_candidate_with_same_risk():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+
+    rules = load_rules()
+    validator = ComplianceCandidateValidator(PatternMatcher(rules))
+
+    suggestions = validator.validate(
+        original_copy={"headline": "최고의 고기"},
+        field="headline",
+        candidates=[ComplianceRewriteCandidate(text="최고의 고기", rationale="위험 표현 유지")],
+        domains=["general_ad"],
+    )
+
+    assert suggestions == []
+
+
+def test_candidate_validator_ignores_other_original_field_risks():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+
+    rules = load_rules()
+    validator = ComplianceCandidateValidator(PatternMatcher(rules))
+
+    suggestions = validator.validate(
+        original_copy={"headline": "최고의 고기", "subcopy": "100% 보장"},
+        field="headline",
+        candidates=[ComplianceRewriteCandidate(text="정성껏 준비한 고기 한 접시", rationale="맥락 유지")],
+        domains=["general_ad"],
+    )
+
+    assert suggestions[0].validation_status == "pass"
+
+
+def test_compliance_service_does_not_call_llm_when_copy_passes():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.industry_classifier import IndustryClassifier
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+    from orchestrator.app.compliance.service import ComplianceService
+
+    class Adapter:
+        def __init__(self):
+            self.calls = 0
+
+        def rewrite(self, **kwargs):
+            self.calls += 1
+            return [ComplianceRewriteCandidate(text="불필요한 호출", rationale="호출되면 안 됨")]
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    adapter = Adapter()
+    service = ComplianceService(
+        checker=checker,
+        rewriter=None,
+        classifier=IndustryClassifier(),
+        rewrite_planner=ComplianceRewritePlanner({rule.rule_id: rule for rule in rules}),
+        llm_rewriter_adapter=adapter,
+        candidate_validator=ComplianceCandidateValidator(checker),
+    )
+
+    result = service.check_copy(
+        {"headline": "기분 좋은 고기 한 접시"},
+        business_type="restaurant",
+        enable_contextual_rewrite=True,
+        state={"user_plan": "premium"},
+    )
+
+    assert result.status == "pass"
+    assert adapter.calls == 0
+
+
+def test_compliance_service_attaches_validated_llm_suggestion_when_finding_exists():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.industry_classifier import IndustryClassifier
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate, ComplianceRewriteContext
+    from orchestrator.app.compliance.service import ComplianceService
+
+    class Adapter:
+        def rewrite(self, **kwargs):
+            return [
+                ComplianceRewriteCandidate(text="최고의 고기", rationale="아직 위험함"),
+                ComplianceRewriteCandidate(text="정성껏 준비한 고기 한 접시", rationale="위험 표현 제거"),
+            ]
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    service = ComplianceService(
+        checker=checker,
+        rewriter=None,
+        classifier=IndustryClassifier(),
+        rewrite_planner=ComplianceRewritePlanner({rule.rule_id: rule for rule in rules}),
+        llm_rewriter_adapter=Adapter(),
+        candidate_validator=ComplianceCandidateValidator(checker),
+    )
+
+    result = service.check_copy(
+        {"headline": "최고다 고기!"},
+        business_type="restaurant",
+        enable_contextual_rewrite=True,
+        rewrite_context=ComplianceRewriteContext(business_type="restaurant", item_or_service="고기"),
+        state={"user_plan": "premium"},
+    )
+
+    assert result.findings[0].suggestions[0].text == "정성껏 준비한 고기 한 접시"
+    assert result.findings[0].suggested_text == "정성껏 준비한 고기 한 접시"
+    assert result.findings[0].rewrite_plan is not None
+    assert result.rewrite_attempts[0]["validated_count"] == 1
+    assert result.suggested_copy == {"headline": "정성껏 준비한 고기 한 접시"}
+
+
 def test_copy_compliance_state_defaults():
     from orchestrator.app.compliance.schemas import CopyComplianceState
 
@@ -1206,6 +1642,34 @@ def test_blocked_copy_has_suggested_copy():
     result = _svc__test_compliance_service().check_copy({"headline": "독소 배출 딸기라떼"}, business_type="cafe")
     assert result.suggested_copy is not None
     assert result.suggested_copy.get("headline") != "독소 배출 딸기라떼"
+
+
+def test_superlative_suggestion_preserves_original_product_context():
+    result = _svc__test_compliance_service().check_copy(
+        {"headline": "최고다 고기!", "subcopy": "맛도 좋고 보기도 좋은 1등급 고기"},
+        business_type="restaurant",
+    )
+
+    assert result.status == "evidence_required"
+    assert result.suggested_copy is not None
+    suggested_headline = result.suggested_copy.get("headline", "")
+    assert "고기" in suggested_headline
+    assert "최고" not in suggested_headline
+    assert "고객 만족 코칭 프로그램" not in suggested_headline
+
+
+def test_superlative_finding_suggested_text_uses_contextual_rewrite():
+    result = _svc__test_compliance_service().check_copy(
+        {"headline": "최고다 고기!", "subcopy": "맛도 좋고 보기도 좋은 1등급 고기"},
+        business_type="restaurant",
+    )
+
+    finding = result.findings[0]
+    assert finding.matched_text == "최고"
+    assert finding.suggested_text is not None
+    assert "고기" in finding.suggested_text
+    assert "최고" not in finding.suggested_text
+    assert "고객 만족 코칭 프로그램" not in finding.suggested_text
 
 
 def test_pass_copy_has_no_suggested_copy():

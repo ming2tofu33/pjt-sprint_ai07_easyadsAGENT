@@ -21,6 +21,7 @@ export type GeneratedCreativeSnapshot = {
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
   imageGenerationEngine?: ImageGenerationEngine;
+  sourceAssetId?: string | null;
   sourceImagePath?: string | null;
   referenceImagePath?: string | null;
 };

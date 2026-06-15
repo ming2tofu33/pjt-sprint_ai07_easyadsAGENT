@@ -154,6 +154,7 @@ export type ReferenceTemplateSimilarResponse = {
 
 export type PhotoUploadResponse = {
   sourceImagePath: string;
+  sourceAssetId?: string | null;
   fileName: string;
   mimeType: string;
   sizeBytes: number;
@@ -219,6 +220,8 @@ export interface GenerationJobCreateInput {
   brandKitId?: string | null;
   entryMode?: string;
   selectedReferenceTemplateId?: string | null;
+  sourceAssetId?: string | null;
+  referenceAssetId?: string | null;
   sourceImagePath?: string | null;
   referenceImagePath?: string | null;
   copyGenerationMode?: string | null;
@@ -595,7 +598,7 @@ export function createChatBrief(input: {
   return postJson<ChatBriefResponse>("/api/generate/chat/brief", input);
 }
 
-export async function uploadPhotoAsset(file: File): Promise<PhotoUploadResponse> {
+async function uploadLocalPhotoAsset(file: File): Promise<PhotoUploadResponse> {
   const dataUrl = await readFileAsDataUrl(file);
   return postJson<PhotoUploadResponse>("/api/generate/photo/upload", {
     filename: file.name,
@@ -604,8 +607,17 @@ export async function uploadPhotoAsset(file: File): Promise<PhotoUploadResponse>
   });
 }
 
+export async function uploadPhotoAsset(file: File): Promise<PhotoUploadResponse> {
+  const localUpload = await uploadLocalPhotoAsset(file);
+  const sourceAsset = await uploadImageToR2(file, "source");
+  return {
+    ...localUpload,
+    sourceAssetId: sourceAsset.assetId
+  };
+}
+
 export async function uploadReferenceAsset(file: File): Promise<ReferenceImageUploadResponse> {
-  const upload = await uploadPhotoAsset(file);
+  const upload = await uploadLocalPhotoAsset(file);
   return {
     referenceImagePath: upload.sourceImagePath,
     fileName: upload.fileName,
@@ -629,10 +641,10 @@ function mapAssetResponse(item: RawAssetResponse): AssetUploadResponse {
   };
 }
 
-export async function uploadReferenceImageToR2(file: File): Promise<AssetUploadResponse> {
+async function uploadImageToR2(file: File, kind: "source" | "reference"): Promise<AssetUploadResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   const presign = await postJson<RawAssetPresignResponse>("/api/assets/uploads/presign", {
-    kind: "reference",
+    kind,
     filename: file.name,
     mimeType: file.type || "image/png",
     sizeBytes: file.size
@@ -648,6 +660,10 @@ export async function uploadReferenceImageToR2(file: File): Promise<AssetUploadR
   }
   const complete = await postJson<RawAssetCompleteResponse>(`/api/assets/uploads/${encodeURIComponent(asset.assetId)}/complete`, {}, authHeaders);
   return mapAssetResponse(complete.asset);
+}
+
+export async function uploadReferenceImageToR2(file: File): Promise<AssetUploadResponse> {
+  return uploadImageToR2(file, "reference");
 }
 
 export function startPhotoGeneration(input: {

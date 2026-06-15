@@ -21,6 +21,7 @@ NodeModelName = Literal[
     "auto_pilot_copywriting",
     "custom_copy_validation",
     "copy_spec_parser",
+    "compliance_rewrite",
     "image_prompt_planner",
     "prompt_critic",
     "background_validation",
