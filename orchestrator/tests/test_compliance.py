@@ -1197,6 +1197,38 @@ def test_compliance_rewrite_plan_rejects_unknown_copy_field():
         )
 
 
+def test_rewrite_planner_maps_superlative_rule_to_softening_strategy():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "최고다 고기!"}, ["general_ad"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert plan.rule_id == "KR-GENERAL-SUPERLATIVE-001"
+    assert plan.strategy == "soften_superlative"
+    assert "최상급" in plan.instruction
+
+
+def test_rewrite_planner_preserves_rule_safe_hints():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "국내 1위 카페"}, ["general_ad"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert "보장·절대 표현 대신 경험·기대·제안 표현으로" in plan.safe_hints
+
+
 def test_copy_compliance_state_defaults():
     from orchestrator.app.compliance.schemas import CopyComplianceState
 
