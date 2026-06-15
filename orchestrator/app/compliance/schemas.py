@@ -48,6 +48,9 @@ ComplianceRewriteStrategy = Literal[
 ]
 
 
+ComplianceCopyField = Literal["headline", "sub_copy", "cta"]
+
+
 class ComplianceRewriteContext(BaseModel):
     business_type: str | None = None
     item_or_service: str | None = None
@@ -58,7 +61,7 @@ class ComplianceRewriteContext(BaseModel):
 
 class ComplianceRewritePlan(BaseModel):
     rule_id: str
-    field: str
+    field: ComplianceCopyField
     matched_text: str
     strategy: ComplianceRewriteStrategy
     instruction: str
@@ -80,7 +83,7 @@ class ComplianceValidatedSuggestion(BaseModel):
 
 class ComplianceFinding(BaseModel):
     finding_id: str
-    field: Literal["headline", "sub_copy", "cta"]
+    field: ComplianceCopyField
     rule_id: str | None = None
     severity: Literal["warn", "evidence_required", "block"]
     matched_text: str

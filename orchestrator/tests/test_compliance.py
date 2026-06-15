@@ -1143,6 +1143,60 @@ def test_compliance_finding_accepts_suggestions():
     assert finding.suggestions[0].text == "좋은 고기"
 
 
+def test_compliance_rewrite_plan_and_attempts_are_serialized():
+    from orchestrator.app.compliance.schemas import (
+        ComplianceFinding,
+        ComplianceRewritePlan,
+        CopyComplianceState,
+    )
+
+    plan = ComplianceRewritePlan(
+        rule_id="KR-GENERAL-SUPERLATIVE-001",
+        field="headline",
+        matched_text="최고",
+        strategy="soften_superlative",
+        instruction="최상급 표현을 완화합니다.",
+    )
+    state = CopyComplianceState(
+        status="evidence_required",
+        findings=[
+            ComplianceFinding(
+                finding_id="finding_1",
+                field="headline",
+                rule_id="KR-GENERAL-SUPERLATIVE-001",
+                severity="evidence_required",
+                matched_text="최고",
+                reason="실증 없는 최상급 표현",
+                rewrite_plan=plan,
+            )
+        ],
+        rewrite_attempts=[
+            {"rule_id": "KR-GENERAL-SUPERLATIVE-001", "validated_count": 1}
+        ],
+        publication_ready=False,
+    )
+
+    payload = state.model_dump(mode="json")
+    assert payload["findings"][0]["rewrite_plan"]["strategy"] == "soften_superlative"
+    assert payload["rewrite_attempts"][0]["validated_count"] == 1
+
+
+def test_compliance_rewrite_plan_rejects_unknown_copy_field():
+    import pytest
+    from pydantic import ValidationError
+
+    from orchestrator.app.compliance.schemas import ComplianceRewritePlan
+
+    with pytest.raises(ValidationError):
+        ComplianceRewritePlan(
+            rule_id="KR-GENERAL-SUPERLATIVE-001",
+            field="body",
+            matched_text="최고",
+            strategy="soften_superlative",
+            instruction="최상급 표현을 완화합니다.",
+        )
+
+
 def test_copy_compliance_state_defaults():
     from orchestrator.app.compliance.schemas import CopyComplianceState
 
