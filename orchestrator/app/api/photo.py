@@ -26,6 +26,27 @@ from orchestrator.app.api.marketing_graph import get_marketing_graph
 
 router = APIRouter(prefix="/v1/marketing/photo", tags=["marketing-photo"])
 
+SUPPORTED_IMAGE_ENGINES = {
+    "gpt_image_1": "gpt_image_1",
+    "gpt_image_2": "gpt_image_2",
+    "flux2_klein_4b": "flux2_klein_4b",
+    "flux2_klein": "flux2_klein_4b",
+    "flux": "flux2_klein_4b",
+    "flux_schnell": "flux2_klein_4b",
+    "sd35_large": "sd35_large",
+}
+
+
+def _normalize_image_engine(*values: str | None) -> str | None:
+    for value in values:
+        cleaned = _clean_optional_text(value)
+        if not cleaned:
+            continue
+        normalized = SUPPORTED_IMAGE_ENGINES.get(cleaned)
+        if normalized:
+            return normalized
+    return None
+
 
 class PhotoStartRequest(CamelModel):
     user_input: str = Field(alias="userInput", min_length=1)
@@ -38,6 +59,10 @@ class PhotoStartRequest(CamelModel):
     user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
     selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
     reference_image_path: str | None = Field(default=None, alias="referenceImagePath")
+    image_generation_engine: str | None = Field(default=None, alias="imageGenerationEngine")
+    requested_engine: str | None = Field(default=None, alias="requestedEngine")
+    t2i_engine: str | None = Field(default=None, alias="t2iEngine")
+    selected_engine_label: str | None = Field(default=None, alias="selectedEngineLabel")
 
 
 @router.post("/start", response_model=ChatStartResponse | ChatOptionQuestionResponse | ChatBriefReadyResponse, response_model_by_alias=True)
@@ -53,10 +78,12 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
             _clean_optional_text(request.user_custom_subcopy) or "",
             _clean_optional_text(request.selected_reference_template_id) or "",
             _clean_optional_text(request.reference_image_path) or "",
+            _normalize_image_engine(request.requested_engine, request.t2i_engine, request.image_generation_engine) or "",
         ]
     )
     job_id = f"photo_{abs(hash(job_seed))}"
     thread_id = f"{job_id}_thread"
+    selected_engine = _normalize_image_engine(request.requested_engine, request.t2i_engine, request.image_generation_engine)
     state = {
         "entry_mode": "photo_start",
         "user_input": request.user_input,
@@ -79,6 +106,23 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
             }
         },
     }
+    if selected_engine:
+        state.update(
+            {
+                "engine": selected_engine,
+                "image_generation_engine": selected_engine,
+                "requested_engine": selected_engine,
+                "t2i_engine": selected_engine,
+                "selected_engine_label": _clean_optional_text(request.selected_engine_label),
+            }
+        )
+        state["context"]["extra"].update(
+            {
+                "requested_engine": selected_engine,
+                "t2i_engine": selected_engine,
+                "selected_engine_label": _clean_optional_text(request.selected_engine_label),
+            }
+        )
     forced_plan = _forced_user_plan()
     if forced_plan:
         state["user_plan"] = forced_plan

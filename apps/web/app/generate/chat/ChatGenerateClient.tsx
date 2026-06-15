@@ -1526,6 +1526,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         userInput: appendSavedBrandKitContext(input.prompt),
         sourceImagePath: upload.sourceImagePath,
         copyGenerationMode: input.copyGenerationMode,
+        imageGenerationEngine: input.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
         userCustomHeadline: input.userCustomHeadline,
         userCustomSubcopy: input.userCustomSubcopy,
         selectedReferenceTemplateId: input.selectedReferenceTemplateId,

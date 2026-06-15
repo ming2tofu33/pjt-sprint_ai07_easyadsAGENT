@@ -135,10 +135,20 @@ def build_context_updates_from_brief_interpreter(
         updates["promotion_goal"] = promotion_goal
 
     if output.item_or_service:
-        if has_invented_fact_risk(output.item_or_service, source_text):
+        value = output.item_or_service.strip()[:80]
+        if _is_romanized_from_korean(value, source_text):
+            # The LLM romanized/translated a Korean product noun (e.g. '돌잡이 반지' -> 'doljabi_ring').
+            # Recover the user's own Korean term from the brief instead of trusting the transform.
+            recovered = _recover_korean_item(source_text)
+            if recovered:
+                updates["item_or_service"] = recovered
+                warnings.append("item_or_service recovered from source brief (LLM romanized/translated Korean)")
+            else:
+                warnings.append("item_or_service ignored because LLM romanized Korean and no source term was recoverable")
+        elif has_invented_fact_risk(value, source_text):
             warnings.append("item_or_service ignored because it may contain unverifiable commercial facts")
         else:
-            updates["item_or_service"] = output.item_or_service.strip()[:80]
+            updates["item_or_service"] = value
 
     if output.target_persona:
         if has_invented_fact_risk(output.target_persona, source_text):
@@ -156,6 +166,45 @@ def build_context_updates_from_brief_interpreter(
         if claim and has_invented_fact_risk(claim, source_text):
             warnings.append(f"unverifiable_claim: {claim[:80]}")
     return updates, warnings
+
+
+_HANGUL_RE = re.compile(r"[가-힣]")
+# Promo/campaign words to strip when recovering the bare product noun from a Korean brief.
+_PROMO_MARKERS = (
+    "할인", "이벤트", "출시", "오픈", "신메뉴", "신상품", "세일", "특가", "프로모션",
+    "기념", "행사", "한정", "예약", "주문", "홍보", "광고", "쿠폰", "증정",
+)
+
+
+def _is_romanized_from_korean(value: str, source_text: str) -> bool:
+    """True when the brief has Hangul but the extracted value has none — i.e. the
+    LLM transliterated/translated the Korean product noun (돌잡이 반지 -> doljabi_ring)."""
+    if not value:
+        return False
+    return bool(_HANGUL_RE.search(source_text)) and not _HANGUL_RE.search(value)
+
+
+def _recover_korean_item(source_text: str) -> str | None:
+    """Best-effort recovery of the user's Korean product noun from the brief.
+
+    Keeps the leading Korean chunk up to the first promo/marker word; falls back
+    to the first contiguous Korean run so a real Korean term is always returned
+    when the brief contains Hangul (keep-user's-raw-chunk policy, never drop)."""
+    if not source_text or not _HANGUL_RE.search(source_text):
+        return None
+    kept: list[str] = []
+    for tok in source_text.strip().split():
+        if any(marker in tok for marker in _PROMO_MARKERS):
+            break
+        if _HANGUL_RE.search(tok):
+            kept.append(tok)
+        elif kept:
+            break
+    candidate = " ".join(kept).strip()
+    if candidate:
+        return candidate[:80]
+    runs = re.findall(r"[가-힣]+", source_text)
+    return runs[0][:80] if runs else None
 
 
 def has_invented_fact_risk(value: str, source_text: str = "") -> bool:

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const copyGenerationModes = ["suggest_candidates", "auto_pilot", "custom_input", "no_copy"] as const;
 export const supportedPhotoMimeTypes = ["image/png", "image/jpeg", "image/webp"] as const;
+export const supportedImageGenerationEngines = ["gpt_image_1", "gpt_image_2", "flux2_klein_4b", "sd35_large"] as const;
 
 const customCopyFieldsSchema = {
   userCustomHeadline: z.string().trim().min(1).optional(),
@@ -14,6 +15,13 @@ const referenceTemplateFieldsSchema = {
 
 const referenceImageFieldsSchema = {
   referenceImagePath: z.string().trim().min(1).optional()
+};
+
+const imageGenerationEngineFieldsSchema = {
+  imageGenerationEngine: z.enum(supportedImageGenerationEngines).optional(),
+  requestedEngine: z.enum(supportedImageGenerationEngines).optional(),
+  t2iEngine: z.enum(supportedImageGenerationEngines).optional(),
+  selectedEngineLabel: z.string().trim().min(1).optional()
 };
 
 function requireHeadlineForCustomInput(
@@ -37,7 +45,8 @@ export const chatStartSchema = z
     copyGenerationMode: z.enum(copyGenerationModes).optional(),
     ...customCopyFieldsSchema,
     ...referenceTemplateFieldsSchema,
-    ...referenceImageFieldsSchema
+    ...referenceImageFieldsSchema,
+    ...imageGenerationEngineFieldsSchema
   })
   .superRefine(requireHeadlineForCustomInput);
 
@@ -73,7 +82,8 @@ export const photoStartSchema = z
     copyGenerationMode: z.enum(copyGenerationModes).optional(),
     ...customCopyFieldsSchema,
     ...referenceTemplateFieldsSchema,
-    ...referenceImageFieldsSchema
+    ...referenceImageFieldsSchema,
+    ...imageGenerationEngineFieldsSchema
   })
   .superRefine(requireHeadlineForCustomInput);
 
