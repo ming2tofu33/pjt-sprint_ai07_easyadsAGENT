@@ -32,7 +32,8 @@ def test_image_prompt_uses_visual_template_and_safety_terms():
 
 
 def test_image_prompt_template_selection_variants():
-    assert build_image_prompt_spec_with_critic(_state("restaurant")).metadata["visual_template_id"] == "restaurant_bbq_warm_grill"
+    assert build_image_prompt_spec_with_critic(_state("restaurant")).metadata["visual_template_id"] == "restaurant_generic_clean"
+    assert build_image_prompt_spec_with_critic(_state("restaurant_bbq")).metadata["visual_template_id"] == "restaurant_bbq_warm_grill"
     assert build_image_prompt_spec_with_critic(_state("beauty")).metadata["visual_template_id"] == "beauty_salon_clean_pastel"
     assert build_image_prompt_spec_with_critic(_state("unknown")).metadata["visual_template_id"] == "generic_clean_ad_background"
 

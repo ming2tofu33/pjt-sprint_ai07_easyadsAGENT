@@ -410,8 +410,8 @@ def build_candidate_prompt(state: MarketingState, metadata_contract: dict[str, A
         "headline and subcopy must contain ONLY the final ad text. Never include labels, "
         "prefixes, or meta such as 'AI추천=', 'Sub:', 'Headline:'. Put any reasoning in the "
         "rationale field only. "
-        "Bad: headline='AI추천=신메뉴 치킨 / Sub: 이벤트 분위기로'. "
-        "Good: headline='신메뉴 치킨, 오늘의 기대감', subcopy='이벤트 분위기로 즐기는 저녁', rationale='신메뉴 강조 + 이벤트 톤'. "
+        "Bad: headline='AI추천=여름 샌들 할인 / Sub: 시원한 여름 보내세요'. "
+        "Good: headline='올여름을 더 시원하게, 썸머 샌들 특가', subcopy='발끝까지 편안한 여름 준비', rationale='시즌 상품 강조 + 편안함 어필'. "
         f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}."
     )
 
