@@ -13,6 +13,84 @@ from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief, Cr
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 
 
+def resolve_approved_primary_copy(
+    *, state: dict[str, Any], approved_copy: ApprovedNativeCopyBrief
+) -> tuple[str | None, str | None, str]:
+    """Resolve display headline/supporting copy with exact-custom precedence.
+
+    user_custom_headline > approved_copy.headline
+    user_custom_subcopy  > approved_copy.supporting_copy
+
+    Custom values are returned byte-for-byte (never stripped, rewritten,
+    shortened, or normalized). Returns (headline, supporting, copy_source_mode).
+    """
+    custom_headline = _exact_custom_value(state.get("user_custom_headline"))
+    custom_subcopy = _exact_custom_value(state.get("user_custom_subcopy"))
+    headline = custom_headline if custom_headline is not None else approved_copy.headline
+    supporting = custom_subcopy if custom_subcopy is not None else approved_copy.supporting_copy
+    mode = "user_exact" if (custom_headline is not None or custom_subcopy is not None) else "generated"
+    return headline, supporting, mode
+
+
+def _exact_custom_value(value: Any) -> str | None:
+    """A custom copy field counts as supplied only when it is a non-blank string.
+
+    The returned value is the original string unchanged; blank/whitespace-only
+    or non-string inputs are treated as absent.
+    """
+    if isinstance(value, str) and value.strip():
+        return value
+    return None
+
+
+def front_load_allowed_texts(primary: list[str | None], allowed: list[str]) -> list[str]:
+    """Place the primary (exact-copy) strings first, then remaining allowed texts.
+
+    Order-preserving and duplicate-free; primary strings keep their bytes.
+    """
+    ordered: list[str] = []
+    for text in [*[p for p in primary if p], *(allowed or [])]:
+        if text and text not in ordered:
+            ordered.append(text)
+    return ordered
+
+
+def apply_exact_custom_copy(
+    brief: ApprovedNativeCopyBrief, state: dict[str, Any]
+) -> ApprovedNativeCopyBrief:
+    """Overlay user-approved exact headline/subcopy onto a generated brief.
+
+    No-op when no custom copy is supplied; the generated brief stays
+    authoritative for headline and supporting copy.
+    """
+    has_custom = (
+        _exact_custom_value(state.get("user_custom_headline")) is not None
+        or _exact_custom_value(state.get("user_custom_subcopy")) is not None
+    )
+    if not has_custom:
+        return brief
+    headline, supporting, _mode = resolve_approved_primary_copy(state=state, approved_copy=brief)
+    # Custom copy fully replaces the generated headline/support, so the brief's
+    # visible copy is exactly these two blocks — the discarded generated strings
+    # must not linger in allowed_texts (keeps the <=2 block contract intact).
+    texts = [t for t in (headline, supporting) if t]
+    # Exact user copy is user-approved display text; it is authoritative and is not
+    # subject to generated-copy validation, so the brief is approved on this basis.
+    return brief.model_copy(
+        update={
+            "headline": headline,
+            "supporting_copy": supporting,
+            "closing_copy": None if supporting else brief.closing_copy,
+            "copy_source_mode": "user_exact",
+            "message_role": "headline_plus_support" if supporting else "headline_only",
+            "allowed_texts": texts,
+            "max_text_blocks": len([t for t in (headline, supporting) if t]) or brief.max_text_blocks,
+            "compliance_status": "approved",
+            "rejection_reasons": [],
+        }
+    )
+
+
 def generate_approved_native_copy_brief(
     *,
     input_evidence: InputEvidenceBundle,
@@ -25,10 +103,10 @@ def generate_approved_native_copy_brief(
     if adapter:
         payload = adapter.generate_native_copy_brief(input_evidence=input_evidence, product_understanding=product_understanding, execution_plan=execution_plan, source_visual_analysis=source_visual_analysis, state=state)
     elif state.get("native_copy_strategy_bundle"):
-        return _brief_from_strategy_bundle(NativeCopyStrategyBundle(**state["native_copy_strategy_bundle"]), input_evidence=input_evidence, product_understanding=product_understanding)
+        return apply_exact_custom_copy(_brief_from_strategy_bundle(NativeCopyStrategyBundle(**state["native_copy_strategy_bundle"]), input_evidence=input_evidence, product_understanding=product_understanding), state)
     else:
         bundle = generate_native_copy_strategy_bundle(input_evidence=input_evidence, product_understanding=product_understanding, source_visual_analysis=source_visual_analysis, state=state)
-        return _brief_from_strategy_bundle(bundle, input_evidence=input_evidence, product_understanding=product_understanding)
+        return apply_exact_custom_copy(_brief_from_strategy_bundle(bundle, input_evidence=input_evidence, product_understanding=product_understanding), state)
     copy_payload = payload.get("approved_native_copy_brief") or payload.get("copy_brief") or payload.get("copy") or payload.get("native_copy") or payload
     brief = ApprovedNativeCopyBrief(
         **_coerce_native_copy_payload(
@@ -40,8 +118,8 @@ def generate_approved_native_copy_brief(
     )
     failures = validate_approved_native_copy_brief(brief)
     if failures:
-        return brief.model_copy(update={"compliance_status": "rejected", "rejection_reasons": sorted(set([*brief.rejection_reasons, *failures]))})
-    return brief
+        brief = brief.model_copy(update={"compliance_status": "rejected", "rejection_reasons": sorted(set([*brief.rejection_reasons, *failures]))})
+    return apply_exact_custom_copy(brief, state)
 
 
 def _brief_from_strategy_bundle(

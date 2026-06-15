@@ -147,6 +147,10 @@ class NativeCreativeState(TypedDict, total=False):
     creative_execution_plan: dict[str, Any] | None
     native_typography_eligibility: dict[str, Any] | None
     approved_native_copy_brief: dict[str, Any] | None
+    format_approved_plan_bundle: dict[str, Any] | None
+    flyer_approved_copy_plan: dict[str, Any] | None
+    flyer_promotional_approved_copy_plan: dict[str, Any] | None
+    product_detail_approved_feature_plan: dict[str, Any] | None
     native_source_visual_analysis: dict[str, Any] | None
     native_creative_prompt_package: dict[str, Any] | None
     native_creative_preflight_review: dict[str, Any] | None
@@ -520,6 +524,10 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "creative_execution_plan": None,
         "native_typography_eligibility": None,
         "approved_native_copy_brief": None,
+        "format_approved_plan_bundle": None,
+        "flyer_approved_copy_plan": None,
+        "flyer_promotional_approved_copy_plan": None,
+        "product_detail_approved_feature_plan": None,
         "native_source_visual_analysis": None,
         "native_creative_prompt_package": None,
         "native_creative_preflight_review": None,

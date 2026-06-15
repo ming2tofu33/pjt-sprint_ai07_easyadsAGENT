@@ -18,7 +18,12 @@ def result_node(state: MarketingState) -> dict[str, Any]:
         or state.get("copy_required") is False
         or (state.get("copy_spec") or {}).get("copy_mode") == "no_copy"
     )
-    if no_copy:
+    native_typography = bool((t2i_result.get("metadata") or {}).get("native_typography"))
+    if native_typography:
+        output_path = state.get("final_image_path") or background_path
+        final_image_path = output_path
+        has_text_overlay = False
+    elif no_copy:
         output_path = background_path
         final_image_path = state.get("final_image_path") if state.get("final_image_path") != background_path else None
         has_text_overlay = False
@@ -33,7 +38,8 @@ def result_node(state: MarketingState) -> dict[str, Any]:
     result_metadata = {
         "source_node": "result",
         "render_text_in_image": False,
-        "tlfp_enabled": True,
+        "tlfp_enabled": not native_typography,
+        "native_typography": native_typography,
         "error": None if output_path else upstream_error,
     }
     if render_metadata:

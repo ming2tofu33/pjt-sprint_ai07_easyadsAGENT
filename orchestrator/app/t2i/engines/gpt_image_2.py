@@ -67,7 +67,7 @@ class GPTImageActualEngine:
         response = client.images.generate(
             model="gpt-image-2",
             prompt=prompt_package.final_prompt,
-            size="1024x1024",
+            size=_size(prompt_package.native_width or 1024, prompt_package.native_height or 1024),
             n=1,
         )
         image_paths = _save_response_images(response, output_dir, "native")

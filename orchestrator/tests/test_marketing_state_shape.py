@@ -38,6 +38,8 @@ EXPECTED_FIELDS = frozenset({
     "selected_minimal_copy_candidate_id",
     # native creative
     "creative_execution_plan", "native_typography_eligibility", "approved_native_copy_brief",
+    "format_approved_plan_bundle", "flyer_approved_copy_plan",
+    "flyer_promotional_approved_copy_plan", "product_detail_approved_feature_plan",
     "native_source_visual_analysis", "native_creative_prompt_package",
     "native_creative_preflight_review", "native_generation_budget", "native_generation_result",
     "native_generation_review", "native_generation_status",
@@ -74,8 +76,8 @@ def test_marketing_state_has_exactly_expected_fields():
     }
 
 
-def test_marketing_state_field_count_is_161():
-    assert len(MarketingState.__annotations__) == 161
+def test_marketing_state_field_count_is_165():
+    assert len(MarketingState.__annotations__) == 165
 
 
 def test_marketing_state_all_keys_optional_under_total_false():
