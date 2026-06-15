@@ -21,6 +21,13 @@ export type ComplianceAction = {
   available: boolean;
 };
 
+export type ComplianceSuggestionFE = {
+  id?: string | null;
+  text?: string | null;
+  validation_status?: "pass" | "warn" | string | null;
+  rationale?: string | null;
+};
+
 export type ComplianceFindingFE = {
   finding_id?: string | null;
   field?: string | null;
@@ -28,6 +35,7 @@ export type ComplianceFindingFE = {
   severity?: "warn" | "evidence_required" | "block" | string | null;
   reason?: string | null;
   suggested_text?: string | null;
+  suggestions?: ComplianceSuggestionFE[];
   legal_basis?: { key?: string; law_name?: string; article?: string; summary?: string }[];
   evidence_requirements?: string[];
   hitl_question?: string | null;

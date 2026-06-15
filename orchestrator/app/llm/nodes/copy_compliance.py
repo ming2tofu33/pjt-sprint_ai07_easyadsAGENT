@@ -11,15 +11,22 @@ from typing import Any
 
 from langgraph.types import interrupt
 
+from orchestrator.app.compliance.schemas import ComplianceRewriteContext
 from orchestrator.app.compliance.service import get_compliance_service
-from orchestrator.app.graph.state import MarketingState, context_to_model
+from orchestrator.app.graph.state import MarketingState, context_to_model, resolve_requested_ad_format
 
 
 def copy_compliance_gate_node(state: MarketingState) -> dict[str, Any]:
     copy = dict(state.get("marketing_copy") or {})
     business_type = context_to_model(state.get("context")).business_type
     svc = get_compliance_service()
-    result = svc.check_copy(copy, business_type)
+    result = svc.check_copy(
+        copy,
+        business_type,
+        enable_contextual_rewrite=True,
+        rewrite_context=_rewrite_context_from_state(state),
+        state=dict(state),
+    )
     return {
         "copy_compliance_gate": result.model_dump(),
         "copy_compliance_status": result.status,
@@ -134,6 +141,17 @@ def input_compliance_precheck_node(state: MarketingState) -> dict[str, Any]:
     return {"input_compliance_risk": risk, "status": "input_compliance_prechecked"}
 
 
+def _rewrite_context_from_state(state: MarketingState) -> ComplianceRewriteContext:
+    context = context_to_model(state.get("context"))
+    return ComplianceRewriteContext(
+        business_type=context.business_type,
+        item_or_service=context.item_or_service,
+        promotion_goal=context.promotion_goal,
+        ad_format=resolve_requested_ad_format(state),
+        channel=(state.get("current_brief") or {}).get("channel"),
+    )
+
+
 def _build_safe_direction_hint(findings: list) -> str:
     """findings: ComplianceFinding Pydantic 객체 또는 dict 모두 지원."""
     domains: set[str] = set()
@@ -183,6 +201,16 @@ def _serialize_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 for b in legal_basis
             ],
             "suggested_text": f.get("suggested_text"),
+            "suggestions": [
+                {
+                    "id": s.get("id"),
+                    "text": s.get("text"),
+                    "validation_status": s.get("validation_status"),
+                    "rationale": s.get("rationale"),
+                }
+                for s in (f.get("suggestions") or [])
+                if isinstance(s, dict)
+            ],
             "evidence_requirements": f.get("evidence_requirements") or [],
             "hitl_question": f.get("hitl_question"),
             "rag_context": f.get("rag_context"),

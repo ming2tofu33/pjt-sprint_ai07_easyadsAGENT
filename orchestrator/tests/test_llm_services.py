@@ -632,6 +632,15 @@ def test_model_policy_literals_include_expected_values():
     assert set(get_args(ModelClass)) == {"local_fast", "local_quality", "api_nano", "api_mini", "api_full", "api_vision", "mock"}
 
 
+def test_default_policy_contains_compliance_rewrite_node():
+    from orchestrator.app.llm.plan_policy import build_default_plan_policy
+
+    policy = build_default_plan_policy("premium")
+
+    assert "compliance_rewrite" in policy.node_policies
+    assert policy.node_policies["compliance_rewrite"].default_model_class == "api_mini"
+
+
 def test_node_model_policy_validates_allowed_defaults():
     policy = NodeModelPolicy(node_name="validator", default_model_class="local_fast", allowed_model_classes=["local_fast", "mock"])
     assert policy.fallback_model_class == "mock"

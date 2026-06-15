@@ -1088,12 +1088,15 @@ export interface ChatThreadStateGetResponse {
   meta?: Record<string, unknown>;
 }
 
-export async function listChatThreads(params: { limit?: number; offset?: number; includeTotal?: boolean } = {}): Promise<ChatThreadListResponse> {
+export async function listChatThreads(
+  params: { limit?: number; offset?: number; includeTotal?: boolean; includeArchived?: boolean } = {}
+): Promise<ChatThreadListResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   return getJson<ChatThreadListResponse>("/api/chat-threads", {
     limit: params.limit,
     offset: params.offset,
-    include_total: params.includeTotal === false ? false : undefined
+    include_total: params.includeTotal === false ? false : undefined,
+    include_archived: params.includeArchived === true ? true : undefined
   }, authHeaders);
 }
 
@@ -1115,7 +1118,27 @@ export async function getChatThreadState(threadId: string): Promise<ChatThreadSt
   return getJson<ChatThreadStateGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/state`, undefined, authHeaders);
 }
 
-export async function archiveChatThread(threadId: string): Promise<ChatThreadGetResponse> {
+export type ArchiveChatThreadOptions = {
+  force?: boolean;
+};
+
+export async function archiveChatThread(
+  threadId: string,
+  options: ArchiveChatThreadOptions = {}
+): Promise<ChatThreadGetResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
-  return postJson<ChatThreadGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/archive`, {}, authHeaders);
+  return postJson<ChatThreadGetResponse>(
+    `/api/chat-threads/${encodeURIComponent(threadId)}/archive`,
+    { force: options.force === true },
+    authHeaders
+  );
+}
+
+export async function restoreChatThread(threadId: string): Promise<ChatThreadGetResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return postJson<ChatThreadGetResponse>(
+    `/api/chat-threads/${encodeURIComponent(threadId)}/restore`,
+    {},
+    authHeaders
+  );
 }

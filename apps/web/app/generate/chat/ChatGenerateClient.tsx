@@ -28,6 +28,7 @@ import {
   createChatBrief,
   createGenerationJob,
   deleteArchiveItem,
+  getChatThread,
   getChatThreadMessages,
   getChatThreadState,
   getGenerationJob,
@@ -145,17 +146,64 @@ function isCachedCreative(value: unknown): value is MockCreative {
   return typeof creative.id === "string" && typeof creative.title === "string";
 }
 
+function normalizeArchiveCreativeText(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function resolveArchiveCreativeJobId(creative: MockCreative): string | null {
+  const jobId = normalizeArchiveCreativeText(creative.jobId);
+  if (jobId) {
+    return jobId;
+  }
+
+  const generatedIdMatch = creative.id.match(/^generated-(.+)$/);
+  return generatedIdMatch?.[1] ? generatedIdMatch[1] : null;
+}
+
+function archiveCreativeDedupeKey(creative: MockCreative): string {
+  const jobId = resolveArchiveCreativeJobId(creative);
+  if (jobId) {
+    return `job:${jobId}`;
+  }
+
+  const imageUrl = normalizeArchiveCreativeText(creative.imageUrl);
+  if (imageUrl) {
+    return `image:${imageUrl}`;
+  }
+
+  return `id:${creative.id}`;
+}
+
+function archiveCreativePriority(creative: MockCreative): number {
+  if (creative.storage === "내 광고 보관함" || creative.badge === "보관함") {
+    return 2;
+  }
+  if (creative.storage === "브라우저 임시 보관함" || creative.id.startsWith("generated-")) {
+    return 1;
+  }
+  return 0;
+}
+
 function mergeArchiveCreatives(...creativeGroups: MockCreative[][]): MockCreative[] {
-  const seen = new Set<string>();
-  return creativeGroups
-    .flat()
-    .filter((creative) => {
-      if (seen.has(creative.id)) {
-        return false;
-      }
-      seen.add(creative.id);
-      return true;
-    });
+  const merged: MockCreative[] = [];
+  const indexByKey = new Map<string, number>();
+
+  for (const creative of creativeGroups.flat()) {
+    const key = archiveCreativeDedupeKey(creative);
+    const existingIndex = indexByKey.get(key);
+
+    if (existingIndex === undefined) {
+      indexByKey.set(key, merged.length);
+      merged.push(creative);
+      continue;
+    }
+
+    if (archiveCreativePriority(creative) > archiveCreativePriority(merged[existingIndex])) {
+      merged[existingIndex] = creative;
+    }
+  }
+
+  return merged;
 }
 
 function readArchiveCreativesCache(): MockCreative[] {
@@ -751,6 +799,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [isCurrentThreadDeleteOpen, setCurrentThreadDeleteOpen] = useState(false);
   const [isDeletingCurrentThread, setDeletingCurrentThread] = useState(false);
   const [currentThreadDeleteError, setCurrentThreadDeleteError] = useState<string | null>(null);
+  const [currentThreadIsArchived, setCurrentThreadIsArchived] = useState(false);
   const activeThreadRef = useRef({ threadId: "", conversationMessageCount: 0 });
   const finalGenerationJobIdsRef = useRef<Set<string>>(new Set());
   const appSurface = optimisticSurface ?? initialSurface;
@@ -1149,9 +1198,11 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       }
 
       Promise.all([
+        getChatThread(threadIdParam).catch(() => null),
         getChatThreadState(threadIdParam),
         getChatThreadMessages(threadIdParam, { limit: 120 }).catch(() => ({ success: true as const, messages: [], total: 0 }))
-      ]).then(([stateResponse, messagesResponse]) => {
+      ]).then(([threadResponse, stateResponse, messagesResponse]) => {
+        setCurrentThreadIsArchived(Boolean(threadResponse?.thread.archived_at));
         const restoreState = mapChatThreadSnapshotToRestoreState(stateResponse.snapshot);
         if (!restoreState) {
           const pendingTurn = readChatTurnSnapshot();
@@ -1200,6 +1251,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       });
       return;
     }
+
+    setCurrentThreadIsArchived(false);
 
     if (initialStage === "start") {
       if (consumeFreshGenerationRequest()) {
@@ -2092,7 +2145,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     setDeletingCurrentThread(true);
     setCurrentThreadDeleteError(null);
     try {
-      await archiveChatThread(threadId);
+      await archiveChatThread(threadId, { force: true });
       clearChatFlowSnapshot();
       clearChatTurnSnapshot();
       clearGenerationDraftPrompt();
@@ -2103,7 +2156,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       showToast("작업방을 삭제했어요.");
       navigateTo("studio");
     } catch {
-      setCurrentThreadDeleteError("작업방을 삭제하지 못했어요. 생성 중인 작업이라면 완료된 뒤 다시 시도해주세요.");
+      setCurrentThreadDeleteError("작업방을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.");
     } finally {
       setDeletingCurrentThread(false);
     }
@@ -2205,6 +2258,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
   const hasThreadLimitError = state.errorCode === "thread_limit_reached";
   const displayState = hasThreadLimitError ? { ...state, errorMessage: null } : state;
+  const canEditCurrentChat = appSurface === "chat" && !currentThreadIsArchived;
 
   return (
     <MobileShell>
@@ -2295,7 +2349,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
             setShowHistory(false);
           }}
         />
-      ) : appSurface === "chat" && state.step === 1 ? (
+      ) : canEditCurrentChat && state.step === 1 ? (
         <ChatStartStep
           onSubmit={handleSubmitPrompt}
           onBack={handleBackToFlowEntry}
@@ -2306,7 +2360,17 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 2 && state.currentQuestion ? (
+      {!showHistory && appSurface === "chat" && currentThreadIsArchived ? (
+        <BriefConfirmStep
+          state={displayState}
+          onBack={handleBackToFlowEntry}
+          onGenerate={handleOpenGeneratedResult}
+          onRefineBrief={handleRefineBrief}
+          readOnly
+        />
+      ) : null}
+
+      {canEditCurrentChat && state.step === 2 && state.currentQuestion ? (
         <ChatContextQuestionStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}
@@ -2315,7 +2379,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 2 && !state.currentQuestion && state.isLoading ? (
+      {canEditCurrentChat && state.step === 2 && !state.currentQuestion && state.isLoading ? (
         <ChatAnalysisPendingStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}
@@ -2323,7 +2387,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 2 && !state.currentQuestion && !state.isLoading ? (
+      {canEditCurrentChat && state.step === 2 && !state.currentQuestion && !state.isLoading ? (
         <IntentReviewStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}
@@ -2333,7 +2397,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 3 ? (
+      {canEditCurrentChat && state.step === 3 ? (
         <CopyChannelStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}
@@ -2345,7 +2409,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 4 && generationStage === "brief" ? (
+      {canEditCurrentChat && state.step === 4 && generationStage === "brief" ? (
         <BriefConfirmStep
           state={displayState}
           onBack={handleBackFromBrief}
@@ -2355,7 +2419,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 4 && generationStage === "jobQuestion" && state.currentQuestion ? (
+      {canEditCurrentChat && state.step === 4 && generationStage === "jobQuestion" && state.currentQuestion ? (
         <ChatContextQuestionStep
           state={displayState}
           onBack={() => setGenerationStage("brief")}
@@ -2364,7 +2428,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" &&
+      {canEditCurrentChat &&
       state.step === 4 &&
       generationStage === "jobQuestion" &&
       !state.currentQuestion &&
@@ -2377,7 +2441,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" &&
+      {canEditCurrentChat &&
       state.step === 4 &&
       generationStage === "jobQuestion" &&
       !state.currentQuestion &&
@@ -2396,14 +2460,14 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 4 && generationStage === "generating" ? (
+      {canEditCurrentChat && state.step === 4 && generationStage === "generating" ? (
         <GenerationInProgressStep
           state={displayState}
           onBrowse={() => setGenerationStage("browsing")}
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 4 && generationStage === "browsing" ? (
+      {canEditCurrentChat && state.step === 4 && generationStage === "browsing" ? (
         <ReferenceBrowseStep
           state={displayState}
           onShowProgress={() => setGenerationStage("generating")}
@@ -2419,7 +2483,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 4 && generationStage === "complete" ? (
+      {canEditCurrentChat && state.step === 4 && generationStage === "complete" ? (
         <GenerationCompleteStep
           state={displayState}
           onBrowseSimilar={() => {
@@ -2436,7 +2500,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {appSurface === "chat" && state.step === 4 && generationStage === "similarBrowsing" ? (
+      {canEditCurrentChat && state.step === 4 && generationStage === "similarBrowsing" ? (
         <ReferenceBrowseStep
           state={displayState}
           isGenerationComplete
@@ -2469,7 +2533,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
             <div>
               <span className={styles.workspaceDeleteIcon} aria-hidden="true">!</span>
               <h2 id="current-thread-delete-title">이 작업방을 삭제할까요?</h2>
-              <p>대화와 진행 상태가 최근 작업방에서 사라져요. 완성된 이미지는 보관함에 남아요.</p>
+              <p>대화와 진행 상태가 보관됨으로 이동해요. 완성된 이미지는 보관함에 남아요.</p>
             </div>
             <strong>{state.userInput || "현재 작업방"}</strong>
             {currentThreadDeleteError ? <p className={styles.workspaceDeleteError}>{currentThreadDeleteError}</p> : null}

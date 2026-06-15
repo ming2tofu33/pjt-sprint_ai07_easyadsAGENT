@@ -31,6 +31,8 @@ from orchestrator.app.graph.routers import (
     route_by_copy_presence,
     route_after_compliance_gate,
     route_after_compliance_resolution,
+    route_after_native_copy_brief,
+    route_after_native_preflight,
 )
 from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.nodes.auto_pilot_copywriting import auto_pilot_copywriting_node
@@ -71,6 +73,15 @@ from orchestrator.app.llm.nodes.tone_binding import tone_binding_node
 from orchestrator.app.reference_catalog.nodes import reference_template_resolve_node
 from orchestrator.app.vision.nodes import product_preprocess_node, reference_preprocess_node
 from orchestrator.app.observability.performance import estimate_json_size_bytes, perf_span, perf_trace_enabled
+
+
+# Optional test overrides. Production resolves the real native nodes lazily.
+creative_execution_planner_node = None
+native_copy_brief_node = None
+native_creative_preflight_node = None
+gpt_image_2_native_single_shot_node = None
+native_generation_review_node = None
+native_result_adapter_node = None
 
 
 def _instrument_node(node_name, fn):
@@ -136,6 +147,22 @@ def build_intake_graph(checkpointer=None):
 
 
 def build_marketing_graph(checkpointer=None):
+    # Lazy imports avoid graph.state -> graph package -> builder import cycles for
+    # native nodes that themselves depend on graph.state.
+    from orchestrator.app.llm.nodes.creative_execution_planner import creative_execution_planner_node as default_execution_planner
+    from orchestrator.app.llm.nodes.native_copy_brief import native_copy_brief_node as default_copy_brief
+    from orchestrator.app.llm.nodes.native_creative_preflight import native_creative_preflight_node as default_preflight
+    from orchestrator.app.llm.nodes.native_generation_review import native_generation_review_node as default_review
+    from orchestrator.app.llm.nodes.native_result_adapter import native_result_adapter_node as default_result_adapter
+    from orchestrator.app.t2i.nodes.gpt_image_2_native_single_shot import gpt_image_2_native_single_shot_node as default_single_shot
+
+    execution_planner = creative_execution_planner_node or default_execution_planner
+    copy_brief = native_copy_brief_node or default_copy_brief
+    preflight = native_creative_preflight_node or default_preflight
+    single_shot = gpt_image_2_native_single_shot_node or default_single_shot
+    generation_review = native_generation_review_node or default_review
+    result_adapter = native_result_adapter_node or default_result_adapter
+
     graph = StateGraph(MarketingState)
     graph.add_node("input", _instrument_node("input", input_node))
     graph.add_node("reference_template_resolve", _instrument_node("reference_template_resolve", reference_template_resolve_node))
@@ -182,6 +209,12 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("final_composite_revision", _instrument_node("final_composite_revision", final_composite_revision_node))
     graph.add_node("final_copy_revision", _instrument_node("final_copy_revision", final_copy_revision_node))
     graph.add_node("result", _instrument_node("result", result_node))
+    graph.add_node("creative_execution_planner", _instrument_node("creative_execution_planner", execution_planner))
+    graph.add_node("native_copy_brief", _instrument_node("native_copy_brief", copy_brief))
+    graph.add_node("native_creative_preflight", _instrument_node("native_creative_preflight", preflight))
+    graph.add_node("gpt_image_2_native_single_shot", _instrument_node("gpt_image_2_native_single_shot", single_shot))
+    graph.add_node("native_generation_review", _instrument_node("native_generation_review", generation_review))
+    graph.add_node("native_result_adapter", _instrument_node("native_result_adapter", result_adapter))
 
     graph.set_entry_point("input")
     graph.add_conditional_edges(
@@ -239,6 +272,7 @@ def build_marketing_graph(checkpointer=None):
         route_after_compliance_gate,
         {
             "copy_spec_parser": "copy_spec_parser",
+            "creative_execution_planner": "creative_execution_planner",
             "copy_compliance_interrupt": "copy_compliance_interrupt",
         },
     )
@@ -248,6 +282,7 @@ def build_marketing_graph(checkpointer=None):
         route_after_compliance_resolution,
         {
             "copy_spec_parser": "copy_spec_parser",
+            "creative_execution_planner": "creative_execution_planner",
             "custom_copy_input": "custom_copy_input",
             END: END,
         },
@@ -317,6 +352,20 @@ def build_marketing_graph(checkpointer=None):
         },
     )
     graph.add_edge("final_copy_revision", "copy_spec_parser")
+    graph.add_edge("creative_execution_planner", "native_copy_brief")
+    graph.add_conditional_edges(
+        "native_copy_brief",
+        route_after_native_copy_brief,
+        {"native_creative_preflight": "native_creative_preflight", "native_result_adapter": "native_result_adapter"},
+    )
+    graph.add_conditional_edges(
+        "native_creative_preflight",
+        route_after_native_preflight,
+        {"gpt_image_2_native_single_shot": "gpt_image_2_native_single_shot", "native_result_adapter": "native_result_adapter"},
+    )
+    graph.add_edge("gpt_image_2_native_single_shot", "native_generation_review")
+    graph.add_edge("native_generation_review", "native_result_adapter")
+    graph.add_edge("native_result_adapter", "result")
     graph.add_edge("result", END)
 
     return graph.compile(checkpointer=checkpointer or InMemorySaver())

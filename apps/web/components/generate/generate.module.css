@@ -776,6 +776,29 @@
   margin-top: 16px;
 }
 
+.archivedThreadNotice {
+  margin-top: 16px;
+  border: 1px solid #ded3c7;
+  border-radius: 16px;
+  background: #faf7f2;
+  color: #4f4438;
+  padding: 15px;
+}
+
+.archivedThreadNotice strong {
+  display: block;
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.archivedThreadNotice p {
+  margin: 7px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 780;
+}
+
 .briefRefinementTitle {
   margin: 0 0 8px;
   font-size: 14px;
@@ -2533,6 +2556,36 @@
   font-weight: 850;
 }
 
+.workspaceTabs {
+  margin-top: 10px;
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 999px;
+  background: #f7f5f1;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.workspaceTabs button {
+  min-width: 0;
+  min-height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.workspaceTabs button[aria-selected="true"] {
+  background: var(--color-action-primary);
+  color: var(--color-action-primary-text);
+  box-shadow: 0 8px 18px rgb(30 25 18 / 10%);
+}
+
 .workspaceList {
   margin-top: 10px;
   display: grid;
@@ -2588,6 +2641,11 @@
   color: #b94d43;
 }
 
+.workspaceThumb[data-status="archived"] {
+  background: #f4efe7;
+  color: #786b5c;
+}
+
 .workspaceCard strong {
   display: block;
   color: var(--color-text-primary);
@@ -2628,6 +2686,32 @@
   padding: 7px 9px;
   font-size: 11px;
   font-weight: 950;
+}
+
+.workspaceRestoreButton {
+  border-radius: 999px;
+  border: 1px solid #cbb9ff;
+  background: #f4f0ff;
+  color: var(--color-brand-purple-strong);
+  padding: 7px 9px;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.workspaceRestoreButton:disabled {
+  opacity: 0.58;
+}
+
+.workspaceRestoreError {
+  margin: 8px 0 0;
+  border-radius: 12px;
+  border: 1px solid #f3c7be;
+  background: #fff6f4;
+  color: #a54138;
+  padding: 9px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 850;
 }
 
 .workspaceDeleteButton {
