@@ -1328,6 +1328,51 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("passes selected image engine through photo generation start requests", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        jobId: "photo_gpt2",
+        threadId: "photo_gpt2_thread",
+        status: "generating_copy_candidates",
+        context: { businessType: "카페", itemOrService: "딸기라떼", promotionGoal: "신메뉴 출시" },
+        copyCandidates: [{ id: "copy_1", headline: "고품질 사진 광고" }],
+        recommendedCopyId: "copy_1"
+      })
+    );
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/photo/start",
+      payload: {
+        userInput: "이 사진으로 고품질 광고",
+        sourceImagePath: "data/uploads/photo_abc.png",
+        adFormat: "instagram_feed",
+        renderProfile: "premium_api",
+        imageGenerationEngine: "gpt_image_2",
+        requestedEngine: "gpt_image_2",
+        t2iEngine: "gpt_image_2"
+      }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://orchestrator/v1/marketing/photo/start",
+      expect.objectContaining({
+        body: JSON.stringify({
+          userInput: "이 사진으로 고품질 광고",
+          sourceImagePath: "data/uploads/photo_abc.png",
+          adFormat: "instagram_feed",
+          renderProfile: "premium_api",
+          imageGenerationEngine: "gpt_image_2",
+          requestedEngine: "gpt_image_2",
+          t2iEngine: "gpt_image_2"
+        })
+      })
+    );
+    await app.close();
+  });
+
   it("passes custom copy fields through generation start requests", async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({
