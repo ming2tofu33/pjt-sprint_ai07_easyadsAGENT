@@ -44,14 +44,31 @@ describe("api-client photo generation", () => {
   });
 
   it("uploads a photo file as a JSON data URL", async () => {
-    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      jsonResponse({
+    const sourceAssetId = "asset_11111111111111111111111111111111";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/assets/uploads/presign") {
+        return jsonResponse({
+          asset: { assetId: sourceAssetId, kind: "source", status: "pending" },
+          upload: { method: "PUT", url: "https://r2.example.com/source.png", headers: { "Content-Type": "image/png" } }
+        });
+      }
+      if (url === "https://r2.example.com/source.png") {
+        return new Response(null, { status: 200 });
+      }
+      if (url === `/api/assets/uploads/${sourceAssetId}/complete`) {
+        return jsonResponse({
+          success: true,
+          asset: { assetId: sourceAssetId, kind: "source", status: "ready", storageProvider: "r2" }
+        });
+      }
+      return jsonResponse({
         sourceImagePath: "data/uploads/photo_1.png",
         fileName: "menu.png",
         mimeType: "image/png",
         sizeBytes: 3
-      })
-    );
+      });
+    });
     vi.stubGlobal("fetch", fetchMock);
     const file = new File([new Uint8Array([1, 2, 3])], "menu.png", { type: "image/png" });
 
@@ -69,6 +86,60 @@ describe("api-client photo generation", () => {
     expect(body.filename).toBe("menu.png");
     expect(body.mimeType).toBe("image/png");
     expect(body.dataUrl).toMatch(/^data:image\/png;base64,/);
+  });
+
+  it("uploads a photo source asset and returns its public asset id with the local source path", async () => {
+    const sourceAssetId = "asset_11111111111111111111111111111111";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/assets/uploads/presign") {
+        return jsonResponse({
+          asset: { assetId: sourceAssetId, kind: "source", status: "pending" },
+          upload: {
+            method: "PUT",
+            url: "https://r2.example.com/source.png",
+            headers: { "Content-Type": "image/png" }
+          }
+        });
+      }
+      if (url === "https://r2.example.com/source.png") {
+        return new Response(null, { status: 200 });
+      }
+      if (url === `/api/assets/uploads/${sourceAssetId}/complete`) {
+        return jsonResponse({
+          success: true,
+          asset: {
+            assetId: sourceAssetId,
+            kind: "source",
+            status: "ready",
+            storageProvider: "r2",
+            createdAt: "2026-06-15T00:00:00.000Z",
+            updatedAt: "2026-06-15T00:00:00.000Z"
+          }
+        });
+      }
+      return jsonResponse({
+        sourceImagePath: "data/uploads/photo_1.png",
+        fileName: "menu.png",
+        mimeType: "image/png",
+        sizeBytes: 3
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File([new Uint8Array([1, 2, 3])], "menu.png", { type: "image/png" });
+
+    const result = await uploadPhotoAsset(file);
+
+    expect(result.sourceImagePath).toBe("data/uploads/photo_1.png");
+    expect((result as { sourceAssetId?: string }).sourceAssetId).toBe(sourceAssetId);
+    const presignCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/assets/uploads/presign");
+    expect(presignCall).toBeTruthy();
+    expect(JSON.parse(String(presignCall?.[1]?.body))).toEqual({
+      kind: "source",
+      filename: "menu.png",
+      mimeType: "image/png",
+      sizeBytes: 3
+    });
   });
 
   it("shows a friendly message when the photo upload body is too large", async () => {
