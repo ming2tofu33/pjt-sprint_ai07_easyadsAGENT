@@ -736,6 +736,100 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
         return None
 
 
+def _event_payload_task(event: dict) -> str | None:
+    payload = event.get("payload") or {}
+    task = payload.get("task") if isinstance(payload, dict) else None
+    return str(task) if task else None
+
+
+def _first_event_payload_task(events: list[dict]) -> str | None:
+    for event in events:
+        task = _event_payload_task(event)
+        if task:
+            return task
+    return None
+
+
+def _event_created_at(event: dict) -> datetime | None:
+    value = event.get("created_at")
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        parsed = _parse_iso_datetime(value)
+    else:
+        parsed = None
+    if parsed and parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _latest_background_cycle_events(events: list[dict]) -> tuple[list[dict], dict | None]:
+    indexed_events = [(index, event, _event_created_at(event)) for index, event in enumerate(events)]
+    enqueue_indexes = [
+        index for index, event, _created_at in indexed_events if str(event.get("event_type")) == "background_enqueued"
+    ]
+    if not enqueue_indexes:
+        return events, None
+    if indexed_events and all(created_at is not None for _index, _event, created_at in indexed_events):
+        ordered_events = sorted(indexed_events, key=lambda item: (item[2], item[0]))
+        anchor_position = max(
+            position
+            for position, (_index, event, _created_at) in enumerate(ordered_events)
+            if str(event.get("event_type")) == "background_enqueued"
+        )
+        anchor_event = ordered_events[anchor_position][1]
+        return [event for _index, event, _created_at in ordered_events[anchor_position:]], anchor_event
+    anchor_index = enqueue_indexes[-1]
+    return events[anchor_index:], events[anchor_index]
+
+
+def _stale_running_failure_payload(job: GenerationJobResponse, events: list[dict]) -> tuple[dict, dict]:
+    cycle_events, anchor_event = _latest_background_cycle_events(events)
+    event_types = {str(event.get("event_type")) for event in cycle_events}
+    background_task = _event_payload_task(anchor_event) if anchor_event else _first_event_payload_task(cycle_events)
+    base_metadata = {
+        **(job.metadata or {}),
+        "stale_running_stage": job.progress.current_stage,
+    }
+    if "background_enqueued" in event_types and "background_started" not in event_types:
+        return (
+            {
+                "error_code": "generation_job_background_not_started",
+                "message": "Generation job worker did not start.",
+                "detail": "The job was queued for background execution, but no background_started event was recorded before the stale threshold.",
+            },
+            {
+                **base_metadata,
+                "execution_mode": "background_not_started_recovered",
+                "background_task": background_task,
+            },
+        )
+    if "background_started" in event_types:
+        return (
+            {
+                "error_code": "generation_job_background_stalled",
+                "message": "Generation job stalled while preparing the request.",
+                "detail": "A background_started event was recorded, but no completion, interrupt, or Modal handoff was recorded before the stale threshold.",
+            },
+            {
+                **base_metadata,
+                "execution_mode": "background_stalled_recovered",
+                "background_task": background_task,
+            },
+        )
+    return (
+        {
+            "error_code": "generation_job_stale_running",
+            "message": "Generation job stopped while preparing the request.",
+            "detail": "The job stayed in running/planning longer than the allowed stale threshold.",
+        },
+        {
+            **base_metadata,
+            "execution_mode": "stale_running_recovered",
+        },
+    )
+
+
 def maybe_mark_stale_generation_job_failed(
     job: GenerationJobResponse,
     *,
@@ -757,18 +851,17 @@ def maybe_mark_stale_generation_job_failed(
     if current_time - updated_at < timedelta(seconds=stale_after_seconds):
         return job
 
+    events: list[dict] = []
+    try:
+        events = generation_job_event_repo.list_generation_job_events_by_public_job_id(job.job_id, limit=20)
+    except Exception:
+        events = []
+    error_payload, metadata_payload = _stale_running_failure_payload(job, events)
+
     failed = mark_generation_job_failed(
         job.job_id,
-        {
-            "error_code": "generation_job_stale_running",
-            "message": "Generation job stopped while preparing the request.",
-            "detail": "The job stayed in running/planning longer than the allowed stale threshold.",
-        },
-        metadata={
-            **(job.metadata or {}),
-            "execution_mode": "stale_running_recovered",
-            "stale_running_stage": job.progress.current_stage,
-        },
+        error_payload,
+        metadata=metadata_payload,
         workspace_id=workspace_id,
         user_id=user_id,
     )
@@ -2244,6 +2337,42 @@ def _safe_record_r2_usage(payload: dict) -> None:
         usage_service.record_r2_upload_usage(**payload)
     except Exception:
         logger.warning("Failed to record generation R2 usage.", exc_info=True)
+
+
+def record_generation_job_lifecycle_event(
+    job_id: str,
+    event_type: str,
+    *,
+    message: str | None = None,
+    payload: dict | None = None,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> None:
+    if not _use_postgres_backend():
+        return
+    with db_transaction() as conn:
+        if workspace_id is not None or user_id is not None:
+            resolved_workspace_id = _resolve_db_workspace_for_public_access(
+                requested_workspace_id=workspace_id,
+                user_id=user_id,
+                connection=conn,
+            )
+            row = generation_job_repo.get_generation_job_scoped_by_public_id(
+                job_id,
+                workspace_id=resolved_workspace_id,
+                connection=conn,
+            )
+        else:
+            row = generation_job_repo.get_generation_job_row(job_id, connection=conn)
+        if not row:
+            return
+        _record_generation_job_event_db(
+            row,
+            event_type,
+            message=message,
+            payload=payload or {},
+            connection=conn,
+        )
 
 
 def _record_generation_job_event_db(

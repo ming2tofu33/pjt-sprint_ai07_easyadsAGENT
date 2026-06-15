@@ -1,6 +1,9 @@
-"""Builder for the LLM/LangGraph intake mini graph."""
+﻿"""Builder for the LLM/LangGraph intake mini graph."""
 
 from __future__ import annotations
+
+import inspect
+from functools import wraps
 
 from langgraph.graph import END, StateGraph
 
@@ -40,7 +43,6 @@ from orchestrator.app.llm.nodes.final_composite_revision import final_composite_
 from orchestrator.app.llm.nodes.final_copy_revision import final_copy_revision_node
 from orchestrator.app.llm.nodes.final_validation import final_validation_node
 from orchestrator.app.llm.nodes.format_planner import format_planner_node
-from orchestrator.app.llm.nodes.design_recommendation_node import design_recommendation_node
 from orchestrator.app.llm.nodes.adaptive_typography_refiner import adaptive_typography_refiner_node
 from orchestrator.app.llm.nodes.image_prompt_planner import image_prompt_planner_node
 from orchestrator.app.llm.nodes.image_layout_analyzer import image_layout_analyzer_node
@@ -62,27 +64,65 @@ from orchestrator.app.llm.nodes.safe_area_gate import safe_area_gate_node
 from orchestrator.app.llm.nodes.t2i_generation import t2i_generation_node
 from orchestrator.app.llm.nodes.t2i_request_builder import t2i_request_builder_node
 from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
-from orchestrator.app.llm.nodes.html_text_renderer import html_text_renderer_node
-from orchestrator.app.llm.nodes.poster_renderer import poster_renderer_node
-from orchestrator.app.llm.nodes.poster_layout_planner import poster_layout_planner_node
-from orchestrator.app.llm.nodes.image_analysis import image_analysis_node
-from orchestrator.app.llm.nodes.image_aware_quality_gate import image_aware_quality_gate_node
 from orchestrator.app.llm.nodes.text_layout_planner import text_layout_planner_node
 from orchestrator.app.llm.nodes.text_style_binder import text_style_binder_node
 from orchestrator.app.llm.nodes.typography_art_director import typography_art_direction_node
 from orchestrator.app.llm.nodes.tone_binding import tone_binding_node
 from orchestrator.app.reference_catalog.nodes import reference_template_resolve_node
 from orchestrator.app.vision.nodes import product_preprocess_node, reference_preprocess_node
+from orchestrator.app.observability.performance import estimate_json_size_bytes, perf_span, perf_trace_enabled
+
+
+def _instrument_node(node_name, fn):
+    def build_metadata(state):
+        input_size = estimate_json_size_bytes(state)
+        return {
+            "node_name": node_name,
+            "input_key_count": len(state) if isinstance(state, dict) else None,
+            "input_state_size_bytes": input_size,
+            "size_method": "json_estimate" if input_size is not None else "unavailable",
+        }
+
+    def finish_metadata(timer, result):
+        output_size = estimate_json_size_bytes(result)
+        timer.metadata = {
+            **(timer.metadata or {}),
+            "output_key_count": len(result) if isinstance(result, dict) else None,
+            "output_state_size_bytes": output_size,
+        }
+
+    if inspect.iscoroutinefunction(fn):
+        @wraps(fn)
+        async def async_wrapped(state):
+            if not perf_trace_enabled():
+                return await fn(state)
+            with perf_span("graph_node", operation=node_name, metadata=build_metadata(state)) as timer:
+                result = await fn(state)
+                finish_metadata(timer, result)
+                return result
+
+        return async_wrapped
+
+    @wraps(fn)
+    def wrapped(state):
+        if not perf_trace_enabled():
+            return fn(state)
+        with perf_span("graph_node", operation=node_name, metadata=build_metadata(state)) as timer:
+            result = fn(state)
+            finish_metadata(timer, result)
+            return result
+
+    return wrapped
 
 
 def build_intake_graph(checkpointer=None):
     graph = StateGraph(MarketingState)
-    graph.add_node("input", input_node)
-    graph.add_node("input_evidence_normalizer", input_evidence_normalizer_node)
-    graph.add_node("product_understanding", product_understanding_node)
-    graph.add_node("validator", validator_node)
-    graph.add_node("options", options_node)
-    graph.add_node("state_update", state_update_node)
+    graph.add_node("input", _instrument_node("input", input_node))
+    graph.add_node("input_evidence_normalizer", _instrument_node("input_evidence_normalizer", input_evidence_normalizer_node))
+    graph.add_node("product_understanding", _instrument_node("product_understanding", product_understanding_node))
+    graph.add_node("validator", _instrument_node("validator", validator_node))
+    graph.add_node("options", _instrument_node("options", options_node))
+    graph.add_node("state_update", _instrument_node("state_update", state_update_node))
 
     graph.set_entry_point("input")
     graph.add_edge("input", "input_evidence_normalizer")
@@ -97,57 +137,51 @@ def build_intake_graph(checkpointer=None):
 
 def build_marketing_graph(checkpointer=None):
     graph = StateGraph(MarketingState)
-    graph.add_node("input", input_node)
-    graph.add_node("reference_template_resolve", reference_template_resolve_node)
-    graph.add_node("product_preprocess", product_preprocess_node)
-    graph.add_node("reference_preprocess", reference_preprocess_node)
-    graph.add_node("input_evidence_normalizer", input_evidence_normalizer_node)
-    graph.add_node("product_understanding", product_understanding_node)
-    graph.add_node("validator", validator_node)
-    graph.add_node("options", options_node)
-    graph.add_node("state_update", state_update_node)
-    graph.add_node("format_planner", format_planner_node)
-    graph.add_node("tone_binding", tone_binding_node)
-    graph.add_node("copy_candidate_generation", copy_candidate_generation_node)
-    graph.add_node("copy_candidate_selection_interrupt", copy_candidate_selection_interrupt_node)
-    graph.add_node("state_update_selected_copy", state_update_selected_copy_node)
-    graph.add_node("auto_pilot_copywriting", auto_pilot_copywriting_node)
-    graph.add_node("custom_copy_input", custom_copy_input_interrupt_node)
-    graph.add_node("custom_copy_validation", custom_copy_validation_node)
-    graph.add_node("input_compliance_precheck", input_compliance_precheck_node)
-    graph.add_node("no_copy_bypass", no_copy_bypass_node)
-    graph.add_node("copy_compliance_gate", copy_compliance_gate_node)
-    graph.add_node("copy_compliance_interrupt", copy_compliance_interrupt_node)
-    graph.add_node("copy_compliance_resolution", copy_compliance_resolution_node)
-    graph.add_node("copy_spec_parser", copy_spec_parser_node)
-    graph.add_node("typography_art_direction", typography_art_direction_node)
-    graph.add_node("text_style_binder", text_style_binder_node)
-    graph.add_node("text_layout_planner", text_layout_planner_node)
-    graph.add_node("image_prompt_planner", image_prompt_planner_node)
-    graph.add_node("prompt_renderer", prompt_renderer_node)
-    graph.add_node("t2i_request_builder", t2i_request_builder_node)
-    graph.add_node("t2i_generation", t2i_generation_node)
-    graph.add_node("background_ocr_gate", background_ocr_gate_node)
-    graph.add_node("ocr_image_revision", ocr_image_revision_node)
-    graph.add_node("background_validation", background_validation_node)
-    graph.add_node("image_layout_analyzer", image_layout_analyzer_node)
-    graph.add_node("post_t2i_layout_refiner", post_t2i_layout_refiner_node)
-    graph.add_node("adaptive_typography_refiner", adaptive_typography_refiner_node)
-    graph.add_node("safe_area_gate", safe_area_gate_node)
-    graph.add_node("text_renderer", text_renderer_node)
-    graph.add_node("html_text_renderer", html_text_renderer_node)
-    graph.add_node("image_analysis", image_analysis_node)
-    graph.add_node("poster_layout_planner", poster_layout_planner_node)
-    graph.add_node("poster_renderer", poster_renderer_node)
-    graph.add_node("image_aware_quality_gate", image_aware_quality_gate_node)
-    graph.add_node("design_recommendation", design_recommendation_node)
-    graph.add_node("final_ocr_gate", final_ocr_gate_node)
-    graph.add_node("ocr_layout_revision", ocr_layout_revision_node)
-    graph.add_node("readability_gate", readability_gate_node)
-    graph.add_node("final_validation", final_validation_node)
-    graph.add_node("final_composite_revision", final_composite_revision_node)
-    graph.add_node("final_copy_revision", final_copy_revision_node)
-    graph.add_node("result", result_node)
+    graph.add_node("input", _instrument_node("input", input_node))
+    graph.add_node("reference_template_resolve", _instrument_node("reference_template_resolve", reference_template_resolve_node))
+    graph.add_node("product_preprocess", _instrument_node("product_preprocess", product_preprocess_node))
+    graph.add_node("reference_preprocess", _instrument_node("reference_preprocess", reference_preprocess_node))
+    graph.add_node("input_evidence_normalizer", _instrument_node("input_evidence_normalizer", input_evidence_normalizer_node))
+    graph.add_node("product_understanding", _instrument_node("product_understanding", product_understanding_node))
+    graph.add_node("validator", _instrument_node("validator", validator_node))
+    graph.add_node("options", _instrument_node("options", options_node))
+    graph.add_node("state_update", _instrument_node("state_update", state_update_node))
+    graph.add_node("format_planner", _instrument_node("format_planner", format_planner_node))
+    graph.add_node("tone_binding", _instrument_node("tone_binding", tone_binding_node))
+    graph.add_node("copy_candidate_generation", _instrument_node("copy_candidate_generation", copy_candidate_generation_node))
+    graph.add_node("copy_candidate_selection_interrupt", _instrument_node("copy_candidate_selection_interrupt", copy_candidate_selection_interrupt_node))
+    graph.add_node("state_update_selected_copy", _instrument_node("state_update_selected_copy", state_update_selected_copy_node))
+    graph.add_node("auto_pilot_copywriting", _instrument_node("auto_pilot_copywriting", auto_pilot_copywriting_node))
+    graph.add_node("custom_copy_input", _instrument_node("custom_copy_input", custom_copy_input_interrupt_node))
+    graph.add_node("custom_copy_validation", _instrument_node("custom_copy_validation", custom_copy_validation_node))
+    graph.add_node("input_compliance_precheck", _instrument_node("input_compliance_precheck", input_compliance_precheck_node))
+    graph.add_node("no_copy_bypass", _instrument_node("no_copy_bypass", no_copy_bypass_node))
+    graph.add_node("copy_compliance_gate", _instrument_node("copy_compliance_gate", copy_compliance_gate_node))
+    graph.add_node("copy_compliance_interrupt", _instrument_node("copy_compliance_interrupt", copy_compliance_interrupt_node))
+    graph.add_node("copy_compliance_resolution", _instrument_node("copy_compliance_resolution", copy_compliance_resolution_node))
+    graph.add_node("copy_spec_parser", _instrument_node("copy_spec_parser", copy_spec_parser_node))
+    graph.add_node("typography_art_direction", _instrument_node("typography_art_direction", typography_art_direction_node))
+    graph.add_node("text_style_binder", _instrument_node("text_style_binder", text_style_binder_node))
+    graph.add_node("text_layout_planner", _instrument_node("text_layout_planner", text_layout_planner_node))
+    graph.add_node("image_prompt_planner", _instrument_node("image_prompt_planner", image_prompt_planner_node))
+    graph.add_node("prompt_renderer", _instrument_node("prompt_renderer", prompt_renderer_node))
+    graph.add_node("t2i_request_builder", _instrument_node("t2i_request_builder", t2i_request_builder_node))
+    graph.add_node("t2i_generation", _instrument_node("t2i_generation", t2i_generation_node))
+    graph.add_node("background_ocr_gate", _instrument_node("background_ocr_gate", background_ocr_gate_node))
+    graph.add_node("ocr_image_revision", _instrument_node("ocr_image_revision", ocr_image_revision_node))
+    graph.add_node("background_validation", _instrument_node("background_validation", background_validation_node))
+    graph.add_node("image_layout_analyzer", _instrument_node("image_layout_analyzer", image_layout_analyzer_node))
+    graph.add_node("post_t2i_layout_refiner", _instrument_node("post_t2i_layout_refiner", post_t2i_layout_refiner_node))
+    graph.add_node("adaptive_typography_refiner", _instrument_node("adaptive_typography_refiner", adaptive_typography_refiner_node))
+    graph.add_node("safe_area_gate", _instrument_node("safe_area_gate", safe_area_gate_node))
+    graph.add_node("text_renderer", _instrument_node("text_renderer", text_renderer_node))
+    graph.add_node("final_ocr_gate", _instrument_node("final_ocr_gate", final_ocr_gate_node))
+    graph.add_node("ocr_layout_revision", _instrument_node("ocr_layout_revision", ocr_layout_revision_node))
+    graph.add_node("readability_gate", _instrument_node("readability_gate", readability_gate_node))
+    graph.add_node("final_validation", _instrument_node("final_validation", final_validation_node))
+    graph.add_node("final_composite_revision", _instrument_node("final_composite_revision", final_composite_revision_node))
+    graph.add_node("final_copy_revision", _instrument_node("final_copy_revision", final_copy_revision_node))
+    graph.add_node("result", _instrument_node("result", result_node))
 
     graph.set_entry_point("input")
     graph.add_conditional_edges(
@@ -254,24 +288,8 @@ def build_marketing_graph(checkpointer=None):
         {"safe_area_gate": "adaptive_typography_refiner", "image_prompt_planner": "image_prompt_planner", "result": "result"},
     )
     graph.add_edge("adaptive_typography_refiner", "safe_area_gate")
-    graph.add_conditional_edges(
-        "safe_area_gate",
-        route_by_copy_presence,
-        {
-            "result": "result",
-            "text_renderer": "text_renderer",
-            "html_text_renderer": "html_text_renderer",
-            "image_analysis": "image_analysis",
-            "poster_renderer": "poster_renderer",
-        },
-    )
-    graph.add_edge("image_analysis", "poster_layout_planner")
-    graph.add_edge("poster_layout_planner", "poster_renderer")
-    graph.add_edge("poster_renderer", "image_aware_quality_gate")
-    graph.add_edge("image_aware_quality_gate", "design_recommendation")
-    graph.add_edge("design_recommendation", "readability_gate")
+    graph.add_conditional_edges("safe_area_gate", route_by_copy_presence, {"result": "result", "text_renderer": "text_renderer"})
     graph.add_edge("text_renderer", "final_ocr_gate")
-    graph.add_edge("html_text_renderer", "final_ocr_gate")
     graph.add_conditional_edges(
         "final_ocr_gate",
         route_after_ocr_gate,

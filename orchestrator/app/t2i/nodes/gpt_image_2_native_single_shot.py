@@ -5,14 +5,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.llm.native_copy_policy import mark_image_call_completed, mark_image_call_started, reserve_image_call
 from orchestrator.app.schemas.native_creative import NativeCreativePromptPackage, NativeGenerationBudget
 from orchestrator.app.t2i.engines.gpt_image_2 import GPTImage2ActualEngine
 
 
 def gpt_image_2_native_single_shot_node(state: dict[str, Any]) -> dict[str, Any]:
-    package = NativeCreativePromptPackage(**(state.get("native_creative_prompt_package") or {}))
-    budget = NativeGenerationBudget(**(state.get("native_generation_budget") or {}))
+    package = read_model(state, "native_creative_prompt_package", NativeCreativePromptPackage)
+    budget = read_model(state, "native_generation_budget", NativeGenerationBudget)
     reserved = reserve_image_call(budget)
     if reserved.status == "uncertain":
         return {"native_generation_budget": reserved.model_dump(), "native_generation_status": "manual_review"}

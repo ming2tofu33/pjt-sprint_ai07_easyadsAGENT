@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.llm.native_copy_policy import build_native_prompt_package, decide_native_typography_eligibility, validate_approved_native_copy_brief
 from orchestrator.app.llm.native_creative_preflight_service import review_native_creative_preflight
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
@@ -12,7 +13,7 @@ from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 
 
 def native_creative_preflight_node(state: dict[str, Any]) -> dict[str, Any]:
-    brief = ApprovedNativeCopyBrief(**(state.get("approved_native_copy_brief") or {}))
+    brief = read_model(state, "approved_native_copy_brief", ApprovedNativeCopyBrief)
     product = state.get("product_understanding") or {}
     failures = validate_approved_native_copy_brief(brief)
     eligibility = decide_native_typography_eligibility(brief)

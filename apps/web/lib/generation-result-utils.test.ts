@@ -94,6 +94,36 @@ describe("generation result utils", () => {
     ).toBe("generation_job_execution_failed: No module named 'langgraph.checkpoint.postgres'");
   });
 
+  it("explains when a background job never started", () => {
+    expect(
+      getGenerationResultNotice({
+        job_id: "job_background_not_started",
+        status: "failed",
+        error: {
+          error_code: "generation_job_background_not_started",
+          message: "Generation job worker did not start.",
+          detail:
+            "The job was queued for background execution, but no background_started event was recorded before the stale threshold."
+        }
+      }).message
+    ).toBe("생성 작업이 서버에서 시작되지 않았어요. 잠시 후 다시 시도해주세요.");
+  });
+
+  it("explains when a background job started but stalled", () => {
+    expect(
+      getGenerationResultNotice({
+        job_id: "job_background_stalled",
+        status: "failed",
+        error: {
+          error_code: "generation_job_background_stalled",
+          message: "Generation job stalled while preparing the request.",
+          detail:
+            "A background_started event was recorded, but no completion, interrupt, or Modal handoff was recorded before the stale threshold."
+        }
+      }).message
+    ).toBe("생성 작업이 중간에 멈췄어요. 같은 요청으로 다시 시도해주세요.");
+  });
+
   it("returns result artifact payload from a job", () => {
     expect(getResultArtifactPayload(doneJobWithUrl)?.schema_version).toBe("result_artifact_v1");
     expect(getResultArtifactPayload(null)).toBeNull();

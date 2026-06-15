@@ -39,14 +39,16 @@ def result_node(state: MarketingState) -> dict[str, Any]:
     if render_metadata:
         result_metadata["render_metadata"] = render_metadata
     artifacts = list(state.get("artifact_refs") or [])
+    artifact_update = []
     if output_path:
-        artifacts.append(
+        artifact_update.append(
             {
                 "type": "result_image",
                 "path": output_path,
                 "metadata": {"source": "result_node", "has_text_overlay": has_text_overlay},
             }
         )
+        artifacts = [*artifacts, *artifact_update]
 
     ocr_gate_payload = build_ocr_gate_payload(
         background=state.get("background_ocr_gate"),
@@ -89,7 +91,7 @@ def result_node(state: MarketingState) -> dict[str, Any]:
     payload_dict["qualityRejected"] = quality_rejected
     return {
         "result_payload": payload_dict,
-        "artifact_refs": artifacts,
+        "artifact_refs": artifact_update,
         "status": status,
         "error_message": None if output_path else upstream_error,
     }

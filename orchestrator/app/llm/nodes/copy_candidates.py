@@ -35,7 +35,7 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
         output_schema=CopyCandidateListOutput,
     )
     output, llm_metadata = run_structured_node(
-        state,
+        dict(state),
         node_name="copy_candidate_generation",
         output_schema=CopyCandidateListOutput,
         prompt=build_candidate_prompt(state, metadata_contract),
@@ -73,8 +73,7 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
         "copy_generation_mode": "suggest_candidates",
         "copy_required": True,
         "text_overlay_pending": True,
-        "model_selections": state.get("model_selections", []),
-        "llm_call_results": state.get("llm_call_results", []),
+        **_llm_tracking_from_metadata(llm_metadata),
         "status": "generating_copy_candidates",
     }
 
@@ -528,7 +527,7 @@ def build_frontend_selection_state_update(state: MarketingState, selection: dict
         context_extra["selected_channel_id"] = selected_channel_id
     if selected_ad_format:
         update["selected_ad_format"] = selected_ad_format
-        set_requested_ad_format(current_brief, context_extra, selected_ad_format)
+        current_brief, context_extra = set_requested_ad_format(current_brief, context_extra, selected_ad_format)
         context_extra["selected_ad_format"] = selected_ad_format
         ad_format_spec = build_ad_format_spec(selected_ad_format)
         update["ad_format_spec"] = ad_format_spec.model_dump()
@@ -547,6 +546,14 @@ def build_frontend_selection_state_update(state: MarketingState, selection: dict
         context["extra"] = context_extra
         update["context"] = context
         update["current_brief"] = current_brief
+    return update
+
+
+def _llm_tracking_from_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    metadata = metadata or {}
+    update: dict[str, Any] = {}
+    update["model_selections"] = [metadata["model_selection"]] if metadata.get("model_selection") else []
+    update["llm_call_results"] = [metadata["llm_call_result"]] if metadata.get("llm_call_result") else []
     return update
 
 

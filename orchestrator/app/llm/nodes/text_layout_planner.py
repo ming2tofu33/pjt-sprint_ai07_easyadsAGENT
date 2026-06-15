@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.schemas.text_layout import CopySpec, CopyVisualIntent, FontMetric, NormalizedBBox, TextLayoutSpec, TextSlot, TextStyleSpec
 
 
 def text_layout_planner_node(state: dict[str, object]) -> dict[str, object]:
-    copy_spec = CopySpec(**(state.get("copy_spec") or {}))
-    style_spec = TextStyleSpec(**(state.get("text_style_spec") or {}))
+    copy_spec = read_model(state, "copy_spec", CopySpec)
+    style_spec = read_model(state, "text_style_spec", TextStyleSpec)
     intent = CopyVisualIntent(**state["copy_visual_intent"]) if state.get("copy_visual_intent") else None
     ad_format_spec = state.get("ad_format_spec") or {}
     ad_format = ad_format_spec.get("ad_format", "instagram_feed")

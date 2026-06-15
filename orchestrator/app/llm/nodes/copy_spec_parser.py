@@ -6,6 +6,7 @@ from typing import Any
 
 from orchestrator.app.llm.metadata_builders import build_copy_spec_parser_metadata, build_metadata_contract_summary
 from orchestrator.app.llm.copy_visual_intent import resolve_copy_visual_intent
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.schemas.llm_marketing import MarketingContext, MarketingCopy
 from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, CopyVisualIntent
 
@@ -20,9 +21,9 @@ def copy_spec_parser_node(state: dict[str, Any]) -> dict[str, Any]:
             "current_brief": {**state.get("current_brief", {}), "copy_spec_ready": True},
             "status": "bypassing_copy",
         }
-    marketing_copy = MarketingCopy(**(state.get("marketing_copy") or {}))
+    marketing_copy = read_model(state, "marketing_copy", MarketingCopy)
     context = _context_to_model(state.get("context"))
-    intent = CopyVisualIntent(**(state.get("copy_visual_intent") or resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template")).model_dump()))
+    intent = read_model(state, "copy_visual_intent", CopyVisualIntent, default=None) or resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template"))
     items: list[CopyItem] = [
         CopyItem(role="headline", text=marketing_copy.headline, priority=1),
     ]

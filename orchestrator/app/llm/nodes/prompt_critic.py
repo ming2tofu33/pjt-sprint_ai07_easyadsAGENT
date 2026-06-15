@@ -32,7 +32,7 @@ def critique_prompt_draft(
         }
     metadata = build_prompt_critic_metadata(prompt_draft=prompt_draft, target_engine=target_engine, prompt_context=prompt_context)
     output, llm_metadata = run_structured_node(
-        state,
+        dict(state),
         node_name="prompt_critic",
         output_schema=PromptCriticOutput,
         prompt=build_prompt_critic_prompt(prompt_draft=prompt_draft, target_engine=target_engine, prompt_context=prompt_context, metadata=metadata),

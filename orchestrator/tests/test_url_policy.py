@@ -123,6 +123,29 @@ def test_archive_item_from_row_keeps_https_url():
     assert result.image_url == "https://cdn.example.com/final.png"
 
 
+def test_archive_item_from_row_uses_output_payload_url_when_archive_urls_are_empty():
+    """목록 row의 archive URL 컬럼이 비어도 output result payload의 R2 URL을 사용한다."""
+    from orchestrator.app.archive.service import archive_item_from_row
+
+    row = {
+        "public_archive_id": "archive_generated",
+        "title": "Generated",
+        "asset_public_url": None,
+        "thumbnail_public_url": None,
+        "image_url": None,
+        "thumbnail_url": None,
+        "output_result_payload": {
+            "final_image_url": "https://r2.example.com/generated/final.png",
+            "download_url": "https://r2.example.com/generated/download.png",
+        },
+    }
+
+    result = archive_item_from_row(row)
+
+    assert result.image_url == "https://r2.example.com/generated/download.png"
+    assert result.download_url == "https://r2.example.com/generated/download.png"
+
+
 # ---------------------------------------------------------------------------
 # generation_outputs service (_row_to_response)
 # ---------------------------------------------------------------------------

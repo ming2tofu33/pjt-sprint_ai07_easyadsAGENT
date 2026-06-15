@@ -885,6 +885,31 @@ def test_node_runner_invalid_structured_output_falls_back(monkeypatch):
     assert metadata["fallback_reason"] == "structured_output_validation_failed"
 
 
+def test_node_runner_invalid_structured_output_records_single_llm_call_result(monkeypatch):
+    class BadAdapter:
+        def invoke_structured(self, schema, prompt, model_selection, metadata=None):
+            from orchestrator.app.schemas.llm_model_policy import LLMCallResult
+
+            return LLMCallResult(success=True, node_name=model_selection.node_name, model_selection=model_selection, output={"bad": True})
+
+    monkeypatch.setattr("orchestrator.app.llm.node_runner.get_llm_adapter_safe", lambda *args, **kwargs: BadAdapter())
+    state = _state__test_llm_node_runner("premium")
+
+    output, metadata = run_structured_node(
+        state,
+        "copy_mode_inference",
+        CopyModeInferenceOutput,
+        "prompt",
+        fallback_fn=lambda: CopyModeInferenceOutput(copy_generation_mode="suggest_candidates", confidence=0.8, source="heuristic"),
+        settings=LLMSettings(enable_api_call=True, openai_api_key="set", openai_text_model_mini="model"),
+    )
+
+    assert output.copy_generation_mode == "suggest_candidates"
+    assert metadata["fallback_reason"] == "structured_output_validation_failed"
+    assert len(state["model_selections"]) == 1
+    assert len(state["llm_call_results"]) == 1
+
+
 def test_validate_output_rejects_non_mapping_with_clear_error():
     import pytest
     from pydantic import BaseModel

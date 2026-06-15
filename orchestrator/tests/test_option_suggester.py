@@ -9,7 +9,7 @@ from langgraph.types import Command
 
 from orchestrator.app.core.config import _get_env
 from orchestrator.app.graph.builder import build_intake_graph
-from orchestrator.app.graph.nodes import display_value_for_selection, state_update_node
+from orchestrator.app.graph.nodes import display_value_for_selection, options_node, state_update_node
 from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.nodes.option_suggester import (
     build_option_suggester_prompt,
@@ -268,3 +268,30 @@ def test_state_update_promotion_goal_slug_passthrough():
     
     assert res["context"]["promotion_goal"] == "dynamic_goal" # Raw slug preserved
     assert "promotion_goal_option_value" not in res["context"]["extra"] # Nothing stashed
+
+
+def test_options_node_cached_path_preserves_current_brief_and_skips_llm_tracking():
+    state: MarketingState = {
+        "job_id": "job-1",
+        "thread_id": "thread-1",
+        "status": "validating_context",
+        "missing_fields": ["item_or_service"],
+        "context": {"business_type": "restaurant"},
+        "current_brief": {
+            "sentinel": "keep",
+            "cached_options": {
+                "item_or_service": [
+                    {"id": 1, "label": "cached option", "value": "cached_dynamic"},
+                    {"id": 2, "label": "custom", "value": "custom"},
+                ]
+            },
+        },
+    }
+
+    with patch("orchestrator.app.graph.nodes.interrupt", lambda payload: payload):
+        update = options_node(state)
+
+    assert update["current_brief"]["sentinel"] == "keep"
+    assert update["option_question"]["options"][0]["value"] == "cached_dynamic"
+    assert "model_selections" not in update
+    assert "llm_call_results" not in update

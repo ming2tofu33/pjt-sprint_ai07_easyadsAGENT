@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.llm.native_copy_brief_service import generate_approved_native_copy_brief
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.native_creative import CreativeExecutionPlan
@@ -11,9 +12,9 @@ from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 
 
 def native_copy_brief_node(state: dict[str, Any]) -> dict[str, Any]:
-    plan = CreativeExecutionPlan(**(state.get("creative_execution_plan") or {}))
-    evidence = InputEvidenceBundle(**(state.get("input_evidence_bundle") or {}))
-    understanding = ProductUnderstanding(**(state.get("product_understanding") or {}))
+    plan = read_model(state, "creative_execution_plan", CreativeExecutionPlan)
+    evidence = read_model(state, "input_evidence_bundle", InputEvidenceBundle)
+    understanding = read_model(state, "product_understanding", ProductUnderstanding)
     brief = generate_approved_native_copy_brief(
         input_evidence=evidence,
         product_understanding=understanding,
