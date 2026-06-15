@@ -26,6 +26,7 @@ dependencies = [
     "langgraph-prebuilt==1.0.10",
     "langgraph-sdk==0.3.15",
     "langsmith==0.8.6",
+    "numpy==2.4.6",
     "openai==2.38.0",
     "orjson==3.11.9",
     "ormsgpack==1.12.2",
