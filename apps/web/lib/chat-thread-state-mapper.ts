@@ -263,7 +263,24 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     selectedChannelId: firstString(payload.selected_channel_id, payload.selectedChannelId, payload.ad_format) || "instagram-feed",
     selectedTone: firstString(payload.selected_tone, payload.selectedTone) || "감성적인",
     selectedImageGenerationEngine: imageEngine(
-      payload.image_generation_engine ?? payload.selected_image_generation_engine ?? payload.selectedImageGenerationEngine
+      payload.image_generation_engine ??
+        payload.imageGenerationEngine ??
+        payload.selected_image_generation_engine ??
+        payload.selectedImageGenerationEngine ??
+        payload.engine ??
+        currentBrief.requested_engine ??
+        currentBrief.requestedEngine ??
+        currentBrief.engine ??
+        resultPayload.engine ??
+        resultPayload.requested_engine ??
+        resultPayload.requestedEngine ??
+        metadata.requested_engine ??
+        metadata.requestedEngine ??
+        metadata.t2i_engine ??
+        metadata.t2iEngine ??
+        metadata.selected_engine ??
+        metadata.selectedEngine ??
+        metadata.engine
     ),
     customDirection: firstString(payload.custom_direction, payload.customDirection),
     userCustomHeadline: firstString(payload.user_custom_headline, payload.userCustomHeadline, currentBrief.user_custom_headline),
