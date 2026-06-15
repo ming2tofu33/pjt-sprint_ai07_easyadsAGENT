@@ -1229,6 +1229,56 @@ def test_rewrite_planner_preserves_rule_safe_hints():
     assert "보장·절대 표현 대신 경험·기대·제안 표현으로" in plan.safe_hints
 
 
+def test_rewrite_planner_does_not_treat_ambiguous_food_warn_as_medical_claim():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "디톡스 딸기라떼"}, ["food"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert findings[0].rule_id == "KR-FOOD-AMBIGUOUS-001"
+    assert plan.strategy == "manual_edit_required"
+    assert "독소 배출" not in plan.forbidden_claims
+
+
+def test_rewrite_planner_maps_food_medical_claim_to_remove_medical_claim():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "독소 배출 딸기라떼"}, ["food"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert findings[0].rule_id == "KR-FOOD-MEDICAL-CLAIM-001"
+    assert plan.strategy == "remove_medical_claim"
+    assert "독소 배출" in plan.forbidden_claims
+
+
+def test_rewrite_planner_superlative_forbidden_claims_include_matched_risks():
+    from orchestrator.app.compliance.rewrite_planner import ComplianceRewritePlanner
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+
+    rules = load_rules()
+    checker = PatternMatcher(rules)
+    findings = checker.scan({"headline": "국내 1위 카페"}, ["general_ad"])
+    rules_by_id = {rule.rule_id: rule for rule in rules}
+
+    plan = ComplianceRewritePlanner(rules_by_id).plan(findings[0])
+
+    assert "최고" in plan.forbidden_claims
+    assert "1위" in plan.forbidden_claims
+
+
 def test_copy_compliance_state_defaults():
     from orchestrator.app.compliance.schemas import CopyComplianceState
 

@@ -2,7 +2,23 @@
 
 from __future__ import annotations
 
-from orchestrator.app.compliance.schemas import ComplianceFinding, ComplianceRewritePlan, ComplianceRule
+from orchestrator.app.compliance.schemas import (
+    ComplianceFinding,
+    ComplianceRewritePlan,
+    ComplianceRewriteStrategy,
+    ComplianceRule,
+)
+
+_RULE_STRATEGY_BY_ID: dict[str, ComplianceRewriteStrategy] = {
+    "KR-GENERAL-SUPERLATIVE-001": "soften_superlative",
+    "KR-FITNESS-GUARANTEE-001": "remove_guarantee",
+    "KR-FOOD-MEDICAL-001": "remove_medical_claim",
+    "KR-FOOD-MEDICAL-CLAIM-001": "remove_medical_claim",
+    "KR-COSMETIC-MEDICAL-001": "remove_medical_claim",
+    "KR-COSMETIC-BLOCK-001": "remove_medical_claim",
+    "KR-MEDICAL-CLAIM-001": "remove_medical_claim",
+    "KR-MEDICAL-BLOCK-001": "remove_medical_claim",
+}
 
 
 class ComplianceRewritePlanner:
@@ -22,19 +38,16 @@ class ComplianceRewritePlanner:
             forbidden_claims=self._forbidden_claims_for(strategy),
         )
 
-    def _strategy_for(self, finding: ComplianceFinding):
+    def _strategy_for(self, finding: ComplianceFinding) -> ComplianceRewriteStrategy:
         rule_id = finding.rule_id or ""
-        if rule_id == "KR-GENERAL-SUPERLATIVE-001":
-            return "soften_superlative"
-        if "GUARANTEE" in rule_id:
-            return "remove_guarantee"
-        if "FOOD" in rule_id or "COSMETIC" in rule_id or "MEDICAL" in rule_id:
-            return "remove_medical_claim"
+        strategy = _RULE_STRATEGY_BY_ID.get(rule_id)
+        if strategy:
+            return strategy
         if finding.severity == "evidence_required":
             return "request_evidence"
         return "manual_edit_required"
 
-    def _instruction_for(self, strategy: str) -> str:
+    def _instruction_for(self, strategy: ComplianceRewriteStrategy) -> str:
         if strategy == "soften_superlative":
             return "근거 없는 최상급·절대 표현을 제거하고 상품 맥락을 유지한 경험 중심 문구로 바꾼다."
         if strategy == "remove_guarantee":
@@ -45,7 +58,7 @@ class ComplianceRewritePlanner:
             return "표현 유지에는 객관적 근거가 필요하므로 근거 없는 비교·수치·단정을 완화한다."
         return "자동 수정이 위험할 수 있으므로 직접 수정 가능한 안전 방향만 제안한다."
 
-    def _forbidden_claims_for(self, strategy: str) -> list[str]:
+    def _forbidden_claims_for(self, strategy: ComplianceRewriteStrategy) -> list[str]:
         if strategy == "soften_superlative":
             return ["최고", "1위", "최초", "100% 보장", "완벽 보장", "무조건"]
         if strategy == "remove_guarantee":
