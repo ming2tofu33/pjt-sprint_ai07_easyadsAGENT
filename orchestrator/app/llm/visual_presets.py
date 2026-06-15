@@ -34,6 +34,21 @@ VISUAL_PRESETS = {
         "positive_safe_area_terms": ["dark clean negative space on the left", "out-of-focus empty table area"],
         "negative_terms": ["text", "menu label", "price tag", "cheap flyer graphics", "crowded table", "watermark"],
     },
+    "restaurant_generic_clean": {
+        "preset_id": "restaurant_generic_clean",
+        "business_type": "restaurant",
+        "composition_archetype": "subject_right_copy_left",
+        "reserved_copy_area": "left",
+        "primary_subject_template": "appetizing food hero beautifully plated on the right side",
+        "secondary_props": ["clean tableware", "subtle dining props", "fresh garnish"],
+        "desired_mood": ["premium dining mood", "appetizing", "clean", "warm"],
+        "palette_hints": ["warm neutral tones", "white plate", "warm wooden tones"],
+        "lighting_hints": ["clean commercial food lighting", "warm appetizing highlights"],
+        "surface_hints": ["clean wooden table", "premium dining table"],
+        "forbidden_visual_elements": ["messy tables", "cheap flyer graphics", "fake menu labels", "price tags", "written text", "raw meat grill", "charcoal"],
+        "positive_safe_area_terms": ["clean empty table space on the left", "out-of-focus dining background"],
+        "negative_terms": ["text", "menu label", "price tag", "cheap flyer graphics", "messy table", "grill", "charcoal", "watermark"],
+    },
     "beauty_skincare_clean_premium": {
         "preset_id": "beauty_skincare_clean_premium",
         "business_type": "beauty_skincare",
@@ -132,8 +147,10 @@ def select_visual_preset(
     # Heuristics based on business_type string
     if bt == "cafe" or "cafe" in bt or "dessert" in bt or "bakery" in bt:
         return VISUAL_PRESETS["cafe_dessert_soft_premium"]
-    elif "bbq" in bt or "restaurant" in bt or "korean_food" in bt or "meat" in bt:
+    elif "bbq" in bt or "korean_food" in bt or "meat" in bt or "고기" in bt or "갈비" in bt or "삼겹살" in bt or "숯불" in bt:
         return VISUAL_PRESETS["restaurant_bbq_warm_grill"]
+    elif "restaurant" in bt or "dining" in bt or "food" in bt:
+        return VISUAL_PRESETS["restaurant_generic_clean"]
     elif bt == "beauty_skincare" or "skincare" in bt or "skin" in bt:
         return VISUAL_PRESETS["beauty_skincare_clean_premium"]
     elif bt == "beauty_hair" or "hair" in bt or "salon" in bt:
