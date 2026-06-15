@@ -1328,6 +1328,64 @@ def test_compliance_llm_rewriter_uses_injected_adapter():
     assert output.candidates[0].text == "정성껏 준비한 고기 한 접시"
 
 
+def test_candidate_validator_keeps_pass_candidate():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+
+    rules = load_rules()
+    validator = ComplianceCandidateValidator(PatternMatcher(rules))
+
+    suggestions = validator.validate(
+        original_copy={"headline": "최고다 고기!"},
+        field="headline",
+        candidates=[ComplianceRewriteCandidate(text="정성껏 준비한 고기 한 접시", rationale="맥락 유지")],
+        domains=["general_ad"],
+    )
+
+    assert suggestions[0].text == "정성껏 준비한 고기 한 접시"
+    assert suggestions[0].validation_status == "pass"
+
+
+def test_candidate_validator_drops_candidate_with_same_risk():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+
+    rules = load_rules()
+    validator = ComplianceCandidateValidator(PatternMatcher(rules))
+
+    suggestions = validator.validate(
+        original_copy={"headline": "최고의 고기"},
+        field="headline",
+        candidates=[ComplianceRewriteCandidate(text="최고의 고기", rationale="위험 표현 유지")],
+        domains=["general_ad"],
+    )
+
+    assert suggestions == []
+
+
+def test_candidate_validator_ignores_other_original_field_risks():
+    from orchestrator.app.compliance.candidate_validator import ComplianceCandidateValidator
+    from orchestrator.app.compliance.rule_engine import PatternMatcher
+    from orchestrator.app.compliance.rule_loader import load_rules
+    from orchestrator.app.compliance.schemas import ComplianceRewriteCandidate
+
+    rules = load_rules()
+    validator = ComplianceCandidateValidator(PatternMatcher(rules))
+
+    suggestions = validator.validate(
+        original_copy={"headline": "최고의 고기", "subcopy": "100% 보장"},
+        field="headline",
+        candidates=[ComplianceRewriteCandidate(text="정성껏 준비한 고기 한 접시", rationale="맥락 유지")],
+        domains=["general_ad"],
+    )
+
+    assert suggestions[0].validation_status == "pass"
+
+
 def test_copy_compliance_state_defaults():
     from orchestrator.app.compliance.schemas import CopyComplianceState
 
