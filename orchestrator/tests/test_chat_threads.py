@@ -161,6 +161,51 @@ def test_photo_start_invokes_graph_with_photo_entry(monkeypatch):
     assert captured["config"]["configurable"]["thread_id"] == payload["threadId"]
 
 
+def test_photo_start_passes_selected_image_engine_to_graph(monkeypatch):
+    captured = {}
+
+    class FakeGraph:
+        def invoke(self, state, config):
+            captured["state"] = state
+            return {
+                "job_id": state["job_id"],
+                "thread_id": state["thread_id"],
+                "status": "generating_copy_candidates",
+                "context": {
+                    "business_type": "cafe",
+                    "item_or_service": "딸기라떼",
+                    "promotion_goal": "new_launch",
+                    "extra": {"ad_format": "instagram_feed"},
+                },
+                "copy_candidates": [{"id": "copy_1", "headline": "사진 속 메뉴를 고품질 광고로"}],
+            }
+
+    from orchestrator.app.api import photo as photo_api
+
+    fake_graph = FakeGraph()
+    monkeypatch.setattr(photo_api, "get_marketing_graph", lambda: fake_graph)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/photo/start",
+        json={
+            "userInput": "이 사진으로 고품질 광고 만들어줘",
+            "sourceImagePath": "data/uploads/menu.png",
+            "adFormat": "instagram_feed",
+            "imageGenerationEngine": "gpt_image_2",
+            "requestedEngine": "gpt_image_2",
+            "t2iEngine": "gpt_image_2",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["state"]["engine"] == "gpt_image_2"
+    assert captured["state"]["image_generation_engine"] == "gpt_image_2"
+    assert captured["state"]["requested_engine"] == "gpt_image_2"
+    assert captured["state"]["t2i_engine"] == "gpt_image_2"
+    assert captured["state"]["context"]["extra"]["requested_engine"] == "gpt_image_2"
+
+
 def test_photo_start_can_return_option_question(monkeypatch):
     class FakeGraph:
         def invoke(self, state, config):

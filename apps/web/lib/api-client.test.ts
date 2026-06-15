@@ -143,6 +143,34 @@ describe("api-client photo generation", () => {
     );
   });
 
+  it("sends the selected image engine when starting photo generation", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({
+        jobId: "photo_gpt2",
+        threadId: "photo_gpt2_thread",
+        status: "generating_copy_candidates",
+        context: { businessType: "카페", itemOrService: "딸기라떼", promotionGoal: "신메뉴 출시" },
+        copyCandidates: [{ id: "copy_1", headline: "사진 속 메뉴를 고품질 광고로" }],
+        recommendedCopyId: "copy_1"
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await startPhotoGeneration({
+      userInput: "이 사진으로 고품질 광고 만들어줘",
+      sourceImagePath: "data/uploads/photo_1.png",
+      imageGenerationEngine: "gpt_image_2"
+    });
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(
+      expect.objectContaining({
+        imageGenerationEngine: "gpt_image_2",
+        requestedEngine: "gpt_image_2",
+        t2iEngine: "gpt_image_2"
+      })
+    );
+  });
+
   it("sends no-copy mode for chat and photo generation starts", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({

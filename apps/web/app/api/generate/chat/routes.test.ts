@@ -141,4 +141,32 @@ describe("generate chat and photo Next routes", () => {
       expect.objectContaining({ method: "POST", body: JSON.stringify(payload) })
     );
   });
+
+  it("keeps the selected image engine when proxying photo start", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn(async () => jsonResponse({ jobId: "job_photo_gpt2" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { POST } = await import("../photo/start/route");
+
+    const payload = {
+      userInput: "사진으로 고품질 메뉴 광고",
+      sourceImagePath: "data/uploads/photo_1.png",
+      imageGenerationEngine: "gpt_image_2",
+      requestedEngine: "gpt_image_2",
+      t2iEngine: "gpt_image_2"
+    };
+    const response = await POST(
+      new NextRequest("http://localhost/api/generate/photo/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/marketing/photo/start",
+      expect.objectContaining({ method: "POST", body: JSON.stringify(payload) })
+    );
+  });
 });

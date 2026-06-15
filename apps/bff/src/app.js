@@ -8,6 +8,7 @@ import cors from "@fastify/cors";
 import { z } from "zod";
 
 const copyGenerationModes = ["suggest_candidates", "auto_pilot", "custom_input", "no_copy"];
+const imageGenerationEngines = ["gpt_image_1", "gpt_image_2", "flux2_klein_4b", "sd35_large"];
 const customCopyFieldsSchema = {
   userCustomHeadline: z.string().trim().min(1).optional(),
   userCustomSubcopy: z.string().trim().optional()
@@ -18,6 +19,12 @@ const referenceTemplateFieldsSchema = {
 const referenceImageFieldsSchema = {
   referenceImagePath: z.string().trim().min(1).optional()
 };
+const imageGenerationEngineFieldsSchema = {
+  imageGenerationEngine: z.enum(imageGenerationEngines).optional(),
+  requestedEngine: z.enum(imageGenerationEngines).optional(),
+  t2iEngine: z.enum(imageGenerationEngines).optional(),
+  selectedEngineLabel: z.string().trim().min(1).optional()
+};
 
 const chatStartSchema = z.object({
   userInput: z.string().min(1),
@@ -26,7 +33,8 @@ const chatStartSchema = z.object({
   copyGenerationMode: z.enum(copyGenerationModes).optional(),
   ...customCopyFieldsSchema,
   ...referenceTemplateFieldsSchema,
-  ...referenceImageFieldsSchema
+  ...referenceImageFieldsSchema,
+  ...imageGenerationEngineFieldsSchema
 }).superRefine((data, context) => {
   if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
     context.addIssue({
@@ -73,7 +81,8 @@ const photoStartSchema = z.object({
   copyGenerationMode: z.enum(copyGenerationModes).optional(),
   ...customCopyFieldsSchema,
   ...referenceTemplateFieldsSchema,
-  ...referenceImageFieldsSchema
+  ...referenceImageFieldsSchema,
+  ...imageGenerationEngineFieldsSchema
 }).superRefine((data, context) => {
   if (data.copyGenerationMode === "custom_input" && !data.userCustomHeadline) {
     context.addIssue({

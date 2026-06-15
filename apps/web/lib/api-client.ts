@@ -11,6 +11,7 @@ import type {
   ReferenceImageFields,
   ReferenceTemplateFields
 } from "@/types/marketing";
+import { getGenerationEngineOption, resolveGenerationEnginePreference } from "@/lib/generation-engine";
 import { getSupabaseAuthorizationHeader, type RequestHeaders } from "@/lib/supabase/session";
 import { estimateJsonSizeBytes, measureWebPerf, perfTraceEnabled, recordWebPerfEvent } from "@/lib/performance";
 
@@ -659,7 +660,9 @@ export function startPhotoGeneration(input: {
   userCustomHeadline?: string;
   userCustomSubcopy?: string;
   selectedReferenceTemplateId?: string | null;
-}): Promise<ChatTurnResponse> {
+} & ImageGenerationEngineFields): Promise<ChatTurnResponse> {
+  const backendEngine = input.imageGenerationEngine ? resolveGenerationEnginePreference(input.imageGenerationEngine) : undefined;
+  const engineOption = input.imageGenerationEngine ? getGenerationEngineOption(input.imageGenerationEngine) : undefined;
   return postJson<ChatTurnResponse>("/api/generate/photo/start", {
     userInput: input.userInput,
     sourceImagePath: input.sourceImagePath,
@@ -669,7 +672,11 @@ export function startPhotoGeneration(input: {
     userCustomHeadline: input.userCustomHeadline ?? undefined,
     userCustomSubcopy: input.userCustomSubcopy ?? undefined,
     selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? undefined,
-    referenceImagePath: input.referenceImagePath ?? undefined
+    referenceImagePath: input.referenceImagePath ?? undefined,
+    imageGenerationEngine: input.imageGenerationEngine ?? undefined,
+    requestedEngine: backendEngine,
+    t2iEngine: backendEngine,
+    selectedEngineLabel: engineOption?.modelName
   });
 }
 

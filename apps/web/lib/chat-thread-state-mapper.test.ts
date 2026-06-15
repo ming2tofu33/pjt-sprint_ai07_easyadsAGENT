@@ -47,6 +47,33 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     });
   });
 
+  it("restores the selected image engine from job metadata when graph payload has no direct engine field", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_engine_metadata",
+      thread_id: "thread_engine_metadata",
+      job_id: "job_engine_metadata",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "input",
+      state_payload: {
+        user_input: "사진으로 고품질 광고",
+        current_brief: {
+          requested_engine: "gpt_image_2"
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {
+        requested_engine: "gpt_image_2",
+        t2i_engine: "gpt_image_2"
+      },
+      created_at: "2026-06-06T00:00:00+00:00"
+    });
+
+    expect(restore?.selectedImageGenerationEngine).toBe("gpt_image_2");
+  });
+
   it("extracts a pending option question from a waiting snapshot", () => {
     const restore = mapChatThreadSnapshotToRestoreState({
       snapshot_id: "snapshot_waiting",

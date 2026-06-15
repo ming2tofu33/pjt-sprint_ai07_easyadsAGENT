@@ -14,6 +14,7 @@ const searchParamsMock = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api-client", () => ({
+  recordRenderMark: vi.fn(),
   ApiError: class ApiError extends Error {
     errorCode?: string;
     status: number;
@@ -1883,6 +1884,40 @@ describe("ChatGenerateClient", () => {
       )
     );
     await waitFor(() => expect(screen.getByText("FLUX.2 Klein 4B")).toBeTruthy());
+  });
+
+  it("creates the final generation job with the selected GPT-image-2 engine", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.createGenerationJob).mockClear();
+    mockInitialAutoPilotBrief(api);
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "우리 카페 딸기라떼 고품질 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByText("GPT-image-2"));
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
+    fireEvent.click(screen.getByText(/이 내용으로 이미지 생성/));
+
+    await waitFor(() =>
+      expect(api.createGenerationJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          runMode: "graph_job",
+          metadata: expect.objectContaining({
+            selected_engine: "gpt_image_2",
+            requested_engine: "gpt_image_2",
+            t2i_engine: "gpt_image_2",
+            selected_engine_label: "GPT-image-2"
+          })
+        })
+      )
+    );
+    await waitFor(() => expect(screen.getByText("GPT-image-2")).toBeTruthy());
   });
 
   it("passes uploaded referenceImagePath to chat start and the final generation job", async () => {
@@ -4067,11 +4102,14 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(api.uploadPhotoAsset).toHaveBeenCalledWith(file));
     await waitFor(() =>
-      expect(api.startPhotoGeneration).toHaveBeenCalledWith({
-        userInput: "이 사진으로 신메뉴 광고 만들어줘",
-        sourceImagePath: "data/uploads/photo_1.png",
-        copyGenerationMode: "suggest_candidates"
-      })
+      expect(api.startPhotoGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: "이 사진으로 신메뉴 광고 만들어줘",
+          sourceImagePath: "data/uploads/photo_1.png",
+          copyGenerationMode: "suggest_candidates",
+          imageGenerationEngine: "gpt_image_1"
+        })
+      )
     );
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat");
     await waitFor(() => expect(screen.getByText("AI가 이렇게 이해했어요")).toBeTruthy());
@@ -4117,6 +4155,34 @@ describe("ChatGenerateClient", () => {
     );
   });
 
+  it("passes the selected GPT-image-2 engine from the photo UI into photo generation start", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.uploadPhotoAsset).mockClear();
+    vi.mocked(api.startPhotoGeneration).mockClear();
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="photo" />);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "menu.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("광고 사진 선택"), { target: { files: [file] } });
+    fireEvent.click(screen.getByText("GPT-image-2"));
+    fireEvent.change(screen.getByLabelText("사진 광고 요청 입력"), {
+      target: { value: "이 사진으로 고품질 신메뉴 광고 만들어줘" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
+
+    await waitFor(() =>
+      expect(api.startPhotoGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: "이 사진으로 고품질 신메뉴 광고 만들어줘",
+          sourceImagePath: "data/uploads/photo_1.png",
+          imageGenerationEngine: "gpt_image_2"
+        })
+      )
+    );
+  });
+
   it("routes photo generation directly to a backend brief in image-only mode", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.uploadPhotoAsset).mockClear();
@@ -4135,11 +4201,14 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
 
     await waitFor(() =>
-      expect(api.startPhotoGeneration).toHaveBeenCalledWith({
-        userInput: "이 사진으로 이미지만 광고 만들어줘",
-        sourceImagePath: "data/uploads/photo_1.png",
-        copyGenerationMode: "no_copy"
-      })
+      expect(api.startPhotoGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: "이 사진으로 이미지만 광고 만들어줘",
+          sourceImagePath: "data/uploads/photo_1.png",
+          copyGenerationMode: "no_copy",
+          imageGenerationEngine: "gpt_image_1"
+        })
+      )
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("문구 없이 이미지로만")).toBeTruthy();
@@ -4164,13 +4233,16 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
 
     await waitFor(() =>
-      expect(api.startPhotoGeneration).toHaveBeenCalledWith({
-        userInput: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘",
-        sourceImagePath: "data/uploads/photo_1.png",
-        copyGenerationMode: "auto_pilot",
-        userCustomHeadline: undefined,
-        userCustomSubcopy: undefined
-      })
+      expect(api.startPhotoGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘",
+          sourceImagePath: "data/uploads/photo_1.png",
+          copyGenerationMode: "auto_pilot",
+          imageGenerationEngine: "gpt_image_1",
+          userCustomHeadline: undefined,
+          userCustomSubcopy: undefined
+        })
+      )
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("AI가 고른 딸기라떼 한 잔")).toBeTruthy();
@@ -4201,13 +4273,16 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
 
     await waitFor(() =>
-      expect(api.startPhotoGeneration).toHaveBeenCalledWith({
-        userInput: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘",
-        sourceImagePath: "data/uploads/photo_1.png",
-        copyGenerationMode: "custom_input",
-        userCustomHeadline: "오늘만 딸기라떼 반값",
-        userCustomSubcopy: "오후 2시부터 5시까지"
-      })
+      expect(api.startPhotoGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘",
+          sourceImagePath: "data/uploads/photo_1.png",
+          copyGenerationMode: "custom_input",
+          imageGenerationEngine: "gpt_image_1",
+          userCustomHeadline: "오늘만 딸기라떼 반값",
+          userCustomSubcopy: "오후 2시부터 5시까지"
+        })
+      )
     );
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("오늘만 딸기라떼 반값")).toBeTruthy();
