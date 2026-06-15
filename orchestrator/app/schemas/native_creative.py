@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -76,6 +76,58 @@ class ApprovedNativeCopyBrief(BaseModel):
     support_value_type: Literal["none", "product_character", "sensory_expression", "serving_context", "brand_mood", "campaign_information"] = "none"
     support_information_gain: float = Field(default=0.0, ge=0.0, le=1.0)
     support_product_specificity: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class FlyerApprovedCopyPlan(BaseModel):
+    schema_version: Literal["flyer_approved_copy_plan_v1"] = "flyer_approved_copy_plan_v1"
+    source_mode: Literal["controlled_approved"] = "controlled_approved"
+    headline: str
+    subtitle: str | None = None
+    body_copy: str | None = None
+    info_cards: list[str] = Field(default_factory=list, max_length=3)
+    bottom_notice: str | None = None
+    allowed_texts: list[str] = Field(default_factory=list, min_length=4, max_length=6)
+    max_text_blocks: Literal[6] = 6
+    max_total_characters: int = Field(default=160, ge=1, le=240)
+    approved_operational_texts: list[str] = Field(default_factory=list)
+
+
+class FlyerPromotionalApprovedCopyPlan(BaseModel):
+    schema_version: Literal["flyer_promotional_approved_copy_plan_v1"] = "flyer_promotional_approved_copy_plan_v1"
+    source_mode: Literal["controlled_approved"] = "controlled_approved"
+    promo_badge: str | None = None
+    headline: str
+    subheadline: str | None = None
+    offer_line: str | None = None
+    info_items: list[str] = Field(default_factory=list, min_length=2, max_length=4)
+    contact_line: str | None = None
+    location_line: str | None = None
+    notice_line: str | None = None
+    allowed_texts: list[str] = Field(min_length=7, max_length=10)
+    approved_operational_texts: list[str] = Field(default_factory=list)
+    max_text_blocks: int = Field(default=10, ge=7, le=10)
+    max_total_characters: int = Field(default=240, ge=1, le=360)
+
+
+class ProductDetailApprovedFeaturePlan(BaseModel):
+    schema_version: Literal["product_detail_approved_feature_plan_v1"] = "product_detail_approved_feature_plan_v1"
+    source_mode: Literal["controlled_approved"] = "controlled_approved"
+    headline: str
+    supporting_copy: str
+    feature_labels: list[str] = Field(min_length=2, max_length=4)
+    allowed_texts: list[str] = Field(min_length=4, max_length=6)
+    max_text_blocks: Literal[6] = 6
+    max_total_characters: int = Field(default=120, ge=1, le=180)
+
+
+class FormatApprovedPlanBundle(BaseModel):
+    schema_version: Literal["format_approved_plan_bundle_v1"] = "format_approved_plan_bundle_v1"
+    flyer_approved_copy_plan: FlyerApprovedCopyPlan | None = None
+    flyer_promotional_approved_copy_plan: FlyerPromotionalApprovedCopyPlan | None = None
+    product_detail_approved_feature_plan: ProductDetailApprovedFeaturePlan | None = None
+    decision: Literal["approved", "not_required", "manual_review", "rejected"]
+    reason_codes: list[str] = Field(default_factory=list)
+    provider_metadata: dict = Field(default_factory=dict)
 
 
 class NativeSourceVisualAnalysis(BaseModel):
@@ -173,6 +225,31 @@ class NativeTypographyExpressionPlan(BaseModel):
     rationale: list[str] = Field(default_factory=list)
 
 
+class TypographyExpressionPlan(BaseModel):
+    schema_version: Literal["typography_expression_plan_v1"] = "typography_expression_plan_v1"
+    ad_format: Literal["banner", "poster", "flyer", "product_detail"]
+    typography_role: Literal["plain_display"] = "plain_display"
+    expression_family: Literal["clean_commercial_banner", "clean_commercial_poster", "clean_commercial_flyer", "clean_commercial_product_detail"]
+    hierarchy: Literal["headline_dominant"] = "headline_dominant"
+    text_image_relationship: str
+    subject_side: Literal["left", "right", "center", "upper", "lower"]
+    copy_side: Literal["left", "right", "top", "bottom", "grouped"]
+    side_policy: Literal["default_fixed", "evidence_based_override"] = "default_fixed"
+    side_override_reason: str | None = None
+    spatial_depth: Literal["flat"] = "flat"
+    perspective: Literal["none"] = "none"
+    material: Literal["flat_clean_type"] = "flat_clean_type"
+    decorative_elements: list[str] = Field(default_factory=list)
+    exact_text_only: Literal[True] = True
+    visible_texts: list[str] = Field(default_factory=list, max_length=10)
+    target_width: int = Field(ge=1)
+    target_height: int = Field(ge=1)
+    native_width: int = Field(ge=1)
+    native_height: int = Field(ge=1)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class NativeCopyCandidate(BaseModel):
     candidate_id: str
     strategy: Literal["minimal_identity", "product_detail", "sensory_expression", "campaign_context", "brand_editorial", "product_name_first", "product_attribute_first", "sensory_first", "context_first"]
@@ -263,6 +340,9 @@ class NativeCreativePromptPackage(BaseModel):
     product_zone: str
     text_zone: str
     approved_copy: ApprovedNativeCopyBrief
+    flyer_approved_copy_plan: FlyerApprovedCopyPlan | None = None
+    flyer_promotional_approved_copy_plan: FlyerPromotionalApprovedCopyPlan | None = None
+    product_detail_approved_feature_plan: ProductDetailApprovedFeaturePlan | None = None
     required_elements: list[str] = Field(default_factory=list)
     forbidden_elements: list[str] = Field(default_factory=list)
     exact_allowed_texts: list[str] = Field(default_factory=list)
@@ -277,8 +357,12 @@ class NativeCreativePromptPackage(BaseModel):
     campaign_message_plan: dict = Field(default_factory=dict)
     visual_semantic_cue_plan: dict = Field(default_factory=dict)
     typography_dominance_plan: dict = Field(default_factory=dict)
-    typography_expression_plan: dict = Field(default_factory=dict)
+    typography_expression_plan: dict[str, Any] | TypographyExpressionPlan = Field(default_factory=dict)
     reference_typography_analysis: dict = Field(default_factory=dict)
+    target_width: Optional[int] = None
+    target_height: Optional[int] = None
+    native_width: Optional[int] = None
+    native_height: Optional[int] = None
 
 
 class NativeCreativePreflightReview(BaseModel):
@@ -344,6 +428,10 @@ class NativeGenerationReview(BaseModel):
     headline_support_complementarity: float = Field(default=0.0, ge=0.0, le=1.0)
     campaign_role_fit_score: float = Field(default=0.0, ge=0.0, le=1.0)
     typography_dominance_fit_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    format_likeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    aspect_orientation_match: bool = False
+    subject_copy_relationship_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    external_renderer_unused: bool = True
     supporting_copy_value_score: float = Field(default=0.0, ge=0.0, le=1.0)
     visible_copy_value_score: float = Field(default=0.0, ge=0.0, le=1.0)
     product_identity_clean: bool = True
@@ -356,5 +444,57 @@ class NativeGenerationReview(BaseModel):
     flat_overlay_likelihood_score: float = Field(default=0.0, ge=0.0, le=1.0)
     headline_support_hierarchy_score: float = Field(default=0.0, ge=0.0, le=1.0)
     copy_product_relationship_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    flyer_likeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    text_first_hierarchy_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    structured_information_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    info_card_column_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    bottom_notice_area_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    pseudo_text_detected: bool = False
+    unauthorized_operational_text_detected: bool = False
+    promotional_flyer_likeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    promotion_purpose_clarity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    offer_section_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    structured_info_section_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    contact_location_section_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    invitation_card_like_detected: bool = False
+    approved_operational_texts_detected: list[str] = Field(default_factory=list)
+    invented_promotional_text_detected: bool = False
+    ai_template_like_detected: bool = False
+    stock_ad_like_detected: bool = False
+    overpolished_visual_detected: bool = False
+    local_print_flyer_likeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    practical_information_design_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    approved_feature_labels_detected: list[str] = Field(default_factory=list)
+    feature_card_grid_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    icon_label_pairing_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    commerce_section_likeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    centered_poster_hero_detected: bool = False
+    invented_feature_text_detected: bool = False
+    product_detail_likeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    structured_section_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    product_information_layout_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    card_divider_pictogram_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    poster_like_detected: bool = False
+    icon_text_or_number_detected: bool = False
+    banner_likeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    banner_headline_dominance_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    banner_split_composition_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    strict_split_banner_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    minimal_information_hierarchy_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    ecommerce_banner_likeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    web_promotion_banner_likeness_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    commercial_message_clarity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    promotion_title_block_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    side_visual_text_balance_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    background_continuity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    visual_integration_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    hard_panel_split_detected: bool = False
+    disconnected_two_panel_layout_detected: bool = False
+    empty_placeholder_shape_detected: bool = False
+    ornate_invitation_layout_detected: bool = False
+    passive_brand_mood_image_detected: bool = False
+    non_promotional_editorial_layout_detected: bool = False
+    decoration_text_or_number_detected: bool = False
+    cta_price_date_logo_watermark_detected: bool = False
     decision: Literal["accept", "manual_review", "reject"]
     failure_reasons: list[str] = Field(default_factory=list)

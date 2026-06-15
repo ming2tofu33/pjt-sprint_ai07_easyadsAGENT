@@ -7,16 +7,24 @@ import json
 import re
 from typing import Any
 
+from orchestrator.app.llm.ad_format_presets import NATIVE_TYPOGRAPHY_SUPPORTED_TEXT_FORMATS, build_ad_format_spec
 from orchestrator.app.llm.native_campaign_copy_rules import contains_campaign_modifier, contains_generic_launch_copy
+from typing import NamedTuple
+
+from pydantic import ValidationError
+
 from orchestrator.app.schemas.native_creative import (
     ApprovedNativeCopyBrief,
     CreativeExecutionPlan,
+    FlyerApprovedCopyPlan,
+    FlyerPromotionalApprovedCopyPlan,
     NativeCreativePromptPackage,
     NativeGenerationBudget,
     NativeTypographyEligibilityDecision,
     NativeCopyCandidate,
     NativeCopyScorecard,
     PositioningRealizationPlan,
+    ProductDetailApprovedFeaturePlan,
 )
 
 GENERIC_CTA_TERMS = {
@@ -374,6 +382,82 @@ def score_native_copy_candidate(
     )
 
 
+# Format profile grammar. Exactly one profile is emitted per package so a
+# format's grammar never leaks into another format's prompt.
+_FORMAT_PROFILE_GRAMMAR: dict[str, list[str]] = {
+    "banner": [
+        "- Layout grammar: horizontal web promotion banner, headline-dominant split composition.",
+        "- Two text blocks only: headline plus optional supporting copy.",
+    ],
+    "poster": [
+        "- Layout grammar: single centered poster hero, headline-dominant.",
+        "- Two text blocks only: headline plus optional supporting copy.",
+    ],
+    "instagram_feed": [
+        "- Layout grammar: square Instagram feed advertisement with native typography integrated into the composition.",
+        "- Two approved text blocks only: headline plus optional supporting copy.",
+        "- Do not invent hashtags, account names, CTA, prices, dates, badges, or social-media UI text.",
+    ],
+    "instagram_story": [
+        "- Layout grammar: vertical Instagram story advertisement with safe top and bottom breathing room.",
+        "- Two approved text blocks only: headline plus optional supporting copy.",
+        "- Do not invent hashtags, account names, swipe prompts, CTA, prices, dates, badges, or social-media UI text.",
+    ],
+    "product_detail": [
+        "- Layout grammar: product detail commerce section, feature label cards under the hero copy.",
+        "- Render the approved feature labels as a 2-4 item card grid; no flyer blocks.",
+    ],
+    "flyer_editorial": [
+        "- Layout grammar: editorial flyer, 4-6 structured information blocks.",
+        "- Calm editorial hierarchy; no promotional badge, offer, or operational contact text.",
+    ],
+    "flyer_promotional": [
+        "- Layout grammar: promotional flyer, 7-10 structured blocks with badge, info, and approved operational lines.",
+        "- Render only approved operational text (contact/location/notice); never invent business facts.",
+    ],
+}
+
+_BRIEF_PROFILE_BY_FORMAT = {
+    "banner": "banner",
+    "poster": "poster",
+    "instagram_feed": "instagram_feed",
+    "instagram_story": "instagram_story",
+}
+
+
+def _coerce_plan_model(plan: Any, model_cls: type):
+    if plan is None:
+        return None
+    if isinstance(plan, model_cls):
+        return plan
+    return model_cls(**plan)
+
+
+def _resolve_prompt_profile(
+    *,
+    ad_format: str | None,
+    copy_brief: ApprovedNativeCopyBrief,
+    product_detail_plan,
+    flyer_editorial_plan,
+    flyer_promotional_plan,
+):
+    """Pick the single visible-text source + format profile for the package.
+
+    Returns (profile, visible_texts). Extended visible text is taken only from
+    the matching isolated plan; banner/poster (and any non-extended state) keep
+    the two-block brief.
+    """
+    brief_texts = copy_brief.allowed_texts or [t for t in [copy_brief.headline, copy_brief.supporting_copy, copy_brief.closing_copy] if t]
+    if product_detail_plan is not None:
+        return "product_detail", list(product_detail_plan.allowed_texts)
+    if flyer_editorial_plan is not None:
+        return "flyer_editorial", list(flyer_editorial_plan.allowed_texts)
+    if flyer_promotional_plan is not None:
+        return "flyer_promotional", list(flyer_promotional_plan.allowed_texts)
+    profile = _BRIEF_PROFILE_BY_FORMAT.get((ad_format or "").strip(), "poster")
+    return profile, list(brief_texts)
+
+
 def build_native_prompt_package(
     *,
     product_understanding: dict[str, Any],
@@ -386,9 +470,23 @@ def build_native_prompt_package(
     typography_dominance_plan: dict[str, Any] | None = None,
     typography_expression_plan: dict[str, Any] | None = None,
     reference_typography_analysis: dict[str, Any] | None = None,
+    ad_format: str | None = None,
+    product_detail_approved_feature_plan: Any = None,
+    flyer_approved_copy_plan: Any = None,
+    flyer_promotional_approved_copy_plan: Any = None,
 ) -> NativeCreativePromptPackage:
     product = str(product_understanding.get("product_name") or "product")
-    allowed = copy_brief.allowed_texts or [text for text in [copy_brief.headline, copy_brief.supporting_copy, copy_brief.closing_copy] if text]
+    format_spec = build_ad_format_spec(ad_format) if ad_format in NATIVE_TYPOGRAPHY_SUPPORTED_TEXT_FORMATS else None
+    product_detail_plan = _coerce_plan_model(product_detail_approved_feature_plan, ProductDetailApprovedFeaturePlan)
+    flyer_editorial_plan = _coerce_plan_model(flyer_approved_copy_plan, FlyerApprovedCopyPlan)
+    flyer_promotional_plan = _coerce_plan_model(flyer_promotional_approved_copy_plan, FlyerPromotionalApprovedCopyPlan)
+    profile, allowed = _resolve_prompt_profile(
+        ad_format=ad_format,
+        copy_brief=copy_brief,
+        product_detail_plan=product_detail_plan,
+        flyer_editorial_plan=flyer_editorial_plan,
+        flyer_promotional_plan=flyer_promotional_plan,
+    )
     forbidden = sorted(set([*copy_brief.forbidden_texts, *GENERIC_CTA_TERMS, "price", "logo", "watermark"]))
     positioning_plan = copy_brief.positioning_realization_plan or build_positioning_realization_plan(requested_positioning=copy_brief.desired_positioning).model_dump()
     avoided = positioning_plan.get("direct_positioning_terms_avoided") or sorted(DIRECT_POSITIONING_TERMS)
@@ -458,6 +556,13 @@ def build_native_prompt_package(
             "- Keep the product as the primary visual subject.",
             "- Place copy in clean negative space without overpowering the product.",
             "",
+            "FORMAT PROFILE",
+            f"- FORMAT PROFILE: {profile}",
+            *_FORMAT_PROFILE_GRAMMAR[profile],
+            "",
+            "VISIBLE BLOCKS",
+            *[f'- "{block}"' for block in allowed],
+            "",
             "PROHIBITED EXTRA TEXT",
             "- Render only the exact approved visible copy.",
             "- Do not render New menu, New product, Launch, Introducing, or equivalent words unless they appear in the exact approved visible copy.",
@@ -477,6 +582,9 @@ def build_native_prompt_package(
         product_zone="center or lower center",
         text_zone="upper or left negative space",
         approved_copy=copy_brief,
+        flyer_approved_copy_plan=flyer_editorial_plan,
+        flyer_promotional_approved_copy_plan=flyer_promotional_plan,
+        product_detail_approved_feature_plan=product_detail_plan,
         required_elements=[product, "native typography"],
         forbidden_elements=forbidden,
         exact_allowed_texts=allowed,
@@ -489,6 +597,10 @@ def build_native_prompt_package(
         typography_dominance_plan=dominance,
         typography_expression_plan=expression,
         reference_typography_analysis=reference_style,
+        target_width=format_spec.width if format_spec else None,
+        target_height=format_spec.height if format_spec else None,
+        native_width=format_spec.width if format_spec else None,
+        native_height=format_spec.height if format_spec else None,
     )
 
 
@@ -550,3 +662,109 @@ def _norm(value: str) -> str:
 def _contains_sensory_cue(value: str | None) -> bool:
     lowered = (value or "").lower()
     return any(cue.lower() in lowered for cue in SENSORY_LANGUAGE_CUES)
+
+
+# --- Task 7: format-specific extended-plan isolation ---------------------------
+#
+# Extended visible text (flyer / product-detail) is authorized only through the
+# matching isolated plan for the selected format. The two-block ApprovedNativeCopyBrief
+# contract (max_text_blocks <= 2) is never weakened; banner/poster carry it alone.
+
+_BRIEF_ONLY_FORMATS = NATIVE_TYPOGRAPHY_SUPPORTED_TEXT_FORMATS - {"flyer", "product_detail"}
+
+
+def validate_flyer_approved_copy_plan(plan: Any) -> list[str]:
+    """Authoritative editorial-flyer schema validation. Returns failure codes."""
+    return _validate_plan(plan, FlyerApprovedCopyPlan, "flyer_approved_copy_plan_invalid")
+
+
+def validate_flyer_promotional_approved_copy_plan(plan: Any) -> list[str]:
+    return _validate_plan(plan, FlyerPromotionalApprovedCopyPlan, "flyer_promotional_approved_copy_plan_invalid")
+
+
+def validate_product_detail_approved_feature_plan(plan: Any) -> list[str]:
+    return _validate_plan(plan, ProductDetailApprovedFeaturePlan, "product_detail_approved_feature_plan_invalid")
+
+
+def _validate_plan(plan: Any, model_cls: type, invalid_code: str) -> list[str]:
+    if plan is None:
+        return ["plan_missing"]
+    if isinstance(plan, model_cls):
+        return []
+    try:
+        model_cls(**plan)
+    except (ValidationError, TypeError):
+        return [invalid_code]
+    return []
+
+
+class VisibleTextSourceResolution(NamedTuple):
+    status: str  # "ok" | "fail"
+    source_kind: str | None  # "brief" | "product_detail" | "flyer_editorial" | "flyer_promotional"
+    decision: str  # "approved" | "manual_review" | "rejected"
+    failure_codes: list[str]
+
+
+def resolve_visible_text_source_by_format(
+    *,
+    ad_format: str | None,
+    flyer_approved_copy_plan: Any = None,
+    flyer_promotional_approved_copy_plan: Any = None,
+    product_detail_approved_feature_plan: Any = None,
+) -> VisibleTextSourceResolution:
+    """Pick the single authorized visible-text source for the format, or fail closed.
+
+    Never resolves a conflict by precedence: any contamination, conflict, or
+    missing-required plan returns an explicit failure code and a non-approved
+    decision so the caller does not proceed to the prompt package / image step.
+    """
+    fmt = (ad_format or "").strip()
+    has_editorial = flyer_approved_copy_plan is not None
+    has_promo = flyer_promotional_approved_copy_plan is not None
+    has_product_detail = product_detail_approved_feature_plan is not None
+
+    if fmt in _BRIEF_ONLY_FORMATS or fmt == "":
+        codes: list[str] = []
+        if has_editorial or has_promo or has_product_detail:
+            codes.append("extended_plan_not_allowed_for_format")
+        if codes:
+            return VisibleTextSourceResolution("fail", None, "rejected", codes)
+        return VisibleTextSourceResolution("ok", "brief", "approved", [])
+
+    if fmt == "product_detail":
+        if has_editorial or has_promo:
+            codes = ["flyer_plan_used_for_product_detail"]
+            if has_product_detail:
+                codes.append("conflicting_extended_plans")
+            return VisibleTextSourceResolution("fail", None, "rejected", codes)
+        if not has_product_detail:
+            return VisibleTextSourceResolution("fail", None, "manual_review", ["missing_required_extended_plan"])
+        failures = validate_product_detail_approved_feature_plan(product_detail_approved_feature_plan)
+        if failures:
+            return VisibleTextSourceResolution("fail", None, "rejected", failures)
+        return VisibleTextSourceResolution("ok", "product_detail", "approved", [])
+
+    if fmt == "flyer":
+        if has_product_detail:
+            codes = ["product_detail_plan_used_for_flyer"]
+            if has_editorial or has_promo:
+                codes.append("conflicting_extended_plans")
+            return VisibleTextSourceResolution("fail", None, "rejected", codes)
+        if has_editorial and has_promo:
+            return VisibleTextSourceResolution("fail", None, "rejected", ["multiple_flyer_plans_present"])
+        if not (has_editorial or has_promo):
+            return VisibleTextSourceResolution("fail", None, "manual_review", ["missing_required_extended_plan"])
+        if has_editorial:
+            failures = validate_flyer_approved_copy_plan(flyer_approved_copy_plan)
+            if failures:
+                return VisibleTextSourceResolution("fail", None, "rejected", failures)
+            return VisibleTextSourceResolution("ok", "flyer_editorial", "approved", [])
+        failures = validate_flyer_promotional_approved_copy_plan(flyer_promotional_approved_copy_plan)
+        if failures:
+            return VisibleTextSourceResolution("fail", None, "rejected", failures)
+        return VisibleTextSourceResolution("ok", "flyer_promotional", "approved", [])
+
+    # Unknown/unsupported format must not carry any extended plan.
+    if has_editorial or has_promo or has_product_detail:
+        return VisibleTextSourceResolution("fail", None, "rejected", ["extended_plan_not_allowed_for_format"])
+    return VisibleTextSourceResolution("ok", "brief", "approved", [])
