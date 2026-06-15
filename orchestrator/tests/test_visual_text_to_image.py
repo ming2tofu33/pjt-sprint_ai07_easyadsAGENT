@@ -1204,6 +1204,33 @@ def test_product_preprocess_node_updates_state_fields(tmp_path):
     assert update["artifact_refs"]
 
 
+def test_product_preprocess_node_persists_resolved_source_asset_path(monkeypatch, tmp_path):
+    source = _image(tmp_path / "source-from-asset.png")
+
+    def fake_resolve_asset_to_local_file(state, asset_key, image_key):
+        assert asset_key == "source_asset_id"
+        assert image_key == "source_image_path"
+        assert state["source_asset_id"] == "asset_123"
+        return str(source)
+
+    monkeypatch.setattr("orchestrator.app.vision.nodes._resolve_asset_to_local_file", fake_resolve_asset_to_local_file)
+    state = create_initial_marketing_state(
+        InitialMarketingRequest(
+            user_input="ready",
+            job_id="vision-node-source-asset",
+            thread_id="vision-node-source-asset",
+            workspace_id="workspace_123",
+            source_asset_id="asset_123",
+        )
+    )
+
+    update = product_preprocess_node(state)
+
+    assert update["status"] == "preprocessing_product_image"
+    assert update["source_image_path"] == str(source)
+    assert update["current_brief"]["source_image_path"] == str(source)
+
+
 def test_preprocess_node_invalid_path_returns_clear_error():
     state = create_initial_marketing_state(
         InitialMarketingRequest(user_input="ready", job_id="vision-node-invalid", thread_id="vision-node-invalid", source_image_path="missing.png")
