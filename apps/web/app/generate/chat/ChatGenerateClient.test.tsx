@@ -2230,6 +2230,7 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "오늘만 더 달콤한 신메뉴 선택" }));
+    fireEvent.click(screen.getByRole("button", { name: "선택 완료" }));
 
     await waitFor(() =>
       expect(api.answerGenerationJob).toHaveBeenCalledWith("generation_job_copy_waiting", {
@@ -2312,14 +2313,14 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByText(/이 내용으로 이미지 생성/));
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "사용할 문구를 골라주세요" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "직접 문구 입력" }));
+    fireEvent.click(screen.getByRole("button", { name: "직접 문구 입력 선택" }));
     fireEvent.change(screen.getByLabelText("생성 재개 메인 문구 입력"), {
       target: { value: "직접 쓴 딸기라떼 광고" }
     });
     fireEvent.change(screen.getByLabelText("생성 재개 보조 문구 입력"), {
       target: { value: "오늘 오후 한정" }
     });
-    fireEvent.click(screen.getByRole("button", { name: "문구로 생성 이어가기" }));
+    fireEvent.click(screen.getByRole("button", { name: "선택 완료" }));
 
     await waitFor(() =>
       expect(api.answerGenerationJob).toHaveBeenCalledWith("generation_job_copy_manual_waiting", {
