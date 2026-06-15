@@ -11,6 +11,7 @@ from orchestrator.app.llm.visual_templates import select_visual_template
 from orchestrator.app.schemas.llm_marketing import ImagePrompt, MarketingContext
 from orchestrator.app.schemas.text_layout import ImagePromptSpec, NormalizedBBox, TextLayoutSpec
 from orchestrator.app.t2i.prompts import COMMON_NEGATIVE_PROMPT
+from orchestrator.app.graph.state import update_current_brief
 from orchestrator.app.llm.scene_planner import build_scene_plan, build_prompt_quality_policy
 from orchestrator.app.llm.prompt_adapters import render_engine_prompt
 from orchestrator.app.llm.visual_presets import select_visual_preset
@@ -36,13 +37,11 @@ def image_prompt_planner_node(state: "MarketingState") -> dict[str, object]:
     return {
         "image_prompt_spec": spec.model_dump(),
         "image_prompt": image_prompt.model_dump(),
-        "current_brief": {
-            **state.get("current_brief", {}),
-            "image_prompt_spec_ready": True,
-            "render_text_in_image": False,
-        },
-        "model_selections": state.get("model_selections", []),
-        "llm_call_results": state.get("llm_call_results", []),
+        "current_brief": update_current_brief(
+            state.get("current_brief"),
+            {"image_prompt_spec_ready": True, "render_text_in_image": False},
+        ),
+        **_llm_tracking_from_metadata(((spec.metadata or {}).get("prompt_critic") or {}).get("llm_metadata")),
         "status": "optimizing_prompt",
     }
 
@@ -229,6 +228,14 @@ def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> I
         metadata={"render_text_in_image": False, "tlfp_enabled": True, **v3_meta},
     )
     return image_prompt
+
+
+def _llm_tracking_from_metadata(metadata: dict[str, Any] | None) -> dict[str, Any]:
+    metadata = metadata or {}
+    update: dict[str, Any] = {}
+    update["model_selections"] = [metadata["model_selection"]] if metadata.get("model_selection") else []
+    update["llm_call_results"] = [metadata["llm_call_result"]] if metadata.get("llm_call_result") else []
+    return update
 
 
 def build_prompt_critic_context(

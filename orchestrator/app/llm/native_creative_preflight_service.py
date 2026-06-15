@@ -53,7 +53,7 @@ def review_native_creative_preflight(
         )
 
     output, metadata = run_structured_node(
-        state,
+        dict(state),
         node_name="native_creative_preflight_review",
         output_schema=NativeCreativePreflightReview,
         prompt=prompt,

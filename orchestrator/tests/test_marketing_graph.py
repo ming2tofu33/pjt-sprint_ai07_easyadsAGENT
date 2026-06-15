@@ -66,6 +66,35 @@ def test_suggest_candidates_interrupt_then_resume_to_mock():
     assert result["t2i_result"]["engine"] == "mock"
 
 
+def test_suggest_candidates_interrupt_accepts_manual_copy_without_selected_id_to_mock():
+    graph = build_marketing_graph()
+    config = {"configurable": {"thread_id": "copy-mode-suggest-manual"}}
+    first = graph.invoke(_request("suggest_candidates", "copy-mode-suggest-manual"), config=config)
+    payload = first["__interrupt__"][0].value
+
+    assert payload["type"] == "copy_candidate_selection"
+
+    result = graph.invoke(
+        Command(
+            resume={
+                "user_custom_headline": "직접 쓴 딸기라떼 광고",
+                "user_custom_subcopy": "오늘 오후 한정",
+                "selected_channel_id": "instagram-feed",
+                "selected_ad_format": "instagram_feed",
+                "selected_tone": "감성적인",
+            }
+        ),
+        config=config,
+    )
+
+    assert result["status"] == "done"
+    assert result["marketing_copy"]["headline"] == "직접 쓴 딸기라떼 광고"
+    assert result["marketing_copy"]["subcopy"] == "오늘 오후 한정"
+    assert result["marketing_copy"]["metadata"]["copy_resolution"] == "manual_edit"
+    assert result["copy_spec"]["items"][0]["text"] == "직접 쓴 딸기라떼 광고"
+    assert result["t2i_result"]["engine"] == "mock"
+
+
 def test_suggest_candidates_with_persisted_selection_skips_interrupt_to_mock():
     state = create_initial_marketing_state(
         InitialMarketingRequest(
