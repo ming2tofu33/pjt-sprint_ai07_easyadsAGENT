@@ -133,21 +133,21 @@ export const UI_ORCHESTRATOR_ROUTE_COVERAGE: UiOrchestratorRouteCoverageRow[] = 
   {
     id: "photo-final-source-image",
     label: "최종 생성 사진 원본 반영",
-    userFlow: "사진 업로드로 시작한 요청의 source image를 최종 generation job graph state까지 전달",
+    userFlow: "사진 업로드로 시작한 요청의 source asset을 최종 generation job graph state까지 전달",
     phase: "final-graph-integration-v1",
     uiEntryPoints: ["PhotoGenerateStep", "ChatGenerateClient"],
     apiCalls: ["POST /api/generation-jobs"],
     executionMode: "generation-job-graph",
     connected: true,
     fullGraphExecution: false,
-    graphStateFields: ["source_image_path"],
+    graphStateFields: ["source_asset_id"],
     graphNodesReached: ["product_preprocess", "t2i_request_builder", "t2i_generation"],
     graphNodesBypassed: [],
     testEvidence: [
       "apps/web/app/generate/chat/ChatGenerateClient.test.tsx",
       "orchestrator/tests/test_generation_job_graph_execution.py"
     ],
-    notes: "photo start에서 업로드한 sourceImagePath가 최종 generation job payload와 graph state의 source_image_path로 보존된다."
+    notes: "photo start에서 업로드한 sourceAssetId가 최종 generation job payload와 graph state의 source_asset_id로 보존된다."
   },
   {
     id: "generation-selected-ui-state",

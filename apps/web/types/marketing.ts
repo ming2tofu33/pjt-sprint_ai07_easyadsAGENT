@@ -130,6 +130,7 @@ export type ChatFlowState = {
   selectedImageGenerationEngine: ImageGenerationEngine;
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
+  sourceAssetId?: string | null;
   sourceImagePath?: string | null;
   referenceImagePath?: string | null;
   currentQuestion: OptionQuestion | null;
@@ -146,6 +147,7 @@ export type ChatFlowAction =
       prompt: string;
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
+      sourceAssetId?: string | null;
       sourceImagePath?: string | null;
       referenceImagePath?: string | null;
       userCustomHeadline?: string | null;
@@ -164,6 +166,7 @@ export type ChatFlowAction =
       copyCandidateOrigin?: CopyCandidateOrigin;
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
+      sourceAssetId?: string | null;
       sourceImagePath?: string | null;
       referenceImagePath?: string | null;
       userCustomHeadline?: string | null;
@@ -176,6 +179,7 @@ export type ChatFlowAction =
       context: PartialInferredContext;
       question: OptionQuestion;
       generationJob?: GenerationJob;
+      sourceAssetId?: string | null;
       sourceImagePath?: string | null;
       referenceImagePath?: string | null;
     }
@@ -221,6 +225,7 @@ export type ChatFlowAction =
       customDirection: string;
       userCustomHeadline: string;
       userCustomSubcopy: string;
+      sourceAssetId?: string | null;
       sourceImagePath: string | null;
       referenceImagePath: string | null;
       selectedReferenceTemplateId: string | null;
@@ -245,6 +250,7 @@ export type ChatFlowAction =
       generationJob: GenerationJob;
       question: OptionQuestion;
       context?: PartialInferredContext;
+      sourceAssetId?: string | null;
       sourceImagePath?: string | null;
       referenceImagePath?: string | null;
     }
