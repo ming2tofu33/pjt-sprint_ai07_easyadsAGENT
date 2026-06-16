@@ -115,6 +115,15 @@ def _intent(**overrides) -> VisualSemanticIntent:
     return VisualSemanticIntent(**data)
 
 
+def _context_with_reference_style(context: CreativeRoutingContext, profile: dict[str, object]) -> CreativeRoutingContext:
+    return CreativeRoutingContext.model_validate(
+        {
+            **context.model_dump(mode="json"),
+            "reference_style_profile": profile,
+        }
+    )
+
+
 def _source_gated_profile() -> VisualStrategyProfile:
     return _profile(
         strategy_id="source_gated_profile",
@@ -298,7 +307,15 @@ def test_runtime_placement_conflict_with_ad_format_is_typed_error():
 
 
 def test_required_excluded_and_preferred_tag_semantics():
-    required = _profile(strategy_id="required_profile", required_tags=["required_alpha"])
+    required = _profile(
+        strategy_id="required_profile",
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.BUSINESS,
+                all_of=["required_alpha"],
+            ),
+        ),
+    )
     excluded = _profile(strategy_id="excluded_profile", excluded_tags=["business_signal_alpha"], priority=99)
     preferred = _profile(strategy_id="preferred_profile", preferred_tags=["preferred_alpha"], priority=50)
     registry = _registry(required, excluded, preferred, _fallback_profile())
@@ -309,13 +326,21 @@ def test_required_excluded_and_preferred_tag_semantics():
     required_trace = next(item for item in decision.trace.candidates if item.strategy_id == "required_profile")
     excluded_trace = next(item for item in decision.trace.candidates if item.strategy_id == "excluded_profile")
     preferred_trace = next(item for item in decision.trace.candidates if item.strategy_id == "preferred_profile")
-    assert VisualStrategyRejectionCode.MISSING_REQUIRED_TAG in required_trace.rejection_codes
+    assert VisualStrategyRejectionCode.MISSING_SOURCE_REQUIREMENT in required_trace.rejection_codes
     assert VisualStrategyRejectionCode.EXCLUDED_TAG_PRESENT in excluded_trace.rejection_codes
     assert preferred_trace.eligible is True
 
 
 def test_casefold_exact_matching_without_substring():
-    profile = _profile(strategy_id="required_profile", required_tags=["alpha"])
+    profile = _profile(
+        strategy_id="required_profile",
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+                all_of=["alpha"],
+            ),
+        ),
+    )
     registry = _registry(profile, _fallback_profile())
 
     substring_decision = resolve_visual_strategy(_context(product_tags=["alphabet"]), _intent(), registry)
@@ -391,8 +416,7 @@ def test_reference_only_changes_reference_fit_not_hard_eligibility():
         _intent(),
         registry,
     )
-    context_with_reference = _context()
-    context_with_reference = context_with_reference.model_copy(update={"reference_style_profile": {"style": ["reference_signal_alpha"]}})
+    context_with_reference = _context_with_reference_style(_context(), {"style": ["reference_signal_alpha"]})
     with_reference = resolve_visual_strategy(context_with_reference, _intent(), registry)
 
     assert with_reference.score.reference_fit > without_reference.score.reference_fit
@@ -431,7 +455,15 @@ def test_fallback_diagnoses_unsupported_domain_without_strategy_id_mapping():
 
 
 def test_fallback_diagnoses_missing_specialized_profile_when_domain_primary_fails():
-    primary = _profile(strategy_id="retail_primary", required_tags=["missing_signal"])
+    primary = _profile(
+        strategy_id="retail_primary",
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.BUSINESS,
+                all_of=["missing_signal"],
+            ),
+        ),
+    )
     fallback = _fallback_profile()
     registry = _registry(primary, fallback)
 
@@ -447,7 +479,15 @@ def test_fallback_diagnoses_missing_specialized_profile_when_domain_primary_fail
 
 
 def test_no_eligible_fallback_raises_with_fallback_diagnostics():
-    primary = _profile(strategy_id="retail_primary", required_tags=["missing_signal"])
+    primary = _profile(
+        strategy_id="retail_primary",
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.BUSINESS,
+                all_of=["missing_signal"],
+            ),
+        ),
+    )
     fallback = _fallback_profile(supported_domains=[CanonicalBusinessDomain.BEAUTY])
     registry = _registry(primary, fallback)
 
@@ -498,11 +538,22 @@ def test_tie_break_prefers_total_score_then_evidence_then_product_then_priority(
     evidence_req = VisualStrategyTagRequirement(source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT, all_of=["product_signal_beta"])
     evidence_high = _profile(strategy_id="evidence_high", required_tag_requirements=(evidence_req,), priority=1)
     total_high = _profile(strategy_id="total_high", preferred_tags=["reference_signal_alpha"], priority=1)
-    product_high = _profile(strategy_id="product_high", required_tags=["product_signal_beta"], priority=1)
+    product_high = _profile(
+        strategy_id="product_high",
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+                all_of=["product_signal_beta"],
+            ),
+        ),
+        priority=1,
+    )
     priority_high = _profile(strategy_id="priority_high", priority=99)
 
-    reference_context = _context(business_tags=["reference_signal_alpha"])
-    reference_context = reference_context.model_copy(update={"reference_style_profile": {"style": ["reference_signal_alpha"]}})
+    reference_context = _context_with_reference_style(
+        _context(business_tags=["reference_signal_alpha"]),
+        {"style": ["reference_signal_alpha"]},
+    )
     total_decision = resolve_visual_strategy(reference_context, _intent(), _registry(total_high, priority_high))
     evidence_decision = resolve_visual_strategy(_context(product_tags=["product_signal_beta"]), _intent(), _registry(evidence_high, total_high))
     product_decision = resolve_visual_strategy(_context(product_tags=["product_signal_beta"]), _intent(), _registry(product_high, priority_high))
@@ -515,13 +566,50 @@ def test_tie_break_prefers_total_score_then_evidence_then_product_then_priority(
 
 
 def test_signal_snapshot_keeps_sources_separate_and_collects_reference_leaf_strings():
-    context = _context(business_tags=["shared_signal"], product_tags=["shared_signal"])
-    context = context.model_copy(update={"reference_style_profile": {"tokens": ["reference_signal_alpha"], "ignored": 1}})
+    context = _context_with_reference_style(
+        _context(business_tags=["shared_signal"], product_tags=["shared_signal"]),
+        {"tokens": ["reference_signal_alpha"], "ignored": 1},
+    )
     snapshot = build_visual_strategy_signal_snapshot(context, _intent())
 
     assert "shared_signal" in snapshot.business_signals
     assert "shared_signal" in snapshot.product_visual_signals
     assert "reference_signal_alpha" in snapshot.reference_style_signals
+
+
+def test_semantic_fit_changes_only_with_semantic_style_signals():
+    profile = _profile(strategy_id="semantic_profile", preferred_tags=["style_signal_alpha"])
+    registry = _registry(profile)
+
+    plain = resolve_visual_strategy(_context(), _intent(), registry)
+    semantic = resolve_visual_strategy(_context(), _intent(desired_moods=["style_signal_alpha"]), registry)
+    business = resolve_visual_strategy(_context(business_tags=["style_signal_alpha"]), _intent(), registry)
+    reference = resolve_visual_strategy(
+        _context_with_reference_style(_context(), {"style": ["style_signal_alpha"]}),
+        _intent(),
+        registry,
+    )
+
+    plain_trace = next(item for item in plain.trace.candidates if item.strategy_id == "semantic_profile")
+    semantic_trace = next(item for item in semantic.trace.candidates if item.strategy_id == "semantic_profile")
+    business_trace = next(item for item in business.trace.candidates if item.strategy_id == "semantic_profile")
+    reference_trace = next(item for item in reference.trace.candidates if item.strategy_id == "semantic_profile")
+
+    assert semantic_trace.score.semantic_fit > plain_trace.score.semantic_fit
+    assert business_trace.score.semantic_fit == plain_trace.score.semantic_fit
+    assert reference_trace.score.semantic_fit == plain_trace.score.semantic_fit
+
+
+def test_semantic_fit_can_change_selected_strategy_without_business_or_reference_leakage():
+    semantic = _profile(strategy_id="semantic_profile", preferred_tags=["style_signal_alpha"], priority=1)
+    business = _profile(strategy_id="business_profile", preferred_tags=["business_signal_alpha"], priority=1)
+    registry = _registry(semantic, business)
+
+    semantic_decision = resolve_visual_strategy(_context(), _intent(desired_moods=["style_signal_alpha"]), registry)
+    business_decision = resolve_visual_strategy(_context(business_tags=["business_signal_alpha"]), _intent(), registry)
+
+    assert semantic_decision.strategy_id == "semantic_profile"
+    assert business_decision.strategy_id == "business_profile"
 
 
 def test_product_visual_inference_does_not_satisfy_fact_requirement():
@@ -634,7 +722,7 @@ def test_default_registry_versions_are_preserved_in_decision_and_trace():
 
     assert registry.version == "visual-strategy-registry-v2"
     assert decision.route_version == "visual-strategy-route-v2"
-    assert decision.resolver_version == "visual-strategy-resolver-v2"
+    assert decision.resolver_version == "visual-strategy-resolver-v3"
     assert decision.trace.registry_version == "visual-strategy-registry-v2"
 
 

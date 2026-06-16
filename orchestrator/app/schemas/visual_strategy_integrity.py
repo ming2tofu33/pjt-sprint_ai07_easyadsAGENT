@@ -46,6 +46,7 @@ class RegistryValidationCode(StrEnum):
     FALLBACK_WITHOUT_DOMAIN_COVERAGE = "fallback_without_domain_coverage"
     EMPTY_ENABLED_REGISTRY = "empty_enabled_registry"
     REGISTRY_HASH_MISMATCH = "registry_hash_mismatch"
+    UNSCOPED_REQUIRED_TAG = "unscoped_required_tag"
 
 
 class RegistryValidationIssue(BaseModel):
@@ -79,6 +80,7 @@ class RegistryIntegrityPolicy(BaseModel):
     require_provider_capability_catalog: bool = False
     require_all_introduced_elements_grounded: bool = True
     require_fallback_domain_coverage: bool = False
+    forbid_unscoped_required_tags: bool = True
     allowed_archetypes: frozenset[str] | None = None
     required_fallback_roles: frozenset[str] = Field(default_factory=frozenset)
     discriminated_union_status: DiscriminatedUnionAuditStatus = DiscriminatedUnionAuditStatus.NOT_EVALUATED
@@ -93,6 +95,7 @@ class RegistryIntegrityPolicy(BaseModel):
         "require_provider_capability_catalog",
         "require_all_introduced_elements_grounded",
         "require_fallback_domain_coverage",
+        "forbid_unscoped_required_tags",
         mode="before",
     )
     @classmethod
@@ -157,6 +160,13 @@ class RegistryValidationReport(BaseModel):
     @classmethod
     def normalize_required_text(cls, value: Any) -> str:
         return normalize_required_label(value)
+
+    @field_validator("snapshot_hash_validation_mode")
+    @classmethod
+    def validate_snapshot_hash_validation_mode(cls, value: str) -> str:
+        if value not in {"verified", "mismatch", "unavailable"}:
+            raise ValueError("snapshot_hash_validation_mode must be verified, mismatch, or unavailable")
+        return value
 
     @field_validator("registry_version", "registry_snapshot_hash", mode="before")
     @classmethod

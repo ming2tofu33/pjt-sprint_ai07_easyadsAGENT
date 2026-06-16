@@ -203,9 +203,29 @@ def _validate_profile_structure(
     issues: list[RegistryValidationIssue] = []
     for profile in profiles:
         issues.extend(_validate_tag_conflicts(profile))
+        issues.extend(_validate_unscoped_required_tags(profile, policy))
         issues.extend(_validate_source_requirements(profile))
         issues.extend(_validate_visual_element_requirements(profile, policy))
     return tuple(issues)
+
+
+def _validate_unscoped_required_tags(
+    profile: VisualStrategyProfile,
+    policy: RegistryIntegrityPolicy,
+) -> tuple[RegistryValidationIssue, ...]:
+    if not (policy.forbid_unscoped_required_tags and profile.enabled and profile.required_tags):
+        return ()
+    return tuple(
+        _issue(
+            code=RegistryValidationCode.UNSCOPED_REQUIRED_TAG,
+            severity=RegistryValidationSeverity.ERROR,
+            strategy_id=profile.strategy_id,
+            field_path="required_tags",
+            related_id=tag,
+            message="enabled profiles must express hard requirements via required_tag_requirements",
+        )
+        for tag in sorted(profile.required_tags)
+    )
 
 
 def _validate_tag_conflicts(profile: VisualStrategyProfile) -> tuple[RegistryValidationIssue, ...]:
@@ -407,7 +427,7 @@ def _with_hash_check(report: RegistryValidationReport, registry: VisualStrategyR
     if compute_hash() == registry.snapshot_hash:
         return report.model_copy(update={"snapshot_hash_validation_mode": "verified"})
     return _append_report_issue(
-        report.model_copy(update={"snapshot_hash_validation_mode": "verified"}),
+        report.model_copy(update={"snapshot_hash_validation_mode": "mismatch"}),
         _issue(
             code=RegistryValidationCode.REGISTRY_HASH_MISMATCH,
             severity=RegistryValidationSeverity.ERROR,

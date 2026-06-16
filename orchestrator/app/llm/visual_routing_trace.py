@@ -29,7 +29,7 @@ from orchestrator.app.schemas.visual_routing_trace import (
     normalize_trace_strings,
 )
 from orchestrator.app.schemas.visual_strategy_integrity import RegistryValidationReport
-from orchestrator.app.schemas.visual_strategy_resolution import VisualStrategyDecision
+from orchestrator.app.schemas.visual_strategy_resolution import VisualStrategyDecision, VisualStrategyRuntimeContext
 
 
 class VisualRoutingTraceBuildError(ValueError):
@@ -66,6 +66,7 @@ def build_visual_routing_trace(
     execution: VisualRoutingModeExecution[Any],
     context: CreativeRoutingContext,
     raw_business_type: str | None,
+    runtime_context: VisualStrategyRuntimeContext | None = None,
     campaign_roles: Iterable[str] = (),
     placement: str | None = None,
     legacy_observation: LegacyVisualRouteObservation | None = None,
@@ -77,6 +78,7 @@ def build_visual_routing_trace(
             execution=execution,
             context=context,
             raw_business_type=raw_business_type,
+            runtime_context=runtime_context,
             campaign_roles=campaign_roles,
             placement=placement,
             explicit_legacy_observation=legacy_observation,
@@ -88,6 +90,7 @@ def build_visual_routing_trace(
             execution=execution,
             context=context,
             raw_business_type=raw_business_type,
+            runtime_context=runtime_context,
             campaign_roles=campaign_roles,
             placement=placement,
             explicit_legacy_observation=legacy_observation,
@@ -98,6 +101,7 @@ def build_visual_routing_trace(
         execution=execution,
         context=context,
         raw_business_type=raw_business_type,
+        runtime_context=runtime_context,
         campaign_roles=campaign_roles,
         placement=placement,
         stage_observations=stage_observations,
@@ -125,6 +129,7 @@ def _build_legacy_trace(
     execution: VisualRoutingModeExecution[Any],
     context: CreativeRoutingContext,
     raw_business_type: str | None,
+    runtime_context: VisualStrategyRuntimeContext | None,
     campaign_roles: Iterable[str],
     placement: str | None,
     explicit_legacy_observation: LegacyVisualRouteObservation | None,
@@ -140,7 +145,7 @@ def _build_legacy_trace(
         trace_version=VISUAL_ROUTING_TRACE_VERSION,
         routing_mode=RoutingMode.LEGACY,
         completeness=VisualRoutingTraceCompleteness.COMPLETE,
-        input_snapshot=_input_snapshot(context, raw_business_type, campaign_roles, placement, legacy, additional_evidence_refs),
+        input_snapshot=_input_snapshot(context, raw_business_type, runtime_context, campaign_roles, placement, legacy, additional_evidence_refs),
         active_route=_active_from_legacy(legacy),
         stage_observations=tuple(stage_observations),
         legacy_observation=legacy,
@@ -152,6 +157,7 @@ def _build_shadow_trace(
     execution: VisualRoutingModeExecution[Any],
     context: CreativeRoutingContext,
     raw_business_type: str | None,
+    runtime_context: VisualStrategyRuntimeContext | None,
     campaign_roles: Iterable[str],
     placement: str | None,
     explicit_legacy_observation: LegacyVisualRouteObservation | None,
@@ -160,6 +166,8 @@ def _build_shadow_trace(
 ) -> ShadowVisualRoutingTrace:
     if execution.active_source != RoutingSource.LEGACY:
         raise VisualRoutingTraceBuildError("shadow trace requires legacy active source")
+    if execution.canonical_decision is not None and runtime_context is None:
+        raise VisualRoutingTraceBuildError("shadow trace with canonical decision requires runtime_context")
     legacy = _select_legacy_observation(explicit_legacy_observation, execution.legacy_observation)
     if legacy is None:
         active = None
@@ -171,7 +179,7 @@ def _build_shadow_trace(
         trace_version=VISUAL_ROUTING_TRACE_VERSION,
         routing_mode=RoutingMode.SHADOW,
         completeness=completeness,
-        input_snapshot=_input_snapshot(context, raw_business_type, campaign_roles, placement, legacy, additional_evidence_refs),
+        input_snapshot=_input_snapshot(context, raw_business_type, runtime_context, campaign_roles, placement, legacy, additional_evidence_refs),
         active_route=active,
         stage_observations=_with_shadow_error_stage(stage_observations, execution.shadow_error),
         legacy_observation=legacy,
@@ -191,6 +199,7 @@ def _build_canonical_trace(
     execution: VisualRoutingModeExecution[Any],
     context: CreativeRoutingContext,
     raw_business_type: str | None,
+    runtime_context: VisualStrategyRuntimeContext | None,
     campaign_roles: Iterable[str],
     placement: str | None,
     stage_observations: Iterable[VisualRoutingStageObservation],
@@ -200,12 +209,14 @@ def _build_canonical_trace(
         raise VisualRoutingTraceBuildError("canonical trace requires canonical active source")
     if execution.canonical_decision is None:
         raise VisualRoutingTraceBuildError("canonical trace requires canonical decision")
+    if runtime_context is None:
+        raise VisualRoutingTraceBuildError("canonical trace requires runtime_context")
     canonical = summarize_visual_strategy_decision(execution.canonical_decision)
     return CanonicalVisualRoutingTrace(
         trace_version=VISUAL_ROUTING_TRACE_VERSION,
         routing_mode=RoutingMode.CANONICAL,
         completeness=VisualRoutingTraceCompleteness.COMPLETE,
-        input_snapshot=_input_snapshot(context, raw_business_type, campaign_roles, placement, None, additional_evidence_refs),
+        input_snapshot=_input_snapshot(context, raw_business_type, runtime_context, campaign_roles, placement, None, additional_evidence_refs),
         active_route=_active_from_canonical(canonical),
         stage_observations=tuple(stage_observations),
         canonical_decision=canonical,
@@ -215,13 +226,15 @@ def _build_canonical_trace(
 def _input_snapshot(
     context: CreativeRoutingContext,
     raw_business_type: str | None,
+    runtime_context: VisualStrategyRuntimeContext | None,
     campaign_roles: Iterable[str],
     placement: str | None,
     legacy: LegacyVisualRouteObservation | None,
     additional_evidence_refs: Iterable[str],
 ) -> VisualRoutingInputSnapshot:
     resolved_raw_business_type = _resolve_raw_business_type(context, raw_business_type)
-    resolved_placement = _resolve_placement(context, placement)
+    resolved_campaign_roles = _resolve_campaign_roles(runtime_context, campaign_roles)
+    resolved_placement = _resolve_placement(context, runtime_context, placement)
     conflict_ids = [conflict.conflict_id for conflict in context.input_conflicts]
     conflict_types = [conflict.conflict_type for conflict in context.input_conflicts]
     product_category_path = tuple(context.product.category_path)
@@ -243,10 +256,10 @@ def _input_snapshot(
         product_name=context.product.product_name,
         product_category_path=product_category_path,
         product_visual_category_path=product_visual_category_path,
-        category_path_match=product_category_path == product_visual_category_path,
+        category_path_contract_valid=product_category_path == product_visual_category_path,
         business_tags=context.business.business_tags,
         product_tags=context.product_visual.product_tags,
-        campaign_roles=campaign_roles,
+        campaign_roles=resolved_campaign_roles,
         placement=resolved_placement,
         ambiguity_flags=context.ambiguity_flags,
         input_conflict_ids=conflict_ids,
@@ -262,14 +275,36 @@ def _resolve_raw_business_type(context: CreativeRoutingContext, raw_business_typ
     return context_raw if context_raw is not None else raw_business_type
 
 
-def _resolve_placement(context: CreativeRoutingContext, placement: str | None) -> str | None:
+def _resolve_campaign_roles(
+    runtime_context: VisualStrategyRuntimeContext | None,
+    campaign_roles: Iterable[str],
+) -> tuple[str, ...]:
+    explicit = normalize_trace_strings(campaign_roles)
+    explicit_set = frozenset(explicit)
+    if runtime_context is None:
+        return explicit
+    runtime_set = runtime_context.campaign_roles
+    if explicit_set and explicit_set != runtime_set:
+        raise VisualRoutingTraceBuildError("campaign role sources conflict")
+    return tuple(sorted(runtime_set or explicit_set))
+
+
+def _resolve_placement(
+    context: CreativeRoutingContext,
+    runtime_context: VisualStrategyRuntimeContext | None,
+    placement: str | None,
+) -> str | None:
     context_placement = str(context.ad_format.ad_format)
-    if placement is not None and context_placement is not None and placement.strip() != str(context_placement).strip():
+    runtime_placement = runtime_context.placement if runtime_context is not None else None
+    if runtime_placement is not None and context_placement != runtime_placement:
+        raise VisualRoutingTraceBuildError("runtime placement conflicts with AdFormatSpec")
+    baseline = runtime_placement if runtime_placement is not None else context_placement
+    if placement is not None and baseline is not None and placement.strip() != str(baseline).strip():
         raise VisualRoutingTraceBuildError("placement sources conflict")
     if placement is not None:
         return placement
-    if context_placement is not None:
-        return cast(str, context_placement)
+    if baseline is not None:
+        return cast(str, baseline)
     return None
 
 
@@ -325,7 +360,7 @@ def _with_shadow_error_stage(
         return _upsert_stage_observation(
             items,
             VisualRoutingStageObservation(
-                stage=VisualRoutingDiagnosticStage.RESOURCE_REGISTRY,
+                stage=VisualRoutingDiagnosticStage.ROUTE_COMPARISON,
                 status=VisualRoutingStageStatus.DEGRADED,
                 diagnostic_codes=(shadow_error.code.value,),
             ),

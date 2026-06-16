@@ -249,7 +249,14 @@ def test_evidence_refs_do_not_force_business_or_semantic_refs_without_requiremen
 
 
 def test_confidence_uses_input_min_evidence_alignment_and_fallback_multiplier():
-    primary = _profile(required_tags=["missing"])
+    primary = _profile(
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.BUSINESS,
+                all_of=["missing"],
+            ),
+        )
+    )
     fallback = _profile(strategy_id="fallback_profile", fallback_tier=1, fallback_role="fallback_role_alpha", priority=1)
     registry = _registry(primary, fallback)
 
@@ -263,8 +270,15 @@ def test_confidence_uses_input_min_evidence_alignment_and_fallback_multiplier():
     assert decision.score.total_score != decision.confidence
 
 
-def test_flat_required_tags_do_not_halve_confidence_when_satisfied():
-    profile = _profile(required_tags=["subject_fact_alpha"])
+def test_scoped_required_tags_do_not_halve_confidence_when_satisfied():
+    profile = _profile(
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.SEMANTIC_FACT,
+                all_of=["subject_fact_alpha"],
+            ),
+        ),
+    )
 
     decision = resolve_visual_strategy(_context(), _intent(), _registry(profile))
 

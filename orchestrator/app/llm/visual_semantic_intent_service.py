@@ -17,6 +17,7 @@ from orchestrator.app.schemas.visual_semantic_intent import (
     VisualSemanticIntentGenerationResult,
     semantic_token_key,
 )
+from orchestrator.app.schemas.creative_routing import unfreeze_json_value
 
 
 class VisualSemanticIntentValidationError(ValueError):
@@ -141,7 +142,7 @@ def build_visual_semantic_input_projection(context: CreativeRoutingContext) -> d
             }
             for item in context.visual_observations
         ],
-        "reference_style_profile": context.reference_style_profile,
+        "reference_style_profile": unfreeze_json_value(context.reference_style_profile),
         "ambiguity_flags": list(context.ambiguity_flags),
         "input_conflicts": [
             {

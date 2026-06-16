@@ -207,9 +207,23 @@ def test_reference_style_profile_is_json_compatible_and_deep_copied():
     context = _context(reference_style_profile=profile)
     profile["weights"]["soft"] = 0.1
 
-    assert context.reference_style_profile == {"style_tags": ["minimal"], "weights": {"soft": 0.8}}
+    assert context.model_dump()["reference_style_profile"] == {"style_tags": ["minimal"], "weights": {"soft": 0.8}}
     with pytest.raises(ValidationError, match="JSON-compatible"):
         _context(reference_style_profile={"bad": object()})
+
+
+def test_nested_mutable_fields_are_deeply_immutable():
+    context = _context(
+        visual_observations=[_visual_evidence("e1")],
+        reference_style_profile={"style_tags": ["minimal"], "weights": {"soft": 0.8}},
+    )
+
+    with pytest.raises(AttributeError):
+        context.visual_observations.append(_visual_evidence("e2"))
+    with pytest.raises(TypeError):
+        context.reference_style_profile["new"] = "value"
+    with pytest.raises(AttributeError):
+        context.reference_style_profile["style_tags"].append("new")
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
@@ -229,7 +243,7 @@ def test_creative_routing_context_json_round_trip():
 def test_ambiguity_flags_and_resolver_version_are_normalized():
     context = _context(ambiguity_flags=[" beauty_subdomain ", "beauty_subdomain", "", "format_unclear"], resolver_version=" v1 ")
 
-    assert context.ambiguity_flags == ["beauty_subdomain", "format_unclear"]
+    assert context.ambiguity_flags == ("beauty_subdomain", "format_unclear")
     assert context.resolver_version == "v1"
     for bad_version in ("", " ", 1, True, None):
         with pytest.raises(ValidationError):

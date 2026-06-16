@@ -39,8 +39,22 @@ def test_unknown_empty_campaign_context_is_allowed():
     assert context.campaign_intent is None
     assert context.campaign_status is None
     assert context.promotion_goal is None
-    assert context.desired_positioning == []
-    assert context.evidence_refs == []
+    assert context.desired_positioning == ()
+    assert context.evidence_refs == ()
+
+
+def test_campaign_context_tuple_fields_are_deeply_immutable():
+    context = CampaignContext(
+        campaign_intent="launch",
+        desired_positioning=["premium"],
+        evidence_refs=["campaign:e1"],
+        confidence=0.8,
+    )
+
+    with pytest.raises(AttributeError):
+        context.desired_positioning.append("quiet")
+    with pytest.raises(AttributeError):
+        context.evidence_refs.append("campaign:e2")
 
 
 @pytest.mark.parametrize(
@@ -71,8 +85,8 @@ def test_campaign_context_normalizes_open_vocabulary_without_aliasing():
     assert context.campaign_intent == "new_product_launch"
     assert context.campaign_status == "new_menu"
     assert context.promotion_goal == "product_promotion"
-    assert context.desired_positioning == ["premium", "quiet"]
-    assert context.evidence_refs == ["input:campaign"]
+    assert context.desired_positioning == ("premium", "quiet")
+    assert context.evidence_refs == ("input:campaign",)
 
 
 def test_campaign_claims_require_evidence_refs():
@@ -120,8 +134,8 @@ def test_input_evidence_adapter_projects_campaign_fields_without_placement():
     assert context.campaign_intent == "new_product_launch"
     assert context.campaign_status == "new_product"
     assert context.promotion_goal == "product_promotion"
-    assert context.desired_positioning == ["premium"]
-    assert context.evidence_refs == [fact.evidence_id for fact in facts]
+    assert context.desired_positioning == ("premium",)
+    assert context.evidence_refs == tuple(fact.evidence_id for fact in facts)
     assert not hasattr(context, "placement")
 
 
@@ -149,4 +163,4 @@ def test_input_evidence_adapter_requires_matching_or_explicit_evidence():
         campaign_context_from_input_evidence(bundle)
 
     context = campaign_context_from_input_evidence(bundle, evidence_refs=["input:campaign_intent"])
-    assert context.evidence_refs == ["input:campaign_intent"]
+    assert context.evidence_refs == ("input:campaign_intent",)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -31,7 +31,7 @@ from orchestrator.app.schemas.visual_strategy_resolution import (
 )
 
 
-RESOLVER_VERSION = "visual-strategy-resolver-v2"
+RESOLVER_VERSION = "visual-strategy-resolver-v3"
 
 
 class NoEligibleVisualStrategyError(Exception):
@@ -52,14 +52,14 @@ class _Candidate:
 
 def build_default_visual_strategy_scoring_policy() -> VisualStrategyScoringPolicy:
     return VisualStrategyScoringPolicy(
-        version="visual-strategy-scoring-v1",
+        version="visual-strategy-scoring-v2",
         evidence_alignment_weight=1.0,
         product_relevance_weight=1.0,
         campaign_fit_weight=0.5,
         format_fit_weight=0.5,
         environment_fit_weight=0.75,
         reference_fit_weight=0.25,
-        unsupported_inference_penalty_weight=0.25,
+        semantic_fit_weight=0.5,
         fallback_penalty_weight=0.35,
         unrestricted_axis_score=0.5,
         fallback_tier_step=0.2,
@@ -233,6 +233,8 @@ def _evaluate_profile(
         rejection_codes.append(VisualStrategyRejectionCode.PLACEMENT_MISMATCH)
     if profile.supported_campaign_roles and not (_key_set(profile.supported_campaign_roles) & _key_set(snapshot.campaign_roles)):
         rejection_codes.append(VisualStrategyRejectionCode.CAMPAIGN_ROLE_MISMATCH)
+    if profile.enabled and profile.required_tags:
+        rejection_codes.append(VisualStrategyRejectionCode.UNSCOPED_REQUIRED_TAG)
 
     required = _key_set(profile.required_tags)
     preferred = _key_set(profile.preferred_tags)
@@ -346,8 +348,9 @@ def _score_profile(
     environment_fit = _coverage(_key_set(profile.preferred_tags), snapshot.business_signals, unrestricted)
     reference_fit = _coverage(_key_set(profile.preferred_tags), snapshot.reference_style_signals, unrestricted)
     introduced = _key_set(profile.introduced_visual_elements)
-    unsupported_penalty = len(unsupported_elements) / len(introduced) if introduced else 0.0
+    unsupported_penalty = 0.0
     fallback_penalty = min(1.0, profile.fallback_tier * policy.fallback_tier_step)
+    semantic_fit = _coverage(_key_set(profile.preferred_tags), snapshot.semantic_style_signals, unrestricted)
 
     positive_weight_sum = (
         policy.evidence_alignment_weight
@@ -356,6 +359,7 @@ def _score_profile(
         + policy.format_fit_weight
         + policy.environment_fit_weight
         + policy.reference_fit_weight
+        + policy.semantic_fit_weight
     )
     positive = (
         evidence_alignment * policy.evidence_alignment_weight
@@ -364,10 +368,10 @@ def _score_profile(
         + format_fit * policy.format_fit_weight
         + environment_fit * policy.environment_fit_weight
         + reference_fit * policy.reference_fit_weight
+        + semantic_fit * policy.semantic_fit_weight
     ) / positive_weight_sum
     penalty = (
-        unsupported_penalty * policy.unsupported_inference_penalty_weight
-        + fallback_penalty * policy.fallback_penalty_weight
+        fallback_penalty * policy.fallback_penalty_weight
     )
     return VisualStrategyScore(
         evidence_alignment=round(_clamp(evidence_alignment), 6),
@@ -376,6 +380,7 @@ def _score_profile(
         format_fit=round(_clamp(format_fit), 6),
         environment_fit=round(_clamp(environment_fit), 6),
         reference_fit=round(_clamp(reference_fit), 6),
+        semantic_fit=round(_clamp(semantic_fit), 6),
         unsupported_inference_penalty=round(_clamp(unsupported_penalty), 6),
         fallback_penalty=round(_clamp(fallback_penalty), 6),
         total_score=round(_clamp(positive - penalty), 6),
@@ -608,11 +613,11 @@ def _reference_style_signals(value: Any) -> frozenset[str]:
             if normalized:
                 output.add(normalized)
             return
-        if isinstance(item, list):
+        if isinstance(item, (list, tuple)):
             for child in item:
                 visit(child)
             return
-        if isinstance(item, dict):
+        if isinstance(item, Mapping):
             for child in item.values():
                 visit(child)
 

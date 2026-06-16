@@ -27,3 +27,26 @@ def build_business_environment_context(
         evidence_refs=evidence_refs,
         confidence=domain_result.confidence if confidence is None else confidence,
     )
+
+
+def build_business_environment_context_from_domain_routing(
+    domain_result: DomainRoutingResult,
+    *,
+    venue_type: str | None = None,
+    service_model: str | None = None,
+    additional_business_tags: Iterable[str] = (),
+    additional_environment_tags: Iterable[str] = (),
+    additional_evidence_refs: Iterable[str] = (),
+    confidence: float | None = None,
+) -> BusinessEnvironmentContext:
+    routing_tags = tuple(tag.tag for tag in domain_result.business_tags if tag.usable_for_routing)
+    routing_evidence = tuple(tag.evidence_ref for tag in domain_result.business_tags if tag.usable_for_routing and tag.evidence_ref)
+    return BusinessEnvironmentContext(
+        broad_domain=domain_result.canonical_domain,
+        venue_type=venue_type,
+        service_model=service_model,
+        business_tags=(*routing_tags, *additional_business_tags),
+        environment_tags=additional_environment_tags,
+        evidence_refs=(*domain_result.evidence_refs, *routing_evidence, *additional_evidence_refs),
+        confidence=domain_result.confidence if confidence is None else confidence,
+    )

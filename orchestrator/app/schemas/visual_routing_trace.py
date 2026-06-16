@@ -19,7 +19,7 @@ from orchestrator.app.schemas.visual_routing_shadow import (
 from orchestrator.app.schemas.visual_strategy_resolution import VisualStrategyFallbackReason
 
 
-VISUAL_ROUTING_TRACE_VERSION = "visual-routing-trace-v1"
+VISUAL_ROUTING_TRACE_VERSION = "visual-routing-trace-v2"
 _ERROR_TYPE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
 _ARTIFACT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
@@ -104,6 +104,7 @@ class VisualRoutingDiagnosticStage(StrEnum):
     PRODUCT_UNDERSTANDING = "product_understanding"
     BUSINESS_NORMALIZATION = "business_normalization"
     STRATEGY_RESOLUTION = "strategy_resolution"
+    ROUTE_COMPARISON = "route_comparison"
     RESOURCE_REGISTRY = "resource_registry"
     PROVIDER_PROMPT_ADAPTER = "provider_prompt_adapter"
     IMAGE_GENERATION = "image_generation"
@@ -133,7 +134,7 @@ class VisualRoutingInputSnapshot(BaseModel):
     product_name: str
     product_category_path: tuple[str, ...] = ()
     product_visual_category_path: tuple[str, ...] = ()
-    category_path_match: bool
+    category_path_contract_valid: bool
     business_tags: tuple[str, ...] = ()
     product_tags: tuple[str, ...] = ()
     campaign_roles: tuple[str, ...] = ()
@@ -258,6 +259,12 @@ class CanonicalVisualStrategySummary(BaseModel):
                 raise ValueError("fallback summary requires fallback metadata")
         if self.unsupported_domain and self.missing_specialized_profile:
             raise ValueError("fallback diagnostics are mutually exclusive")
+        if self.fallback_reason == VisualStrategyFallbackReason.UNSUPPORTED_DOMAIN:
+            if not self.unsupported_domain or self.missing_specialized_profile:
+                raise ValueError("unsupported-domain fallback diagnosis mismatch")
+        if self.fallback_reason == VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE:
+            if not self.missing_specialized_profile or self.unsupported_domain:
+                raise ValueError("missing-specialized fallback diagnosis mismatch")
         return self
 
 
@@ -306,6 +313,7 @@ _STAGE_ORDER = {
             VisualRoutingDiagnosticStage.PRODUCT_UNDERSTANDING,
             VisualRoutingDiagnosticStage.BUSINESS_NORMALIZATION,
             VisualRoutingDiagnosticStage.STRATEGY_RESOLUTION,
+            VisualRoutingDiagnosticStage.ROUTE_COMPARISON,
             VisualRoutingDiagnosticStage.RESOURCE_REGISTRY,
             VisualRoutingDiagnosticStage.PROVIDER_PROMPT_ADAPTER,
             VisualRoutingDiagnosticStage.IMAGE_GENERATION,
@@ -461,6 +469,10 @@ def _assert_comparison_matches(
         raise ValueError("comparison legacy preset must match legacy observation")
     if comparison.legacy_template_id != legacy.template_id:
         raise ValueError("comparison legacy template must match legacy observation")
+    if comparison.legacy_route_key != legacy.legacy_route_key:
+        raise ValueError("comparison legacy route key must match legacy observation")
+    if comparison.legacy_route_version != legacy.route_version:
+        raise ValueError("comparison legacy route version must match legacy observation")
     if comparison.legacy_copy_tone_profile_id != legacy.copy_tone_profile_id:
         raise ValueError("comparison legacy copy tone must match legacy observation")
     if comparison.new_strategy_id != canonical.strategy_id:
@@ -469,3 +481,23 @@ def _assert_comparison_matches(
         raise ValueError("comparison template must match canonical decision")
     if comparison.new_preset_id != canonical.preset_id:
         raise ValueError("comparison preset must match canonical decision")
+    if comparison.new_copy_tone_profile_id != canonical.copy_tone_profile_id:
+        raise ValueError("comparison copy tone must match canonical decision")
+    if comparison.new_route_version != canonical.route_version:
+        raise ValueError("comparison route version must match canonical decision")
+    if comparison.new_resolver_version != canonical.resolver_version:
+        raise ValueError("comparison resolver version must match canonical decision")
+    if comparison.new_registry_version != canonical.registry_version:
+        raise ValueError("comparison registry version must match canonical decision")
+    if comparison.new_registry_snapshot_hash != canonical.registry_snapshot_hash:
+        raise ValueError("comparison registry hash must match canonical decision")
+    if comparison.canonical_fallback_used != canonical.fallback_used:
+        raise ValueError("comparison fallback_used must match canonical decision")
+    if comparison.canonical_fallback_role != canonical.fallback_role:
+        raise ValueError("comparison fallback role must match canonical decision")
+    if comparison.canonical_fallback_reason != canonical.fallback_reason:
+        raise ValueError("comparison fallback reason must match canonical decision")
+    if comparison.canonical_unsupported_domain != canonical.unsupported_domain:
+        raise ValueError("comparison unsupported_domain must match canonical decision")
+    if comparison.canonical_missing_specialized_profile != canonical.missing_specialized_profile:
+        raise ValueError("comparison missing_specialized_profile must match canonical decision")

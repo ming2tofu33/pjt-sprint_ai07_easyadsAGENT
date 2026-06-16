@@ -23,9 +23,9 @@ def normalize_string_list(
     values: Iterable[str] | None,
     *,
     deduplicate: bool = True,
-) -> list[str]:
+) -> tuple[str, ...]:
     if values is None:
-        return []
+        return ()
     if isinstance(values, str):
         candidates: Iterable[str] = [values]
     else:
@@ -43,10 +43,10 @@ def normalize_string_list(
             continue
         normalized.append(item)
         seen.add(item)
-    return normalized
+    return tuple(normalized)
 
 
-def normalize_category_path(values: Iterable[str] | None) -> list[str]:
+def normalize_category_path(values: Iterable[str] | None) -> tuple[str, ...]:
     return normalize_string_list(values, deduplicate=False)
 
 
@@ -60,16 +60,16 @@ class ProductVisualContext(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     product_name: str
-    category_path: list[str] = Field(default_factory=list)
+    category_path: tuple[str, ...] = ()
 
-    product_tags: list[str] = Field(default_factory=list)
-    visible_attributes: list[str] = Field(default_factory=list)
-    explicit_preparation_methods: list[str] = Field(default_factory=list)
+    product_tags: tuple[str, ...] = ()
+    visible_attributes: tuple[str, ...] = ()
+    explicit_preparation_methods: tuple[str, ...] = ()
 
-    permissible_visual_inferences: list[str] = Field(default_factory=list)
-    prohibited_visual_inferences: list[str] = Field(default_factory=list)
+    permissible_visual_inferences: tuple[str, ...] = ()
+    prohibited_visual_inferences: tuple[str, ...] = ()
 
-    evidence_refs: list[str] = Field(min_length=1)
+    evidence_refs: tuple[str, ...] = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
 
     @field_validator("product_name", mode="before")
@@ -79,7 +79,7 @@ class ProductVisualContext(BaseModel):
 
     @field_validator("category_path", mode="before")
     @classmethod
-    def normalize_category(cls, value: Any) -> list[str]:
+    def normalize_category(cls, value: Any) -> tuple[str, ...]:
         return normalize_category_path(value)
 
     @field_validator(
@@ -92,7 +92,7 @@ class ProductVisualContext(BaseModel):
         mode="before",
     )
     @classmethod
-    def normalize_list_field(cls, value: Any) -> list[str]:
+    def normalize_list_field(cls, value: Any) -> tuple[str, ...]:
         return normalize_string_list(value)
 
     @model_validator(mode="after")

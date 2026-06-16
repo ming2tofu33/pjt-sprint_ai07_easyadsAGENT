@@ -411,6 +411,7 @@ def test_hash_mismatch_preserves_original_catalog_and_policy_context():
 
     assert RegistryValidationCode.REGISTRY_HASH_MISMATCH in {issue.code for issue in report.issues}
     assert report.valid is False
+    assert report.snapshot_hash_validation_mode == "mismatch"
     assert report.checked_provider_capability_count == 1
     assert report.provider_capability_validation_mode == "catalog"
     assert report.archetype_validation_mode == "catalog"
@@ -495,6 +496,8 @@ def test_report_rejects_negative_and_inconsistent_counts():
         RegistryValidationReport(**{**payload, "profile_count": -1})
     with pytest.raises(ValidationError):
         RegistryValidationReport(**{**payload, "fallback_profile_count": 2})
+    with pytest.raises(ValidationError):
+        RegistryValidationReport(**{**payload, "snapshot_hash_validation_mode": "strict"})
 
 
 def test_integrity_error_helper_raises_only_for_invalid_report():

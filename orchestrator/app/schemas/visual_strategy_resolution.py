@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from orchestrator.app.schemas.visual_strategy import normalize_required_label, normalize_string_set
 
@@ -55,7 +55,7 @@ class VisualStrategyScoringPolicy(BaseModel):
     format_fit_weight: float
     environment_fit_weight: float
     reference_fit_weight: float
-    unsupported_inference_penalty_weight: float
+    semantic_fit_weight: float
     fallback_penalty_weight: float
     unrestricted_axis_score: float
     fallback_tier_step: float
@@ -72,7 +72,7 @@ class VisualStrategyScoringPolicy(BaseModel):
         "format_fit_weight",
         "environment_fit_weight",
         "reference_fit_weight",
-        "unsupported_inference_penalty_weight",
+        "semantic_fit_weight",
         "fallback_penalty_weight",
         mode="before",
     )
@@ -94,6 +94,7 @@ class VisualStrategyScoringPolicy(BaseModel):
             + self.format_fit_weight
             + self.environment_fit_weight
             + self.reference_fit_weight
+            + self.semantic_fit_weight
         )
         if weight_sum <= 0:
             raise ValueError("at least one positive scoring weight is required")
@@ -109,9 +110,16 @@ class VisualStrategyScore(BaseModel):
     format_fit: float = Field(ge=0.0, le=1.0)
     environment_fit: float = Field(ge=0.0, le=1.0)
     reference_fit: float = Field(ge=0.0, le=1.0)
+    semantic_fit: float = Field(ge=0.0, le=1.0)
     unsupported_inference_penalty: float = Field(ge=0.0, le=1.0)
     fallback_penalty: float = Field(ge=0.0, le=1.0)
     total_score: float = Field(ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def require_hard_reject_penalty_zero(self) -> "VisualStrategyScore":
+        if self.unsupported_inference_penalty != 0.0:
+            raise ValueError("unsupported_inference_penalty is deprecated and must be zero")
+        return self
 
 
 class VisualStrategyRejectionCode(StrEnum):
@@ -125,6 +133,7 @@ class VisualStrategyRejectionCode(StrEnum):
     EXCLUDED_TAG_PRESENT = "excluded_tag_present"
     PROHIBITED_VISUAL_ELEMENT = "prohibited_visual_element"
     MISSING_VISUAL_ELEMENT_EVIDENCE = "missing_visual_element_evidence"
+    UNSCOPED_REQUIRED_TAG = "unscoped_required_tag"
 
 
 class VisualStrategyFallbackReason(StrEnum):
@@ -155,7 +164,7 @@ class VisualStrategyCandidateTrace(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     strategy_id: str
-    eligible: bool
+    eligible: StrictBool
     fallback_tier: int = Field(default=0, ge=0)
     fallback_role: str | None = None
     rejection_codes: tuple[VisualStrategyRejectionCode, ...] = ()
@@ -217,11 +226,11 @@ class VisualStrategyResolutionTrace(BaseModel):
     non_fallback_eligible_count: int = Field(ge=0)
     fallback_eligible_count: int = Field(ge=0)
     selected_strategy_id: str | None
-    fallback_used: bool
+    fallback_used: StrictBool
     fallback_reason: VisualStrategyFallbackReason | None = None
     fallback_role: str | None = None
-    unsupported_domain: bool = False
-    missing_specialized_profile: bool = False
+    unsupported_domain: StrictBool = False
+    missing_specialized_profile: StrictBool = False
     candidates: tuple[VisualStrategyCandidateTrace, ...]
 
     @model_validator(mode="before")
@@ -316,12 +325,12 @@ class VisualStrategyDecision(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     provider_capabilities: frozenset[str]
     score: VisualStrategyScore
-    fallback_used: bool
+    fallback_used: StrictBool
     fallback_tier: int
     fallback_role: str | None
     fallback_reason: VisualStrategyFallbackReason | None
-    unsupported_domain: bool
-    missing_specialized_profile: bool
+    unsupported_domain: StrictBool
+    missing_specialized_profile: StrictBool
     registry_version: str
     registry_snapshot_hash: str
     confidence_policy_version: str

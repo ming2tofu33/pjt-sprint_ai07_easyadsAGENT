@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from types import MappingProxyType
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from orchestrator.app.llm.domain_routing import DomainRoutingResult
 from orchestrator.app.schemas.business_context import BusinessEnvironmentContext
@@ -70,7 +71,23 @@ def deduplicate_input_conflicts(values: list[InputConflict]) -> list[InputConfli
     return output
 
 
-def copy_json_compatible_profile(value: dict[str, Any] | None) -> dict[str, Any] | None:
+def freeze_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        return MappingProxyType({str(key): freeze_json_value(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(freeze_json_value(item) for item in value)
+    return value
+
+
+def unfreeze_json_value(value: Any) -> Any:
+    if isinstance(value, MappingProxyType):
+        return {key: unfreeze_json_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [unfreeze_json_value(item) for item in value]
+    return value
+
+
+def copy_json_compatible_profile(value: dict[str, Any] | None) -> MappingProxyType | None:
     if value is None:
         return None
     if not isinstance(value, dict):
@@ -79,13 +96,13 @@ def copy_json_compatible_profile(value: dict[str, Any] | None) -> dict[str, Any]
         encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False)
     except (TypeError, ValueError) as exc:
         raise ValueError("reference_style_profile must be JSON-compatible") from exc
-    return json.loads(encoded)
+    return freeze_json_value(json.loads(encoded))
 
 
 class CreativeRoutingContext(BaseModel):
     """Aggregator boundary for visual strategy routing inputs."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
 
     domain: DomainRoutingResult
     business: BusinessEnvironmentContext
@@ -93,31 +110,35 @@ class CreativeRoutingContext(BaseModel):
     product_visual: ProductVisualContext
     campaign: CampaignContext
     ad_format: AdFormatSpec
-    visual_observations: list[EvidenceItem] = Field(default_factory=list)
-    reference_style_profile: dict[str, Any] | None = None
-    ambiguity_flags: list[str] = Field(default_factory=list)
-    input_conflicts: list[InputConflict] = Field(default_factory=list)
+    visual_observations: tuple[EvidenceItem, ...] = ()
+    reference_style_profile: MappingProxyType | None = None
+    ambiguity_flags: tuple[str, ...] = ()
+    input_conflicts: tuple[InputConflict, ...] = ()
     resolver_version: str
 
     @field_validator("visual_observations", mode="after")
     @classmethod
-    def normalize_visual_observations(cls, value: list[EvidenceItem]) -> list[EvidenceItem]:
-        return deduplicate_evidence_items(value)
+    def normalize_visual_observations(cls, value: tuple[EvidenceItem, ...]) -> tuple[EvidenceItem, ...]:
+        return tuple(deduplicate_evidence_items(list(value)))
 
     @field_validator("input_conflicts", mode="after")
     @classmethod
-    def normalize_input_conflicts(cls, value: list[InputConflict]) -> list[InputConflict]:
-        return deduplicate_input_conflicts(value)
+    def normalize_input_conflicts(cls, value: tuple[InputConflict, ...]) -> tuple[InputConflict, ...]:
+        return tuple(deduplicate_input_conflicts(list(value)))
 
     @field_validator("reference_style_profile", mode="before")
     @classmethod
-    def validate_reference_style_profile(cls, value: Any) -> dict[str, Any] | None:
+    def validate_reference_style_profile(cls, value: Any) -> MappingProxyType | None:
         return copy_json_compatible_profile(value)
 
     @field_validator("ambiguity_flags", mode="before")
     @classmethod
-    def normalize_ambiguity_flags(cls, value: Any) -> list[str]:
-        return normalize_string_list(value)
+    def normalize_ambiguity_flags(cls, value: Any) -> tuple[str, ...]:
+        return tuple(normalize_string_list(value))
+
+    @field_serializer("reference_style_profile")
+    def serialize_reference_style_profile(self, value: MappingProxyType | None):
+        return unfreeze_json_value(value)
 
     @field_validator("resolver_version", mode="before")
     @classmethod
@@ -134,6 +155,6 @@ class CreativeRoutingContext(BaseModel):
         if self.product.product_name.strip() != self.product_visual.product_name.strip():
             raise ValueError("product_name must match product_visual product_name")
         if self.product.category_path or self.product_visual.category_path:
-            if self.product.category_path != self.product_visual.category_path:
+            if tuple(self.product.category_path) != tuple(self.product_visual.category_path):
                 raise ValueError("product category_path must match product_visual category_path")
         return self

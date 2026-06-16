@@ -113,7 +113,7 @@ class RouteComparisonPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     version: str
-    family_metadata_unavailable_severity: RouteComparisonSeverity = RouteComparisonSeverity.INFO
+    limitation_severity: RouteComparisonSeverity = RouteComparisonSeverity.INFO
     single_resource_mismatch_severity: RouteComparisonSeverity = RouteComparisonSeverity.WARNING
     multiple_resource_mismatch_severity: RouteComparisonSeverity = RouteComparisonSeverity.HIGH
     family_mismatch_severity: RouteComparisonSeverity = RouteComparisonSeverity.HIGH
@@ -147,6 +147,7 @@ class RouteComparison(BaseModel):
     disagreement_codes: tuple[RouteDisagreementCode, ...]
     comparison_limitations: tuple[RouteComparisonLimitation, ...] = ()
     severity: RouteComparisonSeverity
+    limitation_severity: RouteComparisonSeverity = RouteComparisonSeverity.NONE
     new_route_version: str
     new_resolver_version: str
     new_registry_version: str
@@ -197,6 +198,10 @@ class RouteComparison(BaseModel):
             raise ValueError("disagreement codes must be unique")
         if len(limitations) != len(self.comparison_limitations):
             raise ValueError("comparison limitations must be unique")
+        if not limitations and self.limitation_severity != RouteComparisonSeverity.NONE:
+            raise ValueError("missing comparison limitations require none limitation severity")
+        if limitations and self.limitation_severity == RouteComparisonSeverity.NONE:
+            raise ValueError("comparison limitations require limitation severity")
         if self.preset_match == (RouteDisagreementCode.PRESET_MISMATCH in codes):
             raise ValueError("preset match and disagreement code conflict")
         if self.template_match == (RouteDisagreementCode.TEMPLATE_MISMATCH in codes):
@@ -230,6 +235,12 @@ class RouteComparison(BaseModel):
                 raise ValueError("fallback comparison requires fallback metadata")
         if self.canonical_unsupported_domain and self.canonical_missing_specialized_profile:
             raise ValueError("fallback diagnostics are mutually exclusive")
+        if self.canonical_fallback_reason == VisualStrategyFallbackReason.UNSUPPORTED_DOMAIN:
+            if not self.canonical_unsupported_domain or self.canonical_missing_specialized_profile:
+                raise ValueError("unsupported-domain fallback diagnosis mismatch")
+        if self.canonical_fallback_reason == VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE:
+            if not self.canonical_missing_specialized_profile or self.canonical_unsupported_domain:
+                raise ValueError("missing-specialized fallback diagnosis mismatch")
         return self
 
 
@@ -274,4 +285,4 @@ class ShadowRoutingError(BaseModel):
 
 
 def build_default_route_comparison_policy() -> RouteComparisonPolicy:
-    return RouteComparisonPolicy(version="visual-route-comparison-policy-v1")
+    return RouteComparisonPolicy(version="visual-route-comparison-policy-v2")

@@ -43,6 +43,7 @@ def _score(total: float = 0.9) -> VisualStrategyScore:
         format_fit=1.0,
         environment_fit=1.0,
         reference_fit=1.0,
+        semantic_fit=1.0,
         unsupported_inference_penalty=0.0,
         fallback_penalty=0.0,
         total_score=total,
@@ -69,8 +70,8 @@ def _decision(
         score=score,
     )
     trace = VisualStrategyResolutionTrace(
-        resolver_version="visual-strategy-resolver-v2",
-        scoring_policy_version="visual-strategy-scoring-v1",
+        resolver_version="visual-strategy-resolver-v3",
+        scoring_policy_version="visual-strategy-scoring-v2",
         registry_version="visual-strategy-registry-v2",
         registry_snapshot_hash="registry-hash",
         candidate_count=1,
@@ -89,8 +90,8 @@ def _decision(
     )
     return VisualStrategyDecision(
         strategy_id=strategy_id,
-        route_version="visual-strategy-route-v2",
-        resolver_version="visual-strategy-resolver-v2",
+        route_version="visual-strategy-route-v3",
+        resolver_version="visual-strategy-resolver-v3",
         archetype="editorial",
         composition_template_id=template_id,
         mood_preset_id=preset_id,
@@ -471,8 +472,8 @@ def _comparison_payload(**overrides: object) -> dict[str, object]:
         "disagreement_codes": (),
         "comparison_limitations": (),
         "severity": "none",
-        "new_route_version": "visual-strategy-route-v2",
-        "new_resolver_version": "visual-strategy-resolver-v2",
+        "new_route_version": "visual-strategy-route-v3",
+        "new_resolver_version": "visual-strategy-resolver-v3",
         "new_registry_version": "visual-strategy-registry-v2",
         "new_registry_snapshot_hash": "registry-hash",
         "canonical_fallback_used": False,
@@ -507,6 +508,18 @@ def _comparison_payload(**overrides: object) -> dict[str, object]:
             "canonical_fallback_used": True,
             "canonical_fallback_role": "product_editorial",
             "canonical_fallback_reason": "unknown_reason",
+        },
+        {
+            "canonical_fallback_used": True,
+            "canonical_fallback_role": "fallback_role_alpha",
+            "canonical_fallback_reason": "unsupported_domain",
+            "canonical_unsupported_domain": False,
+        },
+        {
+            "canonical_fallback_used": True,
+            "canonical_fallback_role": "fallback_role_alpha",
+            "canonical_fallback_reason": "missing_specialized_profile",
+            "canonical_missing_specialized_profile": False,
         },
     ],
 )
