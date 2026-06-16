@@ -4,6 +4,7 @@ from orchestrator.app.llm.visual_routing_integration import (
     CatalogVisualRouteFamilyResolver,
     ImagePromptLegacyVisualRouteResult,
     build_fail_open_visual_routing_metadata,
+    build_image_prompt_visual_routing_metadata,
     build_visual_semantic_intent_for_shadow,
     build_visual_strategy_context_for_shadow,
     build_visual_strategy_runtime_context,
@@ -552,6 +553,241 @@ def test_a8_catalog_visual_route_family_resolver_rejects_unknown_resources():
 
     assert resolver.resolve_family("unknown_preset", "restaurant_bbq_warm_grill") is None
     assert resolver.resolve_family("restaurant_bbq_warm_grill", "unknown_template") is None
+
+
+def test_a8_builds_successful_shadow_metadata_for_bbq_evidence():
+    marketing_context = MarketingContext(
+        business_type="restaurant_bbq",
+        item_or_service="삼겹살",
+        promotion_goal="new_menu",
+        brand_tone="premium",
+    )
+    state = {
+        "ad_format_spec": {
+            "ad_format": "instagram_feed",
+            "width": 1024,
+            "height": 1024,
+            "aspect_ratio": "1:1",
+        },
+        "product_understanding": {
+            "product_name": "삼겹살",
+            "broad_category": "food_and_beverage",
+            "category_path": ["food_and_beverage", "restaurant", "korean_bbq"],
+            "product_name_evidence_ids": ["state:context.item_or_service"],
+            "confidence": 0.9,
+        },
+        "product_visual_context": {
+            "product_name": "삼겹살",
+            "category_path": ["food_and_beverage", "restaurant", "korean_bbq"],
+            "product_tags": ["grilled_meat"],
+            "explicit_preparation_methods": ["table_grilled"],
+            "permissible_visual_inferences": ["charcoal"],
+            "evidence_refs": ["vision:grilled_meat", "menu:charcoal"],
+            "confidence": 0.86,
+        },
+    }
+    domain = normalize_business_type("restaurant_bbq")
+    domain_result = _domain_result(
+        raw_business_type="restaurant_bbq",
+        canonical_domain=CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+        business_tags=["restaurant", "korean_bbq"],
+    )
+    projection = project_to_legacy_visual_route(
+        domain,
+        product_tags={"grilled_meat"},
+        explicit_scene_tags=set(),
+    )
+    preset = select_visual_preset(projection.route_key.value)
+    template = select_visual_template(projection.route_key.value, "instagram_feed", "premium")
+
+    metadata = build_image_prompt_visual_routing_metadata(
+        state=state,
+        marketing_context=marketing_context,
+        domain_result=domain_result,
+        legacy_projection=projection,
+        visual_template=template,
+        preset=preset,
+        ad_format_spec=state["ad_format_spec"],
+        route_family_id="restaurant_bbq",
+    )
+
+    assert metadata["metadata_version"]
+    assert metadata["routing_mode"] == "shadow"
+    assert metadata["active_source"] == "legacy"
+    assert metadata["trace_available"] is True
+    trace = metadata["trace"]
+    assert trace["routing_mode"] == "shadow"
+    assert trace["active_route"]["source"] == "legacy"
+    assert trace["active_route"]["copy_tone_profile_id"] is None
+    assert trace["legacy_observation"]["legacy_route_key"] == "restaurant_bbq"
+    assert trace["legacy_observation"]["copy_tone_profile_id"] is None
+    assert trace["canonical_decision"]["strategy_id"] == "restaurant_bbq_warm_grill"
+    assert trace["route_disagreement"]["new_strategy_id"] == "restaurant_bbq_warm_grill"
+
+
+def test_a8_legacy_mode_skips_canonical_resolver(monkeypatch):
+    def raise_if_called(*args, **kwargs):
+        raise AssertionError("canonical resolver should not run in legacy mode")
+
+    monkeypatch.setattr(
+        "orchestrator.app.llm.visual_strategy_resolver.resolve_visual_strategy",
+        raise_if_called,
+    )
+    marketing_context = MarketingContext(item_or_service="삼겹살", business_type="restaurant_bbq")
+    state = {
+        "render_options": {"visual_routing_mode": "legacy"},
+        "ad_format_spec": {"ad_format": "instagram_feed", "width": 1024, "height": 1024, "aspect_ratio": "1:1"},
+    }
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("restaurant_bbq"),
+        product_tags={"grilled_meat"},
+        explicit_scene_tags=set(),
+    )
+    preset = select_visual_preset(projection.route_key.value)
+    template = select_visual_template(projection.route_key.value, "instagram_feed", "premium")
+
+    metadata = build_image_prompt_visual_routing_metadata(
+        state=state,
+        marketing_context=marketing_context,
+        domain_result=_domain_result(
+            raw_business_type="restaurant_bbq",
+            canonical_domain=CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+            business_tags=["restaurant", "korean_bbq"],
+        ),
+        legacy_projection=projection,
+        visual_template=template,
+        preset=preset,
+        ad_format_spec=state["ad_format_spec"],
+        route_family_id="restaurant_bbq",
+    )
+
+    assert metadata["routing_mode"] == "legacy"
+    assert metadata["active_source"] == "legacy"
+    assert metadata["trace_available"] is True
+    assert metadata["trace"]["routing_mode"] == "legacy"
+    assert "canonical_decision" not in metadata["trace"]
+
+
+def test_a8_shadow_canonical_resolver_failure_returns_partial_metadata(monkeypatch):
+    def raise_canonical_error(*args, **kwargs):
+        raise RuntimeError("secret prompt")
+
+    monkeypatch.setattr(
+        "orchestrator.app.llm.visual_strategy_resolver.resolve_visual_strategy",
+        raise_canonical_error,
+    )
+    marketing_context = MarketingContext(item_or_service="삼겹살", business_type="restaurant_bbq")
+    state = {
+        "ad_format_spec": {"ad_format": "instagram_feed", "width": 1024, "height": 1024, "aspect_ratio": "1:1"}
+    }
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("restaurant_bbq"),
+        product_tags={"grilled_meat"},
+        explicit_scene_tags=set(),
+    )
+    preset = select_visual_preset(projection.route_key.value)
+    template = select_visual_template(projection.route_key.value, "instagram_feed", "premium")
+
+    metadata = build_image_prompt_visual_routing_metadata(
+        state=state,
+        marketing_context=marketing_context,
+        domain_result=_domain_result(
+            raw_business_type="restaurant_bbq",
+            canonical_domain=CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+            business_tags=["restaurant", "korean_bbq"],
+        ),
+        legacy_projection=projection,
+        visual_template=template,
+        preset=preset,
+        ad_format_spec=state["ad_format_spec"],
+        route_family_id="restaurant_bbq",
+    )
+
+    assert metadata["routing_mode"] == "shadow"
+    assert metadata["active_source"] == "legacy"
+    assert metadata["trace_available"] is True
+    assert metadata["trace"]["completeness"] == "partial"
+    assert metadata["trace"]["shadow_error"]["code"] == "canonical_resolution_failed"
+    assert "secret" not in str(metadata)
+
+
+def test_a8_shadow_canonical_custom_exception_type_is_sanitized(monkeypatch):
+    class PromptSecretLeakingError(Exception):
+        pass
+
+    def raise_canonical_error(*args, **kwargs):
+        raise PromptSecretLeakingError("secret prompt")
+
+    monkeypatch.setattr(
+        "orchestrator.app.llm.visual_strategy_resolver.resolve_visual_strategy",
+        raise_canonical_error,
+    )
+    marketing_context = MarketingContext(item_or_service="삼겹살", business_type="restaurant_bbq")
+    state = {
+        "ad_format_spec": {"ad_format": "instagram_feed", "width": 1024, "height": 1024, "aspect_ratio": "1:1"}
+    }
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("restaurant_bbq"),
+        product_tags={"grilled_meat"},
+        explicit_scene_tags=set(),
+    )
+    preset = select_visual_preset(projection.route_key.value)
+    template = select_visual_template(projection.route_key.value, "instagram_feed", "premium")
+
+    metadata = build_image_prompt_visual_routing_metadata(
+        state=state,
+        marketing_context=marketing_context,
+        domain_result=_domain_result(
+            raw_business_type="restaurant_bbq",
+            canonical_domain=CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+            business_tags=["restaurant", "korean_bbq"],
+        ),
+        legacy_projection=projection,
+        visual_template=template,
+        preset=preset,
+        ad_format_spec=state["ad_format_spec"],
+        route_family_id="restaurant_bbq",
+    )
+
+    assert metadata["trace"]["shadow_error"]["exception_type"] == "UnexpectedError"
+    metadata_text = str(metadata)
+    assert "PromptSecretLeakingError" not in metadata_text
+    assert "secret prompt" not in metadata_text
+
+
+def test_a8_unexpected_builder_failure_returns_sanitized_fallback_metadata():
+    marketing_context = MarketingContext(item_or_service="삼겹살", business_type="restaurant_bbq")
+    state = {
+        "ad_format_spec": {"ad_format": "instagram_feed", "width": 1024, "height": 1024, "aspect_ratio": "1:1"}
+    }
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("restaurant_bbq"),
+        product_tags={"grilled_meat"},
+        explicit_scene_tags=set(),
+    )
+    template = select_visual_template(projection.route_key.value, "instagram_feed", "premium")
+
+    metadata = build_image_prompt_visual_routing_metadata(
+        state=state,
+        marketing_context=marketing_context,
+        domain_result=_domain_result(
+            raw_business_type="restaurant_bbq",
+            canonical_domain=CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+            business_tags=["restaurant", "korean_bbq"],
+        ),
+        legacy_projection=projection,
+        visual_template=template,
+        preset={},
+        ad_format_spec=state["ad_format_spec"],
+        route_family_id="restaurant_bbq",
+    )
+
+    assert metadata["trace_available"] is False
+    assert metadata["trace_error"] == {
+        "stage": "visual_routing_shadow",
+        "exception_type": "KeyError",
+    }
+    assert "preset_id" not in str(metadata)
 
 
 def _domain_result(

@@ -9,8 +9,12 @@ from typing import Any
 from orchestrator.app.llm.business_context_service import build_business_environment_context_from_domain_routing
 from orchestrator.app.llm.creative_routing_context_service import build_creative_routing_context
 from orchestrator.app.llm.domain_routing import DomainRoutingResult, LegacyRoutingProjection
+from orchestrator.app.llm import visual_strategy_resolver
 from orchestrator.app.llm.product_visual_context_service import product_visual_context_from_understanding
+from orchestrator.app.llm.visual_routing_shadow import execute_visual_routing_mode
+from orchestrator.app.llm.visual_routing_trace import build_visual_routing_trace
 from orchestrator.app.llm.visual_presets import PRESET_ID_BY_BUSINESS_TYPE
+from orchestrator.app.llm.visual_strategy_profiles import build_default_visual_strategy_registry
 from orchestrator.app.llm.visual_templates import get_visual_templates
 from orchestrator.app.schemas.campaign_context import CampaignContext
 from orchestrator.app.schemas.creative_routing import CreativeRoutingContext
@@ -24,7 +28,7 @@ from orchestrator.app.schemas.visual_strategy_resolution import VisualStrategyRu
 
 VISUAL_ROUTING_METADATA_VERSION = "image-prompt-visual-routing-shadow-v1"
 _TRACE_ERROR_STAGE_UNKNOWN = "unknown"
-_ALLOWED_TRACE_ERROR_STAGES = frozenset({"trace_build"})
+_ALLOWED_TRACE_ERROR_STAGES = frozenset({"trace_build", "visual_routing_shadow"})
 _UNKNOWN_EXCEPTION_TYPE = "UnexpectedError"
 _ALLOWED_EXCEPTION_TYPES = frozenset(
     {
@@ -153,6 +157,76 @@ class CatalogVisualRouteFamilyResolver:
         return preset_family
 
 
+def build_image_prompt_visual_routing_metadata(
+    *,
+    state: Mapping[str, Any],
+    marketing_context: MarketingContext,
+    domain_result: DomainRoutingResult,
+    legacy_projection: LegacyRoutingProjection,
+    visual_template: Any,
+    preset: Mapping[str, Any],
+    ad_format_spec: AdFormatSpec | Mapping[str, Any],
+    route_family_id: str | None,
+) -> dict[str, Any]:
+    mode = resolve_visual_routing_mode(state)
+    try:
+        legacy_result = ImagePromptLegacyVisualRouteResult(
+            legacy_projection=legacy_projection,
+            template_id=visual_template.template_id,
+            preset_id=str(preset["preset_id"]),
+            route_family_id=route_family_id,
+        )
+        routing_context = build_visual_strategy_context_for_shadow(
+            state=state,
+            marketing_context=marketing_context,
+            domain_result=domain_result,
+        )
+        runtime_context = build_visual_strategy_runtime_context(
+            state=state,
+            ad_format_spec=ad_format_spec,
+        )
+        intent = build_visual_semantic_intent_for_shadow(state, routing_context)
+        registry = build_default_visual_strategy_registry()
+        execution = execute_visual_routing_mode(
+            mode,
+            legacy_runner=lambda: legacy_result,
+            legacy_observer=observe_legacy_visual_route,
+            canonical_runner=lambda: visual_strategy_resolver.resolve_visual_strategy(
+                routing_context,
+                intent,
+                registry,
+                runtime=runtime_context,
+            ),
+            family_resolver=CatalogVisualRouteFamilyResolver(),
+        )
+        legacy_observation = observe_legacy_visual_route(legacy_result)
+        trace = build_visual_routing_trace(
+            execution=execution,
+            context=routing_context,
+            raw_business_type=domain_result.raw_business_type,
+            runtime_context=runtime_context,
+            legacy_observation=legacy_observation,
+            additional_evidence_refs=("image_prompt_planner:visual_routing_shadow",),
+        )
+        trace_payload = trace.model_dump(mode="json")
+        return {
+            "metadata_version": VISUAL_ROUTING_METADATA_VERSION,
+            "routing_mode": mode.value,
+            "active_source": RoutingSource.LEGACY.value,
+            "trace_available": True,
+            "trace": _sanitize_trace_payload(trace_payload),
+        }
+    except Exception as exc:
+        return {
+            "metadata_version": VISUAL_ROUTING_METADATA_VERSION,
+            **build_fail_open_visual_routing_metadata(
+                mode=mode,
+                exception=exc,
+                stage="visual_routing_shadow",
+            ),
+        }
+
+
 def resolve_visual_routing_mode(state: Mapping[str, Any] | None) -> RoutingMode:
     """Resolve the A-8 routing mode.
 
@@ -170,6 +244,50 @@ def resolve_visual_routing_mode(state: Mapping[str, Any] | None) -> RoutingMode:
     if normalized == RoutingMode.LEGACY.value:
         return RoutingMode.LEGACY
     return RoutingMode.SHADOW
+
+
+def _drop_top_level_none_trace_sections(trace: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in trace.items() if value is not None}
+
+
+def _sanitize_trace_payload(trace: dict[str, Any]) -> dict[str, Any]:
+    payload = _drop_top_level_none_trace_sections(trace)
+    payload = _sanitize_trace_stage_observations(payload)
+    shadow_error = payload.get("shadow_error")
+    if not isinstance(shadow_error, Mapping):
+        return payload
+    sanitized_shadow_error = dict(shadow_error)
+    exception_type = sanitized_shadow_error.get("exception_type")
+    if exception_type is not None:
+        sanitized_shadow_error["exception_type"] = _sanitize_exception_type_name(exception_type)
+    return {
+        **payload,
+        "shadow_error": sanitized_shadow_error,
+    }
+
+
+def _sanitize_trace_stage_observations(trace: dict[str, Any]) -> dict[str, Any]:
+    observations = trace.get("stage_observations")
+    if not isinstance(observations, list):
+        return trace
+    sanitized_observations: list[Any] = []
+    changed = False
+    for observation in observations:
+        if not isinstance(observation, Mapping):
+            sanitized_observations.append(observation)
+            continue
+        sanitized_observation = dict(observation)
+        error_type = sanitized_observation.get("error_type")
+        if error_type is not None:
+            sanitized_observation["error_type"] = _sanitize_exception_type_name(error_type)
+            changed = True
+        sanitized_observations.append(sanitized_observation)
+    if not changed:
+        return trace
+    return {
+        **trace,
+        "stage_observations": sanitized_observations,
+    }
 
 
 def build_fail_open_visual_routing_metadata(
@@ -264,7 +382,12 @@ def _sanitize_trace_error_stage(stage: str) -> str:
 
 
 def _sanitize_exception_type(exception: Exception) -> str:
-    exception_type = exception.__class__.__name__
+    return _sanitize_exception_type_name(exception.__class__.__name__)
+
+
+def _sanitize_exception_type_name(exception_type: Any) -> str:
+    if not isinstance(exception_type, str):
+        return _UNKNOWN_EXCEPTION_TYPE
     if exception_type in _ALLOWED_EXCEPTION_TYPES:
         return exception_type
     return _UNKNOWN_EXCEPTION_TYPE
