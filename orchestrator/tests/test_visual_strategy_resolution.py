@@ -42,7 +42,8 @@ def test_visual_strategy_resolution_contract_fields():
         "fallback_used",
         "fallback_tier",
         "matched_rules",
-        "rejected_strategy_ids",
+        "ineligible_strategy_ids",
+        "eligible_not_selected_strategy_ids",
         "registry_version",
         "registry_snapshot_hash",
         "resolver_version",
@@ -101,3 +102,127 @@ def test_scoring_policy_is_versioned_and_strict():
 def test_rejection_codes_are_structural_not_domain_tokens():
     assert VisualStrategyRejectionCode.MISSING_SOURCE_REQUIREMENT.value == "missing_source_requirement"
     assert VisualStrategyRejectionCode.PROHIBITED_VISUAL_ELEMENT.value == "prohibited_visual_element"
+
+
+def _score(total: float = 1.0) -> VisualStrategyScore:
+    return VisualStrategyScore(
+        evidence_alignment=1,
+        product_relevance=1,
+        campaign_fit=1,
+        format_fit=1,
+        environment_fit=1,
+        reference_fit=1,
+        unsupported_inference_penalty=0,
+        fallback_penalty=0,
+        total_score=total,
+    )
+
+
+def test_signal_snapshot_fields_separate_fact_and_inference_sources():
+    from orchestrator.app.schemas.visual_strategy_resolution import VisualStrategySignalSnapshot
+
+    assert {
+        "product_visual_fact_signals",
+        "product_visual_inference_signals",
+        "semantic_fact_signals",
+        "semantic_style_signals",
+    }.issubset(set(VisualStrategySignalSnapshot.model_fields))
+
+
+def test_candidate_trace_state_is_self_consistent():
+    score = _score()
+
+    VisualStrategyCandidateTrace(strategy_id="a", eligible=True, score=score)
+    VisualStrategyCandidateTrace(strategy_id="b", eligible=False, rejection_codes=(VisualStrategyRejectionCode.DISABLED,))
+    with pytest.raises(ValidationError):
+        VisualStrategyCandidateTrace(strategy_id="bad", eligible=True, rejection_codes=(VisualStrategyRejectionCode.DISABLED,), score=score)
+    with pytest.raises(ValidationError):
+        VisualStrategyCandidateTrace(strategy_id="bad", eligible=False)
+
+
+def test_resolution_trace_counts_are_self_consistent():
+    candidate = VisualStrategyCandidateTrace(strategy_id="a", eligible=True, score=_score())
+
+    VisualStrategyResolutionTrace(
+        resolver_version="resolver",
+        scoring_policy_version="policy",
+        registry_version="registry",
+        registry_snapshot_hash="hash",
+        candidate_count=1,
+        eligible_count=1,
+        non_fallback_eligible_count=1,
+        fallback_eligible_count=0,
+        selected_strategy_id="a",
+        fallback_used=False,
+        candidates=(candidate,),
+    )
+    with pytest.raises(ValidationError):
+        VisualStrategyResolutionTrace(
+            resolver_version="resolver",
+            scoring_policy_version="policy",
+            registry_version="registry",
+            registry_snapshot_hash="hash",
+            candidate_count=2,
+            eligible_count=1,
+            non_fallback_eligible_count=1,
+            fallback_eligible_count=0,
+            selected_strategy_id="a",
+            fallback_used=False,
+            candidates=(candidate,),
+        )
+
+
+def test_decision_must_match_selected_trace_candidate():
+    score = _score(0.7)
+    candidate = VisualStrategyCandidateTrace(strategy_id="selected", eligible=True, score=score)
+    trace = VisualStrategyResolutionTrace(
+        resolver_version="resolver",
+        scoring_policy_version="policy",
+        registry_version="registry",
+        registry_snapshot_hash="hash",
+        candidate_count=1,
+        eligible_count=1,
+        non_fallback_eligible_count=1,
+        fallback_eligible_count=0,
+        selected_strategy_id="selected",
+        fallback_used=False,
+        candidates=(candidate,),
+    )
+
+    VisualStrategyDecision(
+        strategy_id="selected",
+        archetype="archetype",
+        composition_template_id="template",
+        mood_preset_id="preset",
+        copy_tone_profile_id="tone",
+        provider_capabilities=frozenset(),
+        score=score,
+        fallback_used=False,
+        fallback_tier=0,
+        matched_rules=(),
+        ineligible_strategy_ids=(),
+        eligible_not_selected_strategy_ids=(),
+        registry_version="registry",
+        registry_snapshot_hash="hash",
+        resolver_version="resolver",
+        trace=trace,
+    )
+    with pytest.raises(ValidationError):
+        VisualStrategyDecision(
+            strategy_id="different",
+            archetype="archetype",
+            composition_template_id="template",
+            mood_preset_id="preset",
+            copy_tone_profile_id="tone",
+            provider_capabilities=frozenset(),
+            score=score,
+            fallback_used=False,
+            fallback_tier=0,
+            matched_rules=(),
+            ineligible_strategy_ids=(),
+            eligible_not_selected_strategy_ids=(),
+            registry_version="registry",
+            registry_snapshot_hash="hash",
+            resolver_version="resolver",
+            trace=trace,
+        )

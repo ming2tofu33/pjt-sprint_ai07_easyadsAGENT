@@ -79,17 +79,17 @@ def build_default_visual_strategy_profiles(
                     all_of=frozenset({"korean_bbq"}),
                 ),
                 VisualStrategyTagRequirement(
-                    source=VisualStrategyContextSource.PRODUCT_VISUAL,
+                    source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
                     all_of=frozenset({"grilled_meat", "table_grilled"}),
                 ),
             ),
-            introduced_visual_elements=frozenset({"grill", "smoke"}),
+            introduced_visual_elements=frozenset({"grill", "smoke", "charcoal", "meat"}),
             visual_element_evidence_requirements=(
                 VisualElementEvidenceRequirement(
                     element="grill",
                     requirements=(
                         VisualStrategyTagRequirement(
-                            source=VisualStrategyContextSource.PRODUCT_VISUAL,
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
                             all_of=frozenset({"grilled_meat", "table_grilled"}),
                         ),
                     ),
@@ -98,8 +98,26 @@ def build_default_visual_strategy_profiles(
                     element="smoke",
                     requirements=(
                         VisualStrategyTagRequirement(
-                            source=VisualStrategyContextSource.PRODUCT_VISUAL,
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL_INFERENCE,
                             any_of=frozenset({"smoke", "charcoal"}),
+                        ),
+                    ),
+                ),
+                VisualElementEvidenceRequirement(
+                    element="charcoal",
+                    requirements=(
+                        VisualStrategyTagRequirement(
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL_INFERENCE,
+                            any_of=frozenset({"smoke", "charcoal"}),
+                        ),
+                    ),
+                ),
+                VisualElementEvidenceRequirement(
+                    element="meat",
+                    requirements=(
+                        VisualStrategyTagRequirement(
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+                            any_of=frozenset({"grilled_meat"}),
                         ),
                     ),
                 ),

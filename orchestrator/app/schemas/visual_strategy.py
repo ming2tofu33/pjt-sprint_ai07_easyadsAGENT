@@ -74,7 +74,11 @@ class VisualStrategyContextSource(StrEnum):
     BUSINESS = "business"
     PRODUCT = "product"
     PRODUCT_VISUAL = "product_visual"
+    PRODUCT_VISUAL_FACT = "product_visual_fact"
+    PRODUCT_VISUAL_INFERENCE = "product_visual_inference"
     SEMANTIC_INTENT = "semantic_intent"
+    SEMANTIC_FACT = "semantic_fact"
+    SEMANTIC_STYLE = "semantic_style"
 
 
 class VisualStrategyTagRequirement(BaseModel):
@@ -266,5 +270,11 @@ class VisualStrategyProfile(BaseModel):
         missing_elements = set(requirement_elements) - set(self.introduced_visual_elements)
         if missing_elements:
             raise ValueError(f"visual element evidence requirement references unknown element: {sorted(missing_elements)[0]}")
+
+        if self.enabled and self.fallback_tier == 0:
+            required_elements = {requirement.element for requirement in self.visual_element_evidence_requirements}
+            unbacked_elements = set(self.introduced_visual_elements) - required_elements
+            if unbacked_elements:
+                raise ValueError(f"enabled non-fallback introduced visual element requires evidence: {sorted(unbacked_elements)[0]}")
 
         return self

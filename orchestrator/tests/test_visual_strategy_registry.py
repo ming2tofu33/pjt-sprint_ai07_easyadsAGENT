@@ -231,7 +231,7 @@ def test_default_specialized_profiles_are_evidence_gated_or_disabled():
     assert bbq.enabled is True
     assert [(item.source, item.all_of) for item in bbq.required_tag_requirements] == [
         (VisualStrategyContextSource.BUSINESS, frozenset({"korean_bbq"})),
-        (VisualStrategyContextSource.PRODUCT_VISUAL, frozenset({"grilled_meat", "table_grilled"})),
+        (VisualStrategyContextSource.PRODUCT_VISUAL_FACT, frozenset({"grilled_meat", "table_grilled"})),
     ]
 
     for sid in (
@@ -257,4 +257,4 @@ def test_tag_inventory_exposes_profile_tags_without_whitelist():
     inventory = registry.tag_inventory(include_disabled=True)
 
     assert "restaurant_bbq_warm_grill" in inventory
-    assert {"korean_bbq", "grilled_meat", "table_grilled"}.issubset(inventory["restaurant_bbq_warm_grill"])
+    assert {"korean_bbq", "grilled_meat", "table_grilled", "grill", "smoke", "charcoal", "meat"}.issubset(inventory["restaurant_bbq_warm_grill"])

@@ -133,7 +133,11 @@ class VisualStrategySignalSnapshot(BaseModel):
     business_signals: frozenset[str] = Field(default_factory=frozenset)
     product_signals: frozenset[str] = Field(default_factory=frozenset)
     product_visual_signals: frozenset[str] = Field(default_factory=frozenset)
+    product_visual_fact_signals: frozenset[str] = Field(default_factory=frozenset)
+    product_visual_inference_signals: frozenset[str] = Field(default_factory=frozenset)
     semantic_intent_signals: frozenset[str] = Field(default_factory=frozenset)
+    semantic_fact_signals: frozenset[str] = Field(default_factory=frozenset)
+    semantic_style_signals: frozenset[str] = Field(default_factory=frozenset)
     all_signals: frozenset[str] = Field(default_factory=frozenset)
     prohibited_visual_elements: frozenset[str] = Field(default_factory=frozenset)
     campaign_roles: frozenset[str] = Field(default_factory=frozenset)
@@ -158,6 +162,20 @@ class VisualStrategyCandidateTrace(BaseModel):
     unsupported_visual_elements: frozenset[str] = Field(default_factory=frozenset)
     score: VisualStrategyScore | None = None
 
+    @model_validator(mode="after")
+    def validate_candidate_state(self) -> "VisualStrategyCandidateTrace":
+        if self.eligible:
+            if self.rejection_codes:
+                raise ValueError("eligible candidate must not include rejection_codes")
+            if self.score is None:
+                raise ValueError("eligible candidate requires score")
+        else:
+            if not self.rejection_codes:
+                raise ValueError("ineligible candidate requires rejection_codes")
+            if self.score is not None:
+                raise ValueError("ineligible candidate must not include score")
+        return self
+
 
 class VisualStrategyResolutionTrace(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -174,6 +192,21 @@ class VisualStrategyResolutionTrace(BaseModel):
     fallback_used: bool
     candidates: tuple[VisualStrategyCandidateTrace, ...]
 
+    @model_validator(mode="after")
+    def validate_trace_counts(self) -> "VisualStrategyResolutionTrace":
+        if self.candidate_count != len(self.candidates):
+            raise ValueError("candidate_count must equal candidates length")
+        eligible_count = sum(1 for candidate in self.candidates if candidate.eligible)
+        if self.eligible_count != eligible_count:
+            raise ValueError("eligible_count must match candidates")
+        if self.non_fallback_eligible_count + self.fallback_eligible_count != self.eligible_count:
+            raise ValueError("eligible subtype counts must sum to eligible_count")
+        if self.selected_strategy_id is not None:
+            selected = [candidate for candidate in self.candidates if candidate.strategy_id == self.selected_strategy_id]
+            if not selected or not selected[0].eligible:
+                raise ValueError("selected_strategy_id must reference an eligible candidate")
+        return self
+
 
 class VisualStrategyDecision(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -188,8 +221,26 @@ class VisualStrategyDecision(BaseModel):
     fallback_used: bool
     fallback_tier: int
     matched_rules: tuple[str, ...]
-    rejected_strategy_ids: tuple[str, ...]
+    ineligible_strategy_ids: tuple[str, ...]
+    eligible_not_selected_strategy_ids: tuple[str, ...]
     registry_version: str
     registry_snapshot_hash: str
     resolver_version: str
     trace: VisualStrategyResolutionTrace
+
+    @model_validator(mode="after")
+    def validate_decision_trace(self) -> "VisualStrategyDecision":
+        if self.strategy_id != self.trace.selected_strategy_id:
+            raise ValueError("decision strategy_id must match trace selected_strategy_id")
+        if self.registry_version != self.trace.registry_version:
+            raise ValueError("decision registry_version must match trace")
+        if self.registry_snapshot_hash != self.trace.registry_snapshot_hash:
+            raise ValueError("decision registry_snapshot_hash must match trace")
+        if self.resolver_version != self.trace.resolver_version:
+            raise ValueError("decision resolver_version must match trace")
+        if self.fallback_used != (self.fallback_tier > 0):
+            raise ValueError("fallback_used must match fallback_tier")
+        selected = next(candidate for candidate in self.trace.candidates if candidate.strategy_id == self.strategy_id)
+        if self.score != selected.score:
+            raise ValueError("decision score must match selected candidate score")
+        return self

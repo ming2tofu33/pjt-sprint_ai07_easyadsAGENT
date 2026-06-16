@@ -36,6 +36,10 @@ class NoEligibleVisualStrategyError(Exception):
         self.trace = trace
 
 
+class VisualStrategyRuntimeContextConflictError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class _Candidate:
     profile: VisualStrategyProfile
@@ -125,7 +129,8 @@ def resolve_visual_strategy(
         fallback_used=fallback_used,
         fallback_tier=profile.fallback_tier,
         matched_rules=matched_rules,
-        rejected_strategy_ids=tuple(trace.strategy_id for trace in trace.candidates if not trace.eligible),
+        ineligible_strategy_ids=tuple(trace.strategy_id for trace in trace.candidates if not trace.eligible),
+        eligible_not_selected_strategy_ids=tuple(trace.strategy_id for trace in trace.candidates if trace.eligible and trace.strategy_id != profile.strategy_id),
         registry_version=registry.version,
         registry_snapshot_hash=registry.snapshot_hash,
         resolver_version=RESOLVER_VERSION,
@@ -140,7 +145,11 @@ def build_visual_strategy_signal_snapshot(
     runtime: VisualStrategyRuntimeContext | None = None,
 ) -> VisualStrategySignalSnapshot:
     runtime_context = runtime or VisualStrategyRuntimeContext()
-    placement = runtime_context.placement or str(context.ad_format.ad_format)
+    context_placement = _key(context.ad_format.ad_format)
+    runtime_placement = _key(runtime_context.placement) if runtime_context.placement else None
+    if runtime_placement is not None and runtime_placement != context_placement:
+        raise VisualStrategyRuntimeContextConflictError("runtime placement conflicts with AdFormatSpec")
+    placement = runtime_placement or context_placement
     business_signals = _normalized_set(
         [
             context.business.venue_type,
@@ -158,24 +167,26 @@ def build_visual_strategy_signal_snapshot(
             *(item.normalized_value or item.value for item in context.product.verified_facts),
         ]
     )
-    product_visual_signals = _normalized_set(
+    product_visual_fact_signals = _normalized_set(
         [
             *context.product_visual.product_tags,
             *context.product_visual.visible_attributes,
             *context.product_visual.explicit_preparation_methods,
-            *context.product_visual.permissible_visual_inferences,
         ]
     )
-    semantic_intent_signals = _normalized_set(
+    product_visual_inference_signals = _normalized_set(context.product_visual.permissible_visual_inferences)
+    product_visual_signals = product_visual_fact_signals | product_visual_inference_signals
+    semantic_fact_signals = _normalized_set(intent.required_visual_facts)
+    semantic_style_signals = _normalized_set(
         [
             *intent.desired_moods,
             *intent.desired_materials,
             *intent.lighting_preferences,
             *intent.composition_preferences,
-            *intent.required_visual_facts,
             intent.copy_presence_mode,
         ]
     )
+    semantic_intent_signals = semantic_fact_signals | semantic_style_signals
     prohibited = _normalized_set([*context.product_visual.prohibited_visual_inferences, *intent.prohibited_visual_elements])
     reference_signals = _reference_style_signals(context.reference_style_profile)
     all_signals = business_signals | product_signals | product_visual_signals | semantic_intent_signals
@@ -183,7 +194,11 @@ def build_visual_strategy_signal_snapshot(
         business_signals=business_signals,
         product_signals=product_signals,
         product_visual_signals=product_visual_signals,
+        product_visual_fact_signals=product_visual_fact_signals,
+        product_visual_inference_signals=product_visual_inference_signals,
         semantic_intent_signals=semantic_intent_signals,
+        semantic_fact_signals=semantic_fact_signals,
+        semantic_style_signals=semantic_style_signals,
         all_signals=all_signals,
         prohibited_visual_elements=prohibited,
         campaign_roles=runtime_context.campaign_roles,
@@ -240,6 +255,8 @@ def _evaluate_profile(
         rejection_codes.append(VisualStrategyRejectionCode.MISSING_VISUAL_ELEMENT_EVIDENCE)
     evidence_backed_elements = frozenset(_key(item.element) for item in profile.visual_element_evidence_requirements)
     unsupported_elements = introduced - evidence_backed_elements - blocked_elements
+    if unsupported_elements:
+        rejection_codes.append(VisualStrategyRejectionCode.MISSING_VISUAL_ELEMENT_EVIDENCE)
 
     eligible = not rejection_codes
     score = (
@@ -282,8 +299,28 @@ def _score_profile(
 ) -> VisualStrategyScore:
     unrestricted = policy.unrestricted_axis_score
     evidence_alignment = matched_source_count / source_requirement_count if source_requirement_count else unrestricted
-    product_relevant_signals = snapshot.product_signals | snapshot.product_visual_signals | snapshot.semantic_intent_signals
-    product_targets = _key_set(profile.required_tags) | _key_set(profile.preferred_tags) | _requirement_tokens(profile.required_tag_requirements) | _element_requirement_tokens(profile.visual_element_evidence_requirements)
+    product_relevant_signals = snapshot.product_signals | snapshot.product_visual_fact_signals | snapshot.semantic_fact_signals
+    product_targets = (
+        _key_set(profile.required_tags)
+        | _requirement_tokens_for_sources(
+            profile.required_tag_requirements,
+            {
+                VisualStrategyContextSource.PRODUCT,
+                VisualStrategyContextSource.PRODUCT_VISUAL,
+                VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+                VisualStrategyContextSource.SEMANTIC_FACT,
+            },
+        )
+        | _element_requirement_tokens_for_sources(
+            profile.visual_element_evidence_requirements,
+            {
+                VisualStrategyContextSource.PRODUCT,
+                VisualStrategyContextSource.PRODUCT_VISUAL,
+                VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+                VisualStrategyContextSource.SEMANTIC_FACT,
+            },
+        )
+    )
     product_relevance = _coverage(product_targets, product_relevant_signals, unrestricted)
     campaign_fit = 1.0 if profile.supported_campaign_roles and _key_set(profile.supported_campaign_roles) & _key_set(snapshot.campaign_roles) else unrestricted
     format_fit = 1.0 if profile.supported_placements and snapshot.placement and _key(snapshot.placement) in _key_set(profile.supported_placements) else unrestricted
@@ -391,8 +428,12 @@ def _signals_for_source(source: VisualStrategyContextSource, snapshot: VisualStr
     return {
         VisualStrategyContextSource.BUSINESS: snapshot.business_signals,
         VisualStrategyContextSource.PRODUCT: snapshot.product_signals,
-        VisualStrategyContextSource.PRODUCT_VISUAL: snapshot.product_visual_signals,
+        VisualStrategyContextSource.PRODUCT_VISUAL: snapshot.product_visual_fact_signals,
+        VisualStrategyContextSource.PRODUCT_VISUAL_FACT: snapshot.product_visual_fact_signals,
+        VisualStrategyContextSource.PRODUCT_VISUAL_INFERENCE: snapshot.product_visual_inference_signals,
         VisualStrategyContextSource.SEMANTIC_INTENT: snapshot.semantic_intent_signals,
+        VisualStrategyContextSource.SEMANTIC_FACT: snapshot.semantic_fact_signals,
+        VisualStrategyContextSource.SEMANTIC_STYLE: snapshot.semantic_style_signals,
     }[source]
 
 
@@ -405,8 +446,31 @@ def _requirement_tokens(requirements: Iterable[VisualStrategyTagRequirement]) ->
     return frozenset(token for requirement in requirements for token in (_key_set(requirement.all_of) | _key_set(requirement.any_of)))
 
 
+def _requirement_tokens_for_sources(
+    requirements: Iterable[VisualStrategyTagRequirement],
+    sources: set[VisualStrategyContextSource],
+) -> frozenset[str]:
+    return frozenset(
+        token
+        for requirement in requirements
+        if requirement.source in sources
+        for token in (_key_set(requirement.all_of) | _key_set(requirement.any_of))
+    )
+
+
 def _element_requirement_tokens(requirements: Iterable[VisualElementEvidenceRequirement]) -> frozenset[str]:
     return frozenset(token for requirement in requirements for token in _requirement_tokens(requirement.requirements))
+
+
+def _element_requirement_tokens_for_sources(
+    requirements: Iterable[VisualElementEvidenceRequirement],
+    sources: set[VisualStrategyContextSource],
+) -> frozenset[str]:
+    return frozenset(
+        token
+        for element_requirement in requirements
+        for token in _requirement_tokens_for_sources(element_requirement.requirements, sources)
+    )
 
 
 def _coverage(targets: frozenset[str], signals: frozenset[str], unrestricted: float) -> float:

@@ -191,6 +191,8 @@ def test_profile_visual_element_requirements_must_reference_introduced_elements(
 
     assert _profile(introduced_visual_elements=["visual_element_alpha"], visual_element_evidence_requirements=(req,)).introduced_visual_elements == frozenset({"visual_element_alpha"})
     with pytest.raises(ValidationError):
+        _profile(introduced_visual_elements=["visual_element_alpha"])
+    with pytest.raises(ValidationError):
         _profile(visual_element_evidence_requirements=(req,))
     with pytest.raises(ValidationError):
         _profile(introduced_visual_elements=["visual_element_alpha"], visual_element_evidence_requirements=(req, req))
