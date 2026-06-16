@@ -46,6 +46,7 @@ from orchestrator.app.llm.domain_routing import (
     project_to_legacy_visual_route,
     to_canonical_domain,
 )
+from orchestrator.app.llm.scene_planner import build_scene_plan
 from orchestrator.app.llm.nodes.brief_interpreter import (
     BUSINESS_TYPE_MAP,
     build_context_updates_from_brief_interpreter,
@@ -218,6 +219,30 @@ def test_preset_dict_keys_match_their_preset_id():
 def test_preset_id_mapping_points_at_real_presets():
     for business_type, preset_id in PRESET_ID_BY_BUSINESS_TYPE.items():
         assert preset_id in VISUAL_PRESETS, f"{business_type!r} -> missing preset {preset_id!r}"
+
+
+def test_a7_every_legacy_visual_route_key_has_preset_template_and_sceneplan_inventory():
+    for route_key in LegacyVisualRouteKey:
+        key = route_key.value
+        preset = select_visual_preset(key)
+        template = select_visual_template(key, "instagram_feed", "premium", None)
+        scene_plan = build_scene_plan(
+            user_input="",
+            business_type=key,
+            ad_format="instagram_feed",
+            metadata={
+                "business_type": key,
+                "item_or_service": "대표 상품",
+                "target_persona": None,
+                "promotion_goal": "brand_awareness",
+            },
+        )
+
+        assert preset["business_type"] == key
+        assert preset["preset_id"] in VISUAL_PRESETS
+        assert key in template.business_types
+        assert key in SCENEPLAN_BUSINESS_TYPES
+        assert scene_plan.business_type == key
 
 
 def test_canonical_business_types_round_trip_through_selector():
