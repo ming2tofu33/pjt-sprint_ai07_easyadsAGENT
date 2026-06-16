@@ -50,6 +50,7 @@ from orchestrator.app.llm.nodes.brief_interpreter import (
     BUSINESS_TYPE_MAP,
     build_context_updates_from_brief_interpreter,
 )
+from orchestrator.app.llm.option_registry import OPTION_QUESTION_REGISTRY
 from orchestrator.app.llm.schemas.image_prompt_v3 import BusinessType as ScenePlanBusinessType
 from orchestrator.app.llm.visual_presets import (
     PRESET_ID_BY_BUSINESS_TYPE,
@@ -329,6 +330,33 @@ def test_a6_exact_beauty_subtype_copy_inputs_still_use_specialized_policy(
 
 
 # --- P4: BriefBusinessType routing table (no silent evaporation) -------------
+
+def test_a7_business_type_option_registry_values_have_explicit_routing_contract():
+    question = OPTION_QUESTION_REGISTRY["business_type"]
+    actual = {}
+
+    for option in question.options:
+        result = normalize_business_type(option.value)
+        actual[option.value] = (
+            result.canonical_domain.value,
+            result.support_status.value,
+            result.unsupported_domain_hint,
+            result.fallback_reason.value if result.fallback_reason else None,
+            result.business_type,
+        )
+
+    assert actual == {
+        "restaurant": ("food_and_beverage", "specialized", None, None, "restaurant"),
+        "cafe": ("food_and_beverage", "specialized", None, None, "cafe"),
+        "beauty_salon": ("beauty", "needs_evidence", None, "ambiguous_beauty_subdomain", None),
+        "bar": ("other", "generic_fallback", "bar", "unsupported_domain_in_mvp", "bar"),
+        "fitness": ("other", "generic_fallback", "fitness", "unsupported_domain_in_mvp", "fitness"),
+        "academy": ("other", "generic_fallback", "education", "unsupported_domain_in_mvp", "education"),
+        "flower_shop": ("retail", "specialized", None, None, "retail"),
+        "store": ("retail", "specialized", None, None, "retail"),
+        "custom": ("other", "unresolved", None, "unrecognized_business_type", None),
+    }
+
 
 def test_every_brief_business_type_is_routed_or_observably_fellback():
     # The domain-routing SSOT is the oracle; brief_interpreter must agree with it,
