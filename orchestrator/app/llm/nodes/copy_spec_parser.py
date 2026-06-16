@@ -31,6 +31,10 @@ def copy_spec_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         items.append(CopyItem(role="subheadline", text=marketing_copy.subcopy, priority=3))
     if marketing_copy.price_line or context.price_or_discount:
         items.append(CopyItem(role="price", text=marketing_copy.price_line or context.price_or_discount or "", priority=2))
+    ad_format = state.get("ad_format") or state.get("current_brief", {}).get("requested_ad_format") or ""
+    if ad_format in ("poster", "flyer", "banner", "product_detail"):
+        intent.cta_visibility = "hidden"
+
     if marketing_copy.cta and intent.cta_visibility != "hidden" and intent.cta_style != "none":
         items.append(CopyItem(role="cta", text=marketing_copy.cta, priority=4))
     if marketing_copy.disclaimer:

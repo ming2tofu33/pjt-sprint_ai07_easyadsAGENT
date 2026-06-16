@@ -567,7 +567,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 export function startChatGeneration(userInput: string, options: GenerationStartOptions = {}): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/chat/start", {
     userInput,
-    adFormat: options.adFormat ?? "instagram_feed",
+    adFormat: options.adFormat ?? undefined,
     renderProfile: options.renderProfile ?? "premium_api",
     copyGenerationMode: options.copyGenerationMode ?? undefined,
     userCustomHeadline: options.userCustomHeadline ?? undefined,

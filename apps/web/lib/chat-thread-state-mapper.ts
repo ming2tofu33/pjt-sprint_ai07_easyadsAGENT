@@ -261,7 +261,19 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     copyCandidates,
     copyCandidateOrigin: copyCandidateOrigin(payload.copy_candidate_origin ?? payload.copyCandidateOrigin),
     selectedCopyId: firstString(payload.selected_copy_id, payload.selectedCopyId, copyCandidates[0]?.id),
-    selectedChannelId: firstString(payload.selected_channel_id, payload.selectedChannelId, payload.ad_format) || "instagram-feed",
+    selectedChannelId: firstString(
+      payload.selected_channel_id,
+      payload.selectedChannelId,
+      currentBrief.selected_channel_id,
+      currentBrief.selectedChannelId,
+      asRecord(payloadContext.extra).selected_channel_id,
+      asRecord(payloadContext.extra).selectedChannelId,
+      payload.ad_format,
+      currentBrief.requested_ad_format,
+      currentBrief.requestedAdFormat,
+      asRecord(payloadContext.extra).ad_format,
+      asRecord(payloadContext.extra).adFormat
+    ) || "instagram-feed",
     selectedTone: firstString(payload.selected_tone, payload.selectedTone) || "감성적인",
     selectedImageGenerationEngine: imageEngine(
       payload.image_generation_engine ??

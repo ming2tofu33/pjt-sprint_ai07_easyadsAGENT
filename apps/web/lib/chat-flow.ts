@@ -22,7 +22,9 @@ export const channelOptions: ChannelOption[] = [
   { id: "instagram-feed", label: "인스타 피드", ratio: "1:1" },
   { id: "instagram-story", label: "인스타 스토리", ratio: "9:16" },
   { id: "poster", label: "포스터", ratio: "4:5" },
-  { id: "flyer", label: "전단지", ratio: "A4" }
+  { id: "flyer", label: "전단지", ratio: "A4" },
+  { id: "banner", label: "배너", ratio: "16:9" },
+  { id: "product_detail", label: "상세페이지", ratio: "가로형" }
 ];
 
 const CHAT_ERROR_MESSAGE_BY_CODE: Partial<Record<string, string>> = {

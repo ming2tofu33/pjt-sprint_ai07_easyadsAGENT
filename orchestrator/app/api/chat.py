@@ -43,6 +43,8 @@ CHANNEL_LABELS = {
     "instagram-story": "인스타 스토리 (9:16)",
     "poster": "포스터 (4:5)",
     "flyer": "전단지 (A4)",
+    "banner": "배너 (16:9)",
+    "product_detail": "상세페이지 (가로형)",
 }
 
 AD_FORMAT_BY_CHANNEL = {
@@ -50,6 +52,8 @@ AD_FORMAT_BY_CHANNEL = {
     "instagram-story": "instagram_story",
     "poster": "poster",
     "flyer": "flyer",
+    "banner": "banner",
+    "product_detail": "product_detail",
 }
 
 CHANNEL_BY_AD_FORMAT = {value: key for key, value in AD_FORMAT_BY_CHANNEL.items()}
@@ -86,13 +90,14 @@ class ChatBrief(CamelModel):
     copy_text: str = Field(alias="copy")
     tone: str
     channel: str
+    selected_channel_id: str | None = Field(default=None, alias="selectedChannelId")
     image_direction: str = Field(alias="imageDirection")
     final_image_path: str | None = Field(default=None, alias="finalImagePath")
 
 
 class ChatStartRequest(CamelModel):
     user_input: str = Field(alias="userInput", min_length=1)
-    ad_format: str = Field(default="instagram_feed", alias="adFormat")
+    ad_format: str | None = Field(default=None, alias="adFormat")
     render_profile: str = Field(default="fast", alias="renderProfile")
     copy_generation_mode: CopyGenerationMode = Field(default="suggest_candidates", alias="copyGenerationMode")
     user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
@@ -315,19 +320,26 @@ def _brief_from_result(
     context = _context_from_state(result)
     marketing_copy = result.get("marketing_copy") or {}
     current_brief = result.get("current_brief") or {}
-    final_channel_id = current_brief.get("selected_channel_id") or selected_channel_id
+    ad_format = resolve_requested_ad_format(result)
+    final_channel_id = _selected_channel_id_for_ad_format(ad_format) if ad_format else (current_brief.get("selected_channel_id") or selected_channel_id)
     final_tone = current_brief.get("selected_tone") or selected_tone
     final_custom_direction = current_brief.get("custom_direction") or _clean_optional_text(custom_direction)
     image_direction = _image_direction_summary(context, final_tone, final_custom_direction)
-    copy_text = marketing_copy.get("headline") or (
-        "문구 없이 이미지로만" if result.get("copy_generation_mode") == "no_copy" else "봄을 닮은 한 잔, 딸기라떼 출시"
-    )
+    headline = marketing_copy.get("headline")
+    subcopy = marketing_copy.get("subcopy")
+    if headline and subcopy:
+        copy_text = f"{headline}\n{subcopy}"
+    elif headline:
+        copy_text = headline
+    else:
+        copy_text = "문구 없이 이미지로만" if result.get("copy_generation_mode") == "no_copy" else "봄을 닮은 한 잔, 딸기라떼 출시"
     return ChatBrief(
         purpose=context.promotion_goal,
         item=context.item_or_service,
         copy=copy_text,
         tone=_tone_summary(final_tone),
         channel=CHANNEL_LABELS.get(final_channel_id, final_channel_id),
+        selected_channel_id=final_channel_id,
         imageDirection=image_direction,
         finalImagePath=result.get("final_image_path"),
     )
@@ -372,7 +384,7 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
     job_seed = ":".join(
         [
             request.user_input,
-            request.ad_format,
+            request.ad_format or "",
             request.copy_generation_mode,
             _clean_optional_text(request.user_custom_headline) or "",
             _clean_optional_text(request.user_custom_subcopy) or "",
@@ -410,7 +422,8 @@ def start_chat(request: ChatStartRequest) -> ChatStartResponse | ChatOptionQuest
     if interrupt and interrupt.get("type") == "option_question":
         return _option_question_response(result, interrupt)
     if result.get("copy_generation_mode") in BRIEF_READY_COPY_MODES and result.get("status") == "done":
-        return _brief_ready_response(result, job_id=job_id, thread_id=thread_id, selected_channel_id=_selected_channel_id_for_ad_format(request.ad_format))
+        ad_format = resolve_requested_ad_format(result) or request.ad_format
+        return _brief_ready_response(result, job_id=job_id, thread_id=thread_id, selected_channel_id=_selected_channel_id_for_ad_format(ad_format))
 
     return _copy_candidates_response(result, job_id=job_id, thread_id=thread_id, interrupt=interrupt)
 

@@ -488,7 +488,7 @@ def test_chat_start_custom_copy_returns_brief_ready_response():
     payload = response.json()
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "custom_input"
-    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값"
+    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값\n오후 2시부터 5시까지"
     assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
@@ -514,7 +514,7 @@ def test_photo_start_custom_copy_returns_brief_ready_response(tmp_path):
     payload = response.json()
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "custom_input"
-    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값"
+    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값\n오후 2시부터 5시까지"
     assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
