@@ -132,6 +132,25 @@ def test_open_vocabulary_fields_are_normalized_without_closing_taxonomy():
     assert context.environment_tags == ["warm_interior", "restaurant_table"]
 
 
+@pytest.mark.parametrize(
+    "field_name,value",
+    [
+        ("venue_type", 123),
+        ("service_model", True),
+        ("business_tags", ["valid", 123]),
+        ("environment_tags", [{"unexpected": "value"}]),
+        ("evidence_refs", [object()]),
+    ],
+)
+def test_non_string_open_context_values_are_rejected(field_name: str, value: object):
+    with pytest.raises(ValidationError):
+        BusinessEnvironmentContext(
+            broad_domain=CanonicalBusinessDomain.RETAIL,
+            confidence=0.8,
+            **{field_name: value},
+        )
+
+
 def test_specific_environment_requires_evidence_refs():
     with pytest.raises(ValidationError, match="specific business environment fields require evidence_refs"):
         BusinessEnvironmentContext(
@@ -139,6 +158,24 @@ def test_specific_environment_requires_evidence_refs():
             venue_type="korean_bbq_restaurant",
             business_tags=["korean_bbq"],
             confidence=0.97,
+        )
+
+
+@pytest.mark.parametrize(
+    "field_name,value",
+    [
+        ("venue_type", "local_store"),
+        ("service_model", "appointment"),
+        ("business_tags", ["local_business"]),
+        ("environment_tags", ["warm_interior"]),
+    ],
+)
+def test_each_specific_environment_field_requires_evidence(field_name: str, value: str | list[str]):
+    with pytest.raises(ValidationError, match="specific business environment fields require evidence_refs"):
+        BusinessEnvironmentContext(
+            broad_domain=CanonicalBusinessDomain.RETAIL,
+            confidence=0.8,
+            **{field_name: value},
         )
 
 
