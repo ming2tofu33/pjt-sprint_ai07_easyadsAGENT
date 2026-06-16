@@ -5,6 +5,7 @@ from __future__ import annotations
 from orchestrator.app.llm.domain_routing import CanonicalBusinessDomain
 from orchestrator.app.llm.visual_strategy_registry import VisualStrategyRegistry, build_visual_strategy_resource_catalog
 from orchestrator.app.schemas.visual_strategy import (
+    VisualElementEvidenceRequirement,
     VisualStrategyContextSource,
     VisualStrategyProfile,
     VisualStrategyResourceCatalog,
@@ -31,6 +32,7 @@ def build_default_visual_strategy_profiles(
             copy_tone_profile_id="generic_v1",
             provider_capabilities=frozenset(),
             priority=10,
+            fallback_tier=1,
             enabled=True,
         ),
         VisualStrategyProfile(
@@ -77,8 +79,47 @@ def build_default_visual_strategy_profiles(
                     all_of=frozenset({"korean_bbq"}),
                 ),
                 VisualStrategyTagRequirement(
-                    source=VisualStrategyContextSource.PRODUCT_VISUAL,
+                    source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
                     all_of=frozenset({"grilled_meat", "table_grilled"}),
+                ),
+            ),
+            introduced_visual_elements=frozenset({"grill", "smoke", "charcoal", "meat"}),
+            visual_element_evidence_requirements=(
+                VisualElementEvidenceRequirement(
+                    element="grill",
+                    requirements=(
+                        VisualStrategyTagRequirement(
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+                            all_of=frozenset({"grilled_meat", "table_grilled"}),
+                        ),
+                    ),
+                ),
+                VisualElementEvidenceRequirement(
+                    element="smoke",
+                    requirements=(
+                        VisualStrategyTagRequirement(
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL_INFERENCE,
+                            any_of=frozenset({"smoke", "charcoal"}),
+                        ),
+                    ),
+                ),
+                VisualElementEvidenceRequirement(
+                    element="charcoal",
+                    requirements=(
+                        VisualStrategyTagRequirement(
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL_INFERENCE,
+                            any_of=frozenset({"smoke", "charcoal"}),
+                        ),
+                    ),
+                ),
+                VisualElementEvidenceRequirement(
+                    element="meat",
+                    requirements=(
+                        VisualStrategyTagRequirement(
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+                            any_of=frozenset({"grilled_meat"}),
+                        ),
+                    ),
                 ),
             ),
             composition_template_id="restaurant_bbq_warm_grill",

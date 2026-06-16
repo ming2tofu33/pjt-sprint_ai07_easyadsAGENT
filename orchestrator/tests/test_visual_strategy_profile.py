@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from orchestrator.app.llm.domain_routing import CanonicalBusinessDomain
 from orchestrator.app.schemas.visual_strategy import (
+    VisualElementEvidenceRequirement,
     VisualStrategyContextSource,
     VisualStrategyProfile,
     VisualStrategyTagRequirement,
@@ -37,11 +38,14 @@ def test_visual_strategy_profile_fields_are_exact_contract():
         "preferred_tags",
         "excluded_tags",
         "required_tag_requirements",
+        "introduced_visual_elements",
+        "visual_element_evidence_requirements",
         "composition_template_id",
         "mood_preset_id",
         "copy_tone_profile_id",
         "provider_capabilities",
         "priority",
+        "fallback_tier",
         "enabled",
     }
 
@@ -159,3 +163,43 @@ def test_tag_requirement_rejects_empty_or_conflicting_conditions():
 def test_context_source_is_not_routing_evidence_source():
     assert VisualStrategyContextSource.BUSINESS.value == "business"
     assert VisualStrategyContextSource.PRODUCT_VISUAL.value == "product_visual"
+
+
+def test_visual_element_evidence_requirement_contract():
+    requirement = VisualElementEvidenceRequirement(
+        element=" visual_element_alpha ",
+        requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.PRODUCT_VISUAL,
+                all_of=["product_signal_beta"],
+            ),
+        ),
+    )
+
+    assert requirement.element == "visual_element_alpha"
+    with pytest.raises(ValidationError):
+        VisualElementEvidenceRequirement(element="", requirements=(requirement.requirements[0],))
+    with pytest.raises(ValidationError):
+        VisualElementEvidenceRequirement(element="visual_element_alpha", requirements=())
+
+
+def test_profile_visual_element_requirements_must_reference_introduced_elements():
+    req = VisualElementEvidenceRequirement(
+        element="visual_element_alpha",
+        requirements=(VisualStrategyTagRequirement(source=VisualStrategyContextSource.PRODUCT_VISUAL, all_of=["product_signal_beta"]),),
+    )
+
+    assert _profile(introduced_visual_elements=["visual_element_alpha"], visual_element_evidence_requirements=(req,)).introduced_visual_elements == frozenset({"visual_element_alpha"})
+    with pytest.raises(ValidationError):
+        _profile(introduced_visual_elements=["visual_element_alpha"])
+    with pytest.raises(ValidationError):
+        _profile(visual_element_evidence_requirements=(req,))
+    with pytest.raises(ValidationError):
+        _profile(introduced_visual_elements=["visual_element_alpha"], visual_element_evidence_requirements=(req, req))
+
+
+def test_fallback_tier_is_strict_non_negative_integer():
+    assert _profile(fallback_tier=1).fallback_tier == 1
+    for value in (-1, "1", 1.5, True, None):
+        with pytest.raises(ValidationError):
+            _profile(fallback_tier=value)

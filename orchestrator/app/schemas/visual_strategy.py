@@ -74,7 +74,11 @@ class VisualStrategyContextSource(StrEnum):
     BUSINESS = "business"
     PRODUCT = "product"
     PRODUCT_VISUAL = "product_visual"
+    PRODUCT_VISUAL_FACT = "product_visual_fact"
+    PRODUCT_VISUAL_INFERENCE = "product_visual_inference"
     SEMANTIC_INTENT = "semantic_intent"
+    SEMANTIC_FACT = "semantic_fact"
+    SEMANTIC_STYLE = "semantic_style"
 
 
 class VisualStrategyTagRequirement(BaseModel):
@@ -99,6 +103,30 @@ class VisualStrategyTagRequirement(BaseModel):
         if overlap:
             raise ValueError(f"tag requirement cannot require the same tag twice: {sorted(overlap)[0]}")
         return self
+
+
+class VisualElementEvidenceRequirement(BaseModel):
+    """Evidence required before a strategy may introduce a visual element."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    element: str
+    requirements: tuple[VisualStrategyTagRequirement, ...]
+
+    @field_validator("element", mode="before")
+    @classmethod
+    def normalize_element(cls, value: Any) -> str:
+        return normalize_required_label(value)
+
+    @field_validator("requirements", mode="before")
+    @classmethod
+    def validate_requirements(cls, value: Any) -> tuple[VisualStrategyTagRequirement, ...]:
+        if value is None:
+            raise ValueError("visual element evidence requirements must not be empty")
+        requirements = tuple(value)
+        if not requirements:
+            raise ValueError("visual element evidence requirements must not be empty")
+        return requirements
 
 
 class VisualStrategyResourceCatalog(BaseModel):
@@ -151,6 +179,8 @@ class VisualStrategyProfile(BaseModel):
     preferred_tags: frozenset[str] = Field(default_factory=frozenset)
     excluded_tags: frozenset[str] = Field(default_factory=frozenset)
     required_tag_requirements: tuple[VisualStrategyTagRequirement, ...] = ()
+    introduced_visual_elements: frozenset[str] = Field(default_factory=frozenset)
+    visual_element_evidence_requirements: tuple[VisualElementEvidenceRequirement, ...] = ()
 
     composition_template_id: str
     mood_preset_id: str
@@ -159,6 +189,7 @@ class VisualStrategyProfile(BaseModel):
     provider_capabilities: frozenset[str] = Field(default_factory=frozenset)
 
     priority: int = Field(ge=0)
+    fallback_tier: int = Field(default=0, ge=0)
     enabled: bool
 
     @field_validator(
@@ -185,6 +216,7 @@ class VisualStrategyProfile(BaseModel):
         "preferred_tags",
         "excluded_tags",
         "provider_capabilities",
+        "introduced_visual_elements",
         mode="before",
     )
     @classmethod
@@ -207,6 +239,15 @@ class VisualStrategyProfile(BaseModel):
             raise ValueError("priority must be non-negative")
         return value
 
+    @field_validator("fallback_tier", mode="before")
+    @classmethod
+    def validate_strict_fallback_tier(cls, value: Any) -> int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError("fallback_tier must be an integer")
+        if value < 0:
+            raise ValueError("fallback_tier must be non-negative")
+        return value
+
     @model_validator(mode="after")
     def validate_tag_conflicts(self) -> "VisualStrategyProfile":
         required_excluded = self.required_tags & self.excluded_tags
@@ -220,5 +261,20 @@ class VisualStrategyProfile(BaseModel):
         required_preferred = self.required_tags & self.preferred_tags
         if required_preferred:
             raise ValueError(f"required tag cannot also be preferred: {sorted(required_preferred)[0]}")
+
+        requirement_elements = [requirement.element for requirement in self.visual_element_evidence_requirements]
+        duplicate_elements = {element for element in requirement_elements if requirement_elements.count(element) > 1}
+        if duplicate_elements:
+            raise ValueError(f"duplicate visual element evidence requirement: {sorted(duplicate_elements)[0]}")
+
+        missing_elements = set(requirement_elements) - set(self.introduced_visual_elements)
+        if missing_elements:
+            raise ValueError(f"visual element evidence requirement references unknown element: {sorted(missing_elements)[0]}")
+
+        if self.enabled and self.fallback_tier == 0:
+            required_elements = {requirement.element for requirement in self.visual_element_evidence_requirements}
+            unbacked_elements = set(self.introduced_visual_elements) - required_elements
+            if unbacked_elements:
+                raise ValueError(f"enabled non-fallback introduced visual element requires evidence: {sorted(unbacked_elements)[0]}")
 
         return self
