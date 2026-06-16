@@ -154,11 +154,6 @@ def select_visual_preset(
     """Select appropriate visual preset based on business type and templates."""
     bt = (business_type or "").strip().lower()
 
-    # Check selected reference template first for hints if present
-    ref_preset_id = (selected_reference_template or {}).get("preset_id") or (selected_reference_template or {}).get("visual_template_id")
-    if ref_preset_id and ref_preset_id in VISUAL_PRESETS:
-        return VISUAL_PRESETS[ref_preset_id]
-
     exact = PRESET_ID_BY_BUSINESS_TYPE.get(bt)
     if exact:
         return VISUAL_PRESETS[exact]

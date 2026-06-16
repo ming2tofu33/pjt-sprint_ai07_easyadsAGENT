@@ -25,8 +25,6 @@ def resolve_business_type(
 ) -> str:
     candidates: list[str | None] = [
         str((metadata or {}).get("business_type")) if (metadata or {}).get("business_type") else None,
-        str((selected_reference_template or {}).get("business_type")) if (selected_reference_template or {}).get("business_type") else None,
-        str((selected_reference_template or {}).get("category")) if (selected_reference_template or {}).get("category") else None,
         business_type,
     ]
     for candidate in candidates:

@@ -18,10 +18,12 @@ from orchestrator.app.llm.domain_routing import (
     CanonicalDomain,
     DomainFallbackReason,
     DomainSupportStatus,
+    LegacyVisualRouteKey,
     RoutingEvidenceSource,
     RoutingTagEvidence,
     is_supported_domain,
     normalize_business_type,
+    project_to_legacy_visual_route,
     to_canonical_domain,
 )
 
@@ -137,6 +139,49 @@ def test_normalize_restaurant_bbq_can_accept_explicit_scene_evidence():
     assert "bbq_grill" in _scene_tags(result)
 
 
+def test_project_restaurant_bbq_requires_product_or_scene_evidence():
+    result = normalize_business_type("restaurant_bbq")
+
+    projection = project_to_legacy_visual_route(
+        result,
+        product_tags=set(),
+        explicit_scene_tags=set(),
+    )
+
+    assert projection.route_key == LegacyVisualRouteKey.RESTAURANT
+    assert projection.fallback_used is False
+    assert projection.fallback_reason is None
+    assert "korean_bbq_without_visual_evidence" in projection.reason_codes
+
+
+def test_project_restaurant_bbq_allows_grilled_meat_product_evidence():
+    result = normalize_business_type("restaurant_bbq")
+
+    projection = project_to_legacy_visual_route(
+        result,
+        product_tags={"grilled_meat"},
+        explicit_scene_tags=set(),
+    )
+
+    assert projection.route_key == LegacyVisualRouteKey.RESTAURANT_BBQ
+    assert projection.fallback_used is False
+    assert "bbq_visual_evidence" in projection.reason_codes
+
+
+def test_project_restaurant_bbq_allows_explicit_bbq_scene_evidence():
+    result = normalize_business_type("restaurant_bbq")
+
+    projection = project_to_legacy_visual_route(
+        result,
+        product_tags=set(),
+        explicit_scene_tags={"bbq_grill"},
+    )
+
+    assert projection.route_key == LegacyVisualRouteKey.RESTAURANT_BBQ
+    assert projection.fallback_used is False
+    assert "bbq_visual_evidence" in projection.reason_codes
+
+
 def test_normalize_beauty_salon_requires_evidence():
     result = normalize_business_type("beauty_salon")
 
@@ -163,6 +208,26 @@ def test_normalize_explicit_beauty_subtypes_are_specialized(value, business_type
     assert result.support_status == DomainSupportStatus.SPECIALIZED
     assert result.business_type == business_type
     assert result.fallback_reason is None
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("beauty_skincare", LegacyVisualRouteKey.BEAUTY_SKINCARE),
+        ("beauty_hair", LegacyVisualRouteKey.BEAUTY_HAIR),
+        ("beauty_nail", LegacyVisualRouteKey.BEAUTY_NAIL),
+        ("beauty_spa", LegacyVisualRouteKey.BEAUTY_SPA),
+    ],
+)
+def test_project_explicit_beauty_subtypes(value, expected):
+    projection = project_to_legacy_visual_route(
+        normalize_business_type(value),
+        product_tags=set(),
+        explicit_scene_tags=set(),
+    )
+
+    assert projection.route_key == expected
+    assert projection.fallback_used is False
 
 
 def test_normalize_retail_is_supported_specialized_domain():
@@ -196,6 +261,45 @@ def test_normalize_unsupported_domains_preserves_hint(value, hint):
     assert result.unsupported_domain_hint == hint
     assert result.fallback_reason == DomainFallbackReason.UNSUPPORTED_DOMAIN_IN_MVP
     assert hint in _tags(result)
+
+
+def test_project_ambiguous_beauty_to_generic_with_reason():
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("beauty_salon"),
+        product_tags=set(),
+        explicit_scene_tags=set(),
+    )
+
+    assert projection.route_key == LegacyVisualRouteKey.GENERIC
+    assert projection.fallback_used is True
+    assert projection.fallback_reason == DomainFallbackReason.AMBIGUOUS_BEAUTY_SUBDOMAIN
+    assert "ambiguous_beauty_subdomain" in projection.reason_codes
+
+
+def test_project_retail_to_generic_with_no_visual_profile_reason():
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("retail"),
+        product_tags=set(),
+        explicit_scene_tags=set(),
+    )
+
+    assert projection.route_key == LegacyVisualRouteKey.GENERIC
+    assert projection.fallback_used is True
+    assert projection.fallback_reason == DomainFallbackReason.NO_SPECIALIZED_VISUAL_PROFILE
+    assert "no_specialized_visual_profile" in projection.reason_codes
+
+
+def test_project_unsupported_domain_keeps_original_fallback_reason():
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("fitness"),
+        product_tags=set(),
+        explicit_scene_tags=set(),
+    )
+
+    assert projection.route_key == LegacyVisualRouteKey.GENERIC
+    assert projection.fallback_used is True
+    assert projection.fallback_reason == DomainFallbackReason.UNSUPPORTED_DOMAIN_IN_MVP
+    assert "unsupported_domain_in_mvp" in projection.reason_codes
 
 
 def test_normalize_unknown_input_is_unresolved_other():

@@ -96,12 +96,12 @@ def test_scene_planner_fails_closed_for_ambiguous_or_raw_values():
     ) == "generic"
 
 
-def test_scene_planner_accepts_exact_reference_route_keys_only():
+def test_scene_planner_does_not_route_from_reference_business_type():
     assert resolve_business_type(
         user_input="",
         business_type=None,
         selected_reference_template={"business_type": "restaurant_bbq"},
-    ) == "restaurant_bbq"
+    ) == "generic"
     assert resolve_business_type(
         user_input="헤어 스타일링",
         business_type=None,

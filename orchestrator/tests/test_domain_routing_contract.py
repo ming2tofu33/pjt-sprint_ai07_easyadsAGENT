@@ -43,6 +43,7 @@ from orchestrator.app.llm.domain_routing import (
     RoutingTagEvidence,
     SUPPORTED_DOMAINS,
     normalize_business_type,
+    project_to_legacy_visual_route,
     to_canonical_domain,
 )
 from orchestrator.app.llm.nodes.brief_interpreter import (
@@ -248,6 +249,27 @@ def test_raw_korean_bbq_input_no_longer_routes_by_keyword_to_bbq():
     preset = select_visual_preset("숯불 삼겹살 맛집")
     assert preset["business_type"] == "generic"
     assert preset["preset_id"] == "generic_clean_ad_background"
+
+
+def test_legacy_projection_is_the_only_place_that_can_select_bbq_visual_route():
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("restaurant_bbq"),
+        product_tags=set(),
+        explicit_scene_tags=set(),
+    )
+
+    assert projection.route_key == LegacyVisualRouteKey.RESTAURANT
+    assert projection.route_key != LegacyVisualRouteKey.RESTAURANT_BBQ
+
+
+def test_legacy_projection_selects_bbq_only_with_visual_evidence():
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("restaurant_bbq"),
+        product_tags={"grilled_meat"},
+        explicit_scene_tags=set(),
+    )
+
+    assert projection.route_key == LegacyVisualRouteKey.RESTAURANT_BBQ
 
 
 # --- Copy alias: plain restaurant must not be forced into bbq tone -----------

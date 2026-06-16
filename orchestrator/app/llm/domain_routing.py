@@ -336,6 +336,128 @@ def _scene_tags_from_evidence(evidence: list[RoutingTagEvidence] | None) -> list
     ]
 
 
+_BBQ_PRODUCT_EVIDENCE_TAGS = frozenset({"grilled_meat"})
+_BBQ_SCENE_EVIDENCE_TAGS = frozenset({"bbq_grill", "charcoal_grill", "table_grill"})
+
+
+def _normalized_tag_set(values: set[str] | list[str] | tuple[str, ...] | None) -> set[str]:
+    return {
+        str(value).strip().lower()
+        for value in values or ()
+        if str(value).strip()
+    }
+
+
+def _usable_tag_set(tags: list[RoutingTagEvidence]) -> set[str]:
+    return {tag.tag for tag in tags if tag.usable_for_routing}
+
+
+def _generic_projection(
+    *,
+    reason: DomainFallbackReason,
+    evidence_refs: list[str],
+) -> LegacyRoutingProjection:
+    return LegacyRoutingProjection(
+        route_key=LegacyVisualRouteKey.GENERIC,
+        reason_codes=[reason.value],
+        evidence_refs=evidence_refs,
+        fallback_used=True,
+        fallback_reason=reason,
+    )
+
+
+def project_to_legacy_visual_route(
+    domain_result: DomainRoutingResult,
+    *,
+    product_tags: set[str],
+    explicit_scene_tags: set[str],
+) -> LegacyRoutingProjection:
+    """Project canonical routing into the deprecated visual route key space.
+
+    This adapter is the only place where legacy visual keys such as
+    `restaurant_bbq` should be created during the transition period.
+    """
+    business_tags = _usable_tag_set(domain_result.business_tags)
+    scene_tags = _usable_tag_set(domain_result.scene_tags) | _normalized_tag_set(explicit_scene_tags)
+    product_tag_set = _normalized_tag_set(product_tags)
+    evidence_refs = list(domain_result.evidence_refs)
+
+    if domain_result.canonical_domain == CanonicalBusinessDomain.FOOD_AND_BEVERAGE:
+        if "cafe" in business_tags:
+            return LegacyRoutingProjection(
+                route_key=LegacyVisualRouteKey.CAFE,
+                reason_codes=["cafe_business_tag"],
+                evidence_refs=evidence_refs,
+            )
+        if "restaurant" in business_tags:
+            has_bbq_visual_evidence = bool(
+                ("korean_bbq" in business_tags)
+                and (
+                    product_tag_set & _BBQ_PRODUCT_EVIDENCE_TAGS
+                    or scene_tags & _BBQ_SCENE_EVIDENCE_TAGS
+                )
+            )
+            if has_bbq_visual_evidence:
+                return LegacyRoutingProjection(
+                    route_key=LegacyVisualRouteKey.RESTAURANT_BBQ,
+                    reason_codes=["bbq_visual_evidence"],
+                    evidence_refs=evidence_refs,
+                )
+            reason_codes = ["restaurant_business_tag"]
+            if "korean_bbq" in business_tags:
+                reason_codes.append("korean_bbq_without_visual_evidence")
+            return LegacyRoutingProjection(
+                route_key=LegacyVisualRouteKey.RESTAURANT,
+                reason_codes=reason_codes,
+                evidence_refs=evidence_refs,
+            )
+        return _generic_projection(
+            reason=DomainFallbackReason.NO_SPECIALIZED_VISUAL_PROFILE,
+            evidence_refs=evidence_refs,
+        )
+
+    if domain_result.canonical_domain == CanonicalBusinessDomain.BEAUTY:
+        if "skincare" in business_tags:
+            return LegacyRoutingProjection(
+                route_key=LegacyVisualRouteKey.BEAUTY_SKINCARE,
+                reason_codes=["beauty_subtype_evidence"],
+                evidence_refs=evidence_refs,
+            )
+        if "hair" in business_tags:
+            return LegacyRoutingProjection(
+                route_key=LegacyVisualRouteKey.BEAUTY_HAIR,
+                reason_codes=["beauty_subtype_evidence"],
+                evidence_refs=evidence_refs,
+            )
+        if "nail" in business_tags:
+            return LegacyRoutingProjection(
+                route_key=LegacyVisualRouteKey.BEAUTY_NAIL,
+                reason_codes=["beauty_subtype_evidence"],
+                evidence_refs=evidence_refs,
+            )
+        if "spa" in business_tags:
+            return LegacyRoutingProjection(
+                route_key=LegacyVisualRouteKey.BEAUTY_SPA,
+                reason_codes=["beauty_subtype_evidence"],
+                evidence_refs=evidence_refs,
+            )
+        return _generic_projection(
+            reason=domain_result.fallback_reason or DomainFallbackReason.AMBIGUOUS_BEAUTY_SUBDOMAIN,
+            evidence_refs=evidence_refs,
+        )
+
+    if domain_result.canonical_domain == CanonicalBusinessDomain.RETAIL:
+        return _generic_projection(
+            reason=DomainFallbackReason.NO_SPECIALIZED_VISUAL_PROFILE,
+            evidence_refs=evidence_refs,
+        )
+
+    return _generic_projection(
+        reason=domain_result.fallback_reason or DomainFallbackReason.UNRECOGNIZED_BUSINESS_TYPE,
+        evidence_refs=evidence_refs,
+    )
+
+
 def to_canonical_domain(value: str | CanonicalBusinessDomain | None) -> CanonicalBusinessDomain:
     """Classify a raw/brief/subtype value to the A-1 canonical domain.
 

@@ -352,6 +352,9 @@ def build_t2i_request_metadata(
         "prompt_adapter",
         "business_visual_preset_id",
         "beauty_subtype",
+        "resolved_visual_route_key",
+        "domain_routing_result",
+        "legacy_routing_projection",
     ):
         if key in image_prompt_metadata:
             metadata[key] = image_prompt_metadata[key]

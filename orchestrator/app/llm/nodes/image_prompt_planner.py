@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from orchestrator.app.graph.state import read_model
+from orchestrator.app.llm.domain_routing import normalize_business_type, project_to_legacy_visual_route
 from orchestrator.app.llm.metadata_builders import build_image_prompt_planner_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.visual_templates import select_visual_template
@@ -27,6 +28,42 @@ TEXT_NEGATIVE = (
     "korean characters, hangul, watermark, logo, signature, cluttered background "
     "in reserved areas, busy pattern in negative space"
 )
+
+
+def _string_set_from_mapping(source: Any, field: str) -> set[str]:
+    if not source:
+        return set()
+    if hasattr(source, "model_dump"):
+        source = source.model_dump()
+    if not isinstance(source, dict):
+        return set()
+    values = source.get(field) or []
+    if isinstance(values, str):
+        values = [values]
+    return {str(value).strip().lower() for value in values if str(value).strip()}
+
+
+def _product_tags_from_state(state: "MarketingState") -> set[str]:
+    product_context = state.get("product_visual_context") or {}
+    return (
+        _string_set_from_mapping(product_context, "product_tags")
+        | _string_set_from_mapping(product_context, "explicit_preparation_methods")
+    )
+
+
+def _explicit_scene_tags_from_state(state: "MarketingState") -> set[str]:
+    selected_reference_template = state.get("selected_reference_template") or {}
+    reference_template_selection = state.get("reference_template_selection") or {}
+    routing_profile = (
+        reference_template_selection.get("routing_profile")
+        if isinstance(reference_template_selection, dict)
+        else {}
+    ) or {}
+    return (
+        _string_set_from_mapping(state, "explicit_scene_tags")
+        | _string_set_from_mapping(selected_reference_template, "scene_tags")
+        | _string_set_from_mapping(routing_profile, "scene_tags")
+    )
 
 
 def image_prompt_planner_node(state: "MarketingState") -> dict[str, object]:
@@ -59,7 +96,14 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
     visual_direction = selected_visual_direction(state)
     selected_tone = selected_tone_label(state)
     style_profile = (state.get("text_style_spec") or {}).get("profile")
-    visual_template = select_visual_template(context.business_type, ad_format_spec.get("ad_format"), style_profile or selected_tone, selected_reference_template)
+    domain_result = normalize_business_type(context.business_type)
+    legacy_projection = project_to_legacy_visual_route(
+        domain_result,
+        product_tags=_product_tags_from_state(state),
+        explicit_scene_tags=_explicit_scene_tags_from_state(state),
+    )
+    resolved_visual_route_key = legacy_projection.route_key.value
+    visual_template = select_visual_template(resolved_visual_route_key, ad_format_spec.get("ad_format"), style_profile or selected_tone, selected_reference_template)
     reserved_text = " and ".join(bbox_to_natural_language(bbox) for bbox in text_layout.reserved_text_areas)
     scene = f"clean commercial advertising background for {subject}; {visual_template.background_style}"
     if visual_direction:
@@ -97,19 +141,19 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
     )
     scene_plan = build_scene_plan(
         user_input=user_input,
-        business_type=context.business_type,
+        business_type=resolved_visual_route_key,
         ad_format=ad_format_spec.get("ad_format"),
         selected_reference_template=selected_reference_template,
         reference_template_selection=reference_template_selection,
         metadata={
-            "business_type": context.business_type,
+            "business_type": resolved_visual_route_key,
             "item_or_service": context.item_or_service,
             "target_persona": context.target_persona,
             "promotion_goal": context.promotion_goal,
         }
     )
     preset = select_visual_preset(
-        business_type=scene_plan.business_type,
+        business_type=resolved_visual_route_key,
         ad_format=scene_plan.ad_format,
         selected_reference_template=selected_reference_template
     )
@@ -204,6 +248,9 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
             "prompt_critic": prompt_critic_metadata,
             "business_visual_preset_id": preset_id,
             "beauty_subtype": scene_plan.business_type if scene_plan.business_type.startswith("beauty_") else None,
+            "resolved_visual_route_key": resolved_visual_route_key,
+            "domain_routing_result": domain_result.model_dump(mode="json"),
+            "legacy_routing_projection": legacy_projection.model_dump(mode="json"),
         },
     )
     return spec
@@ -212,7 +259,17 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
 def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> ImagePrompt:
     subject = spec.product_subject
     v3_meta = {}
-    for key in ["image_prompt_version", "scene_plan", "prompt_quality_policy", "prompt_adapter", "business_visual_preset_id", "beauty_subtype"]:
+    for key in [
+        "image_prompt_version",
+        "scene_plan",
+        "prompt_quality_policy",
+        "prompt_adapter",
+        "business_visual_preset_id",
+        "beauty_subtype",
+        "resolved_visual_route_key",
+        "domain_routing_result",
+        "legacy_routing_projection",
+    ]:
         if key in spec.metadata:
             v3_meta[key] = spec.metadata[key]
 
