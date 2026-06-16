@@ -43,6 +43,13 @@ function buildTargetUrl(path: string, request: NextRequest): URL {
   return target;
 }
 
+function sanitizedUpstream(targetUrl: URL | null) {
+  return {
+    host: targetUrl?.host ?? null,
+    path: targetUrl?.pathname ?? null
+  };
+}
+
 function buildInternalHeaders(contentType?: string): Record<string, string> {
   const headers: Record<string, string> = {};
   if (contentType) {
@@ -110,13 +117,15 @@ async function resolveSupabasePrincipal(request: NextRequest): Promise<SupabaseP
   };
 }
 
-function unavailableResponse() {
+function unavailableResponse(input?: { requestId?: string; targetUrl?: URL | null }) {
   return NextResponse.json(
     {
       success: false,
-      error_code: "orchestrator_unavailable",
+      error_code: "upstream_orchestrator_unavailable",
       message: "Orchestrator API is unavailable.",
-      detail: "Failed to reach the orchestrator backend from the BFF proxy."
+      detail: "Failed to reach the orchestrator backend from the BFF proxy.",
+      request_id: input?.requestId ?? null,
+      upstream: sanitizedUpstream(input?.targetUrl ?? null)
     },
     { status: 502 }
   );
@@ -181,6 +190,7 @@ export async function proxyOrchestratorJson(
   const started = Date.now();
   const traceId = request.headers.get("X-EasyAds-Trace-Id") || `trace_${crypto.randomUUID().replace(/-/g, "")}`;
   const requestId = request.headers.get("X-Request-Id") || `req_${crypto.randomUUID().replace(/-/g, "")}`;
+  let targetUrl: URL | null = null;
   let authCallRequestedCount = 0;
   let authNetworkRequestCount = 0;
   let authDedupHitCount = 0;
@@ -265,7 +275,7 @@ export async function proxyOrchestratorJson(
       }
     }
 
-    const targetUrl = buildTargetUrl(path, request);
+    targetUrl = buildTargetUrl(path, request);
     headers["X-EasyAds-Trace-Id"] = traceId;
     headers["X-Request-Id"] = requestId;
     if (options.injectVerifiedUserIdQuery) {
@@ -304,7 +314,7 @@ export async function proxyOrchestratorJson(
         { status: statusCode }
       );
     }
-    return unavailableResponse();
+    return unavailableResponse({ requestId, targetUrl });
   }
 }
 
@@ -355,6 +365,6 @@ export async function proxyOrchestratorBinary(request: NextRequest, path: string
     }
     return nextResponse;
   } catch {
-    return unavailableResponse();
+    return unavailableResponse({ targetUrl });
   }
 }

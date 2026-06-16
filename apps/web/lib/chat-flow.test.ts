@@ -74,6 +74,16 @@ describe("chat flow state", () => {
     expect(failed.errorCode).toBe("invalid_or_expired_session");
   });
 
+  it("maps upstream orchestrator failures into a visible retry message", () => {
+    const failed = chatFailureFromError({
+      errorCode: "upstream_orchestrator_unavailable",
+      message: "fetch failed"
+    });
+
+    expect(failed.message).toBe("생성 서버에 연결하지 못했어요. 입력 내용은 유지했으니 잠시 후 다시 시도해 주세요.");
+    expect(failed.errorCode).toBe("upstream_orchestrator_unavailable");
+  });
+
   it("maps backend workspace failures to the friendly Korean message", () => {
     const failed = chatFlowReducer(createInitialChatFlowState(), {
       type: "backendRequestFailed",
@@ -86,7 +96,7 @@ describe("chat flow state", () => {
     expect(failed.errorCode).toBe("workspace_required");
   });
 
-  it("recovers initial prompt request failures back to the start step", () => {
+  it("keeps initial prompt request failures on the submitted step with retry context", () => {
     const submitting = chatFlowReducer(createInitialChatFlowState(), {
       type: "submitPrompt",
       prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘"
@@ -98,8 +108,8 @@ describe("chat flow state", () => {
       recoverToStart: true
     });
 
-    expect(failed.step).toBe(1);
-    expect(failed.progress).toEqual({ current: 0, total: 4, label: "대화 시작" });
+    expect(failed.step).toBe(2);
+    expect(failed.progress).toEqual({ current: 1, total: 4, label: "작업 시작 실패" });
     expect(failed.currentQuestion).toBeNull();
     expect(failed.isLoading).toBe(false);
     expect(failed.userInput).toBe("우리 카페 딸기라떼 신메뉴 광고 만들어줘");

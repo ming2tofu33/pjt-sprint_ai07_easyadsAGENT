@@ -19,6 +19,23 @@ from orchestrator.app.t2i.settings import (
     require_t2i_enabled,
 )
 
+
+def _is_production_runtime() -> bool:
+    from orchestrator.app.core.config import _get_env
+
+    for key in ("EASYADS_ENV", "APP_ENV", "ENVIRONMENT", "RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "NODE_ENV"):
+        value = str(_get_env(key, "")).strip().lower()
+        if value in {"production", "prod"}:
+            return True
+    return False
+
+
+def _mock_default_engine_forbidden() -> bool:
+    from orchestrator.app.core.config import _get_env
+
+    return _is_production_runtime() and str(_get_env("T2I_DEFAULT_ENGINE", "")).strip().lower() == "mock"
+
+
 class GPTImageActualEngine:
     engine_name = "gpt_image_1"
     model_settings_field = "gpt_image_1_model"
@@ -59,6 +76,8 @@ class GPTImageActualEngine:
             raise T2IEngineUnavailableError("Native single-shot prompt package violates image call policy.")
         from orchestrator.app.core.config import _get_env
         if str(_get_env("T2I_DEFAULT_ENGINE", "")).lower() == "mock":
+            if _mock_default_engine_forbidden():
+                raise T2IEngineUnavailableError("mock_engine_forbidden_in_production")
             output_dir.mkdir(parents=True, exist_ok=True)
             final_path = output_dir / "final_native_image.png"
             from PIL import Image
