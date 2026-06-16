@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from orchestrator.app.llm.visual_routing_integration import (
+    CatalogVisualRouteFamilyResolver,
+    ImagePromptLegacyVisualRouteResult,
     build_fail_open_visual_routing_metadata,
     build_visual_semantic_intent_for_shadow,
     build_visual_strategy_context_for_shadow,
     build_visual_strategy_runtime_context,
+    observe_legacy_visual_route,
     resolve_visual_routing_mode,
 )
 from orchestrator.app.llm.domain_routing import (
@@ -13,10 +16,14 @@ from orchestrator.app.llm.domain_routing import (
     DomainSupportStatus,
     RoutingEvidenceSource,
     RoutingTagEvidence,
+    normalize_business_type,
+    project_to_legacy_visual_route,
 )
+from orchestrator.app.llm.visual_presets import select_visual_preset
+from orchestrator.app.llm.visual_templates import select_visual_template
 from orchestrator.app.schemas.llm_marketing import AdFormatSpec, MarketingContext
 from orchestrator.app.schemas.product_visual_context import ProductVisualContext
-from orchestrator.app.schemas.visual_routing_shadow import RoutingMode, RoutingSource
+from orchestrator.app.schemas.visual_routing_shadow import LegacyVisualRouteObservation, RoutingMode, RoutingSource
 
 
 def test_a8_visual_routing_mode_defaults_to_shadow():
@@ -491,6 +498,60 @@ def test_a8_invalid_ad_format_metadata_defaults_to_empty_dict():
     )
 
     assert context.ad_format.metadata == {}
+
+
+def test_a8_observes_legacy_visual_route_without_copy_tone_binding():
+    projection = project_to_legacy_visual_route(
+        normalize_business_type("restaurant_bbq"),
+        product_tags={"grilled_meat"},
+        explicit_scene_tags=set(),
+    )
+    preset = select_visual_preset(projection.route_key.value)
+    template = select_visual_template(projection.route_key.value, "instagram_feed", "premium")
+
+    observation = observe_legacy_visual_route(
+        ImagePromptLegacyVisualRouteResult(
+            legacy_projection=projection,
+            template_id=template.template_id,
+            preset_id=preset["preset_id"],
+            route_family_id="restaurant_bbq",
+        )
+    )
+
+    assert isinstance(observation, LegacyVisualRouteObservation)
+    assert observation.legacy_route_key == projection.route_key
+    assert observation.template_id == "restaurant_bbq_warm_grill"
+    assert observation.preset_id == "restaurant_bbq_warm_grill"
+    assert observation.copy_tone_profile_id is None
+    assert observation.route_family_id == "restaurant_bbq"
+    assert observation.route_version == projection.projection_version
+
+
+def test_a8_catalog_visual_route_family_resolver_resolves_known_matching_resources():
+    resolver = CatalogVisualRouteFamilyResolver()
+
+    assert resolver.resolve_family("restaurant_bbq_warm_grill", "restaurant_bbq_warm_grill") == "restaurant_bbq"
+    assert resolver.resolve_family("restaurant_generic_clean", "restaurant_generic_clean") == "restaurant"
+    assert resolver.resolve_family("generic_clean_ad_background", "generic_clean_ad_background") == "generic"
+
+
+def test_a8_catalog_visual_route_family_resolver_rejects_mixed_resource_pair():
+    resolver = CatalogVisualRouteFamilyResolver()
+
+    assert resolver.resolve_family("restaurant_bbq_warm_grill", "restaurant_generic_clean") is None
+
+
+def test_a8_catalog_visual_route_family_resolver_rejects_multi_business_template_mapping():
+    resolver = CatalogVisualRouteFamilyResolver()
+
+    assert resolver.resolve_family("beauty_skincare_clean_premium", "beauty_salon_clean_pastel") is None
+
+
+def test_a8_catalog_visual_route_family_resolver_rejects_unknown_resources():
+    resolver = CatalogVisualRouteFamilyResolver()
+
+    assert resolver.resolve_family("unknown_preset", "restaurant_bbq_warm_grill") is None
+    assert resolver.resolve_family("restaurant_bbq_warm_grill", "unknown_template") is None
 
 
 def _domain_result(

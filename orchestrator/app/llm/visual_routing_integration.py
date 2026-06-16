@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from orchestrator.app.llm.business_context_service import build_business_environment_context_from_domain_routing
 from orchestrator.app.llm.creative_routing_context_service import build_creative_routing_context
-from orchestrator.app.llm.domain_routing import DomainRoutingResult
+from orchestrator.app.llm.domain_routing import DomainRoutingResult, LegacyRoutingProjection
 from orchestrator.app.llm.product_visual_context_service import product_visual_context_from_understanding
+from orchestrator.app.llm.visual_presets import PRESET_ID_BY_BUSINESS_TYPE
+from orchestrator.app.llm.visual_templates import get_visual_templates
 from orchestrator.app.schemas.campaign_context import CampaignContext
 from orchestrator.app.schemas.creative_routing import CreativeRoutingContext
 from orchestrator.app.schemas.llm_marketing import AdFormatSpec, MarketingContext
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 from orchestrator.app.schemas.product_visual_context import ProductVisualContext
 from orchestrator.app.schemas.visual_semantic_intent import VisualSemanticIntent
-from orchestrator.app.schemas.visual_routing_shadow import RoutingMode, RoutingSource
+from orchestrator.app.schemas.visual_routing_shadow import LegacyVisualRouteObservation, RoutingMode, RoutingSource
 from orchestrator.app.schemas.visual_strategy_resolution import VisualStrategyRuntimeContext
 
 
@@ -100,6 +103,54 @@ _ALLOWED_OUTPUT_STRATEGIES = frozenset(
         "typography_only",
     }
 )
+
+
+@dataclass(frozen=True)
+class ImagePromptLegacyVisualRouteResult:
+    legacy_projection: LegacyRoutingProjection
+    template_id: str
+    preset_id: str
+    route_family_id: str | None
+
+
+def observe_legacy_visual_route(result: ImagePromptLegacyVisualRouteResult) -> LegacyVisualRouteObservation:
+    return LegacyVisualRouteObservation(
+        legacy_route_key=result.legacy_projection.route_key,
+        preset_id=result.preset_id,
+        template_id=result.template_id,
+        copy_tone_profile_id=None,
+        route_family_id=result.route_family_id,
+        route_version=result.legacy_projection.projection_version,
+    )
+
+
+class CatalogVisualRouteFamilyResolver:
+    def __init__(self) -> None:
+        self._preset_family_by_id = {
+            preset_id: route_family_id
+            for route_family_id, preset_id in PRESET_ID_BY_BUSINESS_TYPE.items()
+        }
+        self._template_family_by_id = {
+            template.template_id: business_types[0]
+            for template in get_visual_templates()
+            if len(
+                business_types := [
+                    business_type.strip().lower()
+                    for business_type in template.business_types
+                    if business_type.strip() and business_type.strip() != "*"
+                ]
+            )
+            == 1
+        }
+
+    def resolve_family(self, preset_id: str, template_id: str) -> str | None:
+        preset_family = self._preset_family_by_id.get(preset_id)
+        template_family = self._template_family_by_id.get(template_id)
+        if preset_family is None or template_family is None:
+            return None
+        if preset_family != template_family:
+            return None
+        return preset_family
 
 
 def resolve_visual_routing_mode(state: Mapping[str, Any] | None) -> RoutingMode:
