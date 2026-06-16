@@ -91,6 +91,25 @@ def test_image_prompt_single_resolved_key_preserves_unsupported_fallback_breadcr
     assert metadata["legacy_routing_projection"]["fallback_reason"] == "unsupported_domain_in_mvp"
 
 
+def test_reference_template_preset_id_cannot_override_resolved_visual_key():
+    state = _state(
+        "unknown",
+        {
+            "title": "Legacy BBQ Reference",
+            "preset_id": "restaurant_bbq_warm_grill",
+            "visual_template_id": "restaurant_bbq_warm_grill",
+        },
+    )
+
+    spec = build_image_prompt_spec_with_critic(state)
+    metadata = spec.metadata
+
+    assert metadata["resolved_visual_route_key"] == "generic"
+    assert metadata["visual_template_id"] == "generic_clean_ad_background"
+    assert metadata["business_visual_preset_id"] == "generic_clean_ad_background"
+    assert metadata["scene_plan"]["business_type"] == "generic"
+
+
 def test_image_prompt_scene_planner_does_not_infer_bbq_from_raw_user_input():
     state = _state("restaurant")
     state["user_input"] = "숯불 삼겹살 맛집 포스터 만들어줘"
