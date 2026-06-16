@@ -106,7 +106,11 @@ POLICIES: dict[str, dict[str, Any]] = {
 }
 
 ALIASES = {
-    "restaurant": "restaurant_bbq",
+    # NOTE: plain "restaurant" is intentionally NOT aliased to restaurant_bbq.
+    # Doing so tilted every generic restaurant's copy toward grill/reservation
+    # tone (불판/회식/예약). Only explicit BBQ/Korean-meat keywords below route to
+    # the bbq policy; plain restaurant falls through to the generic neutral policy
+    # (a dedicated restaurant copy policy is Phase 4). See docs/PRESET_ROUTING_AUDIT.md.
     "bbq": "restaurant_bbq",
     "meat_restaurant": "restaurant_bbq",
     "korean_food": "restaurant_bbq",

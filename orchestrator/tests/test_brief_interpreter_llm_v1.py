@@ -143,7 +143,9 @@ def test_korean_item_kept_when_not_romanized():
     )
 
     assert updates["item_or_service"] == "돌반지"
-    assert not warnings
+    # `retail` has no domain routing yet, so an observable generic-fallback
+    # breadcrumb is expected; what must NOT appear is any item-level warning.
+    assert not any("item_or_service" in w or "recovered" in w for w in warnings)
 
 
 def test_unprovided_phone_or_discount_is_blocked_as_invented_fact():

@@ -1,0 +1,186 @@
+"""Phase 0 contract tests for business_type -> visual/copy routing.
+
+These tests do not assert that any taxonomy is "good" — they make the structural
+risks documented in docs/PRESET_ROUTING_AUDIT.md visible and regression-proof:
+
+  * P5  preset.business_type must always be a valid ScenePlan BusinessType
+        (issue 7 was a runtime pydantic crash from a preset whose business_type
+        was not in the ScenePlan Literal).
+  * P6  ambiguous `beauty_salon` must not silently route to the hair preset.
+  * Copy alias: plain `restaurant` copy must not be forced into the bbq tone.
+  * P4  every BriefBusinessType the LLM can emit must either route to a domain
+        or leave an observable generic-fallback breadcrumb (never evaporate
+        silently).
+
+Known gaps (fitness/retail/education/service -> generic) are asserted explicitly
+so the gap is documented and a *change* in behaviour is caught, pending Phase 4.
+"""
+
+from __future__ import annotations
+
+from typing import get_args
+
+import pytest
+
+# Import the graph package first to fully initialise the graph<->brief_interpreter
+# import chain before importing brief_interpreter directly (avoids a pre-existing
+# circular-import error when brief_interpreter is the first module loaded).
+import orchestrator.app.graph.nodes  # noqa: F401
+
+from orchestrator.app.llm.copy_tone_policy import get_copy_tone_policy
+from orchestrator.app.llm.domain_routing import (
+    CANONICAL_DOMAINS,
+    SUPPORTED_DOMAINS,
+    normalize_business_type,
+    to_canonical_domain,
+)
+from orchestrator.app.llm.nodes.brief_interpreter import (
+    BUSINESS_TYPE_MAP,
+    build_context_updates_from_brief_interpreter,
+)
+from orchestrator.app.llm.schemas.image_prompt_v3 import BusinessType as ScenePlanBusinessType
+from orchestrator.app.llm.visual_presets import (
+    PRESET_ID_BY_BUSINESS_TYPE,
+    VISUAL_PRESETS,
+    select_visual_preset,
+)
+from orchestrator.app.llm.visual_templates import select_visual_template
+from orchestrator.app.schemas.brief_llm import BriefBusinessType, BriefInterpreterOutput
+
+SCENEPLAN_BUSINESS_TYPES = set(get_args(ScenePlanBusinessType))
+
+# The business_type values that are fully canonical (round-trip identically
+# through the preset selector). Excludes the ambiguous aliases beauty_salon /
+# beauty which collapse onto a canonical preset.
+CANONICAL_BUSINESS_TYPES = {
+    "cafe",
+    "restaurant_bbq",
+    "restaurant",
+    "beauty_skincare",
+    "beauty_hair",
+    "beauty_nail",
+    "beauty_spa",
+    "generic",
+}
+
+
+# --- P5: preset.business_type ⊆ ScenePlan Literal (issue 7 crash guard) -------
+
+def test_all_preset_business_types_are_valid_sceneplan_literals():
+    for preset_id, preset in VISUAL_PRESETS.items():
+        bt = preset["business_type"]
+        assert bt in SCENEPLAN_BUSINESS_TYPES, (
+            f"preset {preset_id!r} has business_type {bt!r} which is not a valid "
+            f"ScenePlan BusinessType {sorted(SCENEPLAN_BUSINESS_TYPES)} -> ScenePlan "
+            f"construction would raise pydantic ValidationError at runtime (issue 7)."
+        )
+
+
+def test_preset_dict_keys_match_their_preset_id():
+    for preset_id, preset in VISUAL_PRESETS.items():
+        assert preset["preset_id"] == preset_id
+
+
+def test_preset_id_mapping_points_at_real_presets():
+    for business_type, preset_id in PRESET_ID_BY_BUSINESS_TYPE.items():
+        assert preset_id in VISUAL_PRESETS, f"{business_type!r} -> missing preset {preset_id!r}"
+
+
+def test_canonical_business_types_round_trip_through_selector():
+    for business_type in CANONICAL_BUSINESS_TYPES:
+        preset = select_visual_preset(business_type)
+        assert preset["business_type"] == business_type
+
+
+# --- P6: beauty_salon must not route to hair --------------------------------
+
+def test_beauty_salon_does_not_route_to_hair_preset():
+    preset = select_visual_preset("beauty_salon")
+    assert preset["business_type"] == "beauty_skincare"
+    assert preset["preset_id"] != "beauty_hair_salon_clean"
+
+
+def test_ambiguous_beauty_routes_to_skincare():
+    assert select_visual_preset("beauty")["business_type"] == "beauty_skincare"
+
+
+def test_explicit_beauty_subtypes_still_route_correctly():
+    assert select_visual_preset("beauty_hair")["business_type"] == "beauty_hair"
+    assert select_visual_preset("beauty_nail")["business_type"] == "beauty_nail"
+    assert select_visual_preset("beauty_spa")["business_type"] == "beauty_spa"
+
+
+def test_keyword_fallback_still_handles_raw_korean_bbq_input():
+    # Non-canonical raw input must still reach the bbq preset via the fallback.
+    assert select_visual_preset("숯불 삼겹살 맛집")["business_type"] == "restaurant_bbq"
+
+
+# --- Copy alias: plain restaurant must not be forced into bbq tone -----------
+
+def test_plain_restaurant_copy_is_not_aliased_to_bbq():
+    policy = get_copy_tone_policy("restaurant")
+    assert policy["business_type"] != "restaurant_bbq"
+    assert policy["business_type"] == "generic"
+
+
+def test_explicit_bbq_copy_still_routes_to_bbq_policy():
+    for key in ("bbq", "meat_restaurant", "korean_food"):
+        assert get_copy_tone_policy(key)["business_type"] == "restaurant_bbq"
+
+
+# --- P4: BriefBusinessType routing table (no silent evaporation) -------------
+
+def test_every_brief_business_type_is_routed_or_observably_fellback():
+    # The domain-routing SSOT is the oracle; brief_interpreter must agree with it,
+    # and every unsupported/unknown domain must leave an observable breadcrumb.
+    for value in get_args(BriefBusinessType):
+        normalized = normalize_business_type(value)
+        output = BriefInterpreterOutput(business_type=value)
+        updates, warnings = build_context_updates_from_brief_interpreter(output)
+
+        if normalized.business_type is not None:
+            assert updates.get("business_type") == normalized.business_type
+        else:
+            assert "business_type" not in updates
+
+        if not normalized.supported:
+            # fitness/retail/education/service/other -> generic, but never silent.
+            assert any("business_type_fallback_generic" in w for w in warnings), (
+                f"{value!r} evaporated silently — expected a generic-fallback warning."
+            )
+
+
+def test_business_type_map_is_derived_from_ssot():
+    for domain, business_type in BUSINESS_TYPE_MAP.items():
+        assert normalize_business_type(domain).business_type == business_type
+
+
+def test_supported_domains_are_a_declared_subset_of_canonical():
+    assert SUPPORTED_DOMAINS <= CANONICAL_DOMAINS
+    # Declared-but-not-yet-supported domains (Phase 4). Asserted so the gap is
+    # explicit and any future support is a deliberate change to the SSOT.
+    assert CANONICAL_DOMAINS - SUPPORTED_DOMAINS == {"fitness", "retail", "education", "service"}
+
+
+# --- Known Phase 4 gaps documented as explicit assertions --------------------
+
+@pytest.mark.parametrize("business_type", ["fitness", "retail", "education", "service"])
+def test_unsupported_domains_currently_resolve_to_generic_preset(business_type):
+    # KNOWN GAP (Phase 4): these have no visual strategy yet and fall to generic.
+    # Asserted so the gap is visible and any future support is a deliberate change.
+    assert select_visual_preset(business_type)["business_type"] == "generic"
+
+
+# --- P2: preset and template must agree on the domain family -----------------
+
+@pytest.mark.parametrize("business_type", ["cafe", "restaurant_bbq", "restaurant", "beauty_salon"])
+def test_preset_and_template_share_domain_family(business_type):
+    preset = select_visual_preset(business_type)
+    template = select_visual_template(business_type, "instagram_feed", None)
+    # Family judged in one place via the SSOT classifier.
+    preset_family = to_canonical_domain(preset["business_type"])
+    template_family = to_canonical_domain(template.business_types[0])
+    assert preset_family == template_family, (
+        f"{business_type!r}: preset -> {preset['business_type']!r} ({preset_family}) but "
+        f"template -> {template.template_id!r} ({template_family}); different domain families."
+    )
