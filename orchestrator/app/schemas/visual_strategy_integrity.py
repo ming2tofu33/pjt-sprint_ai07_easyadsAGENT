@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from orchestrator.app.schemas.visual_strategy import normalize_required_label
 
@@ -14,6 +14,12 @@ class RegistryValidationSeverity(StrEnum):
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
+
+
+class DiscriminatedUnionAuditStatus(StrEnum):
+    NOT_EVALUATED = "not_evaluated"
+    NOT_APPLIED_NO_STRUCTURAL_DIFFERENCE = "not_applied_no_structural_difference"
+    APPLIED = "applied"
 
 
 class RegistryValidationCode(StrEnum):
@@ -29,6 +35,7 @@ class RegistryValidationCode(StrEnum):
     DUPLICATE_SOURCE_REQUIREMENT = "duplicate_source_requirement"
     DUPLICATE_VISUAL_ELEMENT_REQUIREMENT = "duplicate_visual_element_requirement"
     INTRODUCED_ELEMENT_WITHOUT_REQUIREMENT = "introduced_element_without_requirement"
+    VISUAL_ELEMENT_REQUIREMENT_WITHOUT_INTRODUCED_ELEMENT = "visual_element_requirement_without_introduced_element"
     INVALID_PROVIDER_CAPABILITY = "invalid_provider_capability"
     PROVIDER_CAPABILITY_CATALOG_UNAVAILABLE = "provider_capability_catalog_unavailable"
     DISABLED_PROFILE_EXPOSED = "disabled_profile_exposed"
@@ -70,17 +77,33 @@ class RegistryIntegrityPolicy(BaseModel):
     require_all_introduced_elements_grounded: bool = True
     require_fallback_domain_coverage: bool = False
     allowed_archetypes: frozenset[str] | None = None
+    discriminated_union_status: DiscriminatedUnionAuditStatus = DiscriminatedUnionAuditStatus.NOT_EVALUATED
 
     @field_validator("version", mode="before")
     @classmethod
     def normalize_version(cls, value: Any) -> str:
         return normalize_required_label(value)
 
+    @field_validator(
+        "require_enabled_fallback",
+        "require_provider_capability_catalog",
+        "require_all_introduced_elements_grounded",
+        "require_fallback_domain_coverage",
+        mode="before",
+    )
+    @classmethod
+    def validate_strict_bool(cls, value: Any) -> bool:
+        if not isinstance(value, bool):
+            raise ValueError("policy flags must be booleans")
+        return value
+
     @field_validator("allowed_archetypes", mode="before")
     @classmethod
     def normalize_allowed_archetypes(cls, value: Any) -> frozenset[str] | None:
         if value is None:
             return None
+        if isinstance(value, (str, bytes)):
+            raise ValueError("allowed_archetypes must be a collection of strings")
         normalized = frozenset(normalize_required_label(item) for item in value)
         return normalized
 
@@ -91,30 +114,31 @@ class RegistryValidationReport(BaseModel):
     validator_version: str
     registry_version: str | None
     registry_snapshot_hash: str | None
-    profile_count: int
-    enabled_profile_count: int
-    disabled_profile_count: int
-    fallback_profile_count: int
-    enabled_fallback_profile_count: int
-    error_count: int
-    warning_count: int
-    info_count: int
+    profile_count: int = Field(ge=0)
+    enabled_profile_count: int = Field(ge=0)
+    disabled_profile_count: int = Field(ge=0)
+    fallback_profile_count: int = Field(ge=0)
+    enabled_fallback_profile_count: int = Field(ge=0)
+    error_count: int = Field(ge=0)
+    warning_count: int = Field(ge=0)
+    info_count: int = Field(ge=0)
     valid: bool
     complete: bool
     issues: tuple[RegistryValidationIssue, ...]
-    checked_composition_template_count: int
-    checked_mood_preset_count: int
-    checked_copy_tone_profile_count: int
-    checked_provider_capability_count: int
+    checked_composition_template_count: int = Field(ge=0)
+    checked_mood_preset_count: int = Field(ge=0)
+    checked_copy_tone_profile_count: int = Field(ge=0)
+    checked_provider_capability_count: int = Field(ge=0)
     archetype_validation_mode: str
     provider_capability_validation_mode: str
-    discriminated_union_status: str
+    snapshot_hash_validation_mode: str
+    discriminated_union_status: DiscriminatedUnionAuditStatus
 
     @field_validator(
         "validator_version",
         "archetype_validation_mode",
         "provider_capability_validation_mode",
-        "discriminated_union_status",
+        "snapshot_hash_validation_mode",
         mode="before",
     )
     @classmethod
@@ -143,6 +167,10 @@ class RegistryValidationReport(BaseModel):
             raise ValueError("valid must equal error_count == 0")
         if self.profile_count != self.enabled_profile_count + self.disabled_profile_count:
             raise ValueError("profile counts must be internally consistent")
+        if self.fallback_profile_count > self.profile_count:
+            raise ValueError("fallback count must not exceed profile count")
+        if self.enabled_fallback_profile_count > self.enabled_profile_count:
+            raise ValueError("enabled fallback count must not exceed enabled profile count")
         if self.enabled_fallback_profile_count > self.fallback_profile_count:
             raise ValueError("enabled fallback count must not exceed fallback count")
         return self

@@ -21,6 +21,7 @@ from orchestrator.app.schemas.visual_strategy import (
     VisualStrategyTagRequirement,
 )
 from orchestrator.app.schemas.visual_strategy_integrity import (
+    DiscriminatedUnionAuditStatus,
     RegistryIntegrityPolicy,
     RegistryValidationCode,
     RegistryValidationIssue,
@@ -90,6 +91,7 @@ def test_integrity_schema_contract_fields_and_invariants():
         "checked_provider_capability_count",
         "archetype_validation_mode",
         "provider_capability_validation_mode",
+        "snapshot_hash_validation_mode",
         "discriminated_union_status",
     }
     with pytest.raises(ValidationError):
@@ -117,7 +119,8 @@ def test_integrity_schema_contract_fields_and_invariants():
             checked_provider_capability_count=0,
             archetype_validation_mode="open",
             provider_capability_validation_mode="unavailable",
-            discriminated_union_status="not_applied_no_structural_difference",
+            snapshot_hash_validation_mode="unavailable",
+            discriminated_union_status=DiscriminatedUnionAuditStatus.NOT_EVALUATED,
         )
 
 
@@ -125,6 +128,7 @@ def test_issue_codes_and_severities_are_contract_enums():
     assert RegistryValidationSeverity.ERROR.value == "error"
     assert RegistryValidationCode.DUPLICATE_STRATEGY_ID.value == "duplicate_strategy_id"
     assert RegistryValidationCode.REGISTRY_HASH_MISMATCH.value == "registry_hash_mismatch"
+    assert RegistryValidationCode.VISUAL_ELEMENT_REQUIREMENT_WITHOUT_INTRODUCED_ELEMENT.value == "visual_element_requirement_without_introduced_element"
 
 
 def test_raw_profile_validation_collects_duplicate_ids_and_missing_resources():
@@ -178,6 +182,57 @@ def test_raw_profile_validation_collects_defensive_profile_structure_issues():
     assert RegistryValidationCode.INTRODUCED_ELEMENT_WITHOUT_REQUIREMENT in codes
 
 
+def test_delimiter_characters_do_not_create_false_duplicate_source_requirements():
+    requirements = (
+        VisualStrategyTagRequirement(source=VisualStrategyContextSource.BUSINESS, all_of=["alpha,beta"]),
+        VisualStrategyTagRequirement(source=VisualStrategyContextSource.BUSINESS, all_of=["alpha", "beta"]),
+    )
+
+    report = validate_visual_strategy_profiles(
+        [_profile(required_tag_requirements=requirements)],
+        resources=_resources(provider_capability_ids=[]),
+    )
+
+    assert RegistryValidationCode.DUPLICATE_SOURCE_REQUIREMENT not in {issue.code for issue in report.issues}
+
+
+def test_visual_element_inner_duplicate_source_requirement_is_reported():
+    requirement = VisualStrategyTagRequirement(source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT, all_of=["visible"])
+    profile = _profile(
+        introduced_visual_elements=["hero_prop"],
+        visual_element_evidence_requirements=(
+            VisualElementEvidenceRequirement(element="hero_prop", requirements=(requirement, requirement)),
+        ),
+    )
+
+    report = validate_visual_strategy_profiles([profile], resources=_resources(provider_capability_ids=[]))
+
+    assert any(
+        issue.code == RegistryValidationCode.DUPLICATE_SOURCE_REQUIREMENT
+        and issue.field_path == "visual_element_evidence_requirements.0.requirements"
+        for issue in report.issues
+    )
+
+
+def test_visual_element_requirement_without_introduced_element_uses_specific_code():
+    requirement = VisualStrategyTagRequirement(source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT, all_of=["visible"])
+    valid_profile = _profile()
+    raw_profile_data = {field_name: getattr(valid_profile, field_name) for field_name in VisualStrategyProfile.model_fields}
+    profile = VisualStrategyProfile.model_construct(
+        **{
+            **raw_profile_data,
+            "introduced_visual_elements": frozenset(),
+            "visual_element_evidence_requirements": (
+                VisualElementEvidenceRequirement(element="hero_prop", requirements=(requirement,)),
+            ),
+        }
+    )
+
+    report = validate_visual_strategy_profiles([profile], resources=_resources(provider_capability_ids=[]))
+
+    assert RegistryValidationCode.VISUAL_ELEMENT_REQUIREMENT_WITHOUT_INTRODUCED_ELEMENT in {issue.code for issue in report.issues}
+
+
 def test_raw_profile_validation_reports_provider_catalog_modes():
     profile = _profile(provider_capabilities=["capability_alpha"])
 
@@ -198,6 +253,26 @@ def test_raw_profile_validation_reports_provider_catalog_modes():
 
     invalid_report = validate_visual_strategy_profiles([profile], resources=_resources(provider_capability_ids=["capability_beta"]))
     assert RegistryValidationCode.INVALID_PROVIDER_CAPABILITY in {issue.code for issue in invalid_report.issues}
+
+
+def test_provider_catalog_is_not_required_when_profiles_do_not_need_capabilities():
+    report = validate_visual_strategy_profiles([_profile()], resources=_resources(provider_capability_ids=None))
+
+    assert report.valid is True
+    assert report.complete is True
+    assert report.warning_count == 0
+    assert report.provider_capability_validation_mode == "not_required"
+
+
+def test_provider_warning_promoted_to_error_is_resorted_deterministically():
+    report = validate_visual_strategy_profiles(
+        [_profile(composition_template_id="missing", provider_capabilities=["capability_alpha"])],
+        resources=_resources(provider_capability_ids=None),
+        policy=RegistryIntegrityPolicy(require_provider_capability_catalog=True),
+    )
+
+    assert [issue.severity for issue in report.issues] == [RegistryValidationSeverity.ERROR, RegistryValidationSeverity.ERROR]
+    assert [issue.code for issue in report.issues] == sorted(issue.code for issue in report.issues)
 
 
 def test_fallback_checks_use_tier_not_strategy_id_text():
@@ -229,6 +304,13 @@ def test_empty_enabled_registry_and_disabled_exposure_are_reported():
     assert RegistryValidationCode.DISABLED_PROFILE_EXPOSED in {issue.code for issue in exposed.issues}
 
 
+def test_empty_profile_list_reports_empty_enabled_registry_and_missing_fallback():
+    report = validate_visual_strategy_profiles([], resources=_resources(provider_capability_ids=[]))
+
+    assert RegistryValidationCode.EMPTY_ENABLED_REGISTRY in {issue.code for issue in report.issues}
+    assert RegistryValidationCode.MISSING_ENABLED_FALLBACK in {issue.code for issue in report.issues}
+
+
 def test_archetype_open_and_catalog_modes():
     open_report = validate_visual_strategy_profiles([_profile(archetype="new_archetype")], resources=_resources(provider_capability_ids=[]))
     assert open_report.valid is True
@@ -242,6 +324,13 @@ def test_archetype_open_and_catalog_modes():
     assert catalog_report.valid is False
     assert RegistryValidationCode.INVALID_ARCHETYPE in {issue.code for issue in catalog_report.issues}
     assert catalog_report.archetype_validation_mode == "catalog"
+
+
+def test_policy_rejects_single_string_archetype_catalog_and_non_bool_flags():
+    with pytest.raises(ValidationError):
+        RegistryIntegrityPolicy(allowed_archetypes="poster")
+    with pytest.raises(ValidationError):
+        RegistryIntegrityPolicy(require_enabled_fallback=1)
 
 
 def test_built_registry_validation_uses_supplied_catalogs_and_public_enabled_listing():
@@ -261,20 +350,112 @@ def test_built_registry_validation_uses_supplied_catalogs_and_public_enabled_lis
     assert report.registry_version == "v1"
     assert report.registry_snapshot_hash == registry.snapshot_hash
     assert report.checked_provider_capability_count == 1
+    assert report.snapshot_hash_validation_mode == "verified"
 
 
-def test_default_registry_validation_report_is_valid_but_incomplete_without_provider_catalog():
+def test_hash_mismatch_preserves_original_catalog_and_policy_context():
+    profile = _profile(provider_capabilities=["capability_alpha"])
+    registry = VisualStrategyRegistry(version="v1", profiles=[profile], resources=_resources(provider_capability_ids=["capability_alpha"]))
+    registry._snapshot_hash = "tampered"
+
+    report = validate_visual_strategy_registry(
+        registry,
+        templates=["template_alpha"],
+        presets=["preset_alpha"],
+        copy_profiles=["tone_alpha"],
+        provider_capabilities=["capability_alpha"],
+        policy=RegistryIntegrityPolicy(
+            allowed_archetypes=frozenset({"open_archetype"}),
+            require_fallback_domain_coverage=True,
+            discriminated_union_status=DiscriminatedUnionAuditStatus.NOT_APPLIED_NO_STRUCTURAL_DIFFERENCE,
+        ),
+    )
+
+    assert RegistryValidationCode.REGISTRY_HASH_MISMATCH in {issue.code for issue in report.issues}
+    assert report.valid is False
+    assert report.checked_provider_capability_count == 1
+    assert report.provider_capability_validation_mode == "catalog"
+    assert report.archetype_validation_mode == "catalog"
+    assert report.discriminated_union_status == DiscriminatedUnionAuditStatus.NOT_APPLIED_NO_STRUCTURAL_DIFFERENCE
+    assert RegistryValidationCode.FALLBACK_WITHOUT_DOMAIN_COVERAGE in {issue.code for issue in report.issues}
+
+
+def test_hash_validation_mode_is_unavailable_without_public_hash_helper():
+    class RegistryWithoutHashHelper:
+        version = "v1"
+        snapshot_hash = "hash"
+
+        def __init__(self, profile: VisualStrategyProfile) -> None:
+            self.profile = profile
+
+        def list_profiles(self, *, include_disabled: bool = False):
+            return (self.profile,)
+
+    report = validate_visual_strategy_registry(
+        RegistryWithoutHashHelper(_profile()),
+        templates=["template_alpha"],
+        presets=["preset_alpha"],
+        copy_profiles=["tone_alpha"],
+        provider_capabilities=[],
+    )
+
+    assert report.snapshot_hash_validation_mode == "unavailable"
+    assert RegistryValidationCode.REGISTRY_HASH_MISMATCH not in {issue.code for issue in report.issues}
+
+
+def test_catalog_inputs_reject_single_strings_and_non_string_ids():
+    registry = VisualStrategyRegistry(version="v1", profiles=[_profile()], resources=_resources())
+
+    with pytest.raises(TypeError):
+        validate_visual_strategy_registry(registry, templates="template_alpha")
+    with pytest.raises(TypeError):
+        validate_visual_strategy_registry(registry, templates=[object()])
+
+
+def test_default_registry_validation_report_is_valid_and_complete_when_provider_catalog_is_not_needed():
     registry = build_default_visual_strategy_registry()
     report = validate_visual_strategy_registry(registry)
 
     assert report.validator_version == VISUAL_STRATEGY_REGISTRY_INTEGRITY_VALIDATOR_VERSION
     assert report.valid is True
-    assert report.complete is False
+    assert report.complete is True
     assert report.error_count == 0
-    assert report.warning_count == 1
+    assert report.warning_count == 0
     assert report.profile_count == len(registry.list_profiles(include_disabled=True))
     assert report.enabled_fallback_profile_count >= 1
-    assert report.discriminated_union_status == "not_applied_no_structural_difference"
+    assert report.provider_capability_validation_mode == "not_required"
+    assert report.discriminated_union_status == DiscriminatedUnionAuditStatus.NOT_EVALUATED
+
+
+def test_report_rejects_negative_and_inconsistent_counts():
+    payload = {
+        "validator_version": "validator",
+        "registry_version": None,
+        "registry_snapshot_hash": None,
+        "profile_count": 1,
+        "enabled_profile_count": 1,
+        "disabled_profile_count": 0,
+        "fallback_profile_count": 1,
+        "enabled_fallback_profile_count": 1,
+        "error_count": 0,
+        "warning_count": 0,
+        "info_count": 0,
+        "valid": True,
+        "complete": True,
+        "issues": (),
+        "checked_composition_template_count": 1,
+        "checked_mood_preset_count": 1,
+        "checked_copy_tone_profile_count": 1,
+        "checked_provider_capability_count": 0,
+        "archetype_validation_mode": "open",
+        "provider_capability_validation_mode": "not_required",
+        "snapshot_hash_validation_mode": "unavailable",
+        "discriminated_union_status": DiscriminatedUnionAuditStatus.NOT_EVALUATED,
+    }
+    with pytest.raises(ValidationError):
+        RegistryValidationReport(**{**payload, "profile_count": -1})
+    with pytest.raises(ValidationError):
+        RegistryValidationReport(**{**payload, "fallback_profile_count": 2})
 
 
 def test_integrity_error_helper_raises_only_for_invalid_report():

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from collections.abc import Iterable
 from typing import Protocol
@@ -57,6 +58,7 @@ def validate_visual_strategy_registry(
     provider_capabilities: ProviderCapabilityRegistryLike | None = None,
     policy: RegistryIntegrityPolicy | None = None,
 ) -> RegistryValidationReport:
+    validation_policy = policy or RegistryIntegrityPolicy()
     resource_catalog = _resource_catalog_from_inputs(
         presets=presets,
         templates=templates,
@@ -66,7 +68,7 @@ def validate_visual_strategy_registry(
     report = validate_visual_strategy_profiles(
         registry.list_profiles(include_disabled=True),
         resources=resource_catalog,
-        policy=policy,
+        policy=validation_policy,
         registry_version=registry.version,
         registry_snapshot_hash=registry.snapshot_hash,
         exposed_enabled_profiles=registry.list_profiles(),
@@ -88,7 +90,7 @@ def validate_visual_strategy_profiles(
     issues: list[RegistryValidationIssue] = []
 
     issues.extend(_validate_duplicate_strategy_ids(profile_list))
-    issues.extend(_validate_resources(profile_list, resources))
+    issues.extend(_validate_resources(profile_list, resources, validation_policy))
     issues.extend(_validate_archetypes(profile_list, validation_policy))
     issues.extend(_validate_profile_structure(profile_list, validation_policy))
     issues.extend(_validate_registry_shape(profile_list, validation_policy))
@@ -124,10 +126,12 @@ def _validate_duplicate_strategy_ids(profiles: tuple[VisualStrategyProfile, ...]
 def _validate_resources(
     profiles: tuple[VisualStrategyProfile, ...],
     resources: VisualStrategyResourceCatalog,
+    policy: RegistryIntegrityPolicy,
 ) -> tuple[RegistryValidationIssue, ...]:
     issues: list[RegistryValidationIssue] = []
     provider_ids = resources.provider_capability_ids
-    if provider_ids is None:
+    provider_validation_needed = policy.require_provider_capability_catalog or any(profile.provider_capabilities for profile in profiles)
+    if provider_validation_needed and provider_ids is None:
         severity = RegistryValidationSeverity.WARNING
         issues.append(
             _issue(
@@ -219,7 +223,7 @@ def _validate_source_requirements(profile: VisualStrategyProfile) -> tuple[Regis
             severity=RegistryValidationSeverity.ERROR,
             strategy_id=profile.strategy_id,
             field_path="required_tag_requirements",
-            related_id=key,
+            related_id=_requirement_related_id(key),
             message="duplicate source requirement would duplicate scoring and trace entries",
         )
         for key, count in counts.items()
@@ -249,7 +253,7 @@ def _validate_visual_element_requirements(
     for element in sorted(set(requirement_elements) - set(profile.introduced_visual_elements)):
         issues.append(
             _issue(
-                code=RegistryValidationCode.INTRODUCED_ELEMENT_WITHOUT_REQUIREMENT,
+                code=RegistryValidationCode.VISUAL_ELEMENT_REQUIREMENT_WITHOUT_INTRODUCED_ELEMENT,
                 severity=RegistryValidationSeverity.ERROR,
                 strategy_id=profile.strategy_id,
                 field_path="visual_element_evidence_requirements",
@@ -270,6 +274,19 @@ def _validate_visual_element_requirements(
                 )
             )
     for index, element_requirement in enumerate(profile.visual_element_evidence_requirements):
+        requirement_counts = Counter(_requirement_key(requirement) for requirement in element_requirement.requirements)
+        for key, count in requirement_counts.items():
+            if count > 1:
+                issues.append(
+                    _issue(
+                        code=RegistryValidationCode.DUPLICATE_SOURCE_REQUIREMENT,
+                        severity=RegistryValidationSeverity.ERROR,
+                        strategy_id=profile.strategy_id,
+                        field_path=f"visual_element_evidence_requirements.{index}.requirements",
+                        related_id=_requirement_related_id(key),
+                        message="duplicate visual element source requirement would duplicate scoring and trace entries",
+                    )
+                )
         if not element_requirement.requirements:
             issues.append(
                 _issue(
@@ -291,7 +308,7 @@ def _validate_registry_shape(
     issues: list[RegistryValidationIssue] = []
     enabled = tuple(profile for profile in profiles if profile.enabled)
     enabled_fallback = tuple(profile for profile in enabled if profile.fallback_tier > 0)
-    if profiles and not enabled:
+    if not enabled:
         issues.append(
             _issue(
                 code=RegistryValidationCode.EMPTY_ENABLED_REGISTRY,
@@ -338,27 +355,35 @@ def _validate_exposed_profiles(profiles: Iterable[VisualStrategyProfile]) -> tup
 
 
 def _with_hash_check(report: RegistryValidationReport, registry: VisualStrategyRegistry) -> RegistryValidationReport:
-    build_hash = getattr(registry, "_build_snapshot_hash", None)
-    if not callable(build_hash) or build_hash() == registry.snapshot_hash:
-        return report
-    issues = _sort_issues(
-        [
-            *report.issues,
-            _issue(
-                code=RegistryValidationCode.REGISTRY_HASH_MISMATCH,
-                severity=RegistryValidationSeverity.ERROR,
-                field_path="snapshot_hash",
-                message="registry snapshot hash does not match canonical snapshot",
-            ),
-        ]
+    compute_hash = getattr(registry, "compute_snapshot_hash", None)
+    if not callable(compute_hash):
+        return report.model_copy(update={"snapshot_hash_validation_mode": "unavailable"})
+    if compute_hash() == registry.snapshot_hash:
+        return report.model_copy(update={"snapshot_hash_validation_mode": "verified"})
+    return _append_report_issue(
+        report.model_copy(update={"snapshot_hash_validation_mode": "verified"}),
+        _issue(
+            code=RegistryValidationCode.REGISTRY_HASH_MISMATCH,
+            severity=RegistryValidationSeverity.ERROR,
+            field_path="snapshot_hash",
+            message="registry snapshot hash does not match canonical snapshot",
+        ),
     )
-    return _build_report(
-        registry_version=report.registry_version,
-        registry_snapshot_hash=report.registry_snapshot_hash,
-        profiles=registry.list_profiles(include_disabled=True),
-        resources=_resource_catalog_from_inputs(),
-        policy=RegistryIntegrityPolicy(),
-        issues=issues,
+
+
+def _append_report_issue(report: RegistryValidationReport, issue: RegistryValidationIssue) -> RegistryValidationReport:
+    issues = _sort_issues([*report.issues, issue])
+    error_count = sum(1 for item in issues if item.severity == RegistryValidationSeverity.ERROR)
+    warning_count = sum(1 for item in issues if item.severity == RegistryValidationSeverity.WARNING)
+    info_count = sum(1 for item in issues if item.severity == RegistryValidationSeverity.INFO)
+    return report.model_copy(
+        update={
+            "issues": tuple(issues),
+            "error_count": error_count,
+            "warning_count": warning_count,
+            "info_count": info_count,
+            "valid": error_count == 0,
+        }
     )
 
 
@@ -374,19 +399,29 @@ def _build_report(
     error_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.ERROR)
     warning_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.WARNING)
     info_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.INFO)
+    provider_validation_needed = policy.require_provider_capability_catalog or any(profile.provider_capabilities for profile in profiles)
     provider_catalog_available = resources.provider_capability_ids is not None
-    provider_catalog_required = policy.require_provider_capability_catalog
-    if provider_catalog_required and not provider_catalog_available:
+    if policy.require_provider_capability_catalog and not provider_catalog_available:
         replacement: list[RegistryValidationIssue] = []
         for issue in issues:
             if issue.code == RegistryValidationCode.PROVIDER_CAPABILITY_CATALOG_UNAVAILABLE:
                 replacement.append(issue.model_copy(update={"severity": RegistryValidationSeverity.ERROR}))
             else:
                 replacement.append(issue)
-        issues = replacement
+        issues = _sort_issues(replacement)
         error_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.ERROR)
         warning_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.WARNING)
         info_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.INFO)
+
+    if not provider_validation_needed:
+        provider_mode = "not_required"
+        complete = True
+    elif provider_catalog_available:
+        provider_mode = "catalog"
+        complete = True
+    else:
+        provider_mode = "unavailable"
+        complete = False
 
     return RegistryValidationReport(
         validator_version=VISUAL_STRATEGY_REGISTRY_INTEGRITY_VALIDATOR_VERSION,
@@ -401,15 +436,16 @@ def _build_report(
         warning_count=warning_count,
         info_count=info_count,
         valid=error_count == 0,
-        complete=provider_catalog_available and not provider_catalog_required or provider_catalog_available,
+        complete=complete,
         issues=tuple(issues),
         checked_composition_template_count=len(resources.composition_template_ids),
         checked_mood_preset_count=len(resources.mood_preset_ids),
         checked_copy_tone_profile_count=len(resources.copy_tone_profile_ids),
         checked_provider_capability_count=0 if resources.provider_capability_ids is None else len(resources.provider_capability_ids),
         archetype_validation_mode="catalog" if policy.allowed_archetypes is not None else "open",
-        provider_capability_validation_mode="catalog" if resources.provider_capability_ids is not None else "unavailable",
-        discriminated_union_status="not_applied_no_structural_difference",
+        provider_capability_validation_mode=provider_mode,
+        snapshot_hash_validation_mode="unavailable",
+        discriminated_union_status=policy.discriminated_union_status,
     )
 
 
@@ -430,11 +466,27 @@ def _resource_catalog_from_inputs(
 
 
 def _catalog_ids(catalog: ResourceIdCatalog | Iterable[str]) -> frozenset[str]:
+    if isinstance(catalog, (str, bytes)):
+        raise TypeError("resource catalog must be an iterable of IDs, not a single string")
     if hasattr(catalog, "list_ids"):
-        return frozenset(catalog.list_ids())
-    if isinstance(catalog, dict):
-        return frozenset(catalog.keys())
-    return frozenset(catalog)
+        values = catalog.list_ids()
+    elif isinstance(catalog, dict):
+        values = catalog.keys()
+    else:
+        values = catalog
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            raise TypeError("resource catalog IDs must be strings")
+        item = value.strip()
+        if not item:
+            raise ValueError("resource catalog IDs must not be empty")
+        if item in seen:
+            continue
+        output.append(item)
+        seen.add(item)
+    return frozenset(output)
 
 
 def _missing_resource_issue(
@@ -490,11 +542,13 @@ def _sort_issues(issues: Iterable[RegistryValidationIssue]) -> list[RegistryVali
     )
 
 
-def _requirement_key(requirement: VisualStrategyTagRequirement) -> str:
-    return "|".join(
-        (
-            requirement.source.value,
-            ",".join(sorted(requirement.all_of)),
-            ",".join(sorted(requirement.any_of)),
-        )
+def _requirement_key(requirement: VisualStrategyTagRequirement) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    return (
+        requirement.source.value,
+        tuple(sorted(requirement.all_of)),
+        tuple(sorted(requirement.any_of)),
     )
+
+
+def _requirement_related_id(key: tuple[str, tuple[str, ...], tuple[str, ...]]) -> str:
+    return json.dumps(key, ensure_ascii=False, separators=(",", ":"))
