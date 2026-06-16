@@ -181,9 +181,9 @@ def test_a1_legacy_projection_is_deprecated_compatibility_result():
     assert projection.projection_version == "1.0"
     assert projection.deprecated is True
 
-# The business_type values that are fully canonical (round-trip identically
-# through the preset selector). Excludes the ambiguous aliases beauty_salon /
-# beauty which collapse onto a canonical preset.
+# The business_type values that are fully resolved legacy route keys and round
+# trip identically through the preset selector. Ambiguous aliases beauty_salon /
+# beauty intentionally fail closed to generic in A-4.
 CANONICAL_BUSINESS_TYPES = {
     "cafe",
     "restaurant_bbq",
@@ -224,16 +224,18 @@ def test_canonical_business_types_round_trip_through_selector():
         assert preset["business_type"] == business_type
 
 
-# --- P6: beauty_salon must not route to hair --------------------------------
+# --- A-4: selectors must fail closed for ambiguous/raw values ----------------
 
-def test_beauty_salon_does_not_route_to_hair_preset():
+def test_beauty_salon_routes_to_generic_until_subtype_evidence_exists():
     preset = select_visual_preset("beauty_salon")
-    assert preset["business_type"] == "beauty_skincare"
-    assert preset["preset_id"] != "beauty_hair_salon_clean"
+    assert preset["business_type"] == "generic"
+    assert preset["preset_id"] == "generic_clean_ad_background"
 
 
-def test_ambiguous_beauty_routes_to_skincare():
-    assert select_visual_preset("beauty")["business_type"] == "beauty_skincare"
+def test_ambiguous_beauty_routes_to_generic():
+    preset = select_visual_preset("beauty")
+    assert preset["business_type"] == "generic"
+    assert preset["preset_id"] == "generic_clean_ad_background"
 
 
 def test_explicit_beauty_subtypes_still_route_correctly():
@@ -242,9 +244,10 @@ def test_explicit_beauty_subtypes_still_route_correctly():
     assert select_visual_preset("beauty_spa")["business_type"] == "beauty_spa"
 
 
-def test_keyword_fallback_still_handles_raw_korean_bbq_input():
-    # Non-canonical raw input must still reach the bbq preset via the fallback.
-    assert select_visual_preset("숯불 삼겹살 맛집")["business_type"] == "restaurant_bbq"
+def test_raw_korean_bbq_input_no_longer_routes_by_keyword_to_bbq():
+    preset = select_visual_preset("숯불 삼겹살 맛집")
+    assert preset["business_type"] == "generic"
+    assert preset["preset_id"] == "generic_clean_ad_background"
 
 
 # --- Copy alias: plain restaurant must not be forced into bbq tone -----------
@@ -280,6 +283,34 @@ def test_every_brief_business_type_is_routed_or_observably_fellback():
             assert any("business_type_fallback_generic" in w for w in warnings), (
                 f"{value!r} evaporated silently — expected a generic-fallback warning."
             )
+
+
+def test_retail_brief_business_type_is_not_silently_dropped():
+    normalized = normalize_business_type("retail")
+    updates, warnings = build_context_updates_from_brief_interpreter(
+        BriefInterpreterOutput(business_type="retail")
+    )
+
+    assert normalized.canonical_domain == CanonicalBusinessDomain.RETAIL
+    assert normalized.support_status == DomainSupportStatus.SPECIALIZED
+    assert normalized.business_type == "retail"
+    assert updates.get("business_type") == "retail"
+    assert not any("business_type_fallback_generic" in warning for warning in warnings)
+
+
+@pytest.mark.parametrize("value", ["fitness", "education", "service", "other"])
+def test_unsupported_brief_business_type_preserves_hint_and_warning(value):
+    normalized = normalize_business_type(value)
+    updates, warnings = build_context_updates_from_brief_interpreter(
+        BriefInterpreterOutput(business_type=value)
+    )
+
+    assert normalized.canonical_domain == CanonicalBusinessDomain.OTHER
+    assert normalized.support_status == DomainSupportStatus.GENERIC_FALLBACK
+    assert normalized.unsupported_domain_hint == value
+    assert normalized.fallback_reason == DomainFallbackReason.UNSUPPORTED_DOMAIN_IN_MVP
+    assert updates.get("business_type") == value
+    assert any("business_type_fallback_generic: unsupported_domain_in_mvp" in warning for warning in warnings)
 
 
 def test_business_type_map_is_derived_from_ssot():

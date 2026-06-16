@@ -82,6 +82,9 @@ def test_supported_domains_are_mvp_specialized_domains():
         ("fitness", CanonicalBusinessDomain.OTHER),
         ("education", CanonicalBusinessDomain.OTHER),
         ("service", CanonicalBusinessDomain.OTHER),
+        ("professional_service", CanonicalBusinessDomain.OTHER),
+        ("local_service", CanonicalBusinessDomain.OTHER),
+        ("home_service", CanonicalBusinessDomain.OTHER),
         ("other", CanonicalBusinessDomain.OTHER),
     ],
 )
@@ -169,11 +172,21 @@ def test_normalize_retail_is_supported_specialized_domain():
     assert result.support_status == DomainSupportStatus.SPECIALIZED
     assert result.fallback_reason is None
     assert _tags(result) == {"retail"}
+    assert result.business_type == "retail"
+    assert result.supported is True
 
 
 @pytest.mark.parametrize(
     ("value", "hint"),
-    [("fitness", "fitness"), ("education", "education"), ("service", "service"), ("other", "other")],
+    [
+        ("fitness", "fitness"),
+        ("education", "education"),
+        ("service", "service"),
+        ("professional_service", "professional_service"),
+        ("local_service", "local_service"),
+        ("home_service", "home_service"),
+        ("other", "other"),
+    ],
 )
 def test_normalize_unsupported_domains_preserves_hint(value, hint):
     result = normalize_business_type(value)

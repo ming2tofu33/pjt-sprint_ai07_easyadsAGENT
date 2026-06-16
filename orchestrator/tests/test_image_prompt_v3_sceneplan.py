@@ -41,10 +41,10 @@ def test_cafe_dessert_scene_plan():
 
 
 def test_restaurant_bbq_scene_plan():
-    # restaurant BBQ user_input -> restaurant_bbq preset / dark warm left copy area
+    # Exact restaurant_bbq route key -> restaurant_bbq preset / dark warm left copy area
     scene_plan = build_scene_plan(
         user_input="참숯에 구운 프리미엄 한우 삼겹살 갈비",
-        business_type="restaurant",
+        business_type="restaurant_bbq",
         ad_format="instagram_feed"
     )
     assert scene_plan.business_type == "restaurant_bbq"
@@ -54,50 +54,59 @@ def test_restaurant_bbq_scene_plan():
     assert any("menu" in item or "table" in item for item in scene_plan.forbidden_visual_elements)
 
 
-def test_beauty_subtypes_heuristics():
-    # hair
-    bt_hair = resolve_business_type(
+def test_beauty_subtypes_require_exact_route_keys():
+    assert resolve_business_type(
         user_input="홍대 미용실 헤어 컷트 셋팅펌 스타일링",
-        business_type="beauty"
-    )
-    assert bt_hair == "beauty_hair"
-    
-    # skincare
-    bt_skin = resolve_business_type(
+        business_type="beauty_hair"
+    ) == "beauty_hair"
+    assert resolve_business_type(
         user_input="피부과 에스테틱 스킨케어 앰플 수분 크림",
-        business_type="beauty"
-    )
-    assert bt_skin == "beauty_skincare"
-    
-    # nail
-    bt_nail = resolve_business_type(
+        business_type="beauty_skincare"
+    ) == "beauty_skincare"
+    assert resolve_business_type(
         user_input="여름 젤네일 아트 추천",
-        business_type="beauty"
-    )
-    assert bt_nail == "beauty_nail"
-    
-    # spa
-    bt_spa = resolve_business_type(
+        business_type="beauty_nail"
+    ) == "beauty_nail"
+    assert resolve_business_type(
         user_input="태국 아로마 스파 마사지 힐링 웰니스",
+        business_type="beauty_spa"
+    ) == "beauty_spa"
+
+
+def test_scene_planner_fails_closed_for_ambiguous_or_raw_values():
+    assert resolve_business_type(
+        user_input="강남 뷰티샵 헤어 스타일링",
         business_type="beauty"
-    )
-    assert bt_spa == "beauty_spa"
-
-
-def test_ambiguous_beauty_fallback():
-    # ambiguous beauty_salon -> beauty_skincare fallback (deterministic)
-    bt_ambiguous = resolve_business_type(
-        user_input="강남 뷰티샵 미용 서비스",
-        business_type="beauty_salon"
-    )
-    assert bt_ambiguous == "beauty_skincare"
-    
-    # Explicit mapping override if user input contains hair terms
-    bt_ambiguous_hair = resolve_business_type(
+    ) == "generic"
+    assert resolve_business_type(
         user_input="강남 뷰티샵 헤어 스타일링",
         business_type="beauty_salon"
-    )
-    assert bt_ambiguous_hair == "beauty_hair"
+    ) == "generic"
+    assert resolve_business_type(
+        user_input="숯불 삼겹살 맛집 포스터 만들어줘",
+        business_type=None
+    ) == "generic"
+    assert resolve_business_type(
+        user_input="korean cafe restaurant",
+        business_type=None
+    ) == "generic"
+    assert resolve_business_type(
+        user_input="",
+        business_type="bbq"
+    ) == "generic"
+
+
+def test_scene_planner_accepts_exact_reference_route_keys_only():
+    assert resolve_business_type(
+        user_input="",
+        business_type=None,
+        selected_reference_template={"business_type": "restaurant_bbq"},
+    ) == "restaurant_bbq"
+    assert resolve_business_type(
+        user_input="헤어 스타일링",
+        business_type=None,
+        selected_reference_template={"category": "beauty_salon"},
+    ) == "generic"
 
 
 def test_prompt_quality_policy():
