@@ -98,7 +98,12 @@ def test_campaign_context_rejects_downstream_or_format_fields(field_name: str):
 
 
 def test_input_evidence_adapter_projects_campaign_fields_without_placement():
-    fact = _fact("campaign_intent", "launch")
+    facts = [
+        _fact("campaign_intent", "new_product_launch"),
+        _fact("campaign_status", "new_product"),
+        _fact("promotion_goal", "product_promotion"),
+        _fact("desired_positioning", "premium"),
+    ]
     bundle = InputEvidenceBundle(
         input_mode="text_only",
         campaign_intent="new_product_launch",
@@ -106,7 +111,7 @@ def test_input_evidence_adapter_projects_campaign_fields_without_placement():
         promotion_goal="product_promotion",
         desired_positioning=["premium", "premium"],
         placement="poster",
-        explicit_user_facts=[fact],
+        explicit_user_facts=facts,
         overall_confidence=0.76,
     )
 
@@ -116,8 +121,21 @@ def test_input_evidence_adapter_projects_campaign_fields_without_placement():
     assert context.campaign_status == "new_product"
     assert context.promotion_goal == "product_promotion"
     assert context.desired_positioning == ["premium"]
-    assert context.evidence_refs == [fact.evidence_id]
+    assert context.evidence_refs == [fact.evidence_id for fact in facts]
     assert not hasattr(context, "placement")
+
+
+def test_adapter_rejects_partially_grounded_campaign_claims():
+    bundle = InputEvidenceBundle(
+        input_mode="text_only",
+        campaign_intent="new_product_launch",
+        campaign_status="new_product",
+        explicit_user_facts=[_fact("campaign_intent", "new_product_launch")],
+        overall_confidence=0.8,
+    )
+
+    with pytest.raises(ValueError, match="campaign_status"):
+        campaign_context_from_input_evidence(bundle)
 
 
 def test_input_evidence_adapter_requires_matching_or_explicit_evidence():
@@ -127,7 +145,7 @@ def test_input_evidence_adapter_requires_matching_or_explicit_evidence():
         overall_confidence=0.76,
     )
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError, match="campaign_intent"):
         campaign_context_from_input_evidence(bundle)
 
     context = campaign_context_from_input_evidence(bundle, evidence_refs=["input:campaign_intent"])

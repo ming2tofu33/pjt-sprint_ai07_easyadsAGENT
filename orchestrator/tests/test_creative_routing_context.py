@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from orchestrator.app.llm.creative_routing_context_service import build_creative_routing_context
 from orchestrator.app.llm.domain_routing import (
     CanonicalBusinessDomain,
+    DomainFallbackReason,
     DomainRoutingResult,
     DomainSupportStatus,
 )
@@ -136,6 +137,20 @@ def test_builder_preserves_nested_objects_without_flattening():
     assert not hasattr(context, "campaign_intent")
 
 
+def test_creative_routing_context_rejects_extra_fields():
+    with pytest.raises(ValidationError):
+        CreativeRoutingContext(
+            domain=_domain(),
+            business=_business(),
+            product=_product(),
+            product_visual=_product_visual(),
+            campaign=_campaign(),
+            ad_format=build_ad_format_spec("poster"),
+            resolver_version="visual-strategy-resolver-v1",
+            preset_id="not_allowed",
+        )
+
+
 def test_domain_and_business_domains_must_match():
     with pytest.raises(ValidationError, match="canonical_domain must match"):
         _context(domain=_domain(CanonicalBusinessDomain.BEAUTY), business=_business(CanonicalBusinessDomain.RETAIL))
@@ -164,6 +179,29 @@ def test_visual_observations_and_input_conflicts_are_stably_deduplicated():
     assert context.input_conflicts[0].severity == "manual_review"
 
 
+def test_same_evidence_id_with_different_payload_is_rejected():
+    first = _visual_evidence("e1")
+    second = first.model_copy(update={"value": "matte_black"})
+
+    with pytest.raises(ValidationError, match="conflicting EvidenceItem"):
+        _context(visual_observations=[first, second])
+
+
+def test_same_conflict_id_with_different_payload_is_rejected():
+    first = _conflict("c1")
+    second = first.model_copy(update={"severity": "warning"})
+
+    with pytest.raises(ValidationError, match="conflicting InputConflict"):
+        _context(input_conflicts=[first, second])
+
+
+def test_visual_observations_and_input_conflicts_reject_wrong_item_types():
+    with pytest.raises(ValidationError):
+        _context(visual_observations=[{"evidence_id": "e1"}])
+    with pytest.raises(ValidationError):
+        _context(input_conflicts=[{"conflict_id": "c1"}])
+
+
 def test_reference_style_profile_is_json_compatible_and_deep_copied():
     profile = {"style_tags": ["minimal"], "weights": {"soft": 0.8}}
     context = _context(reference_style_profile=profile)
@@ -172,6 +210,20 @@ def test_reference_style_profile_is_json_compatible_and_deep_copied():
     assert context.reference_style_profile == {"style_tags": ["minimal"], "weights": {"soft": 0.8}}
     with pytest.raises(ValidationError, match="JSON-compatible"):
         _context(reference_style_profile={"bad": object()})
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_reference_profile_rejects_non_finite_numbers(value: float):
+    with pytest.raises(ValidationError, match="JSON-compatible"):
+        _context(reference_style_profile={"weight": value})
+
+
+def test_creative_routing_context_json_round_trip():
+    context = _context(reference_style_profile={"style_tags": ["minimal"]})
+
+    restored = CreativeRoutingContext.model_validate_json(context.model_dump_json())
+
+    assert restored == context
 
 
 def test_ambiguity_flags_and_resolver_version_are_normalized():
@@ -212,6 +264,25 @@ def test_ad_format_spec_is_reused_and_not_copied_into_campaign():
     assert "AdFormatContract" not in globals()
     assert not hasattr(context.campaign, "ad_format")
     assert "campaign_intent" not in context.ad_format.metadata
+
+
+def test_generic_fallback_preserves_canonical_domain_match():
+    domain = DomainRoutingResult(
+        raw_business_type="retail",
+        canonical_domain=CanonicalBusinessDomain.RETAIL,
+        support_status=DomainSupportStatus.GENERIC_FALLBACK,
+        fallback_reason=DomainFallbackReason.NO_SPECIALIZED_VISUAL_PROFILE,
+        confidence=0.8,
+    )
+    business = BusinessEnvironmentContext(
+        broad_domain=CanonicalBusinessDomain.RETAIL,
+        confidence=0.8,
+    )
+
+    context = _context(domain=domain, business=business)
+
+    assert context.domain.canonical_domain is CanonicalBusinessDomain.RETAIL
+    assert context.business.broad_domain is CanonicalBusinessDomain.RETAIL
 
 
 def test_metamorphic_business_change_preserves_other_contexts():
