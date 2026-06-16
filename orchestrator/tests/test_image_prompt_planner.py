@@ -32,6 +32,20 @@ def _with_product_visual_context(state: dict, *, product_tags: list[str]) -> dic
     return state
 
 
+def _assert_single_resolved_visual_key(
+    metadata: dict,
+    *,
+    route_key: str,
+    preset_id: str,
+    template_id: str,
+):
+    assert metadata["resolved_visual_route_key"] == route_key
+    assert metadata["visual_template_id"] == template_id
+    assert metadata["business_visual_preset_id"] == preset_id
+    assert metadata["scene_plan"]["business_type"] == route_key
+    assert metadata["legacy_routing_projection"]["route_key"] == route_key
+
+
 def test_image_prompt_uses_visual_template_and_safety_terms():
     spec = build_image_prompt_spec_with_critic(_state("cafe"))
 
@@ -56,11 +70,12 @@ def test_image_prompt_single_resolved_key_downgrades_legacy_bbq_without_visual_e
     spec = build_image_prompt_spec_with_critic(_state("restaurant_bbq"))
     metadata = spec.metadata
 
-    assert metadata["resolved_visual_route_key"] == "restaurant"
-    assert metadata["visual_template_id"] == "restaurant_generic_clean"
-    assert metadata["business_visual_preset_id"] == "restaurant_generic_clean"
-    assert metadata["scene_plan"]["business_type"] == "restaurant"
-    assert metadata["legacy_routing_projection"]["route_key"] == "restaurant"
+    _assert_single_resolved_visual_key(
+        metadata,
+        route_key="restaurant",
+        preset_id="restaurant_generic_clean",
+        template_id="restaurant_generic_clean",
+    )
     assert "korean_bbq_without_visual_evidence" in metadata["legacy_routing_projection"]["reason_codes"]
 
 
@@ -73,22 +88,88 @@ def test_image_prompt_single_resolved_key_allows_bbq_with_grilled_meat_product_e
     spec = build_image_prompt_spec_with_critic(state)
     metadata = spec.metadata
 
-    assert metadata["resolved_visual_route_key"] == "restaurant_bbq"
-    assert metadata["visual_template_id"] == "restaurant_bbq_warm_grill"
-    assert metadata["business_visual_preset_id"] == "restaurant_bbq_warm_grill"
-    assert metadata["scene_plan"]["business_type"] == "restaurant_bbq"
-    assert metadata["legacy_routing_projection"]["route_key"] == "restaurant_bbq"
+    _assert_single_resolved_visual_key(
+        metadata,
+        route_key="restaurant_bbq",
+        preset_id="restaurant_bbq_warm_grill",
+        template_id="restaurant_bbq_warm_grill",
+    )
 
 
 def test_image_prompt_single_resolved_key_preserves_unsupported_fallback_breadcrumb():
     spec = build_image_prompt_spec_with_critic(_state("fitness"))
     metadata = spec.metadata
 
-    assert metadata["resolved_visual_route_key"] == "generic"
-    assert metadata["visual_template_id"] == "generic_clean_ad_background"
-    assert metadata["business_visual_preset_id"] == "generic_clean_ad_background"
+    _assert_single_resolved_visual_key(
+        metadata,
+        route_key="generic",
+        preset_id="generic_clean_ad_background",
+        template_id="generic_clean_ad_background",
+    )
     assert metadata["domain_routing_result"]["unsupported_domain_hint"] == "fitness"
     assert metadata["legacy_routing_projection"]["fallback_reason"] == "unsupported_domain_in_mvp"
+
+
+def test_image_prompt_single_resolved_key_covers_ambiguous_and_visual_fallback_cases():
+    cases = [
+        {
+            "business_type": "beauty_salon",
+            "route_key": "generic",
+            "preset_id": "generic_clean_ad_background",
+            "template_id": "generic_clean_ad_background",
+            "support_status": "needs_evidence",
+            "domain_fallback_reason": "ambiguous_beauty_subdomain",
+            "projection_fallback_reason": "ambiguous_beauty_subdomain",
+            "unsupported_domain_hint": None,
+        },
+        {
+            "business_type": "retail",
+            "route_key": "generic",
+            "preset_id": "generic_clean_ad_background",
+            "template_id": "generic_clean_ad_background",
+            "support_status": "specialized",
+            "domain_fallback_reason": None,
+            "projection_fallback_reason": "no_specialized_visual_profile",
+            "unsupported_domain_hint": None,
+        },
+        {
+            "business_type": "education",
+            "route_key": "generic",
+            "preset_id": "generic_clean_ad_background",
+            "template_id": "generic_clean_ad_background",
+            "support_status": "generic_fallback",
+            "domain_fallback_reason": "unsupported_domain_in_mvp",
+            "projection_fallback_reason": "unsupported_domain_in_mvp",
+            "unsupported_domain_hint": "education",
+        },
+        {
+            "business_type": "service",
+            "route_key": "generic",
+            "preset_id": "generic_clean_ad_background",
+            "template_id": "generic_clean_ad_background",
+            "support_status": "generic_fallback",
+            "domain_fallback_reason": "unsupported_domain_in_mvp",
+            "projection_fallback_reason": "unsupported_domain_in_mvp",
+            "unsupported_domain_hint": "service",
+        },
+    ]
+
+    for case in cases:
+        spec = build_image_prompt_spec_with_critic(_state(case["business_type"]))
+        metadata = spec.metadata
+        domain = metadata["domain_routing_result"]
+        projection = metadata["legacy_routing_projection"]
+
+        _assert_single_resolved_visual_key(
+            metadata,
+            route_key=case["route_key"],
+            preset_id=case["preset_id"],
+            template_id=case["template_id"],
+        )
+        assert domain["support_status"] == case["support_status"]
+        assert domain.get("fallback_reason") == case["domain_fallback_reason"]
+        assert domain.get("unsupported_domain_hint") == case["unsupported_domain_hint"]
+        assert projection.get("fallback_reason") == case["projection_fallback_reason"]
 
 
 def test_reference_template_preset_id_cannot_override_resolved_visual_key():
