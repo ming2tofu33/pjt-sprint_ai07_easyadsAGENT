@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -613,11 +613,11 @@ def _reference_style_signals(value: Any) -> frozenset[str]:
             if normalized:
                 output.add(normalized)
             return
-        if isinstance(item, list):
+        if isinstance(item, (list, tuple)):
             for child in item:
                 visit(child)
             return
-        if isinstance(item, dict):
+        if isinstance(item, Mapping):
             for child in item.values():
                 visit(child)
 

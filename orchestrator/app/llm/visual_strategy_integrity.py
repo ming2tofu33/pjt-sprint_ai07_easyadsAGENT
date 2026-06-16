@@ -427,7 +427,7 @@ def _with_hash_check(report: RegistryValidationReport, registry: VisualStrategyR
     if compute_hash() == registry.snapshot_hash:
         return report.model_copy(update={"snapshot_hash_validation_mode": "verified"})
     return _append_report_issue(
-        report.model_copy(update={"snapshot_hash_validation_mode": "verified"}),
+        report.model_copy(update={"snapshot_hash_validation_mode": "mismatch"}),
         _issue(
             code=RegistryValidationCode.REGISTRY_HASH_MISMATCH,
             severity=RegistryValidationSeverity.ERROR,

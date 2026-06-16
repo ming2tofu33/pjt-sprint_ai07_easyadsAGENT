@@ -43,6 +43,20 @@ def test_unknown_empty_campaign_context_is_allowed():
     assert context.evidence_refs == ()
 
 
+def test_campaign_context_tuple_fields_are_deeply_immutable():
+    context = CampaignContext(
+        campaign_intent="launch",
+        desired_positioning=["premium"],
+        evidence_refs=["campaign:e1"],
+        confidence=0.8,
+    )
+
+    with pytest.raises(AttributeError):
+        context.desired_positioning.append("quiet")
+    with pytest.raises(AttributeError):
+        context.evidence_refs.append("campaign:e2")
+
+
 @pytest.mark.parametrize(
     "field_name,value",
     [

@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from orchestrator.app.llm.business_context_service import build_business_environment_context
+from orchestrator.app.llm.business_context_service import (
+    build_business_environment_context,
+    build_business_environment_context_from_domain_routing,
+)
 from orchestrator.app.llm.domain_routing import (
     CanonicalBusinessDomain,
     DomainFallbackReason,
@@ -115,6 +118,9 @@ def test_context_is_frozen():
 
     with pytest.raises(ValidationError):
         context.confidence = 0.1
+
+    with pytest.raises(AttributeError):
+        context.business_tags.append("new_tag")
 
 
 def test_open_vocabulary_fields_are_normalized_without_closing_taxonomy():
@@ -239,6 +245,68 @@ def test_builder_does_not_auto_copy_domain_result_business_tags():
     assert context.broad_domain == CanonicalBusinessDomain.FOOD_AND_BEVERAGE
     assert context.business_tags == ()
     assert context.evidence_refs == ()
+
+
+def test_domain_routing_adapter_projects_only_usable_for_routing_tags_and_preserves_evidence() -> None:
+    domain_result = DomainRoutingResult(
+        raw_business_type="restaurant_bbq",
+        canonical_domain=CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+        support_status=DomainSupportStatus.SPECIALIZED,
+        business_tags=[
+            RoutingTagEvidence(
+                tag="restaurant",
+                source=RoutingEvidenceSource.LEGACY_ALIAS,
+                confidence=1.0,
+                usable_for_routing=True,
+                evidence_ref="tag:restaurant",
+            ),
+            RoutingTagEvidence(
+                tag="scene_tag_should_not_copy",
+                source=RoutingEvidenceSource.LEGACY_ALIAS,
+                confidence=1.0,
+                usable_for_routing=False,
+                evidence_ref="tag:scene",
+            ),
+            RoutingTagEvidence(
+                tag="korean_bbq",
+                source=RoutingEvidenceSource.LEGACY_ALIAS,
+                confidence=1.0,
+                usable_for_routing=True,
+                evidence_ref="tag:kbbq",
+            ),
+        ],
+        scene_tags=[
+            RoutingTagEvidence(
+                tag="warm_interior",
+                source=RoutingEvidenceSource.LEGACY_ALIAS,
+                confidence=1.0,
+                usable_for_routing=True,
+                evidence_ref="scene:warm",
+            ),
+        ],
+        style_tags=[
+            RoutingTagEvidence(
+                tag="cinematic",
+                source=RoutingEvidenceSource.LEGACY_ALIAS,
+                confidence=1.0,
+                usable_for_routing=True,
+                evidence_ref="style:cinematic",
+            ),
+        ],
+        evidence_refs=["domain:e1"],
+        confidence=0.95,
+    )
+
+    context = build_business_environment_context_from_domain_routing(
+        domain_result,
+        additional_business_tags=["korean_bbq", "late_night"],
+        additional_environment_tags=["warm_interior", "warm_interior", "quiet"],
+        additional_evidence_refs=["tag:kbbq", "manual:e1"],
+    )
+
+    assert context.business_tags == ("restaurant", "korean_bbq", "late_night")
+    assert context.environment_tags == ("warm_interior", "quiet")
+    assert context.evidence_refs == ("domain:e1", "tag:restaurant", "tag:kbbq", "manual:e1")
 
 
 def test_builder_uses_explicit_confidence_or_domain_result_confidence():

@@ -166,6 +166,8 @@ def _build_shadow_trace(
 ) -> ShadowVisualRoutingTrace:
     if execution.active_source != RoutingSource.LEGACY:
         raise VisualRoutingTraceBuildError("shadow trace requires legacy active source")
+    if execution.canonical_decision is not None and runtime_context is None:
+        raise VisualRoutingTraceBuildError("shadow trace with canonical decision requires runtime_context")
     legacy = _select_legacy_observation(explicit_legacy_observation, execution.legacy_observation)
     if legacy is None:
         active = None
@@ -207,6 +209,8 @@ def _build_canonical_trace(
         raise VisualRoutingTraceBuildError("canonical trace requires canonical active source")
     if execution.canonical_decision is None:
         raise VisualRoutingTraceBuildError("canonical trace requires canonical decision")
+    if runtime_context is None:
+        raise VisualRoutingTraceBuildError("canonical trace requires runtime_context")
     canonical = summarize_visual_strategy_decision(execution.canonical_decision)
     return CanonicalVisualRoutingTrace(
         trace_version=VISUAL_ROUTING_TRACE_VERSION,
@@ -252,7 +256,7 @@ def _input_snapshot(
         product_name=context.product.product_name,
         product_category_path=product_category_path,
         product_visual_category_path=product_visual_category_path,
-        category_path_match=product_category_path == product_visual_category_path,
+        category_path_contract_valid=product_category_path == product_visual_category_path,
         business_tags=context.business.business_tags,
         product_tags=context.product_visual.product_tags,
         campaign_roles=resolved_campaign_roles,
@@ -276,12 +280,13 @@ def _resolve_campaign_roles(
     campaign_roles: Iterable[str],
 ) -> tuple[str, ...]:
     explicit = normalize_trace_strings(campaign_roles)
+    explicit_set = frozenset(explicit)
     if runtime_context is None:
         return explicit
-    runtime_roles = tuple(sorted(runtime_context.campaign_roles))
-    if explicit and explicit != runtime_roles:
+    runtime_set = runtime_context.campaign_roles
+    if explicit_set and explicit_set != runtime_set:
         raise VisualRoutingTraceBuildError("campaign role sources conflict")
-    return runtime_roles
+    return tuple(sorted(runtime_set or explicit_set))
 
 
 def _resolve_placement(

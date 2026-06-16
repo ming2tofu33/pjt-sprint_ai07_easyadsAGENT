@@ -509,6 +509,18 @@ def _comparison_payload(**overrides: object) -> dict[str, object]:
             "canonical_fallback_role": "product_editorial",
             "canonical_fallback_reason": "unknown_reason",
         },
+        {
+            "canonical_fallback_used": True,
+            "canonical_fallback_role": "fallback_role_alpha",
+            "canonical_fallback_reason": "unsupported_domain",
+            "canonical_unsupported_domain": False,
+        },
+        {
+            "canonical_fallback_used": True,
+            "canonical_fallback_role": "fallback_role_alpha",
+            "canonical_fallback_reason": "missing_specialized_profile",
+            "canonical_missing_specialized_profile": False,
+        },
     ],
 )
 def test_route_comparison_rejects_contradictory_payloads(overrides: dict[str, object]) -> None:

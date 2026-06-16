@@ -212,6 +212,20 @@ def test_reference_style_profile_is_json_compatible_and_deep_copied():
         _context(reference_style_profile={"bad": object()})
 
 
+def test_nested_mutable_fields_are_deeply_immutable():
+    context = _context(
+        visual_observations=[_visual_evidence("e1")],
+        reference_style_profile={"style_tags": ["minimal"], "weights": {"soft": 0.8}},
+    )
+
+    with pytest.raises(AttributeError):
+        context.visual_observations.append(_visual_evidence("e2"))
+    with pytest.raises(TypeError):
+        context.reference_style_profile["new"] = "value"
+    with pytest.raises(AttributeError):
+        context.reference_style_profile["style_tags"].append("new")
+
+
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
 def test_reference_profile_rejects_non_finite_numbers(value: float):
     with pytest.raises(ValidationError, match="JSON-compatible"):

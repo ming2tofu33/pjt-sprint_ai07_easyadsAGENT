@@ -95,3 +95,5 @@ def test_json_round_trip_and_frozen_attribute():
     assert restored == intent
     with pytest.raises(ValidationError):
         intent.confidence = 0.1
+    with pytest.raises(AttributeError):
+        intent.desired_moods.append("extra")

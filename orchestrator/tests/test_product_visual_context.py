@@ -101,6 +101,24 @@ def test_confidence_bounds_json_round_trip_and_frozen_attribute():
             build_product_visual_context(product_name="Product", evidence_refs=["test:source"], confidence=confidence)
 
 
+def test_tuple_fields_are_deeply_immutable():
+    context = build_product_visual_context(
+        product_name="Product",
+        category_path=["category"],
+        product_tags=["tag"],
+        visible_attributes=["attribute"],
+        evidence_refs=["test:source"],
+        confidence=0.8,
+    )
+
+    with pytest.raises(AttributeError):
+        context.category_path.append("other")
+    with pytest.raises(AttributeError):
+        context.product_tags.append("other")
+    with pytest.raises(AttributeError):
+        context.visible_attributes.append("other")
+
+
 @pytest.mark.parametrize(
     "field_name,value",
     [

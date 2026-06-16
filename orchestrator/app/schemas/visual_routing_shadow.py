@@ -235,6 +235,12 @@ class RouteComparison(BaseModel):
                 raise ValueError("fallback comparison requires fallback metadata")
         if self.canonical_unsupported_domain and self.canonical_missing_specialized_profile:
             raise ValueError("fallback diagnostics are mutually exclusive")
+        if self.canonical_fallback_reason == VisualStrategyFallbackReason.UNSUPPORTED_DOMAIN:
+            if not self.canonical_unsupported_domain or self.canonical_missing_specialized_profile:
+                raise ValueError("unsupported-domain fallback diagnosis mismatch")
+        if self.canonical_fallback_reason == VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE:
+            if not self.canonical_missing_specialized_profile or self.canonical_unsupported_domain:
+                raise ValueError("missing-specialized fallback diagnosis mismatch")
         return self
 
 

@@ -46,6 +46,7 @@ from orchestrator.app.schemas.visual_strategy_resolution import (
     VisualStrategyDecision,
     VisualStrategyFallbackReason,
     VisualStrategyResolutionTrace,
+    VisualStrategyRuntimeContext,
     VisualStrategyScore,
 )
 from orchestrator.app.schemas.visual_strategy_integrity import (
@@ -225,6 +226,14 @@ def _context() -> CreativeRoutingContext:
     )
 
 
+def _runtime_context(
+    *,
+    campaign_roles: tuple[str, ...] = ("promotion",),
+    placement: str = "poster",
+) -> VisualStrategyRuntimeContext:
+    return VisualStrategyRuntimeContext(campaign_roles=campaign_roles, placement=placement)
+
+
 def _stage(
     stage: VisualRoutingDiagnosticStage,
     status: VisualRoutingStageStatus = VisualRoutingStageStatus.SUCCEEDED,
@@ -276,7 +285,7 @@ def test_input_snapshot_sanitizes_and_deduplicates_without_prompt_payloads() -> 
     assert trace.input_snapshot.product_name == "desk lamp"
     assert trace.input_snapshot.product_category_path == ("home_and_living", "lighting", "desk_lamp")
     assert trace.input_snapshot.product_visual_category_path == ("home_and_living", "lighting", "desk_lamp")
-    assert trace.input_snapshot.category_path_match is True
+    assert trace.input_snapshot.category_path_contract_valid is True
     assert trace.input_snapshot.business_tags == ("retail_tag",)
     assert trace.input_snapshot.product_tags == ("lamp", "brass")
     assert trace.input_snapshot.campaign_roles == ("hero", "secondary")
@@ -334,7 +343,12 @@ def test_shadow_success_trace_keeps_legacy_active_and_canonical_observational() 
         comparison=comparison,
     )
 
-    trace = build_visual_routing_trace(execution=execution, context=_context(), raw_business_type="retail")
+    trace = build_visual_routing_trace(
+        execution=execution,
+        context=_context(),
+        raw_business_type="retail",
+        runtime_context=_runtime_context(),
+    )
 
     assert isinstance(trace, ShadowVisualRoutingTrace)
     assert trace.completeness == VisualRoutingTraceCompleteness.COMPLETE
@@ -383,6 +397,7 @@ def test_canonical_trace_uses_canonical_active_route() -> None:
         ),
         context=_context(),
         raw_business_type="retail",
+        runtime_context=_runtime_context(),
     )
 
     assert isinstance(trace, CanonicalVisualRoutingTrace)
@@ -441,6 +456,7 @@ def test_shadow_legacy_observation_failure_allows_partial_trace_without_active_r
         ),
         context=_context(),
         raw_business_type="retail",
+        runtime_context=_runtime_context(),
     )
 
     assert trace.completeness == VisualRoutingTraceCompleteness.PARTIAL
@@ -510,22 +526,36 @@ def test_source_conflicts_are_build_errors() -> None:
             ),
             context=_context(),
             raw_business_type="retail",
+            runtime_context=_runtime_context(),
             legacy_observation=_legacy_observation(preset_id="preset.explicit"),
         )
 
+    with pytest.raises(VisualRoutingTraceBuildError, match="campaign role"):
+        build_visual_routing_trace(
+            execution=VisualRoutingModeExecution(mode=RoutingMode.LEGACY, active_source=RoutingSource.LEGACY, legacy_result="legacy"),
+            context=_context(),
+            raw_business_type="retail",
+            runtime_context=_runtime_context(campaign_roles=("promotion", "information")),
+            campaign_roles=["information", "other"],
+            legacy_observation=_legacy_observation(),
+        )
 
-def test_category_path_mismatch_is_recorded_not_silently_overwritten() -> None:
-    context = _context().model_copy(
-        update={
-            "product_visual": ProductVisualContext(
-                product_name="desk lamp",
-                category_path=["home_and_living", "decor"],
-                product_tags=["lamp"],
-                evidence_refs=["product_visual:e1"],
-                confidence=0.84,
-            )
-        }
+
+def test_campaign_role_order_difference_does_not_create_conflict() -> None:
+    trace = build_visual_routing_trace(
+        execution=VisualRoutingModeExecution(mode=RoutingMode.LEGACY, active_source=RoutingSource.LEGACY, legacy_result="legacy"),
+        context=_context(),
+        raw_business_type="retail",
+        runtime_context=_runtime_context(campaign_roles=("promotion", "information")),
+        campaign_roles=["information", "promotion"],
+        legacy_observation=_legacy_observation(),
     )
+
+    assert trace.input_snapshot.campaign_roles == ("information", "promotion")
+
+
+def test_category_path_contract_flag_is_true_for_validated_context() -> None:
+    context = _context()
     trace = build_visual_routing_trace(
         execution=VisualRoutingModeExecution(mode=RoutingMode.LEGACY, active_source=RoutingSource.LEGACY, legacy_result="legacy"),
         context=context,
@@ -534,8 +564,8 @@ def test_category_path_mismatch_is_recorded_not_silently_overwritten() -> None:
     )
 
     assert trace.input_snapshot.product_category_path == ("home_and_living", "lighting", "desk_lamp")
-    assert trace.input_snapshot.product_visual_category_path == ("home_and_living", "decor")
-    assert trace.input_snapshot.category_path_match is False
+    assert trace.input_snapshot.product_visual_category_path == ("home_and_living", "lighting", "desk_lamp")
+    assert trace.input_snapshot.category_path_contract_valid is True
 
 
 @pytest.mark.parametrize(
@@ -548,7 +578,7 @@ def test_raw_business_type_rejects_long_or_multiline_values(raw_business_type: s
             raw_business_type=raw_business_type,
             canonical_domain=CanonicalBusinessDomain.RETAIL,
             product_name="desk lamp",
-            category_path_match=True,
+            category_path_contract_valid=True,
         )
 
 
@@ -625,6 +655,39 @@ def test_comparison_canonical_mismatch_is_build_error() -> None:
             ),
             context=_context(),
             raw_business_type="retail",
+            runtime_context=_runtime_context(),
+        )
+
+
+@pytest.mark.parametrize(
+    ("comparison_update", "message"),
+    [
+        ({"new_copy_tone_profile_id": "copy.other"}, "comparison copy tone"),
+        ({"new_route_version": "route.other"}, "comparison route version"),
+        ({"new_resolver_version": "resolver.other"}, "comparison resolver version"),
+        ({"new_registry_version": "registry.other"}, "comparison registry version"),
+        ({"new_registry_snapshot_hash": "hash.other"}, "comparison registry hash"),
+        ({"canonical_fallback_used": True, "canonical_fallback_role": "product_editorial", "canonical_fallback_reason": "missing_specialized_profile", "canonical_missing_specialized_profile": True}, "comparison fallback_used"),
+    ],
+)
+def test_comparison_additional_canonical_mismatches_are_build_errors(comparison_update: dict[str, object], message: str) -> None:
+    legacy = _legacy_observation()
+    canonical = _decision()
+    comparison = compare_visual_routes(legacy, canonical).model_copy(update=comparison_update)
+
+    with pytest.raises(ValidationError, match=message):
+        build_visual_routing_trace(
+            execution=VisualRoutingModeExecution(
+                mode=RoutingMode.SHADOW,
+                active_source=RoutingSource.LEGACY,
+                legacy_result="legacy",
+                legacy_observation=legacy,
+                canonical_decision=canonical,
+                comparison=comparison,
+            ),
+            context=_context(),
+            raw_business_type="retail",
+            runtime_context=_runtime_context(),
         )
 
 
@@ -656,6 +719,7 @@ def test_no_automatic_hallucination_stage_from_high_route_disagreement() -> None
         ),
         context=_context(),
         raw_business_type="retail",
+        runtime_context=_runtime_context(),
     )
 
     assert comparison.severity.value == "high"
@@ -722,9 +786,41 @@ def _registry_report(*, valid: bool, complete: bool, issues: tuple[RegistryValid
         checked_provider_capability_count=1,
         archetype_validation_mode="catalog",
         provider_capability_validation_mode="catalog",
-        snapshot_hash_validation_mode="strict",
+        snapshot_hash_validation_mode="verified",
         discriminated_union_status=DiscriminatedUnionAuditStatus.APPLIED,
     )
+
+
+def test_canonical_and_shadow_traces_require_runtime_context_when_canonical_decision_exists() -> None:
+    canonical = _decision()
+
+    with pytest.raises(VisualRoutingTraceBuildError, match="canonical trace requires runtime_context"):
+        build_visual_routing_trace(
+            execution=VisualRoutingModeExecution(
+                mode=RoutingMode.CANONICAL,
+                active_source=RoutingSource.CANONICAL,
+                canonical_decision=canonical,
+            ),
+            context=_context(),
+            raw_business_type="retail",
+        )
+
+    with pytest.raises(VisualRoutingTraceBuildError, match="shadow trace with canonical decision requires runtime_context"):
+        build_visual_routing_trace(
+            execution=VisualRoutingModeExecution(
+                mode=RoutingMode.SHADOW,
+                active_source=RoutingSource.LEGACY,
+                legacy_result="legacy",
+                canonical_decision=canonical,
+                shadow_error=ShadowRoutingError(
+                    stage=ShadowRoutingErrorStage.LEGACY_OBSERVATION,
+                    code=ShadowRoutingErrorCode.LEGACY_OBSERVATION_FAILED,
+                    exception_type="RuntimeError",
+                ),
+            ),
+            context=_context(),
+            raw_business_type="retail",
+        )
 
 
 def test_registry_stage_adapter_maps_valid_incomplete_and_invalid_reports() -> None:

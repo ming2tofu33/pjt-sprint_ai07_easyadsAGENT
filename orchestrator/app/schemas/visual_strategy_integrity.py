@@ -161,6 +161,13 @@ class RegistryValidationReport(BaseModel):
     def normalize_required_text(cls, value: Any) -> str:
         return normalize_required_label(value)
 
+    @field_validator("snapshot_hash_validation_mode")
+    @classmethod
+    def validate_snapshot_hash_validation_mode(cls, value: str) -> str:
+        if value not in {"verified", "mismatch", "unavailable"}:
+            raise ValueError("snapshot_hash_validation_mode must be verified, mismatch, or unavailable")
+        return value
+
     @field_validator("registry_version", "registry_snapshot_hash", mode="before")
     @classmethod
     def normalize_optional_required_text(cls, value: Any) -> str | None:
