@@ -231,6 +231,49 @@ describe("proxyOrchestratorJson", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("returns structured upstream diagnostics when orchestrator fetch fails", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "https://orchestrator.example.com");
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new NextRequest("http://localhost/api/generation-jobs", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": "req_web_1"
+      },
+      body: JSON.stringify({ userInput: "카페 아포가토 스토리 광고", runMode: "graph_job" })
+    });
+
+    const response = await proxyOrchestratorJson(request, "POST", "/api/v1/generation-jobs", undefined, {
+      injectVerifiedUserId: true
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body).toEqual(
+      expect.objectContaining({
+        error_code: "upstream_orchestrator_unavailable",
+        request_id: "req_web_1",
+        upstream: {
+          host: "orchestrator.example.com",
+          path: "/api/v1/generation-jobs"
+        }
+      })
+    );
+  });
+
+  it("generation job collection GET returns an explicit contract error", async () => {
+    const route = await import("../generation-jobs/route");
+    const response = await route.GET(new NextRequest("http://localhost/api/generation-jobs"));
+    const body = await response.json();
+
+    expect(response.status).toBe(405);
+    expect(body.error_code).toBe("generation_job_id_required");
+    expect(body.message).toBe("GET /api/generation-jobs requires a job id.");
+  });
+
   it("attaches the internal secret header to orchestrator requests when configured", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
     vi.stubEnv("EASYADS_INTERNAL_API_SECRET", "internal_secret_1");
@@ -548,6 +591,7 @@ describe("proxyOrchestratorBinary", () => {
     const body = await response.json();
 
     expect(response.status).toBe(502);
-    expect(body.error_code).toBe("orchestrator_unavailable");
+    expect(body.error_code).toBe("upstream_orchestrator_unavailable");
+    expect(body.upstream).toEqual({ host: "orchestrator", path: "/api/v1/assets/a1.png" });
   });
 });

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   answerGenerationJob,
+  ApiError,
   archiveChatThread,
   createBrandKit,
   createGenerationJob,
@@ -611,6 +612,26 @@ describe("api-client backend contract routes", () => {
     expect(String(fetchMock.mock.calls[1][0])).toBe("/api/generation-jobs/job_1");
     expect(created.job.result_payload?.schema_version).toBe("result_artifact_v1");
     expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
+  });
+
+  it("normalizes upstream orchestrator failures into retryable Korean copy", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          error_code: "upstream_orchestrator_unavailable",
+          message: "fetch failed"
+        },
+        { status: 502 }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createGenerationJob({ userInput: "Create an ad" })).rejects.toMatchObject({
+      name: "ApiError",
+      message: "생성 서버에 연결하지 못했어요. 입력 내용은 유지했으니 잠시 후 다시 시도해 주세요.",
+      errorCode: "upstream_orchestrator_unavailable",
+      status: 502
+    } satisfies Partial<ApiError>);
   });
 
   it("uses same-origin API routes when NEXT_PUBLIC_BFF_BASE_URL is unset", async () => {
