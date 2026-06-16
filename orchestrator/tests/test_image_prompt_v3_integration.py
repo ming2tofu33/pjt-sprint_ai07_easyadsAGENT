@@ -54,6 +54,8 @@ def test_image_prompt_v3_integration_flow():
     spec_meta = spec.get("metadata") or {}
 
     assert spec_meta.get("image_prompt_version") == "v3"
+    assert spec_meta.get("resolved_visual_route_key") == "cafe"
+    assert spec_meta.get("legacy_routing_projection", {}).get("route_key") == "cafe"
     assert "scene_plan" in spec_meta
     assert "prompt_quality_policy" in spec_meta
     assert "prompt_adapter" in spec_meta
@@ -73,6 +75,8 @@ def test_image_prompt_v3_integration_flow():
     assert t2i_meta.get("business_visual_preset_id") == spec_meta.get("business_visual_preset_id")
     assert t2i_meta.get("scene_plan") == spec_meta.get("scene_plan")
     assert t2i_meta.get("prompt_adapter") == spec_meta.get("prompt_adapter")
+    assert t2i_meta.get("resolved_visual_route_key") == spec_meta.get("resolved_visual_route_key")
+    assert t2i_meta.get("legacy_routing_projection") == spec_meta.get("legacy_routing_projection")
 
 
     assert "text-free advertising background" in t2i_req.get("prompt", "")
