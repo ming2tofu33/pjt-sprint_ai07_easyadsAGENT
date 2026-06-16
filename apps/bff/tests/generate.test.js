@@ -805,7 +805,7 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
-  it("returns structured upstream diagnostics when generation job create cannot reach orchestrator", async () => {
+  it("returns structured upstream diagnostics without exposing upstream internals", async () => {
     const fetchImpl = vi.fn(async () => {
       throw new TypeError("fetch failed");
     });
@@ -822,13 +822,10 @@ describe("generate chat routes", () => {
     expect(response.json()).toEqual(
       expect.objectContaining({
         error_code: "upstream_orchestrator_unavailable",
-        request_id: "req_test_1",
-        upstream: {
-          host: "orchestrator.example.com",
-          path: "/api/v1/generation-jobs"
-        }
+        request_id: "req_test_1"
       })
     );
+    expect(response.json()).not.toHaveProperty("upstream");
     await app.close();
   });
 
