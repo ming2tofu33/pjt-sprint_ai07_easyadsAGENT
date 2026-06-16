@@ -74,7 +74,7 @@ class RegistryValidationIssue(BaseModel):
 class RegistryIntegrityPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    version: str = "visual-strategy-registry-integrity-policy-v1"
+    version: str = "visual-strategy-registry-integrity-policy-v2"
     require_enabled_fallback: bool = True
     require_provider_capability_catalog: bool = False
     require_all_introduced_elements_grounded: bool = True

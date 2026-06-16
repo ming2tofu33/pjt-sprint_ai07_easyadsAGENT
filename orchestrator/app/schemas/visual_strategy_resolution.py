@@ -128,7 +128,6 @@ class VisualStrategyRejectionCode(StrEnum):
 
 
 class VisualStrategyFallbackReason(StrEnum):
-    NO_ELIGIBLE_PRIMARY_STRATEGY = "no_eligible_primary_strategy"
     UNSUPPORTED_DOMAIN = "unsupported_domain"
     MISSING_SPECIALIZED_PROFILE = "missing_specialized_profile"
 
@@ -198,6 +197,12 @@ class VisualStrategyCandidateTrace(BaseModel):
 
 
 class VisualStrategyResolutionTrace(BaseModel):
+    """Deterministic resolver trace.
+
+    unsupported_domain means unsupported by the current enabled primary strategy
+    registry, not invalid canonical domain normalization.
+    """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     resolver_version: str

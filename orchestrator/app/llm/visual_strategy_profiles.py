@@ -113,7 +113,7 @@ def build_default_visual_strategy_profiles(
             mood_preset_id="generic_clean_ad_background",
             copy_tone_profile_id="generic_v1",
             provider_capabilities=frozenset(),
-            priority=10,
+            priority=12,
             fallback_tier=1,
             fallback_role="brand_awareness",
             enabled=True,

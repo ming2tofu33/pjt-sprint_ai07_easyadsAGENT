@@ -354,6 +354,17 @@ def test_archetype_open_and_catalog_modes():
 
 
 def test_policy_rejects_single_string_archetype_catalog_and_non_bool_flags():
+    assert RegistryIntegrityPolicy().version == "visual-strategy-registry-integrity-policy-v2"
+    assert build_default_visual_strategy_integrity_policy().version == "visual-strategy-registry-integrity-policy-v2"
+    assert build_default_visual_strategy_integrity_policy().required_fallback_roles == frozenset(
+        {
+            "product_editorial",
+            "service_lifestyle",
+            "local_business",
+            "information_poster",
+            "brand_awareness",
+        }
+    )
     with pytest.raises(ValidationError):
         RegistryIntegrityPolicy(allowed_archetypes="poster")
     with pytest.raises(ValidationError):

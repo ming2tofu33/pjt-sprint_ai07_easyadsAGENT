@@ -305,7 +305,7 @@ def test_fallback_reason_invariant():
     with pytest.raises(ValidationError):
         VisualStrategyDecision(**{**payload, "fallback_used": True, "fallback_tier": 1, "fallback_reason": None})
     with pytest.raises(ValidationError):
-        VisualStrategyDecision(**{**payload, "fallback_reason": VisualStrategyFallbackReason.NO_ELIGIBLE_PRIMARY_STRATEGY})
+        VisualStrategyDecision(**{**payload, "fallback_reason": VisualStrategyFallbackReason.UNSUPPORTED_DOMAIN})
 
 
 def test_intent_generation_result_must_match_intent():
