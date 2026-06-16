@@ -58,6 +58,62 @@ def test_gpt_image2_native_single_shot_uses_one_generate_no_retry(monkeypatch, t
     assert result["image_call_count"] == 1
     assert result["edit_call_count"] == 0
     assert (tmp_path / "final_native_image.png").exists()
+    assert (tmp_path / "provider_native_image.png").exists()
+
+
+def test_gpt_image2_native_single_shot_normalizes_provider_size_to_contract(monkeypatch, tmp_path):
+    image_path = tmp_path / "wide-source.png"
+    Image.new("RGB", (1536, 1024), "#ffffff").save(image_path)
+    encoded = base64.b64encode(image_path.read_bytes()).decode("ascii")
+    captured = {}
+
+    class FakeImages:
+        def generate(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(id="req_norm", data=[SimpleNamespace(b64_json=encoded)])
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+            self.images = FakeImages()
+
+    module = types.ModuleType("openai")
+    module.OpenAI = FakeOpenAI
+    monkeypatch.setitem(sys.modules, "openai", module)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "true")
+    monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "true")
+    monkeypatch.setenv("T2I_DEFAULT_ENGINE", "gpt_image_2")
+
+    brief = ApprovedNativeCopyBrief(
+        headline="배너 헤드라인",
+        supporting_copy="배너 서브카피",
+        language="korean",
+        message_role="headline_plus_support",
+        allowed_texts=["배너 헤드라인", "배너 서브카피"],
+        forbidden_texts=[],
+        max_text_blocks=2,
+        max_total_characters=48,
+        verified_evidence_ids=["e1"],
+        unsupported_claim_categories=[],
+        compliance_status="approved",
+        rejection_reasons=[],
+    )
+    package = build_native_prompt_package(product_understanding={"product_name": "라떼"}, copy_brief=brief).model_copy(
+        update={"target_width": 1600, "target_height": 900, "native_width": 1600, "native_height": 900}
+    )
+
+    result = GPTImage2ActualEngine().generate_native_single_shot(prompt_package=package, output_dir=tmp_path)
+
+    assert captured["size"] == "1536x1024"
+    assert result["provider_width"] == 1536
+    assert result["provider_height"] == 1024
+    assert result["output_width"] == 1600
+    assert result["output_height"] == 900
+    assert result["normalization_mode"] == "cover_center"
+    assert len(result["crop_box"]) == 4
+    assert (tmp_path / "provider_native_image.png").exists()
+    assert Image.open(tmp_path / "final_native_image.png").size == (1600, 900)
 
 
 # ===== Task 9: web-shaped request -> native typography pipeline regression =====
