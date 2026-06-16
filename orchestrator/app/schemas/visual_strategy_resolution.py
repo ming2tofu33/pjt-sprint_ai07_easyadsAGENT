@@ -176,6 +176,16 @@ class VisualStrategyCandidateTrace(BaseModel):
                 raise ValueError("eligible candidate must not include rejection_codes")
             if self.score is None:
                 raise ValueError("eligible candidate requires score")
+            if self.missing_required_tags:
+                raise ValueError("eligible candidate must not include missing_required_tags")
+            if self.missing_source_requirements:
+                raise ValueError("eligible candidate must not include missing_source_requirements")
+            if self.matched_excluded_tags:
+                raise ValueError("eligible candidate must not include matched_excluded_tags")
+            if self.blocked_visual_elements:
+                raise ValueError("eligible candidate must not include blocked_visual_elements")
+            if self.unsupported_visual_elements:
+                raise ValueError("eligible candidate must not include unsupported_visual_elements")
         else:
             if not self.rejection_codes:
                 raise ValueError("ineligible candidate requires rejection_codes")
@@ -201,6 +211,9 @@ class VisualStrategyResolutionTrace(BaseModel):
 
     @model_validator(mode="after")
     def validate_trace_counts(self) -> "VisualStrategyResolutionTrace":
+        strategy_ids = [candidate.strategy_id for candidate in self.candidates]
+        if len(strategy_ids) != len(set(strategy_ids)):
+            raise ValueError("candidate strategy_id values must be unique")
         if self.candidate_count != len(self.candidates):
             raise ValueError("candidate_count must equal candidates length")
         eligible_count = sum(1 for candidate in self.candidates if candidate.eligible)
@@ -249,9 +262,23 @@ class VisualStrategyDecision(BaseModel):
     fallback_reason: VisualStrategyFallbackReason | None
     registry_version: str
     registry_snapshot_hash: str
+    confidence_policy_version: str
     trace: VisualStrategyResolutionTrace
 
-    @field_validator("route_version", "resolver_version", "copy_presence_mode", mode="before")
+    @field_validator(
+        "strategy_id",
+        "route_version",
+        "resolver_version",
+        "archetype",
+        "composition_template_id",
+        "mood_preset_id",
+        "copy_tone_profile_id",
+        "copy_presence_mode",
+        "registry_version",
+        "registry_snapshot_hash",
+        "confidence_policy_version",
+        mode="before",
+    )
     @classmethod
     def normalize_required_text(cls, value: Any) -> str:
         return normalize_required_label(value)
@@ -277,6 +304,16 @@ class VisualStrategyDecision(BaseModel):
             raise ValueError("decision score must match selected candidate score")
         if self.fallback_tier != selected.fallback_tier:
             raise ValueError("decision fallback_tier must match selected candidate")
+        rejected_ids = tuple(candidate.strategy_id for candidate in self.trace.candidates if not candidate.eligible)
+        if self.rejected_strategy_ids != rejected_ids:
+            raise ValueError("rejected_strategy_ids must match trace ineligible candidates")
+        eligible_not_selected = tuple(
+            candidate.strategy_id
+            for candidate in self.trace.candidates
+            if candidate.eligible and candidate.strategy_id != self.strategy_id
+        )
+        if self.eligible_not_selected_strategy_ids != eligible_not_selected:
+            raise ValueError("eligible_not_selected_strategy_ids must match trace")
         return self
 
 

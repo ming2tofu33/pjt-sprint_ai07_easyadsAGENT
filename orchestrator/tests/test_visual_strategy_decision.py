@@ -198,28 +198,54 @@ def test_evidence_refs_use_selected_requirement_sources_without_invention():
     intent = _intent()
 
     decision = resolve_visual_strategy(
-        _context(),
-        intent,
-        registry,
-    )
-    selected = next(candidate for candidate in decision.trace.candidates if candidate.strategy_id == decision.strategy_id)
-    rebuilt = build_visual_strategy_decision(
         context=_context(),
         intent=intent,
-        selected_profile=profile,
-        selected_trace=selected,
-        resolution_trace=decision.trace,
         registry=registry,
         intent_generation_result=_intent_result(intent),
     )
 
-    assert rebuilt.evidence_refs == ("domain:e1", "business:e1", "product:e1", "product_visual:e1", "semantic:e1")
+    assert decision.evidence_refs == ("business:e1", "product:e1", "product_visual:e1", "semantic:e1")
+
+
+def test_public_resolver_accepts_semantic_attribution_evidence():
+    intent = _intent()
+    profile = _profile(
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(source=VisualStrategyContextSource.SEMANTIC_FACT, all_of=["subject_fact_alpha"]),
+        )
+    )
+
+    decision = resolve_visual_strategy(
+        _context(),
+        intent,
+        _registry(profile),
+        intent_generation_result=_intent_result(intent),
+    )
+
+    assert decision.evidence_refs == ("semantic:e1",)
+
+
+def test_unrelated_visual_observation_evidence_is_not_included():
+    observation = EvidenceItem(
+        evidence_id="visual:e1",
+        key="visible",
+        value="unrelated",
+        source="image_vlm",
+        evidence_class="visual_observation",
+        confidence=0.9,
+        usable_for_copy=False,
+    )
+    context = _context(visual_observations=[observation])
+
+    decision = resolve_visual_strategy(context, _intent(), _registry(_profile()))
+
+    assert "visual:e1" not in decision.evidence_refs
 
 
 def test_evidence_refs_do_not_force_business_or_semantic_refs_without_requirements():
     decision = resolve_visual_strategy(_context(), _intent(), _registry(_profile()))
 
-    assert decision.evidence_refs == ("domain:e1",)
+    assert decision.evidence_refs == ()
 
 
 def test_confidence_uses_input_min_evidence_alignment_and_fallback_multiplier():
@@ -231,8 +257,35 @@ def test_confidence_uses_input_min_evidence_alignment_and_fallback_multiplier():
 
     assert decision.fallback_used is True
     assert decision.fallback_reason == VisualStrategyFallbackReason.NO_ELIGIBLE_PRIMARY_STRATEGY
-    assert decision.confidence == 0.525
+    assert decision.confidence == 0.5625
     assert decision.score.total_score != decision.confidence
+
+
+def test_flat_required_tags_do_not_halve_confidence_when_satisfied():
+    profile = _profile(required_tags=["subject_fact_alpha"])
+
+    decision = resolve_visual_strategy(_context(), _intent(), _registry(profile))
+
+    assert decision.confidence == 0.75
+
+
+def test_unused_business_confidence_does_not_dominate_decision_confidence():
+    context = _context(
+        business=BusinessEnvironmentContext(
+            broad_domain=CanonicalBusinessDomain.RETAIL,
+            confidence=0.1,
+        )
+    )
+
+    decision = resolve_visual_strategy(context, _intent(), _registry(_profile()))
+
+    assert decision.confidence == 0.75
+
+
+def test_confidence_policy_version_is_preserved():
+    decision = resolve_visual_strategy(_context(), _intent(), _registry(_profile()))
+
+    assert decision.confidence_policy_version == "visual-strategy-decision-confidence-v1"
 
 
 def test_empty_campaign_confidence_does_not_zero_decision_confidence():
@@ -269,4 +322,31 @@ def test_intent_generation_result_must_match_intent():
             resolution_trace=decision.trace,
             registry=registry,
             intent_generation_result=_intent_result(_intent(copy_presence_mode="different")),
+        )
+
+
+def test_materializer_rejects_noncanonical_selected_trace():
+    profile = _profile(
+        introduced_visual_elements=["visual_element_alpha"],
+        visual_element_evidence_requirements=(
+            VisualElementEvidenceRequirement(
+                element="visual_element_alpha",
+                requirements=(VisualStrategyTagRequirement(source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT, all_of=["product_signal_beta"]),),
+            ),
+        ),
+    )
+    registry = _registry(profile)
+    intent = _intent()
+    decision = resolve_visual_strategy(_context(), intent, registry)
+    selected = next(candidate for candidate in decision.trace.candidates if candidate.strategy_id == decision.strategy_id)
+    tampered = selected.model_copy(update={"evidence_backed_visual_elements": frozenset()})
+
+    with pytest.raises(VisualStrategyDecisionMaterializationError):
+        build_visual_strategy_decision(
+            context=_context(),
+            intent=intent,
+            selected_profile=profile,
+            selected_trace=tampered,
+            resolution_trace=decision.trace,
+            registry=registry,
         )

@@ -10,6 +10,7 @@ from orchestrator.app.llm.visual_strategy_decision import build_visual_strategy_
 from orchestrator.app.llm.visual_strategy_registry import VisualStrategyRegistry
 from orchestrator.app.schemas.creative_routing import CreativeRoutingContext
 from orchestrator.app.schemas.visual_semantic_intent import VisualSemanticIntent
+from orchestrator.app.schemas.visual_semantic_intent import VisualSemanticIntentGenerationResult
 from orchestrator.app.schemas.visual_strategy import (
     VisualElementEvidenceRequirement,
     VisualStrategyContextSource,
@@ -18,6 +19,7 @@ from orchestrator.app.schemas.visual_strategy import (
 )
 from orchestrator.app.schemas.visual_strategy_resolution import (
     VisualStrategyCandidateTrace,
+    VisualStrategyDecisionConfidencePolicy,
     VisualStrategyDecision,
     VisualStrategyRejectionCode,
     VisualStrategyResolutionTrace,
@@ -70,12 +72,14 @@ def resolve_visual_strategy(
     *,
     runtime: VisualStrategyRuntimeContext | None = None,
     policy: VisualStrategyScoringPolicy | None = None,
+    intent_generation_result: VisualSemanticIntentGenerationResult | None = None,
+    decision_confidence_policy: VisualStrategyDecisionConfidencePolicy | None = None,
 ) -> VisualStrategyDecision:
     runtime_context = runtime or VisualStrategyRuntimeContext()
     scoring_policy = policy or build_default_visual_strategy_scoring_policy()
     snapshot = build_visual_strategy_signal_snapshot(context, intent, runtime=runtime_context)
     candidates = tuple(
-        _evaluate_profile(profile, context, snapshot, scoring_policy)
+        _evaluate_profile(profile, context, snapshot, scoring_policy, intent_generation_result)
         for profile in registry.list_profiles(include_disabled=True)
     )
     eligible = tuple(candidate for candidate in candidates if candidate.trace.eligible)
@@ -118,6 +122,8 @@ def resolve_visual_strategy(
         selected_trace=selected.trace,
         resolution_trace=trace,
         registry=registry,
+        intent_generation_result=intent_generation_result,
+        confidence_policy=decision_confidence_policy,
     )
 
 
@@ -196,6 +202,7 @@ def _evaluate_profile(
     context: CreativeRoutingContext,
     snapshot: VisualStrategySignalSnapshot,
     policy: VisualStrategyScoringPolicy,
+    intent_generation_result: VisualSemanticIntentGenerationResult | None,
 ) -> _Candidate:
     rejection_codes: list[VisualStrategyRejectionCode] = []
     if not profile.enabled:
@@ -221,7 +228,12 @@ def _evaluate_profile(
     if matched_excluded:
         rejection_codes.append(VisualStrategyRejectionCode.EXCLUDED_TAG_PRESENT)
 
-    matched_source, missing_source = _evaluate_source_requirements(profile.required_tag_requirements, snapshot)
+    matched_source, missing_source, source_evidence_refs = _evaluate_source_requirements(
+        profile.required_tag_requirements,
+        snapshot,
+        context,
+        intent_generation_result,
+    )
     if missing_source:
         rejection_codes.append(VisualStrategyRejectionCode.MISSING_SOURCE_REQUIREMENT)
 
@@ -230,9 +242,11 @@ def _evaluate_profile(
     if blocked_elements:
         rejection_codes.append(VisualStrategyRejectionCode.PROHIBITED_VISUAL_ELEMENT)
 
-    matched_element_requirements, missing_element_requirements = _evaluate_element_requirements(
+    matched_element_requirements, missing_element_requirements, element_evidence_refs = _evaluate_element_requirements(
         profile.visual_element_evidence_requirements,
         snapshot,
+        context,
+        intent_generation_result,
     )
     if missing_element_requirements:
         rejection_codes.append(VisualStrategyRejectionCode.MISSING_VISUAL_ELEMENT_EVIDENCE)
@@ -267,6 +281,7 @@ def _evaluate_profile(
         missing_source_requirements=tuple(sorted([*missing_source, *missing_element_requirements])),
         blocked_visual_elements=blocked_elements,
         unsupported_visual_elements=unsupported_elements,
+        matched_evidence_refs=_stable_unique([*source_evidence_refs, *element_evidence_refs]),
         evidence_backed_visual_elements=evidence_backed_elements,
         score=score,
     )
@@ -375,38 +390,83 @@ def _build_trace(
 def _evaluate_source_requirements(
     requirements: Iterable[VisualStrategyTagRequirement],
     snapshot: VisualStrategySignalSnapshot,
-) -> tuple[list[str], list[str]]:
+    context: CreativeRoutingContext,
+    intent_generation_result: VisualSemanticIntentGenerationResult | None,
+) -> tuple[list[str], list[str], list[str]]:
     matched: list[str] = []
     missing: list[str] = []
+    evidence_refs: list[str] = []
     for index, requirement in enumerate(requirements):
         signals = _signals_for_source(requirement.source, snapshot)
         label = _requirement_label("source", index, requirement)
         if _requirement_matches(requirement, signals):
             matched.append(label)
+            evidence_refs.extend(_evidence_refs_for_requirement(requirement, context, intent_generation_result))
         else:
             missing.append(label)
-    return matched, missing
+    return matched, missing, evidence_refs
 
 
 def _evaluate_element_requirements(
     requirements: Iterable[VisualElementEvidenceRequirement],
     snapshot: VisualStrategySignalSnapshot,
-) -> tuple[list[str], list[str]]:
+    context: CreativeRoutingContext,
+    intent_generation_result: VisualSemanticIntentGenerationResult | None,
+) -> tuple[list[str], list[str], list[str]]:
     matched: list[str] = []
     missing: list[str] = []
+    evidence_refs: list[str] = []
     for index, element_requirement in enumerate(requirements):
         label = f"element:{_key(element_requirement.element)}:{index}"
         if all(_requirement_matches(requirement, _signals_for_source(requirement.source, snapshot)) for requirement in element_requirement.requirements):
             matched.append(label)
+            for requirement in element_requirement.requirements:
+                evidence_refs.extend(_evidence_refs_for_requirement(requirement, context, intent_generation_result))
         else:
             missing.append(label)
-    return matched, missing
+    return matched, missing, evidence_refs
 
 
 def _requirement_matches(requirement: VisualStrategyTagRequirement, signals: frozenset[str]) -> bool:
     all_of = _key_set(requirement.all_of)
     any_of = _key_set(requirement.any_of)
     return all_of <= signals and (not any_of or bool(any_of & signals))
+
+
+def _evidence_refs_for_requirement(
+    requirement: VisualStrategyTagRequirement,
+    context: CreativeRoutingContext,
+    intent_generation_result: VisualSemanticIntentGenerationResult | None,
+) -> tuple[str, ...]:
+    tokens = _key_set(requirement.all_of) | _key_set(requirement.any_of)
+    if requirement.source == VisualStrategyContextSource.BUSINESS:
+        return _stable_unique(context.business.evidence_refs)
+    if requirement.source == VisualStrategyContextSource.PRODUCT:
+        return _stable_unique(
+            item.evidence_id
+            for item in context.product.verified_facts
+            if _key(item.normalized_value or item.value) in tokens
+        )
+    if requirement.source in {
+        VisualStrategyContextSource.PRODUCT_VISUAL,
+        VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+        VisualStrategyContextSource.PRODUCT_VISUAL_INFERENCE,
+    }:
+        return _stable_unique(context.product_visual.evidence_refs)
+    if requirement.source in {
+        VisualStrategyContextSource.SEMANTIC_INTENT,
+        VisualStrategyContextSource.SEMANTIC_FACT,
+        VisualStrategyContextSource.SEMANTIC_STYLE,
+    }:
+        if intent_generation_result is None:
+            return ()
+        return _stable_unique(
+            ref
+            for attribution in intent_generation_result.attributions
+            if attribution.item_value is not None and _key(attribution.item_value) in tokens
+            for ref in attribution.evidence_refs
+        )
+    return ()
 
 
 def _signals_for_source(source: VisualStrategyContextSource, snapshot: VisualStrategySignalSnapshot) -> frozenset[str]:
@@ -464,6 +524,20 @@ def _coverage(targets: frozenset[str], signals: frozenset[str], unrestricted: fl
 
 def _normalized_set(values: Iterable[Any]) -> frozenset[str]:
     return frozenset(_key(value) for value in values if value is not None and _key(value))
+
+
+def _stable_unique(values: Iterable[str]) -> tuple[str, ...]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        item = value.strip()
+        if not item or item in seen:
+            continue
+        output.append(item)
+        seen.add(item)
+    return tuple(output)
 
 
 def _key_set(values: Iterable[str]) -> frozenset[str]:

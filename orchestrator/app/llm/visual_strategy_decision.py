@@ -55,6 +55,13 @@ def build_visual_strategy_decision(
         raise VisualStrategyDecisionMaterializationError("selected trace does not match selected profile")
     if resolution_trace.selected_strategy_id != selected_profile.strategy_id:
         raise VisualStrategyDecisionMaterializationError("resolution trace does not match selected profile")
+    selected_profile_id = selected_profile.strategy_id
+    canonical_trace = next(
+        (candidate for candidate in resolution_trace.candidates if _candidate_strategy_id(candidate) == selected_profile_id),
+        None,
+    )
+    if canonical_trace is None or selected_trace != canonical_trace:
+        raise VisualStrategyDecisionMaterializationError("selected trace does not match resolution trace")
 
     negative_constraints = build_negative_constraints(context=context, intent=intent)
     introduced = {_key(value) for value in selected_profile.introduced_visual_elements}
@@ -64,7 +71,7 @@ def build_visual_strategy_decision(
 
     policy = confidence_policy or build_default_visual_strategy_decision_confidence_policy()
     fallback_used = selected_profile.fallback_tier > 0
-    return VisualStrategyDecision(
+    decision = VisualStrategyDecision(
         strategy_id=selected_profile.strategy_id,
         route_version=VISUAL_STRATEGY_ROUTE_VERSION,
         resolver_version=resolution_trace.resolver_version,
@@ -89,9 +96,7 @@ def build_visual_strategy_decision(
             if candidate.eligible and candidate.strategy_id != selected_profile.strategy_id
         ),
         evidence_refs=collect_visual_strategy_evidence_refs(
-            context=context,
-            selected_profile=selected_profile,
-            intent_generation_result=intent_generation_result,
+            selected_trace=selected_trace,
         ),
         confidence=calculate_visual_strategy_decision_confidence(
             context=context,
@@ -108,8 +113,11 @@ def build_visual_strategy_decision(
         fallback_reason=VisualStrategyFallbackReason.NO_ELIGIBLE_PRIMARY_STRATEGY if fallback_used else None,
         registry_version=registry.version,
         registry_snapshot_hash=registry.snapshot_hash,
+        confidence_policy_version=policy.version,
         trace=resolution_trace,
     )
+    validate_decision_against_profile(decision, selected_profile)
+    return decision
 
 
 def build_subject_guidance(
@@ -170,36 +178,8 @@ def build_matched_rules(selected_trace: VisualStrategyCandidateTrace) -> tuple[s
     )
 
 
-def collect_visual_strategy_evidence_refs(
-    *,
-    context: CreativeRoutingContext,
-    selected_profile: VisualStrategyProfile,
-    intent_generation_result: VisualSemanticIntentGenerationResult | None = None,
-) -> tuple[str, ...]:
-    refs: list[str] = []
-    refs.extend(context.domain.evidence_refs)
-    sources = _requirement_sources(selected_profile)
-    if VisualStrategyContextSource.BUSINESS in sources:
-        refs.extend(context.business.evidence_refs)
-    if VisualStrategyContextSource.PRODUCT in sources:
-        refs.extend(item.evidence_id for item in context.product.verified_facts)
-    if sources & {
-        VisualStrategyContextSource.PRODUCT_VISUAL,
-        VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
-        VisualStrategyContextSource.PRODUCT_VISUAL_INFERENCE,
-    }:
-        refs.extend(context.product_visual.evidence_refs)
-    if sources & {
-        VisualStrategyContextSource.SEMANTIC_INTENT,
-        VisualStrategyContextSource.SEMANTIC_FACT,
-        VisualStrategyContextSource.SEMANTIC_STYLE,
-    } and intent_generation_result is not None:
-        for attribution in intent_generation_result.attributions:
-            refs.extend(attribution.evidence_refs)
-    if selected_profile.supported_campaign_roles and _campaign_has_claims(context):
-        refs.extend(context.campaign.evidence_refs)
-    refs.extend(item.evidence_id for item in context.visual_observations)
-    return _stable_unique(refs, casefold=False)
+def collect_visual_strategy_evidence_refs(*, selected_trace: VisualStrategyCandidateTrace) -> tuple[str, ...]:
+    return _stable_unique(selected_trace.matched_evidence_refs, casefold=False)
 
 
 def calculate_visual_strategy_decision_confidence(
@@ -211,20 +191,18 @@ def calculate_visual_strategy_decision_confidence(
     fallback_used: bool,
     policy: VisualStrategyDecisionConfidencePolicy,
 ) -> float:
-    confidences = [
-        context.domain.confidence,
-        context.business.confidence,
-        context.product.confidence,
-        context.product_visual.confidence,
-        intent.confidence,
-    ]
-    if _campaign_has_claims(context):
+    confidences = [context.domain.confidence, context.product_visual.confidence, intent.confidence]
+    sources = _requirement_sources(selected_profile)
+    if VisualStrategyContextSource.BUSINESS in sources:
+        confidences.append(context.business.confidence)
+    if VisualStrategyContextSource.PRODUCT in sources:
+        confidences.append(context.product.confidence)
+    if selected_profile.supported_campaign_roles and _campaign_has_claims(context):
         confidences.append(context.campaign.confidence)
     input_confidence = min(confidences)
     has_requirements = bool(
         selected_profile.required_tag_requirements
         or selected_profile.visual_element_evidence_requirements
-        or selected_profile.required_tags
     )
     evidence_factor = selected_trace.score.evidence_alignment if has_requirements else 1.0
     fallback_factor = policy.fallback_confidence_multiplier if fallback_used else 1.0
@@ -263,6 +241,10 @@ def _requirement_sources(profile: VisualStrategyProfile) -> set[VisualStrategyCo
     for element_requirement in profile.visual_element_evidence_requirements:
         requirements.extend(element_requirement.requirements)
     return {requirement.source for requirement in requirements}
+
+
+def _candidate_strategy_id(candidate: VisualStrategyCandidateTrace) -> str:
+    return candidate.strategy_id
 
 
 def _stable_unique(values: Iterable[str | None], *, casefold: bool) -> tuple[str, ...]:
