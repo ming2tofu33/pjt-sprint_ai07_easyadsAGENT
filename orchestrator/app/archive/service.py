@@ -5,14 +5,15 @@ from __future__ import annotations
 from datetime import datetime
 
 from orchestrator.app.api.schemas.archive import ArchiveItemCreateRequest, ArchiveItemResponse, ArchiveItemUpdateRequest
+from orchestrator.app.artifacts.service import browser_usable_url, sanitize_result_artifact_payload_for_api
 from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.errors import DatabaseConfigurationError
 from orchestrator.app.db.repositories import archive_items as archive_item_repo
-from orchestrator.app.db.repositories import workspaces as workspace_repo
+from orchestrator.app.db.repositories import chat_threads as thread_repo  # Backward-compatible test patch target.
 from orchestrator.app.db.repositories import generation_jobs as job_repo
 from orchestrator.app.db.repositories import generation_outputs as output_repo
-from orchestrator.app.db.repositories import chat_threads as thread_repo
-from orchestrator.app.artifacts.service import sanitize_result_artifact_payload_for_api, browser_usable_url
+from orchestrator.app.db.repositories import workspaces as workspace_repo
+from orchestrator.app.db.session import db_transaction
 
 
 class ArchivePersistenceUnavailable(RuntimeError):
@@ -49,7 +50,8 @@ def _ensure_postgres_enabled() -> None:
 
 
 def _resolve_workspace_id(workspace_id: str | None, user_id: str | None = None, account_type: str | None = None) -> str:
-    from orchestrator.app.db.workspace_scope import resolve_workspace_scope, WorkspaceScopeRequired, WorkspaceScopeForbidden
+    from orchestrator.app.db.workspace_scope import WorkspaceScopeForbidden, WorkspaceScopeRequired, resolve_workspace_scope
+
     try:
         if account_type:
             return resolve_workspace_scope(workspace_id, user_id, account_type=account_type)
@@ -80,14 +82,19 @@ def archive_item_from_row(row: dict) -> ArchiveItemResponse:
 
     thumbnail_url = browser_usable_url(row.get("thumbnail_public_url") or row.get("thumbnail_url"))
     image_url = browser_usable_url(row.get("asset_public_url") or row.get("image_url"))
-    
-    safe_payload = sanitize_result_artifact_payload_for_api(row.get("output_result_payload") or {})
+
     download_url = None
-    if safe_payload.get("download_url"):
-        download_url = browser_usable_url(safe_payload["download_url"])
-    elif safe_payload.get("final_image_url"):
-        download_url = browser_usable_url(safe_payload["final_image_url"])
-        
+    if row.get("output_download_url"):
+        download_url = browser_usable_url(row["output_download_url"])
+    elif row.get("output_final_image_url"):
+        download_url = browser_usable_url(row["output_final_image_url"])
+    else:
+        safe_payload = sanitize_result_artifact_payload_for_api(row.get("output_result_payload") or {})
+        if safe_payload.get("download_url"):
+            download_url = browser_usable_url(safe_payload["download_url"])
+        elif safe_payload.get("final_image_url"):
+            download_url = browser_usable_url(safe_payload["final_image_url"])
+
     if not image_url and download_url:
         image_url = download_url
 
@@ -119,15 +126,14 @@ def create_archive_item(request: ArchiveItemCreateRequest) -> ArchiveItemRespons
     _ensure_postgres_enabled()
     user_id = _resolve_user_id(request.user_id)
     workspace_id = _resolve_workspace_id(request.workspace_id, user_id=user_id, account_type=request.account_type)
-    
+
     if request.source == "generated":
         if not request.public_job_id:
             raise ArchiveInvalidGeneratedSource("public_job_id is required for generated archive items.")
-            
+
         job = job_repo.get_generation_job_db(public_job_id=request.public_job_id, workspace_id=workspace_id)
         if not job:
             raise ArchiveItemNotFound("Job not found")
-        # sync_archive_for_job이 output/asset을 DB에서 직접 조회 (client URL 무시)
         return sync_archive_for_job(workspace_id=workspace_id, internal_job_id=str(job["id"]))
 
     row = archive_item_repo.create_archive_item_row(
@@ -183,7 +189,7 @@ def get_archive_item(
     _ensure_postgres_enabled()
     resolved_user_id = _resolve_user_id(user_id)
     resolved_workspace_id = _resolve_workspace_id(workspace_id, user_id=resolved_user_id, account_type=account_type)
-    
+
     row = archive_item_repo.get_archive_item_row(
         public_archive_id=archive_item_id,
         workspace_id=resolved_workspace_id,
@@ -235,34 +241,35 @@ def delete_archive_item(
 
 
 def sync_archive_for_job(workspace_id: str, internal_job_id: str, connection: object | None = None) -> ArchiveItemResponse:
-    # 1. Fetch Job
+    with db_transaction(connection) as conn:
+        return _sync_archive_for_job(workspace_id=workspace_id, internal_job_id=internal_job_id, connection=conn)
+
+
+def _sync_archive_for_job(workspace_id: str, internal_job_id: str, connection: object) -> ArchiveItemResponse:
     job = job_repo.get_generation_job_db_by_id(job_id=internal_job_id, workspace_id=workspace_id, connection=connection)
     if not job:
         raise ArchiveItemNotFound("Job not found")
-        
-    thread_id = job["thread_id"]
-    public_job_id = job["public_job_id"]
-    
-    # 2. Fetch Thread
-    thread = thread_repo.get_chat_thread(thread_id=str(thread_id), connection=connection) if thread_id else None
-    
-    # 3. Find Final Output for Thread
-    outputs = output_repo.list_generation_outputs(workspace_id=workspace_id, public_job_id=public_job_id, is_final=True, connection=connection)
-    if not outputs:
+
+    output = output_repo.get_final_generation_output_for_job(
+        workspace_id=workspace_id,
+        public_job_id=job["public_job_id"],
+        connection=connection,
+    )
+    if not output:
         raise ArchiveGenerationOutputNotReady("Final generation output is not ready.")
-    
-    output = outputs[0]
-    
-    # 4. Extract Title deterministically
-    title = "생성된 광고"
-    if thread and thread.get("title"):
-        title = thread["title"]
+    return _sync_archive_from_rows(workspace_id=workspace_id, job=job, output=output, connection=connection)
+
+
+def _sync_archive_from_rows(*, workspace_id: str, job: dict, output: dict, connection: object) -> ArchiveItemResponse:
+    public_job_id = job["public_job_id"]
+    title = "Generated Ad"
+    if job.get("thread_title"):
+        title = job["thread_title"]
     elif job.get("brief") and job["brief"].get("item_or_service"):
         title = job["brief"]["item_or_service"]
     elif job.get("result_payload") and job["result_payload"].get("headline"):
         title = job["result_payload"]["headline"]
-        
-    # 5. Extract format/platform
+
     request_payload = job.get("request_payload") or {}
     params = job.get("params") or {}
     metadata = job.get("metadata") or {}
@@ -275,14 +282,13 @@ def sync_archive_for_job(workspace_id: str, internal_job_id: str, connection: ob
         or metadata.get("ad_format")
         or result_payload.get("ad_format")
     )
-    
     platform = (
         params.get("platform")
         or request_payload.get("platform")
         or metadata.get("platform")
         or result_payload.get("platform")
     )
-        
+
     row = archive_item_repo.upsert_generated_archive_item_row(
         workspace_id=workspace_id,
         public_job_id=public_job_id,
@@ -299,15 +305,38 @@ def sync_archive_for_job(workspace_id: str, internal_job_id: str, connection: ob
         source="generated",
         connection=connection,
     )
-    
-    return archive_item_from_row(archive_item_repo.get_archive_item_row(public_archive_id=row["public_archive_id"], workspace_id=workspace_id, connection=connection))
+
+    response_row = archive_item_repo.build_archive_response_row(
+        row,
+        public_job_id=public_job_id,
+        public_thread_id=job.get("public_thread_id"),
+        public_output_id=output.get("public_output_id"),
+        is_final=True,
+        image_url=output.get("image_url"),
+        thumbnail_url=output.get("thumbnail_url"),
+        output_download_url=output.get("output_download_url"),
+        output_final_image_url=output.get("output_final_image_url"),
+        storage_provider=output.get("storage_provider"),
+        asset_mime_type=output.get("asset_mime_type"),
+        asset_width=output.get("asset_width"),
+        asset_height=output.get("asset_height"),
+    )
+    return archive_item_from_row(response_row)
+
 
 def sync_archive_for_output(workspace_id: str, internal_output_id: str, connection: object | None = None) -> ArchiveItemResponse:
+    with db_transaction(connection) as conn:
+        return _sync_archive_for_output(workspace_id=workspace_id, internal_output_id=internal_output_id, connection=conn)
+
+
+def _sync_archive_for_output(workspace_id: str, internal_output_id: str, connection: object) -> ArchiveItemResponse:
     output = output_repo.get_generation_output_by_id(output_id=internal_output_id, workspace_id=workspace_id, connection=connection)
     if not output:
         raise ArchiveGenerationOutputNotReady("Generation output not found.")
-        
     if not output.get("job_id"):
         raise ArchiveGenerationOutputNotReady("Generation output not linked to a job.")
-        
-    return sync_archive_for_job(workspace_id=workspace_id, internal_job_id=str(output["job_id"]), connection=connection)
+
+    job = job_repo.get_generation_job_db_by_id(job_id=str(output["job_id"]), workspace_id=workspace_id, connection=connection)
+    if not job:
+        raise ArchiveItemNotFound("Job not found")
+    return _sync_archive_from_rows(workspace_id=workspace_id, job=job, output=output, connection=connection)

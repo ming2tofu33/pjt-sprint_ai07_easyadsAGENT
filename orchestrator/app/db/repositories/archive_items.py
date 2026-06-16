@@ -7,10 +7,23 @@ from orchestrator.app.db.session import db_transaction
 
 _SELECT_ARCHIVE_LIST = """
 select
-    i.*,
+    i.id,
+    i.public_archive_id,
+    i.public_job_id,
+    i.title,
+    i.thumbnail_url,
+    i.image_url,
+    i.status,
+    i.ad_format,
+    i.platform,
+    i.source,
+    i.saved_at,
+    i.created_at,
+    i.metadata,
     j.public_job_id as j_public_job_id,
     o.public_output_id,
-    o.result_payload as output_result_payload,
+    o.result_payload ->> 'download_url' as output_download_url,
+    o.result_payload ->> 'final_image_url' as output_final_image_url,
     o.is_final,
     t.public_thread_id,
     a.public_url as asset_public_url,
@@ -291,3 +304,36 @@ def upsert_generated_archive_item_row(
                 ),
             )
             return cur.fetchone()
+
+
+def build_archive_response_row(
+    archive_row: dict,
+    *,
+    public_job_id: str | None = None,
+    public_thread_id: str | None = None,
+    public_output_id: str | None = None,
+    is_final: bool | None = None,
+    image_url: str | None = None,
+    thumbnail_url: str | None = None,
+    output_download_url: str | None = None,
+    output_final_image_url: str | None = None,
+    storage_provider: str | None = None,
+    asset_mime_type: str | None = None,
+    asset_width: int | None = None,
+    asset_height: int | None = None,
+) -> dict:
+    return {
+        **archive_row,
+        "j_public_job_id": public_job_id or archive_row.get("public_job_id"),
+        "public_thread_id": public_thread_id,
+        "public_output_id": public_output_id,
+        "is_final": is_final,
+        "asset_public_url": image_url,
+        "thumbnail_public_url": thumbnail_url,
+        "output_download_url": output_download_url,
+        "output_final_image_url": output_final_image_url,
+        "storage_provider": storage_provider,
+        "asset_mime_type": asset_mime_type,
+        "asset_width": asset_width,
+        "asset_height": asset_height,
+    }
