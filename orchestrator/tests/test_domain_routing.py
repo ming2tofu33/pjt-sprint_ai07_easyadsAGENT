@@ -1,7 +1,8 @@
-"""Unit tests for the domain-routing SSOT (orchestrator.app.llm.domain_routing).
+"""Unit tests for the domain-routing SSOT.
 
-Phase 1 foundation: these pin the single declared source of canonical domains,
-the alias layer, and the normalize contract used at the input boundary.
+A-2 pins the new normalization semantics from docs/two track.md:
+canonical domains are 3+1, legacy preset/template keys are no longer canonical,
+and ambiguous/unsupported domains must produce explicit routing metadata.
 """
 
 from __future__ import annotations
@@ -12,127 +13,218 @@ import pytest
 
 from orchestrator.app.llm.domain_routing import (
     CANONICAL_DOMAINS,
-    CanonicalDomain,
     SUPPORTED_DOMAINS,
+    CanonicalBusinessDomain,
+    CanonicalDomain,
+    DomainFallbackReason,
+    DomainSupportStatus,
+    RoutingEvidenceSource,
+    RoutingTagEvidence,
     is_supported_domain,
     normalize_business_type,
     to_canonical_domain,
 )
 
 
+def _tags(result) -> set[str]:
+    return {tag.tag for tag in result.business_tags}
+
+
+def _scene_tags(result) -> set[str]:
+    return {tag.tag for tag in result.scene_tags}
+
+
 def test_canonical_literal_matches_declared_set():
     assert set(get_args(CanonicalDomain)) == set(CANONICAL_DOMAINS)
 
 
-def test_seven_canonical_domains_declared():
+def test_canonical_domains_are_mvp_3_plus_other():
     assert CANONICAL_DOMAINS == {
-        "cafe",
-        "restaurant",
+        "food_and_beverage",
         "beauty",
-        "fitness",
         "retail",
-        "education",
-        "service",
+        "other",
     }
 
 
-def test_supported_is_subset_and_unsupported_are_phase4():
+def test_supported_domains_are_mvp_specialized_domains():
     assert SUPPORTED_DOMAINS <= CANONICAL_DOMAINS
-    assert SUPPORTED_DOMAINS == {"cafe", "restaurant", "beauty"}
-    assert CANONICAL_DOMAINS - SUPPORTED_DOMAINS == {"fitness", "retail", "education", "service"}
+    assert SUPPORTED_DOMAINS == {
+        "food_and_beverage",
+        "beauty",
+        "retail",
+    }
 
 
-# --- to_canonical_domain: classification (exact + alias, no substring) --------
+# --- to_canonical_domain: exact aliases only, no substring matching ----------
 
 @pytest.mark.parametrize(
-    "value,expected",
+    ("value", "expected"),
     [
-        ("cafe", "cafe"),
-        ("Cafe", "cafe"),
-        ("  CAFE  ", "cafe"),
-        ("dessert", "cafe"),
-        ("bakery", "cafe"),
-        ("restaurant", "restaurant"),
-        ("restaurant_bbq", "restaurant"),
-        ("bbq", "restaurant"),
-        ("korean_food", "restaurant"),
-        ("meat_restaurant", "restaurant"),
-        ("beauty", "beauty"),
-        ("beauty_salon", "beauty"),
-        ("beauty_skincare", "beauty"),
-        ("beauty_hair", "beauty"),
-        ("beauty_nail", "beauty"),
-        ("beauty_spa", "beauty"),
-        ("salon", "beauty"),
-        ("fitness", "fitness"),
-        ("retail", "retail"),
-        ("education", "education"),
-        ("service", "service"),
+        ("food_and_beverage", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("cafe", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("Cafe", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("  CAFE  ", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("dessert", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("bakery", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("restaurant", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("restaurant_bbq", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("bbq", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("korean_food", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("meat_restaurant", CanonicalBusinessDomain.FOOD_AND_BEVERAGE),
+        ("beauty", CanonicalBusinessDomain.BEAUTY),
+        ("beauty_salon", CanonicalBusinessDomain.BEAUTY),
+        ("beauty_skincare", CanonicalBusinessDomain.BEAUTY),
+        ("beauty_hair", CanonicalBusinessDomain.BEAUTY),
+        ("beauty_nail", CanonicalBusinessDomain.BEAUTY),
+        ("beauty_spa", CanonicalBusinessDomain.BEAUTY),
+        ("retail", CanonicalBusinessDomain.RETAIL),
+        ("fitness", CanonicalBusinessDomain.OTHER),
+        ("education", CanonicalBusinessDomain.OTHER),
+        ("service", CanonicalBusinessDomain.OTHER),
+        ("other", CanonicalBusinessDomain.OTHER),
     ],
 )
-def test_to_canonical_domain_known_values(value, expected):
+def test_to_canonical_domain_returns_a1_domain(value, expected):
     assert to_canonical_domain(value) == expected
 
 
-@pytest.mark.parametrize("value", [None, "", "   ", "other", "spaceship", "generic"])
-def test_to_canonical_domain_unknown_values(value):
-    # `generic` is a downstream sentinel, not a canonical input domain.
-    assert to_canonical_domain(value) is None
+@pytest.mark.parametrize("value", [None, "", "   ", "spaceship", "generic"])
+def test_to_canonical_domain_unknown_values_are_other(value):
+    assert to_canonical_domain(value) == CanonicalBusinessDomain.OTHER
 
 
-def test_no_substring_matching_in_phase1():
-    # "korean cafe restaurant" is not an exact alias key -> unknown (Phase 1 does
-    # not do substring heuristics; those remain in scene_planner).
-    assert to_canonical_domain("korean cafe restaurant") is None
+def test_no_substring_matching_in_a2():
+    assert to_canonical_domain("korean cafe restaurant") == CanonicalBusinessDomain.OTHER
 
 
-# --- normalize_business_type: input-boundary contract ------------------------
+# --- normalize_business_type: DomainRoutingResult contract ------------------
+
+def test_normalize_cafe_routes_to_food_and_beverage_cafe_tag():
+    result = normalize_business_type("cafe")
+
+    assert result.canonical_domain == CanonicalBusinessDomain.FOOD_AND_BEVERAGE
+    assert result.support_status == DomainSupportStatus.SPECIALIZED
+    assert _tags(result) == {"cafe"}
+    assert result.fallback_reason is None
+
+
+def test_normalize_restaurant_bbq_keeps_scene_unset_without_evidence():
+    result = normalize_business_type("restaurant_bbq")
+
+    assert result.canonical_domain == CanonicalBusinessDomain.FOOD_AND_BEVERAGE
+    assert result.support_status == DomainSupportStatus.SPECIALIZED
+    assert {"restaurant", "korean_bbq"} <= _tags(result)
+    assert "bbq_grill" not in _scene_tags(result)
+    assert result.fallback_reason is None
+
+
+def test_normalize_restaurant_bbq_can_accept_explicit_scene_evidence():
+    result = normalize_business_type(
+        "restaurant_bbq",
+        evidence=[
+            RoutingTagEvidence(
+                tag="bbq_grill",
+                source=RoutingEvidenceSource.USER_TEXT,
+                confidence=0.9,
+            )
+        ],
+    )
+
+    assert "bbq_grill" in _scene_tags(result)
+
+
+def test_normalize_beauty_salon_requires_evidence():
+    result = normalize_business_type("beauty_salon")
+
+    assert result.canonical_domain == CanonicalBusinessDomain.BEAUTY
+    assert result.support_status == DomainSupportStatus.NEEDS_EVIDENCE
+    assert result.fallback_reason == DomainFallbackReason.AMBIGUOUS_BEAUTY_SUBDOMAIN
+    assert result.clarification_required is True
+    assert result.business_type is None
+
 
 @pytest.mark.parametrize(
-    "value,canonical,business_type,supported",
+    ("value", "business_type"),
     [
-        ("cafe", "cafe", "cafe", True),
-        ("restaurant", "restaurant", "restaurant", True),
-        ("beauty", "beauty", "beauty_salon", True),
-        ("fitness", "fitness", "fitness", False),
-        ("retail", "retail", None, False),
-        ("education", "education", None, False),
-        ("service", "service", None, False),
+        ("beauty_skincare", "beauty_skincare"),
+        ("beauty_hair", "beauty_hair"),
+        ("beauty_nail", "beauty_nail"),
+        ("beauty_spa", "beauty_spa"),
     ],
 )
-def test_normalize_table(value, canonical, business_type, supported):
+def test_normalize_explicit_beauty_subtypes_are_specialized(value, business_type):
     result = normalize_business_type(value)
-    assert result.canonical == canonical
+
+    assert result.canonical_domain == CanonicalBusinessDomain.BEAUTY
+    assert result.support_status == DomainSupportStatus.SPECIALIZED
     assert result.business_type == business_type
-    assert result.supported is supported
-    # Supported -> no fallback reason; unsupported -> observable reason.
-    assert (result.fallback_reason is None) is supported
+    assert result.fallback_reason is None
 
 
-def test_normalize_subtype_preserves_beauty_family():
-    result = normalize_business_type("beauty_salon")
-    assert result.canonical == "beauty"
-    assert result.supported is True
+def test_normalize_retail_is_supported_specialized_domain():
+    result = normalize_business_type("retail")
+
+    assert result.canonical_domain == CanonicalBusinessDomain.RETAIL
+    assert result.support_status == DomainSupportStatus.SPECIALIZED
+    assert result.fallback_reason is None
+    assert _tags(result) == {"retail"}
 
 
-def test_normalize_unknown_leaves_reason():
-    result = normalize_business_type("other")
-    assert result.canonical is None
+@pytest.mark.parametrize(
+    ("value", "hint"),
+    [("fitness", "fitness"), ("education", "education"), ("service", "service"), ("other", "other")],
+)
+def test_normalize_unsupported_domains_preserves_hint(value, hint):
+    result = normalize_business_type(value)
+
+    assert result.canonical_domain == CanonicalBusinessDomain.OTHER
+    assert result.support_status == DomainSupportStatus.GENERIC_FALLBACK
+    assert result.unsupported_domain_hint == hint
+    assert result.fallback_reason == DomainFallbackReason.UNSUPPORTED_DOMAIN_IN_MVP
+    assert hint in _tags(result)
+
+
+def test_normalize_unknown_input_is_unresolved_other():
+    result = normalize_business_type("spaceship")
+
+    assert result.canonical_domain == CanonicalBusinessDomain.OTHER
+    assert result.support_status == DomainSupportStatus.UNRESOLVED
+    assert result.fallback_reason == DomainFallbackReason.UNRECOGNIZED_BUSINESS_TYPE
+    assert result.clarification_required is True
     assert result.business_type is None
-    assert result.supported is False
-    assert result.fallback_reason and "unknown_business_type" in result.fallback_reason
 
 
-def test_normalize_missing_value():
+def test_normalize_missing_value_is_unresolved_other():
     result = normalize_business_type(None)
+
+    assert result.canonical_domain == CanonicalBusinessDomain.OTHER
+    assert result.support_status == DomainSupportStatus.UNRESOLVED
+    assert result.fallback_reason == DomainFallbackReason.UNRECOGNIZED_BUSINESS_TYPE
+    assert result.clarification_required is True
     assert result.business_type is None
-    assert result.fallback_reason == "missing_business_type"
+
+
+def test_domain_routing_result_compatibility_properties_are_not_serialized():
+    result = normalize_business_type("fitness")
+
+    assert result.canonical == "other"
+    assert result.business_type == "fitness"
+    assert result.supported is False
+    assert result.legacy_fallback_reason == "unsupported_domain_in_mvp"
+    dumped = result.model_dump(mode="json")
+    assert "business_type" not in dumped
+    assert "supported" not in dumped
+    assert "canonical" not in dumped
+    assert "legacy_fallback_reason" not in dumped
 
 
 def test_is_supported_domain():
     assert is_supported_domain("cafe")
+    assert is_supported_domain("restaurant_bbq")
+    assert is_supported_domain("beauty")
     assert is_supported_domain("beauty_salon")
+    assert is_supported_domain("retail")
     assert not is_supported_domain("fitness")
-    assert not is_supported_domain("retail")
     assert not is_supported_domain("other")
     assert not is_supported_domain(None)
