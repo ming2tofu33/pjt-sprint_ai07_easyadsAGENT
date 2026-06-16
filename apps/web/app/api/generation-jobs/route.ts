@@ -1,8 +1,23 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { proxyOrchestratorJson } from "../_proxy/orchestrator";
 
 export const dynamic = "force-dynamic";
+
+export function GET() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: "generation_job_id_required",
+      error_code: "generation_job_id_required",
+      message: "GET /api/generation-jobs requires a job id."
+    },
+    {
+      status: 405,
+      headers: { allow: "POST, GET /api/generation-jobs/:jobId" }
+    }
+  );
+}
 
 export function POST(request: NextRequest) {
   return proxyOrchestratorJson(
