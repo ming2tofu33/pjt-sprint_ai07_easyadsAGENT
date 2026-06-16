@@ -231,8 +231,9 @@ describe("proxyOrchestratorJson", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("returns structured upstream diagnostics when orchestrator fetch fails", async () => {
+  it("returns structured upstream diagnostics without exposing upstream internals", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "https://orchestrator.example.com");
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const fetchMock = vi.fn(async () => {
       throw new TypeError("fetch failed");
     });
@@ -255,7 +256,15 @@ describe("proxyOrchestratorJson", () => {
     expect(body).toEqual(
       expect.objectContaining({
         error_code: "upstream_orchestrator_unavailable",
+        request_id: "req_web_1"
+      })
+    );
+    expect(body).not.toHaveProperty("upstream");
+    expect(logSpy).toHaveBeenCalledWith(
+      "Next BFF upstream request failed",
+      expect.objectContaining({
         request_id: "req_web_1",
+        error_code: "upstream_orchestrator_unavailable",
         upstream: {
           host: "orchestrator.example.com",
           path: "/api/v1/generation-jobs"
@@ -266,7 +275,7 @@ describe("proxyOrchestratorJson", () => {
 
   it("generation job collection GET returns an explicit contract error", async () => {
     const route = await import("../generation-jobs/route");
-    const response = await route.GET(new NextRequest("http://localhost/api/generation-jobs"));
+    const response = await route.GET();
     const body = await response.json();
 
     expect(response.status).toBe(405);
@@ -581,6 +590,7 @@ describe("proxyOrchestratorBinary", () => {
 
   it("returns 502 JSON when binary proxy fetch fails", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const fetchMock = vi.fn(async () => {
       throw new Error("connection refused");
     });
@@ -592,6 +602,17 @@ describe("proxyOrchestratorBinary", () => {
 
     expect(response.status).toBe(502);
     expect(body.error_code).toBe("upstream_orchestrator_unavailable");
-    expect(body.upstream).toEqual({ host: "orchestrator", path: "/api/v1/assets/a1.png" });
+    expect(body).not.toHaveProperty("upstream");
+    expect(logSpy).toHaveBeenCalledWith(
+      "Next BFF upstream request failed",
+      expect.objectContaining({
+        request_id: null,
+        error_code: "upstream_orchestrator_unavailable",
+        upstream: {
+          host: "orchestrator",
+          path: "/api/v1/assets/a1.png"
+        }
+      })
+    );
   });
 });

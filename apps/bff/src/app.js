@@ -927,8 +927,7 @@ export function buildApp(options = {}) {
       error: error.errorCode ?? "upstream_error",
       error_code: error.errorCode ?? "upstream_error",
       message: error.message,
-      request_id: requestId,
-      ...(error.upstream ? { upstream: error.upstream } : {})
+      request_id: requestId
     });
   });
 

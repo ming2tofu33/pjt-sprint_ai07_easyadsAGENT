@@ -62,8 +62,14 @@ def test_gpt_image2_native_single_shot_uses_one_generate_no_retry(monkeypatch, t
     assert (tmp_path / "final_native_image.png").exists()
 
 
-def test_gpt_image2_native_single_shot_forbids_mock_default_in_production(monkeypatch, tmp_path):
-    monkeypatch.setenv("EASYADS_ENV", "production")
+@pytest.mark.parametrize(
+    "env_name",
+    ["EASYADS_ENV", "APP_ENV", "ENVIRONMENT", "RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "NODE_ENV"],
+)
+def test_gpt_image2_native_single_shot_forbids_mock_default_in_production_envs(monkeypatch, tmp_path, env_name):
+    for key in ("EASYADS_ENV", "APP_ENV", "ENVIRONMENT", "RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "NODE_ENV"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv(env_name, "production")
     monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "true")
     monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "true")
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")

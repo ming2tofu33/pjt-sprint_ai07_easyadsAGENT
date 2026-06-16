@@ -124,11 +124,18 @@ function unavailableResponse(input?: { requestId?: string; targetUrl?: URL | nul
       error_code: "upstream_orchestrator_unavailable",
       message: "Orchestrator API is unavailable.",
       detail: "Failed to reach the orchestrator backend from the BFF proxy.",
-      request_id: input?.requestId ?? null,
-      upstream: sanitizedUpstream(input?.targetUrl ?? null)
+      request_id: input?.requestId ?? null
     },
     { status: 502 }
   );
+}
+
+function logUpstreamUnavailable(input?: { requestId?: string; targetUrl?: URL | null }) {
+  console.error("Next BFF upstream request failed", {
+    request_id: input?.requestId ?? null,
+    error_code: "upstream_orchestrator_unavailable",
+    upstream: sanitizedUpstream(input?.targetUrl ?? null)
+  });
 }
 
 function invalidRequestResponse(detail: unknown) {
@@ -314,6 +321,7 @@ export async function proxyOrchestratorJson(
         { status: statusCode }
       );
     }
+    logUpstreamUnavailable({ requestId, targetUrl });
     return unavailableResponse({ requestId, targetUrl });
   }
 }
@@ -365,6 +373,7 @@ export async function proxyOrchestratorBinary(request: NextRequest, path: string
     }
     return nextResponse;
   } catch {
+    logUpstreamUnavailable({ targetUrl });
     return unavailableResponse({ targetUrl });
   }
 }
