@@ -30,6 +30,15 @@ import orchestrator.app.graph.nodes  # noqa: F401
 from orchestrator.app.llm.copy_tone_policy import get_copy_tone_policy
 from orchestrator.app.llm.domain_routing import (
     CANONICAL_DOMAINS,
+    CanonicalBusinessDomain,
+    DomainFallbackReason,
+    DomainRoutingResult,
+    DomainSupportStatus,
+    LegacyRoutingProjection,
+    LegacyVisualRouteKey,
+    ReferenceTemplateRoutingProfile,
+    RoutingEvidenceSource,
+    RoutingTagEvidence,
     SUPPORTED_DOMAINS,
     normalize_business_type,
     to_canonical_domain,
@@ -48,6 +57,127 @@ from orchestrator.app.llm.visual_templates import select_visual_template
 from orchestrator.app.schemas.brief_llm import BriefBusinessType, BriefInterpreterOutput
 
 SCENEPLAN_BUSINESS_TYPES = set(get_args(ScenePlanBusinessType))
+
+
+# --- A-1: v1 contract type cluster ------------------------------------------
+
+
+def test_a1_canonical_business_domain_is_mvp_3_plus_other():
+    assert {item.value for item in CanonicalBusinessDomain} == {
+        "food_and_beverage",
+        "beauty",
+        "retail",
+        "other",
+    }
+
+
+def test_a1_legacy_visual_route_keys_match_current_compatibility_routes():
+    assert {item.value for item in LegacyVisualRouteKey} == {
+        "cafe",
+        "restaurant",
+        "restaurant_bbq",
+        "beauty_skincare",
+        "beauty_hair",
+        "beauty_nail",
+        "beauty_spa",
+        "generic",
+    }
+
+
+def test_a1_domain_routing_result_allows_specialized_without_fallback():
+    result = DomainRoutingResult(
+        raw_business_type="cafe",
+        canonical_domain=CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+        support_status=DomainSupportStatus.SPECIALIZED,
+        business_tags=[
+            RoutingTagEvidence(
+                tag="cafe",
+                source=RoutingEvidenceSource.USER_TEXT,
+                confidence=0.99,
+            )
+        ],
+        confidence=0.99,
+    )
+
+    assert result.contract_version == "1.0"
+    assert result.fallback_reason is None
+    assert result.clarification_required is False
+
+
+def test_a1_domain_routing_result_requires_fallback_reason_for_non_specialized():
+    with pytest.raises(ValueError, match="non-specialized routing requires fallback_reason"):
+        DomainRoutingResult(
+            raw_business_type="fitness",
+            canonical_domain=CanonicalBusinessDomain.OTHER,
+            support_status=DomainSupportStatus.GENERIC_FALLBACK,
+            confidence=0.9,
+        )
+
+
+def test_a1_domain_routing_result_requires_clarification_for_needs_evidence():
+    with pytest.raises(ValueError, match="needs_evidence/unresolved must require clarification"):
+        DomainRoutingResult(
+            raw_business_type="beauty_salon",
+            canonical_domain=CanonicalBusinessDomain.BEAUTY,
+            support_status=DomainSupportStatus.NEEDS_EVIDENCE,
+            fallback_reason=DomainFallbackReason.AMBIGUOUS_BEAUTY_SUBDOMAIN,
+            clarification_required=False,
+            confidence=0.8,
+        )
+
+
+def test_a1_unsupported_domain_hint_is_only_valid_for_other():
+    with pytest.raises(ValueError, match="unsupported_domain_hint is only valid for OTHER"):
+        DomainRoutingResult(
+            raw_business_type="fitness",
+            canonical_domain=CanonicalBusinessDomain.RETAIL,
+            support_status=DomainSupportStatus.GENERIC_FALLBACK,
+            unsupported_domain_hint="fitness",
+            fallback_reason=DomainFallbackReason.UNSUPPORTED_DOMAIN_IN_MVP,
+            confidence=0.8,
+        )
+
+
+def test_a1_routing_tag_evidence_rejects_unsafe_tag_values():
+    with pytest.raises(ValueError):
+        RoutingTagEvidence(
+            tag="Bad Tag",
+            source=RoutingEvidenceSource.USER_TEXT,
+            confidence=0.5,
+        )
+
+
+def test_a1_reference_template_profile_requires_routing_dimension():
+    with pytest.raises(ValueError, match="routing profile requires at least one routing dimension"):
+        ReferenceTemplateRoutingProfile()
+
+
+def test_a1_reference_template_profile_all_domains_can_be_empty_otherwise():
+    profile = ReferenceTemplateRoutingProfile(applies_to_all_domains=True)
+
+    assert profile.applies_to_all_domains is True
+    assert profile.business_domains == set()
+
+
+def test_a1_reference_template_profile_rejects_overlapping_included_and_excluded_tags():
+    with pytest.raises(ValueError, match="included and excluded tags must not overlap"):
+        ReferenceTemplateRoutingProfile(
+            business_domains={CanonicalBusinessDomain.FOOD_AND_BEVERAGE},
+            business_tags={"cafe"},
+            excluded_tags={"cafe"},
+        )
+
+
+def test_a1_legacy_projection_is_deprecated_compatibility_result():
+    projection = LegacyRoutingProjection(
+        route_key=LegacyVisualRouteKey.GENERIC,
+        fallback_used=True,
+        fallback_reason=DomainFallbackReason.NO_SPECIALIZED_VISUAL_PROFILE,
+        reason_codes=["no_specialized_visual_profile"],
+    )
+
+    assert projection.projection_version == "1.0"
+    assert projection.deprecated is True
 
 # The business_type values that are fully canonical (round-trip identically
 # through the preset selector). Excludes the ambiguous aliases beauty_salon /
