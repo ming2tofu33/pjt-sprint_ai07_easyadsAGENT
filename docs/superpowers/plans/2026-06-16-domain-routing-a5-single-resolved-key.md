@@ -1,6 +1,6 @@
 # Domain Routing A5 Single Resolved Key Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Route image prompt template, preset, and scene planning through one evidence-backed `resolved_visual_route_key` produced by the legacy visual adapter.
 
@@ -24,6 +24,9 @@
   - Compute `LegacyRoutingProjection`.
   - Use `projection.route_key.value` for `select_visual_template()`, `build_scene_plan()`, and `select_visual_preset()`.
   - Add `resolved_visual_route_key`, `domain_routing_result`, and `legacy_routing_projection` to image prompt metadata and legacy T2I metadata.
+
+- Modify: `orchestrator/app/llm/metadata_builders.py`
+  - Propagate A-5 routing breadcrumbs from `image_prompt_spec.metadata` to `t2i_request.metadata`.
 
 - Modify: `orchestrator/app/llm/visual_presets.py`
   - Remove reference-template direct `preset_id` / `visual_template_id` override from `select_visual_preset()`.
@@ -53,7 +56,7 @@
 - Modify: `orchestrator/tests/test_domain_routing.py`
 - Modify: `orchestrator/app/llm/domain_routing.py`
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
 Add these imports in `orchestrator/tests/test_domain_routing.py`:
 
@@ -173,7 +176,7 @@ def test_project_unsupported_domain_keeps_original_fallback_reason():
     assert "unsupported_domain_in_mvp" in projection.reason_codes
 ```
 
-- [ ] **Step 2: Run adapter tests to verify RED**
+- [x] **Step 2: Run adapter tests to verify RED**
 
 Run:
 
@@ -183,7 +186,7 @@ PYTHONPATH=. uv run pytest orchestrator/tests/test_domain_routing.py::test_proje
 
 Expected: FAIL because `project_to_legacy_visual_route` does not exist.
 
-- [ ] **Step 3: Implement adapter**
+- [x] **Step 3: Implement adapter**
 
 Add this code in `orchestrator/app/llm/domain_routing.py` after `_scene_tags_from_evidence()`:
 
@@ -285,13 +288,13 @@ def project_to_legacy_visual_route(
     )
 ```
 
-- [ ] **Step 4: Run adapter tests to verify GREEN**
+- [x] **Step 4: Run adapter tests to verify GREEN**
 
 Run the same command from Step 2.
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit adapter task**
+- [x] **Step 5: Commit adapter task**
 
 ```bash
 git add orchestrator/app/llm/domain_routing.py orchestrator/tests/test_domain_routing.py
@@ -304,7 +307,7 @@ git commit -m "feat(srv): add legacy visual route projection"
 - Modify: `orchestrator/tests/test_image_prompt_planner.py`
 - Modify: `orchestrator/app/llm/nodes/image_prompt_planner.py`
 
-- [ ] **Step 1: Write failing single-key pipeline tests**
+- [x] **Step 1: Write failing single-key pipeline tests**
 
 In `orchestrator/tests/test_image_prompt_planner.py`, add this helper after `_state()`:
 
@@ -368,7 +371,7 @@ def test_image_prompt_single_resolved_key_preserves_unsupported_fallback_breadcr
     assert metadata["legacy_routing_projection"]["fallback_reason"] == "unsupported_domain_in_mvp"
 ```
 
-- [ ] **Step 2: Run image prompt tests to verify RED**
+- [x] **Step 2: Run image prompt tests to verify RED**
 
 Run:
 
@@ -378,7 +381,7 @@ PYTHONPATH=. uv run pytest orchestrator/tests/test_image_prompt_planner.py::test
 
 Expected: FAIL because `resolved_visual_route_key`, `domain_routing_result`, and `legacy_routing_projection` metadata do not exist and `restaurant_bbq` still reaches the BBQ template directly.
 
-- [ ] **Step 3: Implement planner routing helpers and single-key wiring**
+- [x] **Step 3: Implement planner routing helpers and single-key wiring**
 
 In `orchestrator/app/llm/nodes/image_prompt_planner.py`, add imports:
 
@@ -480,13 +483,13 @@ In `build_legacy_image_prompt()`, extend the v3 metadata copy list:
     ]:
 ```
 
-- [ ] **Step 4: Run image prompt tests to verify GREEN**
+- [x] **Step 4: Run image prompt tests to verify GREEN**
 
 Run the command from Step 2.
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit planner task**
+- [x] **Step 5: Commit planner task**
 
 ```bash
 git add orchestrator/app/llm/nodes/image_prompt_planner.py orchestrator/tests/test_image_prompt_planner.py
@@ -501,7 +504,7 @@ git commit -m "feat(srv): route image prompts through single visual key"
 - Modify: `orchestrator/app/llm/visual_presets.py`
 - Modify: `orchestrator/app/llm/scene_planner.py`
 
-- [ ] **Step 1: Write failing override tests**
+- [x] **Step 1: Write failing override tests**
 
 Add this test to `orchestrator/tests/test_image_prompt_planner.py`:
 
@@ -541,7 +544,7 @@ def test_scene_planner_does_not_route_from_reference_business_type():
     ) == "generic"
 ```
 
-- [ ] **Step 2: Run override tests to verify RED**
+- [x] **Step 2: Run override tests to verify RED**
 
 Run:
 
@@ -551,7 +554,7 @@ PYTHONPATH=. uv run pytest orchestrator/tests/test_image_prompt_planner.py::test
 
 Expected: FAIL because `select_visual_preset()` still accepts reference preset ids and `resolve_business_type()` still reads reference `business_type/category`.
 
-- [ ] **Step 3: Remove override paths**
+- [x] **Step 3: Remove override paths**
 
 In `orchestrator/app/llm/visual_presets.py`, delete this block from `select_visual_preset()`:
 
@@ -571,13 +574,13 @@ In `orchestrator/app/llm/scene_planner.py`, change `resolve_business_type()` can
     ]
 ```
 
-- [ ] **Step 4: Run override tests to verify GREEN**
+- [x] **Step 4: Run override tests to verify GREEN**
 
 Run the command from Step 2.
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit override task**
+- [x] **Step 5: Commit override task**
 
 ```bash
 git add orchestrator/app/llm/visual_presets.py orchestrator/app/llm/scene_planner.py orchestrator/tests/test_image_prompt_planner.py orchestrator/tests/test_image_prompt_v3_sceneplan.py
@@ -589,8 +592,9 @@ git commit -m "fix(srv): prevent reference template visual route override"
 **Files:**
 - Modify: `orchestrator/tests/test_domain_routing_contract.py`
 - Modify: `orchestrator/tests/test_image_prompt_v3_integration.py`
+- Modify: `orchestrator/app/llm/metadata_builders.py`
 
-- [ ] **Step 1: Write failing contract tests**
+- [x] **Step 1: Write failing contract tests**
 
 Add this import to `orchestrator/tests/test_domain_routing_contract.py`:
 
@@ -636,7 +640,7 @@ Add after the `t2i_meta` assertions:
     assert t2i_meta.get("legacy_routing_projection") == spec_meta.get("legacy_routing_projection")
 ```
 
-- [ ] **Step 2: Run contract tests**
+- [x] **Step 2: Run contract tests**
 
 Run:
 
@@ -646,7 +650,7 @@ PYTHONPATH=. uv run pytest orchestrator/tests/test_domain_routing_contract.py::t
 
 Expected: PASS if Tasks 1-3 are complete.
 
-- [ ] **Step 3: Commit contract task**
+- [x] **Step 3: Commit contract task**
 
 ```bash
 git add orchestrator/tests/test_domain_routing_contract.py orchestrator/tests/test_image_prompt_v3_integration.py
@@ -666,7 +670,7 @@ git commit -m "test(srv): pin single resolved route metadata contract"
 - Inspect: `orchestrator/tests/test_image_prompt_v3_sceneplan.py`
 - Inspect: `orchestrator/tests/test_image_prompt_v3_integration.py`
 
-- [ ] **Step 1: Run focused A-5 suite**
+- [x] **Step 1: Run focused A-5 suite**
 
 Run:
 
@@ -676,7 +680,7 @@ PYTHONPATH=. uv run pytest orchestrator/tests/test_domain_routing.py orchestrato
 
 Expected: PASS.
 
-- [ ] **Step 2: Run broader routing/copy guard suite**
+- [x] **Step 2: Run broader routing/copy guard suite**
 
 Run:
 
@@ -686,7 +690,7 @@ PYTHONPATH=. uv run pytest orchestrator/tests/test_brief_interpreter_llm_v1.py o
 
 Expected: PASS.
 
-- [ ] **Step 3: Run selector smoke script**
+- [x] **Step 3: Run selector smoke script**
 
 Run:
 
@@ -724,7 +728,7 @@ retail [] [] generic no_specialized_visual_profile
 fitness [] [] generic unsupported_domain_in_mvp
 ```
 
-- [ ] **Step 4: Run whitespace diff check**
+- [x] **Step 4: Run whitespace diff check**
 
 Run:
 
@@ -734,7 +738,7 @@ git diff --check
 
 Expected: no output.
 
-- [ ] **Step 5: Confirm branch status**
+- [x] **Step 5: Confirm branch status**
 
 Run:
 
