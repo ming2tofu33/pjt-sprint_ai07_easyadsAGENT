@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from orchestrator.app.llm.visual_strategy_decision import build_visual_strategy_decision
 from orchestrator.app.llm.visual_strategy_registry import VisualStrategyRegistry
 from orchestrator.app.schemas.creative_routing import CreativeRoutingContext
 from orchestrator.app.schemas.visual_semantic_intent import VisualSemanticIntent
@@ -110,31 +111,13 @@ def resolve_visual_strategy(
         selected=selected,
         fallback_used=fallback_used,
     )
-    profile = selected.profile
-    matched_rules = tuple(
-        sorted(
-            set(selected.trace.matched_required_tags)
-            | set(selected.trace.matched_preferred_tags)
-            | set(selected.trace.matched_source_requirements)
-        )
-    )
-    return VisualStrategyDecision(
-        strategy_id=profile.strategy_id,
-        archetype=profile.archetype,
-        composition_template_id=profile.composition_template_id,
-        mood_preset_id=profile.mood_preset_id,
-        copy_tone_profile_id=profile.copy_tone_profile_id,
-        provider_capabilities=profile.provider_capabilities,
-        score=selected.trace.score,
-        fallback_used=fallback_used,
-        fallback_tier=profile.fallback_tier,
-        matched_rules=matched_rules,
-        ineligible_strategy_ids=tuple(trace.strategy_id for trace in trace.candidates if not trace.eligible),
-        eligible_not_selected_strategy_ids=tuple(trace.strategy_id for trace in trace.candidates if trace.eligible and trace.strategy_id != profile.strategy_id),
-        registry_version=registry.version,
-        registry_snapshot_hash=registry.snapshot_hash,
-        resolver_version=RESOLVER_VERSION,
-        trace=trace,
+    return build_visual_strategy_decision(
+        context=context,
+        intent=intent,
+        selected_profile=selected.profile,
+        selected_trace=selected.trace,
+        resolution_trace=trace,
+        registry=registry,
     )
 
 
@@ -274,6 +257,7 @@ def _evaluate_profile(
     trace = VisualStrategyCandidateTrace(
         strategy_id=profile.strategy_id,
         eligible=eligible,
+        fallback_tier=profile.fallback_tier,
         rejection_codes=tuple(dict.fromkeys(rejection_codes)),
         matched_required_tags=matched_required,
         missing_required_tags=missing_required,
@@ -283,6 +267,7 @@ def _evaluate_profile(
         missing_source_requirements=tuple(sorted([*missing_source, *missing_element_requirements])),
         blocked_visual_elements=blocked_elements,
         unsupported_visual_elements=unsupported_elements,
+        evidence_backed_visual_elements=evidence_backed_elements,
         score=score,
     )
     return _Candidate(profile=profile, trace=trace)
@@ -379,8 +364,8 @@ def _build_trace(
         registry_snapshot_hash=registry.snapshot_hash,
         candidate_count=len(candidates),
         eligible_count=eligible_count,
-        non_fallback_eligible_count=sum(1 for candidate in candidates if candidate.eligible and registry.get(candidate.strategy_id).fallback_tier == 0),
-        fallback_eligible_count=sum(1 for candidate in candidates if candidate.eligible and registry.get(candidate.strategy_id).fallback_tier > 0),
+        non_fallback_eligible_count=sum(1 for candidate in candidates if candidate.eligible and candidate.fallback_tier == 0),
+        fallback_eligible_count=sum(1 for candidate in candidates if candidate.eligible and candidate.fallback_tier > 0),
         selected_strategy_id=selected.profile.strategy_id if selected else None,
         fallback_used=fallback_used,
         candidates=candidates,

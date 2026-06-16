@@ -127,6 +127,10 @@ class VisualStrategyRejectionCode(StrEnum):
     MISSING_VISUAL_ELEMENT_EVIDENCE = "missing_visual_element_evidence"
 
 
+class VisualStrategyFallbackReason(StrEnum):
+    NO_ELIGIBLE_PRIMARY_STRATEGY = "no_eligible_primary_strategy"
+
+
 class VisualStrategySignalSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -151,6 +155,7 @@ class VisualStrategyCandidateTrace(BaseModel):
 
     strategy_id: str
     eligible: bool
+    fallback_tier: int = Field(default=0, ge=0)
     rejection_codes: tuple[VisualStrategyRejectionCode, ...] = ()
     matched_required_tags: frozenset[str] = Field(default_factory=frozenset)
     missing_required_tags: frozenset[str] = Field(default_factory=frozenset)
@@ -160,6 +165,8 @@ class VisualStrategyCandidateTrace(BaseModel):
     missing_source_requirements: tuple[str, ...] = ()
     blocked_visual_elements: frozenset[str] = Field(default_factory=frozenset)
     unsupported_visual_elements: frozenset[str] = Field(default_factory=frozenset)
+    matched_evidence_refs: tuple[str, ...] = ()
+    evidence_backed_visual_elements: frozenset[str] = Field(default_factory=frozenset)
     score: VisualStrategyScore | None = None
 
     @model_validator(mode="after")
@@ -199,12 +206,20 @@ class VisualStrategyResolutionTrace(BaseModel):
         eligible_count = sum(1 for candidate in self.candidates if candidate.eligible)
         if self.eligible_count != eligible_count:
             raise ValueError("eligible_count must match candidates")
-        if self.non_fallback_eligible_count + self.fallback_eligible_count != self.eligible_count:
-            raise ValueError("eligible subtype counts must sum to eligible_count")
+        non_fallback_count = sum(1 for candidate in self.candidates if candidate.eligible and candidate.fallback_tier == 0)
+        fallback_count = sum(1 for candidate in self.candidates if candidate.eligible and candidate.fallback_tier > 0)
+        if self.non_fallback_eligible_count != non_fallback_count:
+            raise ValueError("non_fallback_eligible_count must match candidates")
+        if self.fallback_eligible_count != fallback_count:
+            raise ValueError("fallback_eligible_count must match candidates")
         if self.selected_strategy_id is not None:
             selected = [candidate for candidate in self.candidates if candidate.strategy_id == self.selected_strategy_id]
             if not selected or not selected[0].eligible:
                 raise ValueError("selected_strategy_id must reference an eligible candidate")
+            if self.fallback_used != (selected[0].fallback_tier > 0):
+                raise ValueError("fallback_used must match selected candidate")
+        elif self.eligible_count != 0:
+            raise ValueError("missing selected_strategy_id requires zero eligible candidates")
         return self
 
 
@@ -212,21 +227,34 @@ class VisualStrategyDecision(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     strategy_id: str
+    route_version: str
+    resolver_version: str
     archetype: str
     composition_template_id: str
     mood_preset_id: str
     copy_tone_profile_id: str
+    copy_presence_mode: str
+    subject_guidance: tuple[str, ...]
+    environment_guidance: tuple[str, ...]
+    negative_constraints: tuple[str, ...]
+    matched_rules: tuple[str, ...]
+    rejected_strategy_ids: tuple[str, ...]
+    eligible_not_selected_strategy_ids: tuple[str, ...]
+    evidence_refs: tuple[str, ...]
+    confidence: float = Field(ge=0.0, le=1.0)
     provider_capabilities: frozenset[str]
     score: VisualStrategyScore
     fallback_used: bool
     fallback_tier: int
-    matched_rules: tuple[str, ...]
-    ineligible_strategy_ids: tuple[str, ...]
-    eligible_not_selected_strategy_ids: tuple[str, ...]
+    fallback_reason: VisualStrategyFallbackReason | None
     registry_version: str
     registry_snapshot_hash: str
-    resolver_version: str
     trace: VisualStrategyResolutionTrace
+
+    @field_validator("route_version", "resolver_version", "copy_presence_mode", mode="before")
+    @classmethod
+    def normalize_required_text(cls, value: Any) -> str:
+        return normalize_required_label(value)
 
     @model_validator(mode="after")
     def validate_decision_trace(self) -> "VisualStrategyDecision":
@@ -240,7 +268,25 @@ class VisualStrategyDecision(BaseModel):
             raise ValueError("decision resolver_version must match trace")
         if self.fallback_used != (self.fallback_tier > 0):
             raise ValueError("fallback_used must match fallback_tier")
+        if self.fallback_used and self.fallback_reason is None:
+            raise ValueError("fallback decision requires fallback_reason")
+        if not self.fallback_used and self.fallback_reason is not None:
+            raise ValueError("non-fallback decision must not include fallback_reason")
         selected = next(candidate for candidate in self.trace.candidates if candidate.strategy_id == self.strategy_id)
         if self.score != selected.score:
             raise ValueError("decision score must match selected candidate score")
+        if self.fallback_tier != selected.fallback_tier:
+            raise ValueError("decision fallback_tier must match selected candidate")
         return self
+
+
+class VisualStrategyDecisionConfidencePolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: str
+    fallback_confidence_multiplier: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def normalize_version(cls, value: Any) -> str:
+        return normalize_required_label(value)
