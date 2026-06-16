@@ -148,6 +148,52 @@ def test_retail_business_type_is_preserved_from_brief_interpreter():
     assert not any("business_type_fallback_generic" in warning for warning in warnings)
 
 
+def test_validator_turns_ambiguous_beauty_domain_into_business_type_question(monkeypatch):
+    llm_output = BriefInterpreterOutput(
+        business_type="beauty",
+        item_or_service="시카 세럼",
+        promotion_goal="reservation",
+        tone="premium",
+        confidence=0.9,
+    )
+    monkeypatch.setattr(
+        "orchestrator.app.graph.nodes.interpret_brief_with_llm",
+        lambda *args, **kwargs: (llm_output, {"fallback_used": False}),
+    )
+
+    result = validator_node(_state())
+
+    assert result["context"]["business_type"] is None
+    assert "business_type" in result["missing_fields"]
+    assert any(
+        "business_type_fallback_generic: ambiguous_beauty_subdomain" in warning
+        for warning in result["validator_metadata"]["brief_interpreter"]["warnings"]
+    )
+
+
+def test_validator_preserves_generic_fallback_business_type_without_question(monkeypatch):
+    llm_output = BriefInterpreterOutput(
+        business_type="education",
+        item_or_service="영어 회화반",
+        promotion_goal="reservation",
+        tone="friendly",
+        confidence=0.9,
+    )
+    monkeypatch.setattr(
+        "orchestrator.app.graph.nodes.interpret_brief_with_llm",
+        lambda *args, **kwargs: (llm_output, {"fallback_used": False}),
+    )
+
+    result = validator_node(_state())
+
+    assert result["context"]["business_type"] == "education"
+    assert "business_type" not in result["missing_fields"]
+    assert any(
+        "business_type_fallback_generic: unsupported_domain_in_mvp" in warning
+        for warning in result["validator_metadata"]["brief_interpreter"]["warnings"]
+    )
+
+
 def test_korean_item_kept_when_not_romanized():
     output = BriefInterpreterOutput(
         business_type="retail",
