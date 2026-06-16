@@ -19,9 +19,9 @@ def normalize_open_label(value: str | None) -> str | None:
     return normalized or None
 
 
-def normalize_tag_list(values: Iterable[str] | None) -> list[str]:
+def normalize_tag_list(values: Iterable[str] | None) -> tuple[str, ...]:
     if values is None:
-        return []
+        return ()
 
     normalized: list[str] = []
     seen: set[str] = set()
@@ -33,7 +33,7 @@ def normalize_tag_list(values: Iterable[str] | None) -> list[str]:
             continue
         normalized.append(normalized_value)
         seen.add(normalized_value)
-    return normalized
+    return tuple(normalized)
 
 
 class BusinessEnvironmentContext(BaseModel):
@@ -51,10 +51,10 @@ class BusinessEnvironmentContext(BaseModel):
     venue_type: str | None = None
     service_model: str | None = None
 
-    business_tags: list[str] = Field(default_factory=list)
-    environment_tags: list[str] = Field(default_factory=list)
+    business_tags: tuple[str, ...] = ()
+    environment_tags: tuple[str, ...] = ()
 
-    evidence_refs: list[str] = Field(default_factory=list)
+    evidence_refs: tuple[str, ...] = ()
     confidence: float = Field(ge=0.0, le=1.0)
 
     @field_validator("venue_type", "service_model", mode="before")
@@ -64,9 +64,9 @@ class BusinessEnvironmentContext(BaseModel):
 
     @field_validator("business_tags", "environment_tags", "evidence_refs", mode="before")
     @classmethod
-    def normalize_string_list(cls, value: Any) -> list[str]:
+    def normalize_string_list(cls, value: Any) -> tuple[str, ...]:
         if value is None:
-            return []
+            return ()
         if isinstance(value, str):
             return normalize_tag_list([value])
         return normalize_tag_list(value)

@@ -315,7 +315,15 @@ def test_required_excluded_and_preferred_tag_semantics():
 
 
 def test_casefold_exact_matching_without_substring():
-    profile = _profile(strategy_id="required_profile", required_tags=["alpha"])
+    profile = _profile(
+        strategy_id="required_profile",
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+                all_of=["alpha"],
+            ),
+        ),
+    )
     registry = _registry(profile, _fallback_profile())
 
     substring_decision = resolve_visual_strategy(_context(product_tags=["alphabet"]), _intent(), registry)
@@ -498,7 +506,16 @@ def test_tie_break_prefers_total_score_then_evidence_then_product_then_priority(
     evidence_req = VisualStrategyTagRequirement(source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT, all_of=["product_signal_beta"])
     evidence_high = _profile(strategy_id="evidence_high", required_tag_requirements=(evidence_req,), priority=1)
     total_high = _profile(strategy_id="total_high", preferred_tags=["reference_signal_alpha"], priority=1)
-    product_high = _profile(strategy_id="product_high", required_tags=["product_signal_beta"], priority=1)
+    product_high = _profile(
+        strategy_id="product_high",
+        required_tag_requirements=(
+            VisualStrategyTagRequirement(
+                source=VisualStrategyContextSource.PRODUCT_VISUAL_FACT,
+                all_of=["product_signal_beta"],
+            ),
+        ),
+        priority=1,
+    )
     priority_high = _profile(strategy_id="priority_high", priority=99)
 
     reference_context = _context(business_tags=["reference_signal_alpha"])
@@ -634,7 +651,7 @@ def test_default_registry_versions_are_preserved_in_decision_and_trace():
 
     assert registry.version == "visual-strategy-registry-v2"
     assert decision.route_version == "visual-strategy-route-v2"
-    assert decision.resolver_version == "visual-strategy-resolver-v2"
+    assert decision.resolver_version == "visual-strategy-resolver-v3"
     assert decision.trace.registry_version == "visual-strategy-registry-v2"
 
 

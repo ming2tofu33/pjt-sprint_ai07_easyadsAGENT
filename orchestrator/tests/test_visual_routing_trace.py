@@ -65,6 +65,7 @@ def _score(total: float = 0.9) -> VisualStrategyScore:
         format_fit=1.0,
         environment_fit=1.0,
         reference_fit=1.0,
+        semantic_fit=1.0,
         unsupported_inference_penalty=0.0,
         fallback_penalty=0.0,
         total_score=total,
@@ -92,8 +93,8 @@ def _decision(
         score=score,
     )
     trace = VisualStrategyResolutionTrace(
-        resolver_version="visual-strategy-resolver-v2",
-        scoring_policy_version="visual-strategy-scoring-v1",
+        resolver_version="visual-strategy-resolver-v3",
+        scoring_policy_version="visual-strategy-scoring-v2",
         registry_version="visual-strategy-registry-v2",
         registry_snapshot_hash="registry-hash",
         candidate_count=1,
@@ -112,8 +113,8 @@ def _decision(
     )
     return VisualStrategyDecision(
         strategy_id=strategy_id,
-        route_version="visual-strategy-route-v2",
-        resolver_version="visual-strategy-resolver-v2",
+        route_version="visual-strategy-route-v3",
+        resolver_version="visual-strategy-resolver-v3",
         archetype="editorial",
         composition_template_id=template_id,
         mood_preset_id=preset_id,
@@ -220,7 +221,7 @@ def _context() -> CreativeRoutingContext:
                 recommended_resolution="manual_review",
             )
         ],
-        resolver_version="visual-strategy-resolver-v2",
+        resolver_version="visual-strategy-resolver-v3",
     )
 
 
@@ -357,11 +358,11 @@ def test_shadow_failure_trace_is_partial_and_sanitized() -> None:
             mode=RoutingMode.SHADOW,
             active_source=RoutingSource.LEGACY,
             legacy_result="legacy",
-            legacy_observation=legacy,
             shadow_error=error,
         ),
         context=_context(),
         raw_business_type="retail",
+        legacy_observation=legacy,
     )
 
     assert trace.completeness == VisualRoutingTraceCompleteness.PARTIAL
@@ -461,11 +462,11 @@ def test_shadow_error_stage_upsert_avoids_duplicate_stage() -> None:
             mode=RoutingMode.SHADOW,
             active_source=RoutingSource.LEGACY,
             legacy_result="legacy",
-            legacy_observation=legacy,
             shadow_error=error,
         ),
         context=_context(),
         raw_business_type="retail",
+        legacy_observation=legacy,
         stage_observations=[
             _stage(VisualRoutingDiagnosticStage.STRATEGY_RESOLUTION, VisualRoutingStageStatus.DEGRADED, codes=("fallback_used",))
         ],
@@ -496,10 +497,16 @@ def test_source_conflicts_are_build_errors() -> None:
     with pytest.raises(VisualRoutingTraceBuildError, match="legacy observation"):
         build_visual_routing_trace(
             execution=VisualRoutingModeExecution(
-                mode=RoutingMode.LEGACY,
+                mode=RoutingMode.SHADOW,
                 active_source=RoutingSource.LEGACY,
                 legacy_result="legacy",
                 legacy_observation=_legacy_observation(preset_id="preset.execution"),
+                canonical_decision=_decision(),
+                shadow_error=ShadowRoutingError(
+                    stage=ShadowRoutingErrorStage.ROUTE_COMPARISON,
+                    code=ShadowRoutingErrorCode.ROUTE_COMPARISON_FAILED,
+                    exception_type="RuntimeError",
+                ),
             ),
             context=_context(),
             raw_business_type="retail",

@@ -170,7 +170,7 @@ def test_generate_visual_semantic_intent_uses_projection_and_fake_generator():
 
     result = _run(generate_visual_semantic_intent(_context(), generator=generator))
 
-    assert result.intent.required_visual_facts == ["product_fact_alpha"]
+    assert result.intent.required_visual_facts == ("product_fact_alpha",)
     assert result.generator_id == "fake-generator"
     call = generator.calls[0]
     assert call["response_model"] is VisualSemanticIntentDraft
@@ -282,7 +282,7 @@ def test_reserved_identifier_policy_is_injected_not_hardcoded():
         _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(_draft(_intent(mood="internal_ref_alpha_9281"))), validation_policy=policy))
 
     result = _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(_draft(_intent(mood="novel_semantic_token_572"))), validation_policy=policy))
-    assert result.intent.desired_moods == ["novel_semantic_token_572"]
+    assert result.intent.desired_moods == ("novel_semantic_token_572",)
 
 
 def test_reserved_identifier_is_blocked_in_ambiguity_and_attribution_item_value():
@@ -300,7 +300,7 @@ def test_upstream_ambiguity_flags_are_preserved_and_merged():
     draft = VisualSemanticIntentDraft(intent=_intent(), attributions=_attributions(_intent()), ambiguity_flags=["ambiguous_alpha", "new_flag"])
     result = _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(draft)))
 
-    assert result.ambiguity_flags == ["ambiguous_alpha", "new_flag"]
+    assert result.ambiguity_flags == ("ambiguous_alpha", "new_flag")
 
 
 def test_product_required_prohibited_facts_are_not_changed_by_business_campaign_format_or_reference():
@@ -312,8 +312,8 @@ def test_product_required_prohibited_facts_are_not_changed_by_business_campaign_
     draft = _draft(_intent(required=["product_fact_alpha"], prohibited=["prohibited_delta"]))
     for context in (base, changed_business, changed_campaign, changed_format, changed_reference):
         result = _run(generate_visual_semantic_intent(context, generator=FakeStructuredSemanticIntentGenerator(draft)))
-        assert result.intent.required_visual_facts == ["product_fact_alpha"]
-        assert result.intent.prohibited_visual_elements == ["prohibited_delta"]
+        assert result.intent.required_visual_facts == ("product_fact_alpha",)
+        assert result.intent.prohibited_visual_elements == ("prohibited_delta",)
 
 
 def test_system_instruction_has_no_fixture_examples_or_semantic_whitelist():

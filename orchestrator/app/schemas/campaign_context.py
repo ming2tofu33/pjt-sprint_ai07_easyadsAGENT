@@ -17,9 +17,9 @@ def normalize_optional_text(value: str | None) -> str | None:
     return normalized or None
 
 
-def normalize_string_list(values: Iterable[str] | None) -> list[str]:
+def normalize_string_list(values: Iterable[str] | None) -> tuple[str, ...]:
     if values is None:
-        return []
+        return ()
     if isinstance(values, str):
         candidates: Iterable[str] = [values]
     else:
@@ -35,7 +35,7 @@ def normalize_string_list(values: Iterable[str] | None) -> list[str]:
             continue
         normalized.append(item)
         seen.add(item)
-    return normalized
+    return tuple(normalized)
 
 
 class CampaignContext(BaseModel):
@@ -51,8 +51,8 @@ class CampaignContext(BaseModel):
     campaign_intent: str | None = None
     campaign_status: str | None = None
     promotion_goal: str | None = None
-    desired_positioning: list[str] = Field(default_factory=list)
-    evidence_refs: list[str] = Field(default_factory=list)
+    desired_positioning: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
     confidence: float = Field(ge=0.0, le=1.0)
 
     @field_validator("campaign_intent", "campaign_status", "promotion_goal", mode="before")
@@ -62,7 +62,7 @@ class CampaignContext(BaseModel):
 
     @field_validator("desired_positioning", "evidence_refs", mode="before")
     @classmethod
-    def normalize_list_field(cls, value: Any) -> list[str]:
+    def normalize_list_field(cls, value: Any) -> tuple[str, ...]:
         return normalize_string_list(value)
 
     @model_validator(mode="after")

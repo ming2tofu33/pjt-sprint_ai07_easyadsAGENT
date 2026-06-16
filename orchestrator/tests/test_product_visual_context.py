@@ -133,10 +133,10 @@ def test_normalization_preserves_order_and_category_structure():
     )
 
     assert context.product_name == "향수"
-    assert context.category_path == ["fragrance", "fragrance"]
-    assert context.product_tags == ["premium", "gift"]
-    assert context.visible_attributes == ["glass_bottle", "amber_liquid"]
-    assert context.evidence_refs == ["test:source", "catalog:item"]
+    assert context.category_path == ("fragrance", "fragrance")
+    assert context.product_tags == ("premium", "gift")
+    assert context.visible_attributes == ("glass_bottle", "amber_liquid")
+    assert context.evidence_refs == ("test:source", "catalog:item")
 
 
 @pytest.mark.parametrize("extra_field", ["broad_domain", "venue_type", "business_tags", "campaign_role", "preset_id", "template_id", "headline", "provider"])
@@ -174,7 +174,7 @@ def test_substring_or_semantic_similarity_is_not_conflict_checked():
         confidence=0.8,
     )
 
-    assert context.explicit_preparation_methods == ["grilled"]
+    assert context.explicit_preparation_methods == ("grilled",)
 
 
 def test_adapter_projects_only_explicit_product_understanding_fields():
@@ -189,13 +189,13 @@ def test_adapter_projects_only_explicit_product_understanding_fields():
     )
 
     assert context.product_name == "desk lamp"
-    assert context.category_path == ["home_and_living", "lighting", "desk_lamp"]
-    assert context.product_tags == ["desk_lamp", "adjustable_arm", "table_lamp"]
+    assert context.category_path == ("home_and_living", "lighting", "desk_lamp")
+    assert context.product_tags == ("desk_lamp", "adjustable_arm", "table_lamp")
     assert "home_office" not in context.product_tags
-    assert context.visible_attributes == ["brass_finish"]
-    assert context.explicit_preparation_methods == ["hand_assembled"]
-    assert context.permissible_visual_inferences == ["warm_light", "desk_scene"]
-    assert context.prohibited_visual_inferences == ["outdoor_use"]
+    assert context.visible_attributes == ("brass_finish",)
+    assert context.explicit_preparation_methods == ("hand_assembled",)
+    assert context.permissible_visual_inferences == ("warm_light", "desk_scene")
+    assert context.prohibited_visual_inferences == ("outdoor_use",)
     assert context.confidence == 0.88
     assert "test:supplement" in context.evidence_refs
 
@@ -215,7 +215,7 @@ def test_adapter_accepts_supplements_with_explicit_evidence():
         supplement_evidence_refs=["user_text:no_charcoal"],
     )
 
-    assert context.prohibited_visual_inferences == ["charcoal"]
+    assert context.prohibited_visual_inferences == ("charcoal",)
     assert "user_text:no_charcoal" in context.evidence_refs
 
 
@@ -254,8 +254,8 @@ def test_french_fries_fixture_preserves_explicit_values_only():
     )
 
     assert context.product_name == "감자튀김"
-    assert context.permissible_visual_inferences == ["crispy_surface", "serving_plate"]
-    assert context.prohibited_visual_inferences == ["charcoal", "open_flame", "grill_marks", "meat"]
+    assert context.permissible_visual_inferences == ("crispy_surface", "serving_plate")
+    assert context.prohibited_visual_inferences == ("charcoal", "open_flame", "grill_marks", "meat")
 
 
 def test_pork_belly_fixture_preserves_explicit_values_only():
@@ -269,8 +269,8 @@ def test_pork_belly_fixture_preserves_explicit_values_only():
         confidence=0.96,
     )
 
-    assert context.product_tags == ["pork", "grilled_meat"]
-    assert context.permissible_visual_inferences == ["grill", "charcoal", "smoke"]
+    assert context.product_tags == ("pork", "grilled_meat")
+    assert context.permissible_visual_inferences == ("grill", "charcoal", "smoke")
 
 
 def test_product_name_change_does_not_change_semantic_lists():
@@ -293,8 +293,8 @@ def test_category_path_does_not_generate_inferences(category_path: list[str]):
         confidence=0.8,
     )
 
-    assert context.permissible_visual_inferences == []
-    assert context.prohibited_visual_inferences == []
+    assert context.permissible_visual_inferences == ()
+    assert context.prohibited_visual_inferences == ()
 
 
 @pytest.mark.parametrize("product_name", ["향수", "책상 조명", "운동화", "세럼", "치즈케이크", "호텔 브런치 메뉴", "전자책 구독권"])
@@ -308,8 +308,8 @@ def test_holdout_product_names_pass_without_product_specific_rules(product_name:
     )
 
     assert context.product_name == product_name
-    assert context.product_tags == ["open_domain_tag"]
-    assert context.permissible_visual_inferences == []
+    assert context.product_tags == ("open_domain_tag",)
+    assert context.permissible_visual_inferences == ()
 
 
 def test_business_and_product_context_fields_overlap_only_on_evidence_and_confidence():

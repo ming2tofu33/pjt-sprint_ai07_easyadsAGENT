@@ -19,7 +19,7 @@ from orchestrator.app.schemas.visual_routing_shadow import (
 from orchestrator.app.schemas.visual_strategy_resolution import VisualStrategyFallbackReason
 
 
-VISUAL_ROUTING_TRACE_VERSION = "visual-routing-trace-v1"
+VISUAL_ROUTING_TRACE_VERSION = "visual-routing-trace-v2"
 _ERROR_TYPE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
 _ARTIFACT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
@@ -104,6 +104,7 @@ class VisualRoutingDiagnosticStage(StrEnum):
     PRODUCT_UNDERSTANDING = "product_understanding"
     BUSINESS_NORMALIZATION = "business_normalization"
     STRATEGY_RESOLUTION = "strategy_resolution"
+    ROUTE_COMPARISON = "route_comparison"
     RESOURCE_REGISTRY = "resource_registry"
     PROVIDER_PROMPT_ADAPTER = "provider_prompt_adapter"
     IMAGE_GENERATION = "image_generation"
@@ -306,6 +307,7 @@ _STAGE_ORDER = {
             VisualRoutingDiagnosticStage.PRODUCT_UNDERSTANDING,
             VisualRoutingDiagnosticStage.BUSINESS_NORMALIZATION,
             VisualRoutingDiagnosticStage.STRATEGY_RESOLUTION,
+            VisualRoutingDiagnosticStage.ROUTE_COMPARISON,
             VisualRoutingDiagnosticStage.RESOURCE_REGISTRY,
             VisualRoutingDiagnosticStage.PROVIDER_PROMPT_ADAPTER,
             VisualRoutingDiagnosticStage.IMAGE_GENERATION,

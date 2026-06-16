@@ -16,9 +16,9 @@ def normalize_required_text(value: str) -> str:
     return normalized
 
 
-def normalize_string_list(values: list[str] | str | None) -> list[str]:
+def normalize_string_list(values: list[str] | str | None) -> tuple[str, ...]:
     if values is None:
-        return []
+        return ()
     candidates = [values] if isinstance(values, str) else values
     normalized: list[str] = []
     seen: set[str] = set()
@@ -30,7 +30,7 @@ def normalize_string_list(values: list[str] | str | None) -> list[str]:
             continue
         normalized.append(item)
         seen.add(item)
-    return normalized
+    return tuple(normalized)
 
 
 def semantic_token_key(value: str) -> str:
@@ -43,12 +43,12 @@ class VisualSemanticIntent(BaseModel):
     subject_priority: float = Field(ge=0.0, le=1.0)
     environment_priority: float = Field(ge=0.0, le=1.0)
     text_priority: float = Field(ge=0.0, le=1.0)
-    desired_moods: list[str] = Field(default_factory=list)
-    desired_materials: list[str] = Field(default_factory=list)
-    lighting_preferences: list[str] = Field(default_factory=list)
-    composition_preferences: list[str] = Field(default_factory=list)
-    required_visual_facts: list[str] = Field(default_factory=list)
-    prohibited_visual_elements: list[str] = Field(default_factory=list)
+    desired_moods: tuple[str, ...] = ()
+    desired_materials: tuple[str, ...] = ()
+    lighting_preferences: tuple[str, ...] = ()
+    composition_preferences: tuple[str, ...] = ()
+    required_visual_facts: tuple[str, ...] = ()
+    prohibited_visual_elements: tuple[str, ...] = ()
     copy_presence_mode: str
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -62,7 +62,7 @@ class VisualSemanticIntent(BaseModel):
         mode="before",
     )
     @classmethod
-    def normalize_list_field(cls, value: Any) -> list[str]:
+    def normalize_list_field(cls, value: Any) -> tuple[str, ...]:
         return normalize_string_list(value)
 
     @field_validator("copy_presence_mode", mode="before")
@@ -84,8 +84,8 @@ class SemanticIntentAttribution(BaseModel):
 
     field_name: str
     item_value: str | None = None
-    evidence_refs: list[str] = Field(default_factory=list)
-    source_paths: list[str] = Field(default_factory=list)
+    evidence_refs: tuple[str, ...] = ()
+    source_paths: tuple[str, ...] = ()
     is_derived: bool
 
     @field_validator("field_name", mode="before")
@@ -102,7 +102,7 @@ class SemanticIntentAttribution(BaseModel):
 
     @field_validator("evidence_refs", "source_paths", mode="before")
     @classmethod
-    def normalize_refs(cls, value: Any) -> list[str]:
+    def normalize_refs(cls, value: Any) -> tuple[str, ...]:
         return normalize_string_list(value)
 
     @model_validator(mode="after")
@@ -116,12 +116,12 @@ class VisualSemanticIntentDraft(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     intent: VisualSemanticIntent
-    attributions: list[SemanticIntentAttribution] = Field(default_factory=list)
-    ambiguity_flags: list[str] = Field(default_factory=list)
+    attributions: tuple[SemanticIntentAttribution, ...] = ()
+    ambiguity_flags: tuple[str, ...] = ()
 
     @field_validator("ambiguity_flags", mode="before")
     @classmethod
-    def normalize_ambiguity_flags(cls, value: Any) -> list[str]:
+    def normalize_ambiguity_flags(cls, value: Any) -> tuple[str, ...]:
         return normalize_string_list(value)
 
 
@@ -129,12 +129,17 @@ class VisualSemanticIntentGenerationResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     intent: VisualSemanticIntent
-    attributions: list[SemanticIntentAttribution]
-    ambiguity_flags: list[str]
+    attributions: tuple[SemanticIntentAttribution, ...]
+    ambiguity_flags: tuple[str, ...]
     input_projection_hash: str
     generator_id: str | None = None
 
     @field_validator("ambiguity_flags", mode="before")
     @classmethod
-    def normalize_result_flags(cls, value: Any) -> list[str]:
+    def normalize_result_flags(cls, value: Any) -> tuple[str, ...]:
         return normalize_string_list(value)
+
+    @field_validator("attributions", mode="before")
+    @classmethod
+    def normalize_attributions(cls, value: Any) -> tuple[SemanticIntentAttribution, ...]:
+        return tuple(value or ())

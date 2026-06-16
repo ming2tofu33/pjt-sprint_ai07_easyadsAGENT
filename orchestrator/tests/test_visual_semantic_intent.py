@@ -72,7 +72,7 @@ def test_copy_presence_mode_is_required_open_nonempty_string():
 def test_open_vocabulary_lists_normalize_without_aliasing(field_name: str):
     intent = _intent(**{field_name: [" TokenA ", "TokenA", "", "tokena"]})
 
-    assert getattr(intent, field_name) == ["TokenA", "tokena"]
+    assert getattr(intent, field_name) == ("TokenA", "tokena")
 
 
 def test_open_vocabulary_lists_reject_non_strings():
@@ -85,7 +85,7 @@ def test_required_prohibited_conflict_is_casefold_exact_only():
         _intent(required_visual_facts=["Smoke"], prohibited_visual_elements=["smoke"])
 
     intent = _intent(required_visual_facts=["grilled"], prohibited_visual_elements=["grill"])
-    assert intent.required_visual_facts == ["grilled"]
+    assert intent.required_visual_facts == ("grilled",)
 
 
 def test_json_round_trip_and_frozen_attribute():

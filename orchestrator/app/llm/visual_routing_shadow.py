@@ -26,7 +26,7 @@ from orchestrator.app.schemas.visual_routing_shadow import (
 from orchestrator.app.schemas.visual_strategy_resolution import VisualStrategyDecision
 
 
-COMPARISON_VERSION = "visual-route-comparison-v1"
+COMPARISON_VERSION = "visual-route-comparison-v2"
 
 LegacyResultT = TypeVar("LegacyResultT")
 
@@ -45,6 +45,38 @@ class VisualRoutingModeExecution(Generic[LegacyResultT]):
     canonical_decision: VisualStrategyDecision | None = None
     comparison: RouteComparison | None = None
     shadow_error: ShadowRoutingError | None = None
+
+    def __post_init__(self) -> None:
+        if self.mode == RoutingMode.LEGACY:
+            if self.active_source != RoutingSource.LEGACY or self.legacy_result is None:
+                raise ValueError("legacy execution requires legacy active source and legacy_result")
+            if any(item is not None for item in (self.legacy_observation, self.canonical_decision, self.comparison, self.shadow_error)):
+                raise ValueError("legacy execution must not include shadow or canonical artifacts")
+            return
+        if self.mode == RoutingMode.CANONICAL:
+            if self.active_source != RoutingSource.CANONICAL or self.canonical_decision is None:
+                raise ValueError("canonical execution requires canonical active source and canonical_decision")
+            if any(item is not None for item in (self.legacy_result, self.legacy_observation, self.comparison, self.shadow_error)):
+                raise ValueError("canonical execution must not include legacy or shadow artifacts")
+            return
+        if self.active_source != RoutingSource.LEGACY or self.legacy_result is None:
+            raise ValueError("shadow execution requires legacy active source and legacy_result")
+        if self.shadow_error is None:
+            if None in (self.legacy_observation, self.canonical_decision, self.comparison):
+                raise ValueError("successful shadow execution requires legacy observation, canonical decision, and comparison")
+            return
+        if self.shadow_error.stage == ShadowRoutingErrorStage.CANONICAL_RESOLUTION:
+            if any(item is not None for item in (self.legacy_observation, self.canonical_decision, self.comparison)):
+                raise ValueError("canonical-resolution shadow failure must not include later artifacts")
+            return
+        if self.shadow_error.stage == ShadowRoutingErrorStage.LEGACY_OBSERVATION:
+            if self.canonical_decision is None or self.legacy_observation is not None or self.comparison is not None:
+                raise ValueError("legacy-observation shadow failure must keep canonical decision only")
+            return
+        if self.shadow_error.stage == ShadowRoutingErrorStage.ROUTE_COMPARISON:
+            if self.canonical_decision is None or self.legacy_observation is None or self.comparison is not None:
+                raise ValueError("route-comparison shadow failure must keep canonical decision and legacy observation")
+            return
 
     @property
     def active_result(self) -> LegacyResultT | VisualStrategyDecision:
@@ -143,6 +175,7 @@ def compare_visual_routes(
         disagreement_codes=tuple(codes),
         comparison_limitations=tuple(limitations),
         severity=_comparison_severity(tuple(codes), policy),
+        limitation_severity=policy.limitation_severity if limitations else RouteComparisonSeverity.NONE,
         new_route_version=canonical.route_version,
         new_resolver_version=canonical.resolver_version,
         new_registry_version=canonical.registry_version,
