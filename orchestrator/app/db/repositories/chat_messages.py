@@ -158,7 +158,18 @@ def list_chat_messages(
                 return []
             cur.execute(
                 """
-                select cm.*, gj.public_job_id
+                select
+                    cm.id,
+                    cm.thread_id,
+                    cm.sequence_no,
+                    cm.role,
+                    cm.content,
+                    cm.payload,
+                    cm.created_by,
+                    cm.generation_job_id,
+                    gj.public_job_id,
+                    cm.event_type,
+                    cm.created_at
                 from chat_messages cm
                 left join generation_jobs gj on gj.id = cm.generation_job_id
                 where cm.thread_id = %s::uuid
@@ -167,15 +178,35 @@ def list_chat_messages(
                 """,
                 (str(row["id"]), limit, offset),
             )
-            
-            results = []
-            for item in cur.fetchall():
-                public_job_id = item.pop("public_job_id", None)
-                if public_job_id:
-                    item["job_id"] = public_job_id
-                results.append(item)
-                
-            return results
+            return list(cur.fetchall())
+
+
+def get_public_job_ids_by_internal_ids(
+    generation_job_ids: list[str],
+    *,
+    workspace_id: str,
+    connection: object | None = None,
+) -> dict[str, str]:
+    normalized_ids = [str(job_id) for job_id in generation_job_ids if job_id]
+    if not normalized_ids:
+        return {}
+    placeholders = ", ".join(["%s::uuid"] * len(normalized_ids))
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                select id::text as internal_job_id, public_job_id
+                from generation_jobs
+                where workspace_id = %s::uuid
+                  and id in ({placeholders})
+                """,
+                (workspace_id, *normalized_ids),
+            )
+            return {
+                str(row["internal_job_id"]): str(row["public_job_id"])
+                for row in cur.fetchall()
+                if row.get("internal_job_id") and row.get("public_job_id")
+            }
 
 
 def count_chat_messages(

@@ -1150,6 +1150,78 @@ def test_message_pagination_total():
     assert [message.sequence_no for message in messages] == [3, 4]
 
 
+def test_chat_message_list_query_includes_generation_job_join(monkeypatch):
+    from orchestrator.app.db.repositories import chat_messages as repo
+
+    conn = FakeConn(rows=[{"id": "thread_uuid"}])
+
+    @contextmanager
+    def fake_tx(connection=None):
+        yield conn
+
+    monkeypatch.setattr(repo, "db_transaction", fake_tx)
+
+    repo.list_chat_messages("thread_public", workspace_id="workspace_uuid", limit=5, offset=0)
+
+    sql = conn._cursor._executed[1][0].lower()
+    assert "from chat_messages cm" in sql
+    assert "join generation_jobs" in sql
+
+
+def test_list_chat_messages_skips_batch_lookup_when_page_has_no_generation_jobs(monkeypatch):
+    from orchestrator.app.chat_threads import service as chat_service
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(chat_service, "_get_workspace_id_for_user", lambda user_id=None, account_type=None: "workspace_uuid")
+    monkeypatch.setattr(
+        chat_service.chat_message_repo,
+        "list_chat_messages",
+        lambda *args, **kwargs: [
+            {"id": "m1", "role": "user", "content": "a", "payload": {}, "sequence_no": 1, "created_at": "2026-06-16T00:00:00+00:00"}
+        ],
+    )
+    monkeypatch.setattr(chat_service.chat_message_repo, "count_chat_messages", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(
+        chat_service.chat_message_repo,
+        "get_public_job_ids_by_internal_ids",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("batch lookup should not run")),
+    )
+
+    messages, total = chat_service.list_chat_messages("thread_public", user_id="user_a")
+
+    assert total == 1
+    assert len(messages) == 1
+
+
+def test_list_chat_messages_batches_generation_job_lookup_once(monkeypatch):
+    from orchestrator.app.chat_threads import service as chat_service
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(chat_service, "_get_workspace_id_for_user", lambda user_id=None, account_type=None: "workspace_uuid")
+    monkeypatch.setattr(
+        chat_service.chat_message_repo,
+        "list_chat_messages",
+        lambda *args, **kwargs: [
+            {"id": "m1", "role": "assistant", "content": "a", "payload": {}, "sequence_no": 1, "created_at": "2026-06-16T00:00:00+00:00", "generation_job_id": "job_uuid_1"},
+            {"id": "m2", "role": "assistant", "content": "b", "payload": {}, "sequence_no": 2, "created_at": "2026-06-16T00:00:00+00:00", "generation_job_id": "job_uuid_2"},
+        ],
+    )
+    monkeypatch.setattr(chat_service.chat_message_repo, "count_chat_messages", lambda *args, **kwargs: 2)
+    calls = []
+
+    def fake_batch(ids, *, workspace_id, connection=None):
+        calls.append((list(ids), workspace_id))
+        return {"job_uuid_1": "job_public_1", "job_uuid_2": "job_public_2"}
+
+    monkeypatch.setattr(chat_service.chat_message_repo, "get_public_job_ids_by_internal_ids", fake_batch)
+
+    messages, total = chat_service.list_chat_messages("thread_public", user_id="user_a", limit=50)
+
+    assert total == 2
+    assert [message.job_id for message in messages] == ["job_public_1", "job_public_2"]
+    assert calls == [(["job_uuid_1", "job_uuid_2"], "workspace_uuid")]
+
+
 def test_chat_thread_backend_files_do_not_have_duplicate_function_definitions():
     paths = [
         Path("orchestrator/app/db/repositories/chat_messages.py"),

@@ -468,17 +468,17 @@ def get_generation_job_internal_with_scope(job_id: str) -> tuple[GenerationJobRe
     public_job_id lookup on every polling request.
     """
     if _use_postgres_backend():
-        row = generation_job_repo.get_generation_job_internal_by_public_id(job_id)
+        row = generation_job_repo.get_generation_job_scope_row_by_public_id(job_id)
         if not row:
             return None, None, None
-        metadata = row.get("metadata") or {}
         workspace_id = str(row.get("workspace_id")) if row.get("workspace_id") else None
+        metadata_user_id = row.get("metadata_user_id")
         user_id = (
-            str(row.get("requested_by") or metadata.get("user_id"))
-            if row.get("requested_by") or metadata.get("user_id")
+            str(row.get("requested_by") or metadata_user_id)
+            if row.get("requested_by") or metadata_user_id
             else None
         )
-        return _job_response_from_db_row(row), workspace_id, user_id
+        return None, workspace_id, user_id
     with _GENERATION_JOB_LOCK:
         job = _GENERATION_JOBS.get(job_id)
     if not job:
@@ -488,13 +488,13 @@ def get_generation_job_internal_with_scope(job_id: str) -> tuple[GenerationJobRe
 
 def resolve_generation_job_scope_from_existing_job(job_id: str) -> tuple[str | None, str | None]:
     if _use_postgres_backend():
-        row = generation_job_repo.get_generation_job_internal_by_public_id(job_id)
+        row = generation_job_repo.get_generation_job_scope_row_by_public_id(job_id)
         if not row:
             return None, None
-        metadata = row.get("metadata") or {}
+        metadata_user_id = row.get("metadata_user_id")
         return str(row.get("workspace_id")) if row.get("workspace_id") else None, (
-            str(row.get("requested_by") or metadata.get("user_id"))
-            if row.get("requested_by") or metadata.get("user_id")
+            str(row.get("requested_by") or metadata_user_id)
+            if row.get("requested_by") or metadata_user_id
             else None
         )
     with _GENERATION_JOB_LOCK:
