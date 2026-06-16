@@ -2,20 +2,15 @@
 
 Today the "업종" concept is hardcoded across 6+ vocabularies that drift apart
 (see docs/PRESET_ROUTING_AUDIT.md, docs/2026-06-16-domain-routing-ssot-roadmap.md).
-This module is the Phase 1 foundation: it declares the canonical domains in ONE
-place and normalises raw/brief values into them.
-
-Phase 1 is intentionally small and behaviour-preserving for downstream selection.
-It does NOT rewire scene_planner / templates / presets onto a shared resolved key
-(that is Phase 2), nor introduce a business_type-vs-scene axis (Phase 3). It only
-gives the input boundary (brief_interpreter) a single declared mapping and makes
-unsupported-domain fallbacks observable instead of silent.
+This module owns the Track A canonical routing contract. The current A-2 layer
+normalises raw/brief values into the A-1 DomainRoutingResult model while keeping
+temporary compatibility properties for legacy callers.
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal, NamedTuple
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -105,6 +100,52 @@ class DomainRoutingResult(BaseModel):
             raise ValueError("unsupported_domain_hint is only valid for OTHER")
         return self
 
+    @property
+    def canonical(self) -> str:
+        """Legacy compatibility: old callers read a string `.canonical` value."""
+        return self.canonical_domain.value
+
+    @property
+    def supported(self) -> bool:
+        """Legacy compatibility: only fully specialized results are supported."""
+        return self.support_status == DomainSupportStatus.SPECIALIZED
+
+    @property
+    def legacy_fallback_reason(self) -> str | None:
+        """String fallback reason for callers that cannot consume StrEnum yet."""
+        return self.fallback_reason.value if self.fallback_reason else None
+
+    @property
+    def business_type(self) -> str | None:
+        """Legacy context.business_type projection until A-5 single-key wiring.
+
+        This is intentionally a property, not a Pydantic field: the canonical
+        contract is domain + tags + evidence, while this value only keeps today's
+        downstream selectors alive during the transition.
+        """
+        tags = _tag_set(self.business_tags)
+        if self.support_status == DomainSupportStatus.UNRESOLVED:
+            return None
+        if self.canonical_domain == CanonicalBusinessDomain.FOOD_AND_BEVERAGE:
+            if "restaurant" in tags:
+                return "restaurant"
+            if "cafe" in tags:
+                return "cafe"
+            return None
+        if self.canonical_domain == CanonicalBusinessDomain.BEAUTY:
+            if "hair" in tags:
+                return "beauty_hair"
+            if "nail" in tags:
+                return "beauty_nail"
+            if "spa" in tags:
+                return "beauty_spa"
+            if "skincare" in tags:
+                return "beauty_skincare"
+            return None
+        if self.canonical_domain == CanonicalBusinessDomain.OTHER:
+            return self.unsupported_domain_hint
+        return None
+
 
 class LegacyVisualRouteKey(StrEnum):
     CAFE = "cafe"
@@ -154,128 +195,224 @@ class ReferenceTemplateRoutingProfile(BaseModel):
             raise ValueError("included and excluded tags must not overlap")
         return self
 
-# Coarse canonical business domains. All seven are declared so the full taxonomy
-# is visible in one place even though some do not have a visual/copy strategy yet.
+# Canonical business domains are intentionally coarse. Legacy route keys such as
+# cafe, restaurant_bbq, and beauty_hair are tags/projections, not canonical values.
 CanonicalDomain = Literal[
-    "cafe",
-    "restaurant",
+    "food_and_beverage",
     "beauty",
-    "fitness",
     "retail",
-    "education",
-    "service",
+    "other",
 ]
 
-CANONICAL_DOMAINS: frozenset[str] = frozenset(
-    {"cafe", "restaurant", "beauty", "fitness", "retail", "education", "service"}
+CANONICAL_DOMAINS: frozenset[str] = frozenset(item.value for item in CanonicalBusinessDomain)
+
+SUPPORTED_DOMAINS: frozenset[str] = frozenset(
+    {
+        CanonicalBusinessDomain.FOOD_AND_BEVERAGE.value,
+        CanonicalBusinessDomain.BEAUTY.value,
+        CanonicalBusinessDomain.RETAIL.value,
+    }
 )
 
-# Domains that are actually backed by a preset/template/copy strategy today.
-# The remaining declared domains (fitness/retail/education/service) intentionally
-# delegate to the generic strategy until Phase 4 fills them in.
-SUPPORTED_DOMAINS: frozenset[str] = frozenset({"cafe", "restaurant", "beauty"})
-
-# Raw input strings / subtypes / scene-mixed values / Korean keywords -> canonical
-# coarse domain. Exact-match alias layer only (no heavy substring heuristics in
-# Phase 1 — those stay in scene_planner). Keys are matched case-insensitively.
-_ALIASES: dict[str, str] = {
-    # cafe
-    "dessert": "cafe",
-    "bakery": "cafe",
-    "macaron": "cafe",
-    # restaurant (incl. the bbq scene value we keep as-is for now)
-    "restaurant_bbq": "restaurant",
-    "bbq": "restaurant",
-    "korean_food": "restaurant",
-    "meat_restaurant": "restaurant",
-    "dining": "restaurant",
-    "food": "restaurant",
-    # beauty (subtype + scene-mixed values all collapse to the beauty family)
-    "beauty_salon": "beauty",
-    "beauty_skincare": "beauty",
-    "beauty_hair": "beauty",
-    "beauty_nail": "beauty",
-    "beauty_spa": "beauty",
-    "salon": "beauty",
-    "skincare": "beauty",
-    "hair_salon": "beauty",
-    "nail": "beauty",
-    "spa": "beauty",
+_DOMAIN_ALIASES: dict[str, CanonicalBusinessDomain] = {
+    "food_and_beverage": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "cafe": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "dessert": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "bakery": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "macaron": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "restaurant": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "restaurant_bbq": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "bbq": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "korean_food": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "meat_restaurant": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "dining": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "food": CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+    "beauty": CanonicalBusinessDomain.BEAUTY,
+    "beauty_salon": CanonicalBusinessDomain.BEAUTY,
+    "beauty_skincare": CanonicalBusinessDomain.BEAUTY,
+    "beauty_hair": CanonicalBusinessDomain.BEAUTY,
+    "beauty_nail": CanonicalBusinessDomain.BEAUTY,
+    "beauty_spa": CanonicalBusinessDomain.BEAUTY,
+    "salon": CanonicalBusinessDomain.BEAUTY,
+    "skincare": CanonicalBusinessDomain.BEAUTY,
+    "hair_salon": CanonicalBusinessDomain.BEAUTY,
+    "nail": CanonicalBusinessDomain.BEAUTY,
+    "spa": CanonicalBusinessDomain.BEAUTY,
+    "retail": CanonicalBusinessDomain.RETAIL,
+    "store": CanonicalBusinessDomain.RETAIL,
+    "ecommerce": CanonicalBusinessDomain.RETAIL,
+    "fitness": CanonicalBusinessDomain.OTHER,
+    "education": CanonicalBusinessDomain.OTHER,
+    "service": CanonicalBusinessDomain.OTHER,
+    "other": CanonicalBusinessDomain.OTHER,
 }
 
-# Canonical domain -> the context.business_type value that downstream selectors
-# expect TODAY. This deliberately reproduces current behaviour:
-#   - beauty resolves to the ambiguous "beauty_salon" (which scene_planner/preset
-#     then narrow to skincare),
-#   - fitness keeps mapping to "fitness" (no strategy -> generic downstream),
-#   - retail/education/service have no context value yet (None -> generic).
-_CANONICAL_TO_CONTEXT_BUSINESS_TYPE: dict[str, str | None] = {
-    "cafe": "cafe",
-    "restaurant": "restaurant",
-    "beauty": "beauty_salon",
+_BUSINESS_TAGS_BY_ALIAS: dict[str, tuple[str, ...]] = {
+    "food_and_beverage": (),
+    "cafe": ("cafe",),
+    "dessert": ("cafe", "dessert_shop"),
+    "bakery": ("bakery",),
+    "macaron": ("cafe", "dessert_shop"),
+    "restaurant": ("restaurant",),
+    "restaurant_bbq": ("restaurant", "korean_bbq"),
+    "bbq": ("restaurant", "korean_bbq"),
+    "korean_food": ("restaurant", "korean_food"),
+    "meat_restaurant": ("restaurant", "korean_bbq"),
+    "dining": ("restaurant",),
+    "food": ("restaurant",),
+    "beauty": ("beauty_service",),
+    "beauty_salon": ("beauty_service",),
+    "salon": ("beauty_service",),
+    "beauty_skincare": ("skincare",),
+    "beauty_hair": ("hair",),
+    "beauty_nail": ("nail",),
+    "beauty_spa": ("spa",),
+    "skincare": ("skincare",),
+    "hair_salon": ("hair",),
+    "nail": ("nail",),
+    "spa": ("spa",),
+    "retail": ("retail",),
+    "store": ("retail", "physical_store"),
+    "ecommerce": ("retail", "ecommerce"),
+    "fitness": ("fitness",),
+    "education": ("education",),
+    "service": ("service",),
+    "other": ("other",),
+}
+
+_AMBIGUOUS_BEAUTY_ALIASES = frozenset({"beauty", "beauty_salon", "salon"})
+_UNSUPPORTED_DOMAIN_HINTS: dict[str, str] = {
     "fitness": "fitness",
-    "retail": None,
-    "education": None,
-    "service": None,
+    "education": "education",
+    "service": "service",
+    "other": "other",
 }
+_SCENE_EVIDENCE_TAGS = frozenset({"bbq_grill", "charcoal_grill"})
 
 
-class NormalizedBusinessType(NamedTuple):
-    """Result of normalising a raw/brief business value at the input boundary."""
-
-    canonical: str | None
-    business_type: str | None
-    supported: bool
-    fallback_reason: str | None
+def _normalized_key(value: str | CanonicalBusinessDomain | None) -> str:
+    if isinstance(value, CanonicalBusinessDomain):
+        return value.value
+    return str(value or "").strip().lower()
 
 
-def to_canonical_domain(value: str | None) -> str | None:
-    """Classify any raw/brief/subtype value to a coarse canonical domain.
-
-    Returns one of CANONICAL_DOMAINS, or None when the value is unknown/empty.
-    Exact match first, then the alias layer. No substring heuristics (Phase 1).
-    """
-    if not value:
-        return None
-    key = value.strip().lower()
-    if key in CANONICAL_DOMAINS:
-        return key
-    return _ALIASES.get(key)
-
-
-def is_supported_domain(value: str | None) -> bool:
-    """True when the value maps to a domain that has a real strategy today."""
-    canonical = to_canonical_domain(value)
-    return canonical in SUPPORTED_DOMAINS
-
-
-def normalize_business_type(value: str | None) -> NormalizedBusinessType:
-    """Normalise an input-boundary business value into the SSOT shape.
-
-    `business_type` is the value to feed downstream selectors and reproduces
-    today's behaviour exactly. `fallback_reason` is non-None whenever the result
-    falls back to the generic strategy (unknown value, or a declared-but-not-yet
-    -supported domain) so the fallback is observable rather than silent.
-    """
-    canonical = to_canonical_domain(value)
-
-    if canonical is None:
-        raw = (value or "").strip()
-        reason = (
-            f"unknown_business_type: {raw}" if raw else "missing_business_type"
-        )
-        return NormalizedBusinessType(
-            canonical=None, business_type=None, supported=False, fallback_reason=reason
-        )
-
-    business_type = _CANONICAL_TO_CONTEXT_BUSINESS_TYPE[canonical]
-    supported = canonical in SUPPORTED_DOMAINS
-    fallback_reason = (
-        None if supported else f"{canonical} has no domain routing yet"
+def _tag(
+    tag: str,
+    *,
+    source: RoutingEvidenceSource = RoutingEvidenceSource.LEGACY_ALIAS,
+    confidence: float = 1.0,
+    evidence_ref: str | None = None,
+) -> RoutingTagEvidence:
+    return RoutingTagEvidence(
+        tag=tag,
+        source=source,
+        confidence=confidence,
+        evidence_ref=evidence_ref,
     )
-    return NormalizedBusinessType(
-        canonical=canonical,
-        business_type=business_type,
-        supported=supported,
-        fallback_reason=fallback_reason,
+
+
+def _tag_set(tags: list[RoutingTagEvidence]) -> set[str]:
+    return {tag.tag for tag in tags}
+
+
+def _scene_tags_from_evidence(evidence: list[RoutingTagEvidence] | None) -> list[RoutingTagEvidence]:
+    if not evidence:
+        return []
+    return [
+        tag
+        for tag in evidence
+        if tag.usable_for_routing and tag.tag in _SCENE_EVIDENCE_TAGS
+    ]
+
+
+def to_canonical_domain(value: str | CanonicalBusinessDomain | None) -> CanonicalBusinessDomain:
+    """Classify a raw/brief/subtype value to the A-1 canonical domain.
+
+    This is exact alias lookup only. Unknown or empty values are intentionally
+    classified as OTHER here; `normalize_business_type()` records whether that
+    OTHER result is an explicit unsupported domain or an unresolved unknown.
+    """
+    return _DOMAIN_ALIASES.get(_normalized_key(value), CanonicalBusinessDomain.OTHER)
+
+
+def is_supported_domain(value: str | CanonicalBusinessDomain | None) -> bool:
+    """True when the canonical domain is in the MVP specialized set."""
+    return to_canonical_domain(value) in {
+        CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+        CanonicalBusinessDomain.BEAUTY,
+        CanonicalBusinessDomain.RETAIL,
+    }
+
+
+def normalize_business_type(
+    raw_business_type: str | CanonicalBusinessDomain | None,
+    *,
+    evidence: list[RoutingTagEvidence] | None = None,
+) -> DomainRoutingResult:
+    """Normalise an input-boundary business value into DomainRoutingResult."""
+    key = _normalized_key(raw_business_type)
+    raw = None if raw_business_type is None else str(raw_business_type).strip()
+    domain = _DOMAIN_ALIASES.get(key)
+    evidence_refs = [
+        tag.evidence_ref
+        for tag in evidence or []
+        if tag.usable_for_routing and tag.evidence_ref
+    ]
+
+    if not key or domain is None:
+        return DomainRoutingResult(
+            raw_business_type=raw,
+            canonical_domain=CanonicalBusinessDomain.OTHER,
+            support_status=DomainSupportStatus.UNRESOLVED,
+            fallback_reason=DomainFallbackReason.UNRECOGNIZED_BUSINESS_TYPE,
+            clarification_required=True,
+            unresolved_questions=["Provide a clearer business category."],
+            evidence_refs=evidence_refs,
+            confidence=0.0,
+        )
+
+    business_tags = [
+        _tag(tag, evidence_ref=f"business_type:{key}")
+        for tag in _BUSINESS_TAGS_BY_ALIAS.get(key, ())
+    ]
+    scene_tags = _scene_tags_from_evidence(evidence)
+
+    if key in _UNSUPPORTED_DOMAIN_HINTS:
+        return DomainRoutingResult(
+            raw_business_type=raw,
+            canonical_domain=CanonicalBusinessDomain.OTHER,
+            support_status=DomainSupportStatus.GENERIC_FALLBACK,
+            unsupported_domain_hint=_UNSUPPORTED_DOMAIN_HINTS[key],
+            business_tags=business_tags,
+            scene_tags=scene_tags,
+            fallback_reason=DomainFallbackReason.UNSUPPORTED_DOMAIN_IN_MVP,
+            matched_aliases=[key],
+            evidence_refs=evidence_refs,
+            confidence=0.85,
+        )
+
+    if domain == CanonicalBusinessDomain.BEAUTY and key in _AMBIGUOUS_BEAUTY_ALIASES:
+        return DomainRoutingResult(
+            raw_business_type=raw,
+            canonical_domain=domain,
+            support_status=DomainSupportStatus.NEEDS_EVIDENCE,
+            business_tags=business_tags,
+            scene_tags=scene_tags,
+            fallback_reason=DomainFallbackReason.AMBIGUOUS_BEAUTY_SUBDOMAIN,
+            matched_aliases=[key],
+            evidence_refs=evidence_refs,
+            clarification_required=True,
+            unresolved_questions=["Choose a beauty subtype: skincare, hair, nail, or spa."],
+            confidence=0.72,
+        )
+
+    return DomainRoutingResult(
+        raw_business_type=raw,
+        canonical_domain=domain,
+        support_status=DomainSupportStatus.SPECIALIZED,
+        business_tags=business_tags,
+        scene_tags=scene_tags,
+        matched_aliases=[key],
+        evidence_refs=evidence_refs,
+        confidence=0.95,
     )

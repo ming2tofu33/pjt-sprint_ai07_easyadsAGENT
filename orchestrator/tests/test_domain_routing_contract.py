@@ -12,8 +12,10 @@ risks documented in docs/PRESET_ROUTING_AUDIT.md visible and regression-proof:
         or leave an observable generic-fallback breadcrumb (never evaporate
         silently).
 
-Known gaps (fitness/retail/education/service -> generic) are asserted explicitly
-so the gap is documented and a *change* in behaviour is caught, pending Phase 4.
+A-2 changes the canonical domain model to food_and_beverage / beauty / retail /
+other, while leaving the legacy visual selector path in place until later A
+phases. Legacy visual gaps are still asserted explicitly so any production
+selector change is deliberate.
 """
 
 from __future__ import annotations
@@ -287,12 +289,11 @@ def test_business_type_map_is_derived_from_ssot():
 
 def test_supported_domains_are_a_declared_subset_of_canonical():
     assert SUPPORTED_DOMAINS <= CANONICAL_DOMAINS
-    # Declared-but-not-yet-supported domains (Phase 4). Asserted so the gap is
-    # explicit and any future support is a deliberate change to the SSOT.
-    assert CANONICAL_DOMAINS - SUPPORTED_DOMAINS == {"fitness", "retail", "education", "service"}
+    assert CANONICAL_DOMAINS == {"food_and_beverage", "beauty", "retail", "other"}
+    assert SUPPORTED_DOMAINS == {"food_and_beverage", "beauty", "retail"}
 
 
-# --- Known Phase 4 gaps documented as explicit assertions --------------------
+# --- Known legacy visual gaps documented as explicit assertions --------------
 
 @pytest.mark.parametrize("business_type", ["fitness", "retail", "education", "service"])
 def test_unsupported_domains_currently_resolve_to_generic_preset(business_type):
