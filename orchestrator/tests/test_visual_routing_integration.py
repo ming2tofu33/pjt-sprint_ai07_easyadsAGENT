@@ -2,8 +2,20 @@ from __future__ import annotations
 
 from orchestrator.app.llm.visual_routing_integration import (
     build_fail_open_visual_routing_metadata,
+    build_visual_semantic_intent_for_shadow,
+    build_visual_strategy_context_for_shadow,
+    build_visual_strategy_runtime_context,
     resolve_visual_routing_mode,
 )
+from orchestrator.app.llm.domain_routing import (
+    CanonicalBusinessDomain,
+    DomainRoutingResult,
+    DomainSupportStatus,
+    RoutingEvidenceSource,
+    RoutingTagEvidence,
+)
+from orchestrator.app.schemas.llm_marketing import AdFormatSpec, MarketingContext
+from orchestrator.app.schemas.product_visual_context import ProductVisualContext
 from orchestrator.app.schemas.visual_routing_shadow import RoutingMode, RoutingSource
 
 
@@ -56,3 +68,450 @@ def test_a8_fail_open_metadata_sanitizes_unknown_trace_stage():
     metadata_text = str(metadata)
     assert "contains user prompt or secret" not in metadata_text
     assert "secret" not in metadata_text
+
+
+def test_a8_fail_open_metadata_preserves_known_exception_type():
+    metadata = build_fail_open_visual_routing_metadata(
+        mode=RoutingMode.SHADOW,
+        exception=ValueError("contains user prompt or secret"),
+        stage="trace_build",
+    )
+
+    assert metadata["trace_error"] == {
+        "stage": "trace_build",
+        "exception_type": "ValueError",
+    }
+
+
+def test_a8_fail_open_metadata_sanitizes_unknown_exception_type():
+    class PromptSecretLeakingError(Exception):
+        pass
+
+    metadata = build_fail_open_visual_routing_metadata(
+        mode=RoutingMode.SHADOW,
+        exception=PromptSecretLeakingError("contains user prompt or secret"),
+        stage="trace_build",
+    )
+
+    assert metadata["trace_error"] == {
+        "stage": "trace_build",
+        "exception_type": "UnexpectedError",
+    }
+    metadata_text = str(metadata)
+    assert "PromptSecretLeakingError" not in metadata_text
+    assert "contains user prompt or secret" not in metadata_text
+    assert "secret" not in metadata_text
+
+
+def test_a8_builds_shadow_strategy_context_from_product_understanding_and_marketing_context():
+    state = {
+        "product_understanding": {
+            "product_name": "Cica Serum",
+            "normalized_product_type": "cica_serum",
+            "broad_category": "beauty_and_personal_care",
+            "category_path": ["beauty_and_personal_care", "skincare", "serum"],
+            "product_name_evidence_ids": ["state:product_understanding.product_name"],
+            "confidence": 0.88,
+        },
+        "ad_format_spec": {
+            "ad_format": "instagram_feed",
+            "width": 1024,
+            "height": 1024,
+            "aspect_ratio": "1:1",
+        },
+    }
+    marketing_context = MarketingContext(
+        item_or_service="Cica Serum",
+        business_type="beauty_skincare",
+        promotion_goal="new_product_launch",
+    )
+    domain = _domain_result(
+        raw_business_type="beauty_skincare",
+        canonical_domain=CanonicalBusinessDomain.BEAUTY,
+        business_tags=["skincare"],
+    )
+
+    context = build_visual_strategy_context_for_shadow(
+        state=state,
+        marketing_context=marketing_context,
+        domain_result=domain,
+    )
+
+    assert context.product.product_name == "Cica Serum"
+    assert context.product_visual.product_name == "Cica Serum"
+    assert context.product_visual.category_path == ("beauty_and_personal_care", "skincare", "serum")
+    assert context.product_visual.evidence_refs == ("state:product_understanding.product_name",)
+    assert "skincare" in context.business.business_tags
+    assert context.campaign.promotion_goal == "new_product_launch"
+    assert context.campaign.evidence_refs == ("state:context.promotion_goal",)
+    assert context.ad_format.ad_format == "instagram_feed"
+    assert context.ad_format.platform == "instagram"
+    assert context.ad_format.output_strategy == "generate_text_free_background_then_overlay"
+
+
+def test_a8_partial_product_understanding_mapping_is_backfilled_with_defaults():
+    context = build_visual_strategy_context_for_shadow(
+        state={"product_understanding": {"product_name": "Widget"}},
+        marketing_context=MarketingContext(item_or_service="Widget"),
+        domain_result=_domain_result(
+            raw_business_type="retail",
+            canonical_domain=CanonicalBusinessDomain.RETAIL,
+            business_tags=["retail"],
+        ),
+    )
+
+    assert context.product.product_name == "Widget"
+    assert context.product.broad_category == "other"
+    assert context.product.category_path == ["other"]
+    assert context.product.product_name_evidence_ids == ["state:context.item_or_service"]
+    assert context.product.confidence == 0.5
+    assert context.product_visual.evidence_refs == ("state:context.item_or_service",)
+
+
+def test_a8_minimal_restaurant_bbq_context_does_not_infer_product_visual_evidence_from_business_type():
+    state = {
+        "ad_format_spec": {
+            "ad_format": "instagram_feed",
+            "width": 1024,
+            "height": 1024,
+            "aspect_ratio": "1:1",
+        }
+    }
+    marketing_context = MarketingContext(
+        item_or_service="Dinner special",
+        business_type="restaurant_bbq",
+    )
+    domain = _domain_result(
+        raw_business_type="restaurant_bbq",
+        canonical_domain=CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+        business_tags=["restaurant", "korean_bbq"],
+    )
+
+    context = build_visual_strategy_context_for_shadow(
+        state=state,
+        marketing_context=marketing_context,
+        domain_result=domain,
+    )
+
+    assert "korean_bbq" in context.business.business_tags
+    assert "grilled_meat" not in context.product_visual.product_tags
+    assert "grilled_meat" not in context.product_visual.visible_attributes
+    assert "table_grilled" not in context.product_visual.explicit_preparation_methods
+
+
+def test_a8_mapping_product_visual_context_empty_category_and_evidence_are_backfilled():
+    context = build_visual_strategy_context_for_shadow(
+        state={
+            "product_understanding": {
+                "product_name": "Cica Serum",
+                "broad_category": "beauty_and_personal_care",
+                "category_path": ["beauty_and_personal_care", "skincare", "serum"],
+                "product_name_evidence_ids": ["state:product"],
+                "confidence": 0.8,
+            },
+            "product_visual_context": {
+                "product_name": "Cica Serum",
+                "category_path": [],
+                "product_tags": ["serum_bottle"],
+                "visible_attributes": ["green_label"],
+                "explicit_preparation_methods": ["dropper_application"],
+                "evidence_refs": [],
+                "confidence": 0.76,
+            },
+        },
+        marketing_context=MarketingContext(item_or_service="Cica Serum"),
+        domain_result=_domain_result(
+            raw_business_type="beauty_skincare",
+            canonical_domain=CanonicalBusinessDomain.BEAUTY,
+            business_tags=["skincare"],
+        ),
+    )
+
+    assert context.product_visual.category_path == ("beauty_and_personal_care", "skincare", "serum")
+    assert context.product_visual.evidence_refs == ("state:product",)
+    assert context.product_visual.product_tags == ("serum_bottle",)
+    assert context.product_visual.visible_attributes == ("green_label",)
+    assert context.product_visual.explicit_preparation_methods == ("dropper_application",)
+
+
+def test_a8_mapping_product_visual_context_none_confidence_is_backfilled():
+    context = build_visual_strategy_context_for_shadow(
+        state={
+            "product_understanding": {
+                "product_name": "Cica Serum",
+                "broad_category": "beauty_and_personal_care",
+                "category_path": ["beauty_and_personal_care", "skincare", "serum"],
+                "product_name_evidence_ids": ["state:product"],
+                "confidence": 0.8,
+            },
+            "product_visual_context": {
+                "product_name": "Cica Serum",
+                "category_path": ["beauty_and_personal_care", "skincare", "serum"],
+                "product_tags": ["serum_bottle"],
+                "evidence_refs": ["vision:serum_bottle"],
+                "confidence": None,
+            },
+        },
+        marketing_context=MarketingContext(item_or_service="Cica Serum"),
+        domain_result=_domain_result(
+            raw_business_type="beauty_skincare",
+            canonical_domain=CanonicalBusinessDomain.BEAUTY,
+            business_tags=["skincare"],
+        ),
+    )
+
+    assert context.product_visual.confidence == 0.8
+    assert context.product_visual.product_tags == ("serum_bottle",)
+
+
+def test_a8_existing_product_visual_context_empty_category_is_backfilled():
+    product_visual = ProductVisualContext(
+        product_name="Cica Serum",
+        product_tags=["serum_bottle"],
+        category_path=[],
+        evidence_refs=["vision:serum_bottle"],
+        confidence=0.76,
+    )
+
+    context = build_visual_strategy_context_for_shadow(
+        state={
+            "product_understanding": {
+                "product_name": "Cica Serum",
+                "broad_category": "beauty_and_personal_care",
+                "category_path": ["beauty_and_personal_care", "skincare", "serum"],
+                "product_name_evidence_ids": ["state:product"],
+                "confidence": 0.8,
+            },
+            "product_visual_context": product_visual,
+        },
+        marketing_context=MarketingContext(item_or_service="Cica Serum"),
+        domain_result=_domain_result(
+            raw_business_type="beauty_skincare",
+            canonical_domain=CanonicalBusinessDomain.BEAUTY,
+            business_tags=["skincare"],
+        ),
+    )
+
+    assert context.product_visual.category_path == ("beauty_and_personal_care", "skincare", "serum")
+    assert context.product_visual.evidence_refs == ("vision:serum_bottle",)
+    assert context.product_visual.product_tags == ("serum_bottle",)
+
+
+def test_a8_visual_semantic_intent_uses_only_open_evidence_tokens_and_style_tone():
+    routing_context = build_visual_strategy_context_for_shadow(
+        state={
+            "product_understanding": {
+                "product_name": "Cica Serum",
+                "broad_category": "beauty_and_personal_care",
+                "category_path": ["beauty_and_personal_care", "skincare", "serum"],
+                "product_name_evidence_ids": ["state:product"],
+                "confidence": 0.8,
+            },
+            "product_visual_context": {
+                "product_name": "Cica Serum",
+                "product_tags": ["serum_bottle"],
+                "visible_attributes": ["green_label"],
+                "explicit_preparation_methods": ["dropper_application"],
+                "prohibited_visual_inferences": ["medical_result"],
+                "evidence_refs": ["vision:serum_bottle"],
+                "confidence": 0.76,
+            },
+            "text_style_spec": {"profile": "calm_minimal", "template_id": "tmpl_hidden"},
+            "selected_template_id": "preset_beauty_hero",
+            "requested_template_id": "preset_request",
+        },
+        marketing_context=MarketingContext(item_or_service="Cica Serum", brand_tone="fresh"),
+        domain_result=_domain_result(
+            raw_business_type="beauty_skincare",
+            canonical_domain=CanonicalBusinessDomain.BEAUTY,
+            business_tags=["skincare"],
+        ),
+    )
+
+    intent = build_visual_semantic_intent_for_shadow(
+        {
+            "text_style_spec": {"profile": "calm_minimal", "template_id": "tmpl_hidden"},
+            "selected_template_id": "preset_beauty_hero",
+            "requested_template_id": "preset_request",
+        },
+        routing_context,
+    )
+
+    assert intent.required_visual_facts == ("serum_bottle", "green_label", "dropper_application")
+    assert intent.prohibited_visual_elements == ("medical_result",)
+    assert intent.desired_moods == ("calm_minimal",)
+    intent_text = str(intent.model_dump())
+    assert "preset_beauty_hero" not in intent_text
+    assert "preset_request" not in intent_text
+    assert "tmpl_hidden" not in intent_text
+
+
+def test_a8_runtime_context_uses_ad_format_as_placement_and_empty_campaign_roles_by_default():
+    runtime = build_visual_strategy_runtime_context(
+        state={"selected_ad_format": "instagram_story"},
+        ad_format_spec={
+            "ad_format": "instagram_feed",
+            "width": 1024,
+            "height": 1024,
+            "aspect_ratio": "1:1",
+        },
+    )
+
+    assert runtime.placement == "instagram_feed"
+    assert runtime.campaign_roles == frozenset()
+
+
+def test_a8_invalid_ad_format_values_are_sanitized_to_safe_defaults():
+    state = {
+        "ad_format_spec": {
+            "ad_format": "unsupported_story",
+            "platform": "unsupported_platform",
+            "aspect_ratio": "2:3",
+            "width": 0,
+            "height": -1,
+            "information_density": "dense",
+            "visual_priority": "invalid_priority",
+            "output_strategy": "unknown_strategy",
+        }
+    }
+
+    context = build_visual_strategy_context_for_shadow(
+        state=state,
+        marketing_context=MarketingContext(item_or_service="Widget"),
+        domain_result=_domain_result(
+            raw_business_type="retail",
+            canonical_domain=CanonicalBusinessDomain.RETAIL,
+            business_tags=["retail"],
+        ),
+    )
+
+    assert context.ad_format.ad_format == "instagram_feed"
+    assert context.ad_format.platform == "instagram"
+    assert context.ad_format.aspect_ratio == "1:1"
+    assert context.ad_format.width == 1024
+    assert context.ad_format.height == 1024
+    assert context.ad_format.information_density == "medium"
+    assert context.ad_format.visual_priority == "mood_first"
+    assert context.ad_format.output_strategy == "generate_text_free_background_then_overlay"
+
+
+def test_a8_valid_ad_format_values_are_preserved():
+    runtime = build_visual_strategy_runtime_context(
+        state={},
+        ad_format_spec={
+            "ad_format": "poster",
+            "platform": "offline",
+            "aspect_ratio": "A4_vertical",
+            "width": 768,
+            "height": 1024,
+            "information_density": "high",
+            "visual_priority": "information_first",
+            "output_strategy": "template_composite",
+        },
+    )
+    context = build_visual_strategy_context_for_shadow(
+        state={
+            "ad_format_spec": {
+                "ad_format": "poster",
+                "platform": "offline",
+                "aspect_ratio": "A4_vertical",
+                "width": 768,
+                "height": 1024,
+                "information_density": "high",
+                "visual_priority": "information_first",
+                "output_strategy": "template_composite",
+            }
+        },
+        marketing_context=MarketingContext(item_or_service="Widget"),
+        domain_result=_domain_result(
+            raw_business_type="retail",
+            canonical_domain=CanonicalBusinessDomain.RETAIL,
+            business_tags=["retail"],
+        ),
+    )
+
+    assert runtime.placement == "poster"
+    assert context.ad_format.platform == "offline"
+    assert context.ad_format.aspect_ratio == "A4_vertical"
+    assert context.ad_format.width == 768
+    assert context.ad_format.height == 1024
+    assert context.ad_format.information_density == "high"
+    assert context.ad_format.visual_priority == "information_first"
+    assert context.ad_format.output_strategy == "template_composite"
+
+
+def test_a8_ad_format_spec_instance_is_preserved_for_context_and_runtime():
+    ad_format = AdFormatSpec(
+        ad_format="poster",
+        platform="offline",
+        aspect_ratio="A4_vertical",
+        width=768,
+        height=1024,
+        information_density="high",
+        visual_priority="information_first",
+        output_strategy="template_composite",
+        metadata={"source": "unit_test"},
+    )
+
+    runtime = build_visual_strategy_runtime_context(
+        state={},
+        ad_format_spec=ad_format,
+    )
+    context = build_visual_strategy_context_for_shadow(
+        state={"ad_format_spec": ad_format},
+        marketing_context=MarketingContext(item_or_service="Widget"),
+        domain_result=_domain_result(
+            raw_business_type="retail",
+            canonical_domain=CanonicalBusinessDomain.RETAIL,
+            business_tags=["retail"],
+        ),
+    )
+
+    assert runtime.placement == "poster"
+    assert context.ad_format.ad_format == "poster"
+    assert context.ad_format.platform == "offline"
+    assert context.ad_format.aspect_ratio == "A4_vertical"
+    assert context.ad_format.width == 768
+    assert context.ad_format.height == 1024
+    assert context.ad_format.information_density == "high"
+    assert context.ad_format.visual_priority == "information_first"
+    assert context.ad_format.output_strategy == "template_composite"
+    assert context.ad_format.metadata == {"source": "unit_test"}
+
+
+def test_a8_invalid_ad_format_metadata_defaults_to_empty_dict():
+    context = build_visual_strategy_context_for_shadow(
+        state={"ad_format_spec": {"metadata": "not-a-mapping"}},
+        marketing_context=MarketingContext(item_or_service="Widget"),
+        domain_result=_domain_result(
+            raw_business_type="retail",
+            canonical_domain=CanonicalBusinessDomain.RETAIL,
+            business_tags=["retail"],
+        ),
+    )
+
+    assert context.ad_format.metadata == {}
+
+
+def _domain_result(
+    *,
+    raw_business_type: str,
+    canonical_domain: CanonicalBusinessDomain,
+    business_tags: list[str],
+) -> DomainRoutingResult:
+    return DomainRoutingResult(
+        raw_business_type=raw_business_type,
+        canonical_domain=canonical_domain,
+        support_status=DomainSupportStatus.SPECIALIZED,
+        business_tags=[
+            RoutingTagEvidence(
+                tag=tag,
+                source=RoutingEvidenceSource.USER_TEXT,
+                confidence=0.9,
+                evidence_ref=f"user_text:business_type:{tag}",
+            )
+            for tag in business_tags
+        ],
+        evidence_refs=["user_text:business_type"],
+        confidence=0.9,
+    )
