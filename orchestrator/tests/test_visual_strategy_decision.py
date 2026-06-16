@@ -250,13 +250,15 @@ def test_evidence_refs_do_not_force_business_or_semantic_refs_without_requiremen
 
 def test_confidence_uses_input_min_evidence_alignment_and_fallback_multiplier():
     primary = _profile(required_tags=["missing"])
-    fallback = _profile(strategy_id="fallback_profile", fallback_tier=1, priority=1)
+    fallback = _profile(strategy_id="fallback_profile", fallback_tier=1, fallback_role="fallback_role_alpha", priority=1)
     registry = _registry(primary, fallback)
 
     decision = resolve_visual_strategy(_context(), _intent(), registry)
 
     assert decision.fallback_used is True
-    assert decision.fallback_reason == VisualStrategyFallbackReason.NO_ELIGIBLE_PRIMARY_STRATEGY
+    assert decision.fallback_reason == VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE
+    assert decision.fallback_role == "fallback_role_alpha"
+    assert decision.missing_specialized_profile is True
     assert decision.confidence == 0.5625
     assert decision.score.total_score != decision.confidence
 

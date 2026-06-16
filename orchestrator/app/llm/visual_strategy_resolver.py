@@ -21,6 +21,7 @@ from orchestrator.app.schemas.visual_strategy_resolution import (
     VisualStrategyCandidateTrace,
     VisualStrategyDecisionConfidencePolicy,
     VisualStrategyDecision,
+    VisualStrategyFallbackReason,
     VisualStrategyRejectionCode,
     VisualStrategyResolutionTrace,
     VisualStrategyRuntimeContext,
@@ -30,7 +31,7 @@ from orchestrator.app.schemas.visual_strategy_resolution import (
 )
 
 
-RESOLVER_VERSION = "visual-strategy-resolver-v1"
+RESOLVER_VERSION = "visual-strategy-resolver-v2"
 
 
 class NoEligibleVisualStrategyError(Exception):
@@ -85,6 +86,15 @@ def resolve_visual_strategy(
     eligible = tuple(candidate for candidate in candidates if candidate.trace.eligible)
     eligible_non_fallback = tuple(candidate for candidate in eligible if candidate.profile.fallback_tier == 0)
     eligible_fallback = tuple(candidate for candidate in eligible if candidate.profile.fallback_tier > 0)
+    enabled_primary = tuple(candidate for candidate in candidates if candidate.profile.enabled and candidate.profile.fallback_tier == 0)
+    domain_supported_primary_count = sum(1 for candidate in enabled_primary if context.domain.canonical_domain in candidate.profile.supported_domains)
+    unsupported_domain = domain_supported_primary_count == 0
+    missing_specialized_profile = domain_supported_primary_count > 0 and not eligible_non_fallback
+    fallback_reason = _fallback_reason(
+        fallback_used=not bool(eligible_non_fallback),
+        unsupported_domain=unsupported_domain,
+        missing_specialized_profile=missing_specialized_profile,
+    )
     selectable = eligible_non_fallback or eligible_fallback
 
     if not selectable:
@@ -94,6 +104,10 @@ def resolve_visual_strategy(
             candidates=tuple(candidate.trace for candidate in candidates),
             selected=None,
             fallback_used=False,
+            domain_supported_primary_count=domain_supported_primary_count,
+            fallback_reason=None,
+            unsupported_domain=unsupported_domain,
+            missing_specialized_profile=missing_specialized_profile,
         )
         raise NoEligibleVisualStrategyError(trace)
 
@@ -114,6 +128,10 @@ def resolve_visual_strategy(
         candidates=tuple(candidate.trace for candidate in candidates),
         selected=selected,
         fallback_used=fallback_used,
+        domain_supported_primary_count=domain_supported_primary_count,
+        fallback_reason=fallback_reason if fallback_used else None,
+        unsupported_domain=unsupported_domain if fallback_used else False,
+        missing_specialized_profile=missing_specialized_profile if fallback_used else False,
     )
     return build_visual_strategy_decision(
         context=context,
@@ -272,6 +290,7 @@ def _evaluate_profile(
         strategy_id=profile.strategy_id,
         eligible=eligible,
         fallback_tier=profile.fallback_tier,
+        fallback_role=profile.fallback_role,
         rejection_codes=tuple(dict.fromkeys(rejection_codes)),
         matched_required_tags=matched_required,
         missing_required_tags=missing_required,
@@ -370,8 +389,14 @@ def _build_trace(
     candidates: tuple[VisualStrategyCandidateTrace, ...],
     selected: _Candidate | None,
     fallback_used: bool,
+    domain_supported_primary_count: int,
+    fallback_reason: VisualStrategyFallbackReason | None,
+    unsupported_domain: bool,
+    missing_specialized_profile: bool,
 ) -> VisualStrategyResolutionTrace:
     eligible_count = sum(1 for candidate in candidates if candidate.eligible)
+    eligible_primary_count = sum(1 for candidate in candidates if candidate.eligible and candidate.fallback_tier == 0)
+    eligible_fallback_count = sum(1 for candidate in candidates if candidate.eligible and candidate.fallback_tier > 0)
     return VisualStrategyResolutionTrace(
         resolver_version=RESOLVER_VERSION,
         scoring_policy_version=policy.version,
@@ -379,12 +404,34 @@ def _build_trace(
         registry_snapshot_hash=registry.snapshot_hash,
         candidate_count=len(candidates),
         eligible_count=eligible_count,
-        non_fallback_eligible_count=sum(1 for candidate in candidates if candidate.eligible and candidate.fallback_tier == 0),
-        fallback_eligible_count=sum(1 for candidate in candidates if candidate.eligible and candidate.fallback_tier > 0),
+        domain_supported_primary_count=domain_supported_primary_count,
+        eligible_primary_count=eligible_primary_count,
+        eligible_fallback_count=eligible_fallback_count,
+        non_fallback_eligible_count=eligible_primary_count,
+        fallback_eligible_count=eligible_fallback_count,
         selected_strategy_id=selected.profile.strategy_id if selected else None,
         fallback_used=fallback_used,
+        fallback_reason=fallback_reason,
+        fallback_role=selected.profile.fallback_role if selected and fallback_used else None,
+        unsupported_domain=unsupported_domain,
+        missing_specialized_profile=missing_specialized_profile,
         candidates=candidates,
     )
+
+
+def _fallback_reason(
+    *,
+    fallback_used: bool,
+    unsupported_domain: bool,
+    missing_specialized_profile: bool,
+) -> VisualStrategyFallbackReason | None:
+    if not fallback_used:
+        return None
+    if unsupported_domain:
+        return VisualStrategyFallbackReason.UNSUPPORTED_DOMAIN
+    if missing_specialized_profile:
+        return VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE
+    return VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE
 
 
 def _evaluate_source_requirements(

@@ -8,6 +8,7 @@ from orchestrator.app.llm.visual_strategy_integrity import (
     VISUAL_STRATEGY_REGISTRY_INTEGRITY_VALIDATOR_VERSION,
     VisualStrategyRegistryIntegrityError,
     assert_visual_strategy_registry_valid,
+    build_default_visual_strategy_integrity_policy,
     validate_visual_strategy_profiles,
     validate_visual_strategy_registry,
 )
@@ -51,6 +52,7 @@ def _profile(**overrides) -> VisualStrategyProfile:
         "copy_tone_profile_id": "tone_alpha",
         "priority": 10,
         "fallback_tier": 1,
+        "fallback_role": "fallback_role_alpha",
         "enabled": True,
     }
     data.update(overrides)
@@ -129,6 +131,7 @@ def test_issue_codes_and_severities_are_contract_enums():
     assert RegistryValidationCode.DUPLICATE_STRATEGY_ID.value == "duplicate_strategy_id"
     assert RegistryValidationCode.REGISTRY_HASH_MISMATCH.value == "registry_hash_mismatch"
     assert RegistryValidationCode.VISUAL_ELEMENT_REQUIREMENT_WITHOUT_INTRODUCED_ELEMENT.value == "visual_element_requirement_without_introduced_element"
+    assert RegistryValidationCode.MISSING_REQUIRED_FALLBACK_ROLE.value == "missing_required_fallback_role"
 
 
 def test_raw_profile_validation_collects_duplicate_ids_and_missing_resources():
@@ -276,7 +279,7 @@ def test_provider_warning_promoted_to_error_is_resorted_deterministically():
 
 
 def test_fallback_checks_use_tier_not_strategy_id_text():
-    no_fallback = _profile(strategy_id="fallback_named_but_primary", fallback_tier=0)
+    no_fallback = _profile(strategy_id="fallback_named_but_primary", fallback_tier=0, fallback_role=None)
     report = validate_visual_strategy_profiles([no_fallback], resources=_resources(provider_capability_ids=[]))
 
     assert RegistryValidationCode.MISSING_ENABLED_FALLBACK in {issue.code for issue in report.issues}
@@ -309,6 +312,30 @@ def test_empty_profile_list_reports_empty_enabled_registry_and_missing_fallback(
 
     assert RegistryValidationCode.EMPTY_ENABLED_REGISTRY in {issue.code for issue in report.issues}
     assert RegistryValidationCode.MISSING_ENABLED_FALLBACK in {issue.code for issue in report.issues}
+
+
+def test_required_fallback_role_policy_reports_missing_or_disabled_roles():
+    disabled = _profile(enabled=False)
+    report = validate_visual_strategy_profiles(
+        [disabled],
+        resources=_resources(provider_capability_ids=[]),
+        policy=RegistryIntegrityPolicy(required_fallback_roles=frozenset({"fallback_role_alpha"})),
+    )
+
+    assert RegistryValidationCode.MISSING_REQUIRED_FALLBACK_ROLE in {issue.code for issue in report.issues}
+
+
+def test_fallback_role_shape_issues_are_reported_defensively():
+    fallback_without_role = _profile().model_copy(update={"fallback_role": None})
+    primary_with_role = _profile(fallback_tier=0, fallback_role=None).model_copy(update={"fallback_role": "fallback_role_alpha"})
+
+    report = validate_visual_strategy_profiles(
+        [fallback_without_role, primary_with_role],
+        resources=_resources(provider_capability_ids=[]),
+    )
+
+    assert RegistryValidationCode.FALLBACK_PROFILE_MISSING_ROLE in {issue.code for issue in report.issues}
+    assert RegistryValidationCode.PRIMARY_PROFILE_HAS_FALLBACK_ROLE in {issue.code for issue in report.issues}
 
 
 def test_archetype_open_and_catalog_modes():
@@ -414,7 +441,7 @@ def test_catalog_inputs_reject_single_strings_and_non_string_ids():
 
 def test_default_registry_validation_report_is_valid_and_complete_when_provider_catalog_is_not_needed():
     registry = build_default_visual_strategy_registry()
-    report = validate_visual_strategy_registry(registry)
+    report = validate_visual_strategy_registry(registry, policy=build_default_visual_strategy_integrity_policy())
 
     assert report.validator_version == VISUAL_STRATEGY_REGISTRY_INTEGRITY_VALIDATOR_VERSION
     assert report.valid is True
@@ -422,7 +449,8 @@ def test_default_registry_validation_report_is_valid_and_complete_when_provider_
     assert report.error_count == 0
     assert report.warning_count == 0
     assert report.profile_count == len(registry.list_profiles(include_disabled=True))
-    assert report.enabled_fallback_profile_count >= 1
+    assert report.enabled_fallback_profile_count >= 5
+    assert RegistryValidationCode.MISSING_REQUIRED_FALLBACK_ROLE not in {issue.code for issue in report.issues}
     assert report.provider_capability_validation_mode == "not_required"
     assert report.discriminated_union_status == DiscriminatedUnionAuditStatus.NOT_EVALUATED
 

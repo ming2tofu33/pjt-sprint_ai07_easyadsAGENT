@@ -190,6 +190,7 @@ class VisualStrategyProfile(BaseModel):
 
     priority: int = Field(ge=0)
     fallback_tier: int = Field(default=0, ge=0)
+    fallback_role: str | None = None
     enabled: bool
 
     @field_validator(
@@ -198,10 +199,13 @@ class VisualStrategyProfile(BaseModel):
         "composition_template_id",
         "mood_preset_id",
         "copy_tone_profile_id",
+        "fallback_role",
         mode="before",
     )
     @classmethod
-    def normalize_label(cls, value: Any) -> str:
+    def normalize_label(cls, value: Any, info: ValidationInfo) -> str | None:
+        if info.field_name == "fallback_role" and value is None:
+            return None
         return normalize_required_label(value)
 
     @field_validator("supported_domains", mode="before")
@@ -276,5 +280,10 @@ class VisualStrategyProfile(BaseModel):
             unbacked_elements = set(self.introduced_visual_elements) - required_elements
             if unbacked_elements:
                 raise ValueError(f"enabled non-fallback introduced visual element requires evidence: {sorted(unbacked_elements)[0]}")
+
+        if self.fallback_tier == 0 and self.fallback_role is not None:
+            raise ValueError("primary profile must not include fallback_role")
+        if self.fallback_tier > 0 and self.fallback_role is None:
+            raise ValueError("fallback profile requires fallback_role")
 
         return self

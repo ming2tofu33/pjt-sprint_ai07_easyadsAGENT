@@ -40,6 +40,9 @@ class RegistryValidationCode(StrEnum):
     PROVIDER_CAPABILITY_CATALOG_UNAVAILABLE = "provider_capability_catalog_unavailable"
     DISABLED_PROFILE_EXPOSED = "disabled_profile_exposed"
     MISSING_ENABLED_FALLBACK = "missing_enabled_fallback"
+    MISSING_REQUIRED_FALLBACK_ROLE = "missing_required_fallback_role"
+    FALLBACK_PROFILE_MISSING_ROLE = "fallback_profile_missing_role"
+    PRIMARY_PROFILE_HAS_FALLBACK_ROLE = "primary_profile_has_fallback_role"
     FALLBACK_WITHOUT_DOMAIN_COVERAGE = "fallback_without_domain_coverage"
     EMPTY_ENABLED_REGISTRY = "empty_enabled_registry"
     REGISTRY_HASH_MISMATCH = "registry_hash_mismatch"
@@ -77,6 +80,7 @@ class RegistryIntegrityPolicy(BaseModel):
     require_all_introduced_elements_grounded: bool = True
     require_fallback_domain_coverage: bool = False
     allowed_archetypes: frozenset[str] | None = None
+    required_fallback_roles: frozenset[str] = Field(default_factory=frozenset)
     discriminated_union_status: DiscriminatedUnionAuditStatus = DiscriminatedUnionAuditStatus.NOT_EVALUATED
 
     @field_validator("version", mode="before")
@@ -106,6 +110,15 @@ class RegistryIntegrityPolicy(BaseModel):
             raise ValueError("allowed_archetypes must be a collection of strings")
         normalized = frozenset(normalize_required_label(item) for item in value)
         return normalized
+
+    @field_validator("required_fallback_roles", mode="before")
+    @classmethod
+    def normalize_required_fallback_roles(cls, value: Any) -> frozenset[str]:
+        if value is None:
+            return frozenset()
+        if isinstance(value, (str, bytes)):
+            raise ValueError("required_fallback_roles must be a collection of strings")
+        return frozenset(normalize_required_label(item) for item in value)
 
 
 class RegistryValidationReport(BaseModel):

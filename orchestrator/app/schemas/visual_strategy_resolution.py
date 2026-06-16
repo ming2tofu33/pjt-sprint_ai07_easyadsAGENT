@@ -129,6 +129,8 @@ class VisualStrategyRejectionCode(StrEnum):
 
 class VisualStrategyFallbackReason(StrEnum):
     NO_ELIGIBLE_PRIMARY_STRATEGY = "no_eligible_primary_strategy"
+    UNSUPPORTED_DOMAIN = "unsupported_domain"
+    MISSING_SPECIALIZED_PROFILE = "missing_specialized_profile"
 
 
 class VisualStrategySignalSnapshot(BaseModel):
@@ -156,6 +158,7 @@ class VisualStrategyCandidateTrace(BaseModel):
     strategy_id: str
     eligible: bool
     fallback_tier: int = Field(default=0, ge=0)
+    fallback_role: str | None = None
     rejection_codes: tuple[VisualStrategyRejectionCode, ...] = ()
     matched_required_tags: frozenset[str] = Field(default_factory=frozenset)
     missing_required_tags: frozenset[str] = Field(default_factory=frozenset)
@@ -203,11 +206,32 @@ class VisualStrategyResolutionTrace(BaseModel):
     registry_snapshot_hash: str
     candidate_count: int = Field(ge=0)
     eligible_count: int = Field(ge=0)
+    domain_supported_primary_count: int = Field(ge=0)
+    eligible_primary_count: int = Field(ge=0)
+    eligible_fallback_count: int = Field(ge=0)
     non_fallback_eligible_count: int = Field(ge=0)
     fallback_eligible_count: int = Field(ge=0)
     selected_strategy_id: str | None
     fallback_used: bool
+    fallback_reason: VisualStrategyFallbackReason | None = None
+    fallback_role: str | None = None
+    unsupported_domain: bool = False
+    missing_specialized_profile: bool = False
     candidates: tuple[VisualStrategyCandidateTrace, ...]
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_derived_counts(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        if "eligible_primary_count" not in data and "non_fallback_eligible_count" in data:
+            data["eligible_primary_count"] = data["non_fallback_eligible_count"]
+        if "eligible_fallback_count" not in data and "fallback_eligible_count" in data:
+            data["eligible_fallback_count"] = data["fallback_eligible_count"]
+        if "domain_supported_primary_count" not in data:
+            data["domain_supported_primary_count"] = data.get("eligible_primary_count", 0)
+        return data
 
     @model_validator(mode="after")
     def validate_trace_counts(self) -> "VisualStrategyResolutionTrace":
@@ -221,6 +245,10 @@ class VisualStrategyResolutionTrace(BaseModel):
             raise ValueError("eligible_count must match candidates")
         non_fallback_count = sum(1 for candidate in self.candidates if candidate.eligible and candidate.fallback_tier == 0)
         fallback_count = sum(1 for candidate in self.candidates if candidate.eligible and candidate.fallback_tier > 0)
+        if self.eligible_primary_count != non_fallback_count:
+            raise ValueError("eligible_primary_count must match candidates")
+        if self.eligible_fallback_count != fallback_count:
+            raise ValueError("eligible_fallback_count must match candidates")
         if self.non_fallback_eligible_count != non_fallback_count:
             raise ValueError("non_fallback_eligible_count must match candidates")
         if self.fallback_eligible_count != fallback_count:
@@ -231,9 +259,35 @@ class VisualStrategyResolutionTrace(BaseModel):
                 raise ValueError("selected_strategy_id must reference an eligible candidate")
             if self.fallback_used != (selected[0].fallback_tier > 0):
                 raise ValueError("fallback_used must match selected candidate")
+            if self.fallback_role != selected[0].fallback_role:
+                raise ValueError("fallback_role must match selected candidate")
         elif self.eligible_count != 0:
             raise ValueError("missing selected_strategy_id requires zero eligible candidates")
+        self._validate_fallback_state()
         return self
+
+    def _validate_fallback_state(self) -> None:
+        if self.unsupported_domain and self.missing_specialized_profile:
+            raise ValueError("unsupported_domain and missing_specialized_profile are mutually exclusive")
+        if not self.fallback_used:
+            if self.fallback_reason is not None:
+                raise ValueError("non-fallback trace must not include fallback_reason")
+            if self.fallback_role is not None:
+                raise ValueError("non-fallback trace must not include fallback_role")
+            if self.selected_strategy_id is not None and (self.unsupported_domain or self.missing_specialized_profile):
+                raise ValueError("non-fallback trace must not include fallback diagnostics")
+            return
+        if self.fallback_role is None:
+            raise ValueError("fallback trace requires fallback_role")
+        if self.fallback_reason == VisualStrategyFallbackReason.UNSUPPORTED_DOMAIN:
+            if not self.unsupported_domain or self.missing_specialized_profile:
+                raise ValueError("unsupported_domain fallback reason must match diagnostics")
+            return
+        if self.fallback_reason == VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE:
+            if not self.missing_specialized_profile or self.unsupported_domain:
+                raise ValueError("missing_specialized_profile fallback reason must match diagnostics")
+            return
+        raise ValueError("fallback trace requires a supported fallback_reason")
 
 
 class VisualStrategyDecision(BaseModel):
@@ -259,11 +313,25 @@ class VisualStrategyDecision(BaseModel):
     score: VisualStrategyScore
     fallback_used: bool
     fallback_tier: int
+    fallback_role: str | None
     fallback_reason: VisualStrategyFallbackReason | None
+    unsupported_domain: bool
+    missing_specialized_profile: bool
     registry_version: str
     registry_snapshot_hash: str
     confidence_policy_version: str
     trace: VisualStrategyResolutionTrace
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_fallback_defaults(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        data.setdefault("fallback_role", None)
+        data.setdefault("unsupported_domain", False)
+        data.setdefault("missing_specialized_profile", False)
+        return data
 
     @field_validator(
         "strategy_id",
@@ -273,6 +341,7 @@ class VisualStrategyDecision(BaseModel):
         "composition_template_id",
         "mood_preset_id",
         "copy_tone_profile_id",
+        "fallback_role",
         "copy_presence_mode",
         "registry_version",
         "registry_snapshot_hash",
@@ -281,6 +350,8 @@ class VisualStrategyDecision(BaseModel):
     )
     @classmethod
     def normalize_required_text(cls, value: Any) -> str:
+        if value is None:
+            return None
         return normalize_required_label(value)
 
     @model_validator(mode="after")
@@ -297,13 +368,33 @@ class VisualStrategyDecision(BaseModel):
             raise ValueError("fallback_used must match fallback_tier")
         if self.fallback_used and self.fallback_reason is None:
             raise ValueError("fallback decision requires fallback_reason")
+        if self.fallback_used and self.fallback_role is None:
+            raise ValueError("fallback decision requires fallback_role")
         if not self.fallback_used and self.fallback_reason is not None:
             raise ValueError("non-fallback decision must not include fallback_reason")
+        if not self.fallback_used and self.fallback_role is not None:
+            raise ValueError("non-fallback decision must not include fallback_role")
+        if self.unsupported_domain and self.missing_specialized_profile:
+            raise ValueError("unsupported_domain and missing_specialized_profile are mutually exclusive")
+        if not self.fallback_used and (self.unsupported_domain or self.missing_specialized_profile):
+            raise ValueError("non-fallback decision must not include fallback diagnostics")
+        if self.fallback_reason == VisualStrategyFallbackReason.UNSUPPORTED_DOMAIN and not self.unsupported_domain:
+            raise ValueError("unsupported_domain fallback reason must match diagnostics")
+        if self.fallback_reason == VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE and not self.missing_specialized_profile:
+            raise ValueError("missing_specialized_profile fallback reason must match diagnostics")
         selected = next(candidate for candidate in self.trace.candidates if candidate.strategy_id == self.strategy_id)
         if self.score != selected.score:
             raise ValueError("decision score must match selected candidate score")
         if self.fallback_tier != selected.fallback_tier:
             raise ValueError("decision fallback_tier must match selected candidate")
+        if self.fallback_role != selected.fallback_role:
+            raise ValueError("decision fallback_role must match selected candidate")
+        if self.fallback_reason != self.trace.fallback_reason:
+            raise ValueError("decision fallback_reason must match trace")
+        if self.unsupported_domain != self.trace.unsupported_domain:
+            raise ValueError("decision unsupported_domain must match trace")
+        if self.missing_specialized_profile != self.trace.missing_specialized_profile:
+            raise ValueError("decision missing_specialized_profile must match trace")
         rejected_ids = tuple(candidate.strategy_id for candidate in self.trace.candidates if not candidate.eligible)
         if self.rejected_strategy_ids != rejected_ids:
             raise ValueError("rejected_strategy_ids must match trace ineligible candidates")

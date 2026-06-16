@@ -25,6 +25,15 @@ from orchestrator.app.schemas.visual_strategy_integrity import (
 
 
 VISUAL_STRATEGY_REGISTRY_INTEGRITY_VALIDATOR_VERSION = "visual-strategy-registry-integrity-validator-v1"
+DEFAULT_VISUAL_STRATEGY_FALLBACK_ROLES = frozenset(
+    {
+        "product_editorial",
+        "service_lifestyle",
+        "local_business",
+        "information_poster",
+        "brand_awareness",
+    }
+)
 
 
 class ResourceIdCatalog(Protocol):
@@ -47,6 +56,10 @@ class VisualStrategyRegistryIntegrityError(ValueError):
 def assert_visual_strategy_registry_valid(report: RegistryValidationReport) -> None:
     if not report.valid:
         raise VisualStrategyRegistryIntegrityError(report)
+
+
+def build_default_visual_strategy_integrity_policy() -> RegistryIntegrityPolicy:
+    return RegistryIntegrityPolicy(required_fallback_roles=DEFAULT_VISUAL_STRATEGY_FALLBACK_ROLES)
 
 
 def validate_visual_strategy_registry(
@@ -308,6 +321,39 @@ def _validate_registry_shape(
     issues: list[RegistryValidationIssue] = []
     enabled = tuple(profile for profile in profiles if profile.enabled)
     enabled_fallback = tuple(profile for profile in enabled if profile.fallback_tier > 0)
+    for profile in profiles:
+        if profile.fallback_tier == 0 and profile.fallback_role is not None:
+            issues.append(
+                _issue(
+                    code=RegistryValidationCode.PRIMARY_PROFILE_HAS_FALLBACK_ROLE,
+                    severity=RegistryValidationSeverity.ERROR,
+                    strategy_id=profile.strategy_id,
+                    field_path="fallback_role",
+                    related_id=profile.fallback_role,
+                    message="primary profile must not include fallback_role",
+                )
+            )
+        if profile.fallback_tier > 0 and profile.fallback_role is None:
+            issues.append(
+                _issue(
+                    code=RegistryValidationCode.FALLBACK_PROFILE_MISSING_ROLE,
+                    severity=RegistryValidationSeverity.ERROR,
+                    strategy_id=profile.strategy_id,
+                    field_path="fallback_role",
+                    message="fallback profile requires fallback_role",
+                )
+            )
+    enabled_roles = frozenset(profile.fallback_role for profile in enabled_fallback if profile.fallback_role is not None)
+    for role in sorted(policy.required_fallback_roles - enabled_roles):
+        issues.append(
+            _issue(
+                code=RegistryValidationCode.MISSING_REQUIRED_FALLBACK_ROLE,
+                severity=RegistryValidationSeverity.ERROR,
+                field_path="fallback_role",
+                related_id=role,
+                message="required fallback role must have at least one enabled fallback profile",
+            )
+        )
     if not enabled:
         issues.append(
             _issue(

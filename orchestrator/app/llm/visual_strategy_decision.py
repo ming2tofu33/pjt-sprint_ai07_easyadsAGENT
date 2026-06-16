@@ -19,12 +19,11 @@ from orchestrator.app.schemas.visual_strategy_resolution import (
     VisualStrategyCandidateTrace,
     VisualStrategyDecision,
     VisualStrategyDecisionConfidencePolicy,
-    VisualStrategyFallbackReason,
     VisualStrategyResolutionTrace,
 )
 
 
-VISUAL_STRATEGY_ROUTE_VERSION = "visual-strategy-route-v1"
+VISUAL_STRATEGY_ROUTE_VERSION = "visual-strategy-route-v2"
 
 
 class VisualStrategyDecisionMaterializationError(ValueError):
@@ -110,7 +109,10 @@ def build_visual_strategy_decision(
         score=selected_trace.score,
         fallback_used=fallback_used,
         fallback_tier=selected_profile.fallback_tier,
-        fallback_reason=VisualStrategyFallbackReason.NO_ELIGIBLE_PRIMARY_STRATEGY if fallback_used else None,
+        fallback_role=selected_profile.fallback_role if fallback_used else None,
+        fallback_reason=resolution_trace.fallback_reason if fallback_used else None,
+        unsupported_domain=resolution_trace.unsupported_domain if fallback_used else False,
+        missing_specialized_profile=resolution_trace.missing_specialized_profile if fallback_used else False,
         registry_version=registry.version,
         registry_snapshot_hash=registry.snapshot_hash,
         confidence_policy_version=policy.version,

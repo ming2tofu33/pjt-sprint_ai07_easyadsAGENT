@@ -135,6 +135,7 @@ def _fallback_profile(**overrides) -> VisualStrategyProfile:
     return _profile(
         strategy_id=overrides.pop("strategy_id", "fallback_profile"),
         fallback_tier=overrides.pop("fallback_tier", 1),
+        fallback_role=overrides.pop("fallback_role", "fallback_role_alpha"),
         priority=overrides.pop("priority", 1),
         **overrides,
     )
@@ -406,6 +407,68 @@ def test_fallback_selected_only_when_non_fallback_profiles_are_not_eligible():
 
     assert decision.strategy_id == "regular_profile"
     assert decision.fallback_used is False
+    assert decision.fallback_role is None
+    assert decision.unsupported_domain is False
+    assert decision.missing_specialized_profile is False
+
+
+def test_fallback_diagnoses_unsupported_domain_without_strategy_id_mapping():
+    primary = _profile(strategy_id="beauty_primary", supported_domains=[CanonicalBusinessDomain.BEAUTY])
+    fallback = _fallback_profile(strategy_id="renamed_fallback", fallback_role="renamed_role")
+    registry = _registry(primary, fallback)
+
+    decision = resolve_visual_strategy(_context(canonical_domain=CanonicalBusinessDomain.RETAIL), _intent(), registry)
+
+    assert decision.strategy_id == "renamed_fallback"
+    assert decision.fallback_used is True
+    assert decision.fallback_role == "renamed_role"
+    assert decision.fallback_reason.value == "unsupported_domain"
+    assert decision.unsupported_domain is True
+    assert decision.missing_specialized_profile is False
+    assert decision.trace.domain_supported_primary_count == 0
+    assert decision.trace.eligible_primary_count == 0
+    assert decision.trace.eligible_fallback_count == 1
+
+
+def test_fallback_diagnoses_missing_specialized_profile_when_domain_primary_fails():
+    primary = _profile(strategy_id="retail_primary", required_tags=["missing_signal"])
+    fallback = _fallback_profile()
+    registry = _registry(primary, fallback)
+
+    decision = resolve_visual_strategy(_context(), _intent(), registry)
+
+    assert decision.fallback_used is True
+    assert decision.fallback_reason.value == "missing_specialized_profile"
+    assert decision.unsupported_domain is False
+    assert decision.missing_specialized_profile is True
+    assert decision.trace.domain_supported_primary_count == 1
+    assert decision.trace.eligible_primary_count == 0
+    assert decision.trace.eligible_fallback_count == 1
+
+
+def test_no_eligible_fallback_raises_with_fallback_diagnostics():
+    primary = _profile(strategy_id="retail_primary", required_tags=["missing_signal"])
+    fallback = _fallback_profile(supported_domains=[CanonicalBusinessDomain.BEAUTY])
+    registry = _registry(primary, fallback)
+
+    with pytest.raises(NoEligibleVisualStrategyError) as exc:
+        resolve_visual_strategy(_context(), _intent(), registry)
+
+    assert exc.value.trace.selected_strategy_id is None
+    assert exc.value.trace.missing_specialized_profile is True
+    assert exc.value.trace.eligible_fallback_count == 0
+
+
+def test_fallback_profiles_do_not_bypass_prohibited_visual_elements():
+    fallback = _fallback_profile(introduced_visual_elements=["visual_element_alpha"])
+    safe_fallback = _fallback_profile(strategy_id="safe_fallback", fallback_role="safe_role", priority=0)
+    registry = _registry(fallback, safe_fallback)
+
+    decision = resolve_visual_strategy(_context(), _intent(prohibited_visual_elements=["visual_element_alpha"]), registry)
+
+    assert decision.strategy_id == "safe_fallback"
+    rejected = next(item for item in decision.trace.candidates if item.strategy_id == "fallback_profile")
+    assert VisualStrategyRejectionCode.PROHIBITED_VISUAL_ELEMENT in rejected.rejection_codes
 
 
 def test_no_eligible_strategy_raises_with_sanitized_trace():
@@ -540,8 +603,8 @@ def test_default_registry_bbq_business_only_product_only_and_combined_evidence()
         registry,
     )
 
-    assert business_only.strategy_id == "generic_clean_ad_background"
-    assert product_only.strategy_id == "generic_clean_ad_background"
+    assert business_only.strategy_id == "generic_product_editorial"
+    assert product_only.strategy_id == "generic_product_editorial"
     assert combined.strategy_id == "restaurant_bbq_warm_grill"
 
 
@@ -560,6 +623,6 @@ def test_default_registry_bbq_rejects_non_matching_product_with_prohibitions():
         registry,
     )
 
-    assert decision.strategy_id == "generic_clean_ad_background"
+    assert decision.strategy_id == "generic_product_editorial"
     bbq_trace = next(item for item in decision.trace.candidates if item.strategy_id == "restaurant_bbq_warm_grill")
     assert VisualStrategyRejectionCode.PROHIBITED_VISUAL_ELEMENT in bbq_trace.rejection_codes
