@@ -1,7 +1,8 @@
 import orchestrator.app.graph.nodes  # noqa: F401
 
-from orchestrator.app.llm.nodes.image_prompt_planner import build_image_prompt_spec_with_critic
+from orchestrator.app.llm.nodes.image_prompt_planner import build_image_prompt_spec_with_critic, build_legacy_image_prompt
 from orchestrator.app.schemas.text_layout import NormalizedBBox, TextLayoutSpec
+from orchestrator.app.schemas.visual_routing_shadow import RoutingMode, RoutingSource
 
 
 def _state(business_type: str, reference_template: dict | None = None) -> dict:
@@ -94,6 +95,72 @@ def test_image_prompt_single_resolved_key_allows_bbq_with_grilled_meat_product_e
         preset_id="restaurant_bbq_warm_grill",
         template_id="restaurant_bbq_warm_grill",
     )
+
+
+def test_a8_shadow_metadata_preserves_legacy_production_route():
+    state = _with_product_visual_context(
+        _state("restaurant_bbq"),
+        product_tags=["pork", "grilled_meat"],
+    )
+
+    spec = build_image_prompt_spec_with_critic(state)
+    metadata = spec.metadata
+
+    _assert_single_resolved_visual_key(
+        metadata,
+        route_key="restaurant_bbq",
+        preset_id="restaurant_bbq_warm_grill",
+        template_id="restaurant_bbq_warm_grill",
+    )
+    visual_routing = metadata["visual_routing"]
+    assert visual_routing["routing_mode"] == RoutingMode.SHADOW.value
+    assert visual_routing["active_source"] == RoutingSource.LEGACY.value
+    assert visual_routing["trace_available"] is True
+    assert visual_routing["trace"]["routing_mode"] == RoutingMode.SHADOW.value
+    assert visual_routing["trace"]["active_route"]["source"] == RoutingSource.LEGACY.value
+    assert visual_routing["trace"]["active_route"]["preset_id"] == "restaurant_bbq_warm_grill"
+    assert visual_routing["trace"]["active_route"]["template_id"] == "restaurant_bbq_warm_grill"
+
+
+def test_a8_shadow_metadata_does_not_rebind_copy_tone_from_visual_route():
+    state = _with_product_visual_context(
+        _state("restaurant_bbq"),
+        product_tags=["pork", "grilled_meat"],
+    )
+
+    spec = build_image_prompt_spec_with_critic(state)
+    visual_routing = spec.metadata["visual_routing"]
+    legacy = visual_routing["trace"]["legacy_observation"]
+
+    assert spec.metadata["resolved_visual_route_key"] == "restaurant_bbq"
+    assert legacy["copy_tone_profile_id"] is None
+    assert visual_routing["trace"]["active_route"]["copy_tone_profile_id"] is None
+
+
+def test_a8_shadow_metadata_fail_open_when_canonical_resolution_fails(monkeypatch):
+    def raise_canonical_error(*args, **kwargs):
+        raise RuntimeError("canonical resolver unavailable")
+
+    monkeypatch.setattr(
+        "orchestrator.app.llm.visual_strategy_resolver.resolve_visual_strategy",
+        raise_canonical_error,
+    )
+
+    spec = build_image_prompt_spec_with_critic(_state("cafe"))
+    metadata = spec.metadata
+
+    _assert_single_resolved_visual_key(
+        metadata,
+        route_key="cafe",
+        preset_id="cafe_dessert_soft_premium",
+        template_id="cafe_dessert_soft_premium",
+    )
+    visual_routing = metadata["visual_routing"]
+    assert visual_routing["routing_mode"] == RoutingMode.SHADOW.value
+    assert visual_routing["active_source"] == RoutingSource.LEGACY.value
+    assert visual_routing["trace_available"] is True
+    assert visual_routing["trace"]["completeness"] == "partial"
+    assert visual_routing["trace"]["shadow_error"]["code"] == "canonical_resolution_failed"
 
 
 def test_image_prompt_single_resolved_key_preserves_unsupported_fallback_breadcrumb():
@@ -207,3 +274,39 @@ def test_image_prompt_keeps_reference_template_hint():
 
     assert spec.metadata["selected_reference_template"]["title"] == "Pastel Beauty"
     assert "Pastel Beauty" in spec.positive_prompt_en
+
+
+def test_a8_shadow_wiring_keeps_existing_legacy_route_matrix():
+    cases = [
+        ("cafe", "cafe", "cafe_dessert_soft_premium", "cafe_dessert_soft_premium"),
+        ("restaurant", "restaurant", "restaurant_generic_clean", "restaurant_generic_clean"),
+        ("restaurant_bbq", "restaurant", "restaurant_generic_clean", "restaurant_generic_clean"),
+        ("beauty_salon", "generic", "generic_clean_ad_background", "generic_clean_ad_background"),
+        ("beauty_skincare", "beauty_skincare", "beauty_skincare_clean_premium", "beauty_salon_clean_pastel"),
+        ("retail", "generic", "generic_clean_ad_background", "generic_clean_ad_background"),
+        ("education", "generic", "generic_clean_ad_background", "generic_clean_ad_background"),
+        ("service", "generic", "generic_clean_ad_background", "generic_clean_ad_background"),
+    ]
+
+    for business_type, route_key, preset_id, template_id in cases:
+        spec = build_image_prompt_spec_with_critic(_state(business_type))
+        metadata = spec.metadata
+
+        _assert_single_resolved_visual_key(
+            metadata,
+            route_key=route_key,
+            preset_id=preset_id,
+            template_id=template_id,
+        )
+        assert metadata["visual_routing"]["active_source"] == RoutingSource.LEGACY.value
+
+
+def test_a8_legacy_image_prompt_carries_visual_routing_metadata():
+    state = _state("cafe")
+    spec = build_image_prompt_spec_with_critic(state)
+    image_prompt = build_legacy_image_prompt(state, spec)
+
+    assert image_prompt.metadata["resolved_visual_route_key"] == "cafe"
+    assert image_prompt.metadata["visual_routing"] == spec.metadata["visual_routing"]
+    assert image_prompt.metadata["visual_routing"]["routing_mode"] == RoutingMode.SHADOW.value
+    assert image_prompt.metadata["visual_routing"]["active_source"] == RoutingSource.LEGACY.value
