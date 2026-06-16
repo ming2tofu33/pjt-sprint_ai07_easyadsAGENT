@@ -52,14 +52,25 @@ def test_visual_strategy_resolution_contract_fields():
         "score",
         "fallback_used",
         "fallback_tier",
+        "fallback_role",
         "fallback_reason",
+        "unsupported_domain",
+        "missing_specialized_profile",
         "registry_version",
         "registry_snapshot_hash",
         "confidence_policy_version",
         "trace",
     }
-    assert set(VisualStrategyCandidateTrace.model_fields)
-    assert set(VisualStrategyResolutionTrace.model_fields)
+    assert "fallback_role" in set(VisualStrategyCandidateTrace.model_fields)
+    assert {
+        "domain_supported_primary_count",
+        "eligible_primary_count",
+        "eligible_fallback_count",
+        "fallback_reason",
+        "fallback_role",
+        "unsupported_domain",
+        "missing_specialized_profile",
+    }.issubset(set(VisualStrategyResolutionTrace.model_fields))
 
 
 def test_runtime_context_normalizes_open_sets_and_rejects_bad_placement():

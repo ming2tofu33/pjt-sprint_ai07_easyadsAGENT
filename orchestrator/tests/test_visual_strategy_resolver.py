@@ -10,8 +10,8 @@ from orchestrator.app.llm.visual_strategy_resolver import (
     build_visual_strategy_signal_snapshot,
     resolve_visual_strategy,
 )
-from orchestrator.app.llm.visual_strategy_profiles import build_default_visual_strategy_registry
-from orchestrator.app.llm.visual_strategy_registry import VisualStrategyRegistry
+from orchestrator.app.llm.visual_strategy_profiles import build_default_visual_strategy_profiles, build_default_visual_strategy_registry
+from orchestrator.app.llm.visual_strategy_registry import VisualStrategyRegistry, build_visual_strategy_resource_catalog
 from orchestrator.app.schemas.business_context import BusinessEnvironmentContext
 from orchestrator.app.schemas.campaign_context import CampaignContext
 from orchestrator.app.schemas.creative_routing import CreativeRoutingContext
@@ -135,6 +135,7 @@ def _fallback_profile(**overrides) -> VisualStrategyProfile:
     return _profile(
         strategy_id=overrides.pop("strategy_id", "fallback_profile"),
         fallback_tier=overrides.pop("fallback_tier", 1),
+        fallback_role=overrides.pop("fallback_role", "fallback_role_alpha"),
         priority=overrides.pop("priority", 1),
         **overrides,
     )
@@ -406,6 +407,68 @@ def test_fallback_selected_only_when_non_fallback_profiles_are_not_eligible():
 
     assert decision.strategy_id == "regular_profile"
     assert decision.fallback_used is False
+    assert decision.fallback_role is None
+    assert decision.unsupported_domain is False
+    assert decision.missing_specialized_profile is False
+
+
+def test_fallback_diagnoses_unsupported_domain_without_strategy_id_mapping():
+    primary = _profile(strategy_id="beauty_primary", supported_domains=[CanonicalBusinessDomain.BEAUTY])
+    fallback = _fallback_profile(strategy_id="renamed_fallback", fallback_role="renamed_role")
+    registry = _registry(primary, fallback)
+
+    decision = resolve_visual_strategy(_context(canonical_domain=CanonicalBusinessDomain.RETAIL), _intent(), registry)
+
+    assert decision.strategy_id == "renamed_fallback"
+    assert decision.fallback_used is True
+    assert decision.fallback_role == "renamed_role"
+    assert decision.fallback_reason.value == "unsupported_domain"
+    assert decision.unsupported_domain is True
+    assert decision.missing_specialized_profile is False
+    assert decision.trace.domain_supported_primary_count == 0
+    assert decision.trace.eligible_primary_count == 0
+    assert decision.trace.eligible_fallback_count == 1
+
+
+def test_fallback_diagnoses_missing_specialized_profile_when_domain_primary_fails():
+    primary = _profile(strategy_id="retail_primary", required_tags=["missing_signal"])
+    fallback = _fallback_profile()
+    registry = _registry(primary, fallback)
+
+    decision = resolve_visual_strategy(_context(), _intent(), registry)
+
+    assert decision.fallback_used is True
+    assert decision.fallback_reason.value == "missing_specialized_profile"
+    assert decision.unsupported_domain is False
+    assert decision.missing_specialized_profile is True
+    assert decision.trace.domain_supported_primary_count == 1
+    assert decision.trace.eligible_primary_count == 0
+    assert decision.trace.eligible_fallback_count == 1
+
+
+def test_no_eligible_fallback_raises_with_fallback_diagnostics():
+    primary = _profile(strategy_id="retail_primary", required_tags=["missing_signal"])
+    fallback = _fallback_profile(supported_domains=[CanonicalBusinessDomain.BEAUTY])
+    registry = _registry(primary, fallback)
+
+    with pytest.raises(NoEligibleVisualStrategyError) as exc:
+        resolve_visual_strategy(_context(), _intent(), registry)
+
+    assert exc.value.trace.selected_strategy_id is None
+    assert exc.value.trace.missing_specialized_profile is True
+    assert exc.value.trace.eligible_fallback_count == 0
+
+
+def test_fallback_profiles_do_not_bypass_prohibited_visual_elements():
+    fallback = _fallback_profile(introduced_visual_elements=["visual_element_alpha"])
+    safe_fallback = _fallback_profile(strategy_id="safe_fallback", fallback_role="safe_role", priority=0)
+    registry = _registry(fallback, safe_fallback)
+
+    decision = resolve_visual_strategy(_context(), _intent(prohibited_visual_elements=["visual_element_alpha"]), registry)
+
+    assert decision.strategy_id == "safe_fallback"
+    rejected = next(item for item in decision.trace.candidates if item.strategy_id == "fallback_profile")
+    assert VisualStrategyRejectionCode.PROHIBITED_VISUAL_ELEMENT in rejected.rejection_codes
 
 
 def test_no_eligible_strategy_raises_with_sanitized_trace():
@@ -540,8 +603,8 @@ def test_default_registry_bbq_business_only_product_only_and_combined_evidence()
         registry,
     )
 
-    assert business_only.strategy_id == "generic_clean_ad_background"
-    assert product_only.strategy_id == "generic_clean_ad_background"
+    assert business_only.strategy_id == "generic_product_editorial"
+    assert product_only.strategy_id == "generic_product_editorial"
     assert combined.strategy_id == "restaurant_bbq_warm_grill"
 
 
@@ -560,6 +623,79 @@ def test_default_registry_bbq_rejects_non_matching_product_with_prohibitions():
         registry,
     )
 
-    assert decision.strategy_id == "generic_clean_ad_background"
+    assert decision.strategy_id == "generic_product_editorial"
     bbq_trace = next(item for item in decision.trace.candidates if item.strategy_id == "restaurant_bbq_warm_grill")
     assert VisualStrategyRejectionCode.PROHIBITED_VISUAL_ELEMENT in bbq_trace.rejection_codes
+
+
+def test_default_registry_versions_are_preserved_in_decision_and_trace():
+    registry = build_default_visual_strategy_registry()
+    decision = resolve_visual_strategy(_context(canonical_domain=CanonicalBusinessDomain.RETAIL), _intent(), registry)
+
+    assert registry.version == "visual-strategy-registry-v2"
+    assert decision.route_version == "visual-strategy-route-v2"
+    assert decision.resolver_version == "visual-strategy-resolver-v2"
+    assert decision.trace.registry_version == "visual-strategy-registry-v2"
+
+
+@pytest.mark.parametrize(
+    "context_kwargs,runtime,expected_strategy_id",
+    [
+        ({"canonical_domain": CanonicalBusinessDomain.RETAIL}, VisualStrategyRuntimeContext(), "generic_product_editorial"),
+        ({"canonical_domain": CanonicalBusinessDomain.OTHER, "business_tags": ["warm"]}, VisualStrategyRuntimeContext(), "generic_service_lifestyle"),
+        ({"canonical_domain": CanonicalBusinessDomain.OTHER, "business_tags": ["local", "trustworthy"]}, VisualStrategyRuntimeContext(), "generic_local_business"),
+        (
+            {"canonical_domain": CanonicalBusinessDomain.OTHER, "placement": "poster"},
+            VisualStrategyRuntimeContext(campaign_roles=["information"], placement="poster"),
+            "generic_information_poster",
+        ),
+        (
+            {"canonical_domain": CanonicalBusinessDomain.OTHER},
+            VisualStrategyRuntimeContext(campaign_roles=["brand_awareness"]),
+            "generic_brand_awareness",
+        ),
+    ],
+)
+def test_default_fallback_profiles_are_behaviorally_reachable(context_kwargs, runtime, expected_strategy_id):
+    registry = build_default_visual_strategy_registry()
+
+    decision = resolve_visual_strategy(_context(**context_kwargs), _intent(), registry, runtime=runtime)
+
+    assert decision.strategy_id == expected_strategy_id
+    assert decision.fallback_used is True
+
+
+def test_campaign_fallback_profiles_require_runtime_campaign_roles():
+    registry = build_default_visual_strategy_registry()
+
+    decision = resolve_visual_strategy(_context(canonical_domain=CanonicalBusinessDomain.OTHER, placement="poster"), _intent(), registry)
+
+    assert decision.strategy_id not in {"generic_information_poster", "generic_brand_awareness"}
+    info_trace = next(item for item in decision.trace.candidates if item.strategy_id == "generic_information_poster")
+    brand_trace = next(item for item in decision.trace.candidates if item.strategy_id == "generic_brand_awareness")
+    assert VisualStrategyRejectionCode.CAMPAIGN_ROLE_MISMATCH in info_trace.rejection_codes
+    assert VisualStrategyRejectionCode.CAMPAIGN_ROLE_MISMATCH in brand_trace.rejection_codes
+
+
+def test_default_fallback_selection_is_stable_when_profile_order_changes():
+    resources = build_visual_strategy_resource_catalog()
+    profiles = build_default_visual_strategy_profiles(resources)
+    registry_a = VisualStrategyRegistry(version="visual-strategy-registry-v2", profiles=profiles, resources=resources)
+    registry_b = VisualStrategyRegistry(version="visual-strategy-registry-v2", profiles=reversed(profiles), resources=resources)
+
+    context = _context(canonical_domain=CanonicalBusinessDomain.OTHER, business_tags=["local", "trustworthy"])
+    decision_a = resolve_visual_strategy(context, _intent(), registry_a)
+    decision_b = resolve_visual_strategy(context, _intent(), registry_b)
+
+    assert decision_a.strategy_id == "generic_local_business"
+    assert decision_b.strategy_id == "generic_local_business"
+
+
+def test_fallback_role_string_does_not_change_score():
+    registry_a = _registry(_fallback_profile(fallback_role="fallback_role_alpha"))
+    registry_b = _registry(_fallback_profile(fallback_role="fallback_role_beta"))
+
+    decision_a = resolve_visual_strategy(_context(), _intent(), registry_a)
+    decision_b = resolve_visual_strategy(_context(), _intent(), registry_b)
+
+    assert decision_a.score == decision_b.score

@@ -245,11 +245,25 @@ def test_default_specialized_profiles_are_evidence_gated_or_disabled():
         assert profiles[sid].enabled is False
 
 
-def test_default_generic_profile_covers_all_canonical_domains():
+def test_default_explicit_fallback_profiles_cover_required_roles():
     registry = build_default_visual_strategy_registry()
-    generic = registry.get("generic_clean_ad_background")
+    profiles = {profile.strategy_id: profile for profile in registry.list_profiles(include_disabled=True)}
+    expected = {
+        "generic_product_editorial": "product_editorial",
+        "generic_service_lifestyle": "service_lifestyle",
+        "generic_local_business": "local_business",
+        "generic_information_poster": "information_poster",
+        "generic_brand_awareness": "brand_awareness",
+    }
 
-    assert generic.supported_domains == frozenset(CanonicalBusinessDomain)
+    for strategy_id, role in expected.items():
+        profile = profiles[strategy_id]
+        assert profile.enabled is True
+        assert profile.fallback_tier > 0
+        assert profile.fallback_role == role
+        assert not profile.introduced_visual_elements
+
+    assert "generic_clean_ad_background" not in profiles
 
 
 def test_tag_inventory_exposes_profile_tags_without_whitelist():

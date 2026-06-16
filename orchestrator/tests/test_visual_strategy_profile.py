@@ -46,6 +46,7 @@ def test_visual_strategy_profile_fields_are_exact_contract():
         "provider_capabilities",
         "priority",
         "fallback_tier",
+        "fallback_role",
         "enabled",
     }
 
@@ -199,7 +200,22 @@ def test_profile_visual_element_requirements_must_reference_introduced_elements(
 
 
 def test_fallback_tier_is_strict_non_negative_integer():
-    assert _profile(fallback_tier=1).fallback_tier == 1
+    assert _profile(fallback_tier=1, fallback_role="future_fallback_role_alpha").fallback_tier == 1
     for value in (-1, "1", 1.5, True, None):
         with pytest.raises(ValidationError):
             _profile(fallback_tier=value)
+
+
+def test_fallback_role_is_open_vocabulary_but_bound_to_fallback_tier():
+    profile = _profile(fallback_tier=1, fallback_role=" future_fallback_role_alpha ")
+
+    assert profile.fallback_role == "future_fallback_role_alpha"
+    assert VisualStrategyProfile.model_validate_json(profile.model_dump_json()) == profile
+    with pytest.raises(ValidationError):
+        _profile(fallback_tier=1)
+    with pytest.raises(ValidationError):
+        _profile(fallback_tier=0, fallback_role="future_fallback_role_alpha")
+    with pytest.raises(ValidationError):
+        _profile(fallback_tier=1, fallback_role="")
+    with pytest.raises(ValidationError):
+        _profile(fallback_tier=1, fallback_role=123)
