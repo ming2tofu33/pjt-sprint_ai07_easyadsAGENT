@@ -96,9 +96,16 @@ class VisualStrategyRegistry:
                     profile.required_tags
                     | profile.preferred_tags
                     | profile.excluded_tags
+                    | profile.introduced_visual_elements
                     | frozenset(
                         tag
                         for requirement in profile.required_tag_requirements
+                        for tag in (requirement.all_of | requirement.any_of)
+                    )
+                    | frozenset(
+                        tag
+                        for element_requirement in profile.visual_element_evidence_requirements
+                        for requirement in element_requirement.requirements
                         for tag in (requirement.all_of | requirement.any_of)
                     )
                 )

@@ -5,6 +5,7 @@ from __future__ import annotations
 from orchestrator.app.llm.domain_routing import CanonicalBusinessDomain
 from orchestrator.app.llm.visual_strategy_registry import VisualStrategyRegistry, build_visual_strategy_resource_catalog
 from orchestrator.app.schemas.visual_strategy import (
+    VisualElementEvidenceRequirement,
     VisualStrategyContextSource,
     VisualStrategyProfile,
     VisualStrategyResourceCatalog,
@@ -31,6 +32,7 @@ def build_default_visual_strategy_profiles(
             copy_tone_profile_id="generic_v1",
             provider_capabilities=frozenset(),
             priority=10,
+            fallback_tier=1,
             enabled=True,
         ),
         VisualStrategyProfile(
@@ -79,6 +81,27 @@ def build_default_visual_strategy_profiles(
                 VisualStrategyTagRequirement(
                     source=VisualStrategyContextSource.PRODUCT_VISUAL,
                     all_of=frozenset({"grilled_meat", "table_grilled"}),
+                ),
+            ),
+            introduced_visual_elements=frozenset({"grill", "smoke"}),
+            visual_element_evidence_requirements=(
+                VisualElementEvidenceRequirement(
+                    element="grill",
+                    requirements=(
+                        VisualStrategyTagRequirement(
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL,
+                            all_of=frozenset({"grilled_meat", "table_grilled"}),
+                        ),
+                    ),
+                ),
+                VisualElementEvidenceRequirement(
+                    element="smoke",
+                    requirements=(
+                        VisualStrategyTagRequirement(
+                            source=VisualStrategyContextSource.PRODUCT_VISUAL,
+                            any_of=frozenset({"smoke", "charcoal"}),
+                        ),
+                    ),
                 ),
             ),
             composition_template_id="restaurant_bbq_warm_grill",
