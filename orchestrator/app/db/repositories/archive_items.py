@@ -49,6 +49,7 @@ select
     o.result_payload as output_result_payload,
     o.is_final,
     t.public_thread_id,
+    t.title as thread_title,
     a.public_url as asset_public_url,
     a.storage_provider,
     a.mime_type as asset_mime_type,

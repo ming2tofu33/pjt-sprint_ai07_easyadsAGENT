@@ -197,6 +197,12 @@ def get_archive_item(
     )
     if not row:
         raise ArchiveItemNotFound("Archive item not found.")
+    if row.get("source") == "generated":
+        row = {
+            **row,
+            "title": row.get("thread_title") or row.get("title"),
+            "metadata": {},
+        }
     return archive_item_from_row(row)
 
 

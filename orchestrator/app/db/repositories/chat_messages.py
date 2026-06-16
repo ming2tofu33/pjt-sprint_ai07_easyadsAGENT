@@ -167,9 +167,11 @@ def list_chat_messages(
                     cm.payload,
                     cm.created_by,
                     cm.generation_job_id,
+                    gj.public_job_id,
                     cm.event_type,
                     cm.created_at
                 from chat_messages cm
+                left join generation_jobs gj on gj.id = cm.generation_job_id
                 where cm.thread_id = %s::uuid
                 order by cm.sequence_no asc
                 limit %s offset %s

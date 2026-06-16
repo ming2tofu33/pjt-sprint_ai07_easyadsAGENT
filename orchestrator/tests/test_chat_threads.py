@@ -1150,7 +1150,7 @@ def test_message_pagination_total():
     assert [message.sequence_no for message in messages] == [3, 4]
 
 
-def test_chat_message_list_query_omits_generation_job_join(monkeypatch):
+def test_chat_message_list_query_includes_generation_job_join(monkeypatch):
     from orchestrator.app.db.repositories import chat_messages as repo
 
     conn = FakeConn(rows=[{"id": "thread_uuid"}])
@@ -1165,7 +1165,7 @@ def test_chat_message_list_query_omits_generation_job_join(monkeypatch):
 
     sql = conn._cursor._executed[1][0].lower()
     assert "from chat_messages cm" in sql
-    assert "join generation_jobs" not in sql
+    assert "join generation_jobs" in sql
 
 
 def test_list_chat_messages_skips_batch_lookup_when_page_has_no_generation_jobs(monkeypatch):

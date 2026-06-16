@@ -120,6 +120,8 @@ def get_generation_output_by_id(
                 select o.*,
                        t.public_thread_id,
                        j.public_job_id,
+                       o.result_payload ->> 'download_url' as output_download_url,
+                       o.result_payload ->> 'final_image_url' as output_final_image_url,
                        a.public_url as image_url,
                        ta.public_url as thumbnail_url,
                        a.storage_provider,

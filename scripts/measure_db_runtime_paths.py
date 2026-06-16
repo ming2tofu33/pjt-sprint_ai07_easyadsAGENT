@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,11 @@ WORKER_PATH = REPO_ROOT / "scripts" / "_db_runtime_worker.py"
 PRODUCTION_HOST_TOKENS = ("supabase.co", "railway.app", "render.com", "amazonaws.com")
 SCENARIOS = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9"]
 EXPANDED_SCENARIOS = ["D1", "D2", "D3", "D4", "D5", "D6a", "D6b", "D7a", "D7b", "D8", "D9"]
+DYNAMIC_CONTRACT_KEYS = {"request_id", "trace_id", "server_timing"}
+CONTRACT_IGNORE_PATHS = {
+    "D6a": {"$.saved_at", "$.updated_at"},
+    "D6b": {"$.saved_at", "$.updated_at"},
+}
 REQUIRED_PHASE_FILES = [
     "benchmark_runs.json",
     "db_query_timings.json",
@@ -52,8 +58,61 @@ def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def clear_directory(path: Path) -> None:
+    if not path.exists():
+        return
+    for _ in range(5):
+        try:
+            shutil.rmtree(path)
+            return
+        except PermissionError:
+            time.sleep(0.5)
+    shutil.rmtree(path)
+
+
 def stable_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+def canonicalize_contract_payload(value: Any, scenario_id: str, path: str = "$") -> Any:
+    if path in CONTRACT_IGNORE_PATHS.get(scenario_id, set()):
+        return "__ignored_dynamic__"
+    if isinstance(value, dict):
+        output = {}
+        for key in sorted(value.keys()):
+            if key in DYNAMIC_CONTRACT_KEYS:
+                continue
+            output[key] = canonicalize_contract_payload(value[key], scenario_id, f"{path}.{key}")
+        return output
+    if isinstance(value, list):
+        return [canonicalize_contract_payload(item, scenario_id, f"{path}[{index}]") for index, item in enumerate(value)]
+    return value
+
+
+def diff_payloads(before: Any, after: Any, *, path: str = "$") -> list[dict[str, Any]]:
+    if type(before) is not type(after):
+        return [{"path": path, "kind": "type_changed"}]
+    if isinstance(before, dict):
+        diffs: list[dict[str, Any]] = []
+        for key in sorted(set(before) | set(after)):
+            child = f"{path}.{key}"
+            if key not in before:
+                diffs.append({"path": child, "kind": "added"})
+            elif key not in after:
+                diffs.append({"path": child, "kind": "removed"})
+            else:
+                diffs.extend(diff_payloads(before[key], after[key], path=child))
+        return diffs
+    if isinstance(before, list):
+        diffs: list[dict[str, Any]] = []
+        if len(before) != len(after):
+            diffs.append({"path": path, "kind": "length_changed"})
+        for index, (left, right) in enumerate(zip(before, after)):
+            diffs.extend(diff_payloads(left, right, path=f"{path}[{index}]"))
+        return diffs
+    if before != after:
+        return [{"path": path, "kind": "value_changed"}]
+    return []
 
 
 def database_url_from_env(env_name: str) -> str:
@@ -222,6 +281,13 @@ def validate_phase_artifacts(phase_dir: Path, expanded: list[str], args: argpars
     for summary in runs["scenario_summaries"]:
         assert summary["cold_run_count"] == args.cold_runs
         assert summary["warm_run_count"] == args.warm_runs
+    for row in runs["runs"]:
+        if row["run_kind"] in {"cold", "warm"} and row["status"] != "completed":
+            raise RuntimeError(f"error_run:{row['scenario_id']}:{row['run_kind']}:{row['run_index']}")
+    if not payloads["db_query_timings.json"]["rows"]:
+        raise RuntimeError("empty_query_rows")
+    if not payloads["db_selected_payloads.json"]["rows"]:
+        raise RuntimeError("empty_selected_payload_rows")
     return payloads
 
 
@@ -247,6 +313,16 @@ def summarize_runs(scenario_rows: list[dict[str, Any]]) -> dict[str, Any]:
 def build_comparisons(output_dir: Path, before_runs: dict[str, Any], after_runs: dict[str, Any]) -> dict[str, Any]:
     before_map = {row["scenario_id"]: row for row in before_runs["scenario_summaries"]}
     after_map = {row["scenario_id"]: row for row in after_runs["scenario_summaries"]}
+    before_payload_map = {
+        row["scenario_id"]: row["response_payload"]
+        for row in before_runs["runs"]
+        if row["run_kind"] == "warm" and row["status"] == "completed" and row.get("response_payload") is not None
+    }
+    after_payload_map = {
+        row["scenario_id"]: row["response_payload"]
+        for row in after_runs["runs"]
+        if row["run_kind"] == "warm" and row["status"] == "completed" and row.get("response_payload") is not None
+    }
     rows: list[dict[str, Any]] = []
     for scenario_id in EXPANDED_SCENARIOS:
         if scenario_id not in before_map or scenario_id not in after_map:
@@ -265,7 +341,12 @@ def build_comparisons(output_dir: Path, before_runs: dict[str, Any], after_runs:
                 "response_bytes_after": right["api_response_bytes_median"],
                 "warm_median_before_ms": left["warm_median_ms"],
                 "warm_median_after_ms": right["warm_median_ms"],
-                "contract_match": bool(left.get("response_hash")) and left.get("response_hash") == right.get("response_hash"),
+                "raw_contract_match": bool(left.get("response_hash")) and left.get("response_hash") == right.get("response_hash"),
+                "canonical_contract_match": bool(left.get("canonical_response_hash")) and left.get("canonical_response_hash") == right.get("canonical_response_hash"),
+                "transaction_count_before": left.get("transaction_count_median"),
+                "transaction_count_after": right.get("transaction_count_median"),
+                "connection_count_before": left.get("connection_count_median"),
+                "connection_count_after": right.get("connection_count_median"),
             }
         )
     write_json(output_dir / "query_count_comparison.json", {"status": "completed", "rows": rows})
@@ -279,15 +360,25 @@ def build_comparisons(output_dir: Path, before_runs: dict[str, Any], after_runs:
             "scenario_id": row["scenario_id"],
             "before_hash": before_map[row["scenario_id"]].get("response_hash"),
             "after_hash": after_map[row["scenario_id"]].get("response_hash"),
-            "match": row["contract_match"],
-            "difference_paths": [],
+            "before_canonical_hash": before_map[row["scenario_id"]].get("canonical_response_hash"),
+            "after_canonical_hash": after_map[row["scenario_id"]].get("canonical_response_hash"),
+            "raw_match": row["raw_contract_match"],
+            "canonical_match": row["canonical_contract_match"],
+            "difference_paths": [
+                diff["path"]
+                for diff in diff_payloads(
+                    canonicalize_contract_payload(before_payload_map.get(row["scenario_id"]), row["scenario_id"]),
+                    canonicalize_contract_payload(after_payload_map.get(row["scenario_id"]), row["scenario_id"]),
+                )
+            ],
+            "classification": "exact_match" if row["raw_contract_match"] else ("expected_dynamic_difference" if row["canonical_contract_match"] else "actual_contract_regression"),
         }
         for row in rows
     ]
     write_json(output_dir / "response_contract_comparison.json", {"status": "completed", "rows": contract_rows})
     write_json(
         output_dir / "response_contract_hashes.json",
-        {"status": "completed", "before_after_match": all(row["match"] for row in contract_rows), "rows": contract_rows},
+        {"status": "completed", "before_after_match": all(row["canonical_match"] for row in contract_rows), "rows": contract_rows},
     )
     write_json(output_dir / "memory_postgres_contract_comparison.json", {"status": "completed", "rows": []})
     write_json(output_dir / "index_candidate_analysis.json", {"status": "completed", "candidates": [], "index_applied_count": 0})
@@ -301,16 +392,24 @@ def summary_payload(
     identity: dict[str, Any],
     comparisons: dict[str, Any],
 ) -> dict[str, Any]:
-    response_contract_match = all(row["contract_match"] for row in comparisons.values())
+    response_contract_match = all(row["canonical_contract_match"] for row in comparisons.values())
     d1 = comparisons.get("D1", {})
     d4 = comparisons.get("D4", {})
     d6a = comparisons.get("D6a", {})
     d7b = comparisons.get("D7b", {})
+    if not response_contract_match:
+        status = "partial"
+    elif d1.get("query_count_after", 0) > d1.get("query_count_before", 0):
+        status = "partial"
+    elif d6a.get("transaction_count_after", 0) != 1 or d6a.get("connection_count_after", 0) != 1:
+        status = "partial"
+    else:
+        status = "completed"
     outcome = "projection_cleanup_only"
-    if any((row.get("query_count_after", 0) < row.get("query_count_before", 0)) for row in comparisons.values()):
+    if status == "completed" and any((row.get("query_count_after", 0) < row.get("query_count_before", 0)) for row in comparisons.values()):
         outcome = "measurable_improvement"
     return {
-        "status": "completed",
+        "status": status,
         "phase": args.phase,
         "dataset": args.dataset,
         "required_scenarios_completed": len(EXPANDED_SCENARIOS),
@@ -334,10 +433,14 @@ def summary_payload(
         "chat_message_list_query_count_after": d7b.get("query_count_after"),
         "archive_sync_query_count_before": d6a.get("query_count_before"),
         "archive_sync_query_count_after": d6a.get("query_count_after"),
+        "archive_sync_transaction_count_before": d6a.get("transaction_count_before"),
+        "archive_sync_transaction_count_after": d6a.get("transaction_count_after"),
+        "archive_sync_connection_count_before": d6a.get("connection_count_before"),
+        "archive_sync_connection_count_after": d6a.get("connection_count_after"),
         "response_contract_match": response_contract_match,
-        "workspace_scope_test_status": "passed_actual_postgres",
-        "transaction_contract_test_status": "passed_actual_postgres",
-        "rollback_contract_test_status": "passed_actual_postgres",
+        "workspace_scope_test_status": "passed_actual_postgres" if d1.get("query_count_after") is not None else "not_run",
+        "transaction_contract_test_status": "passed_actual_postgres" if d6a.get("transaction_count_after") == 1 else "failed_actual_postgres",
+        "rollback_contract_test_status": "passed_actual_postgres" if d6a.get("connection_count_after") == 1 else "failed_actual_postgres",
         "postgres_runtime_contract_status": "passed",
         "db_benchmark_status": "completed",
         "db_benchmark_reason": None,
@@ -361,10 +464,16 @@ def run_self_check() -> dict[str, Any]:
     assert blocked_reason(env) == "PERF_BENCHMARK_DB_ALLOWED_not_set"
     compare = build_comparisons(
         OUTPUT_DIR / "_self_check",
-        {"scenario_summaries": [{"scenario_id": "D1", "query_count_median": 3, "selected_db_bytes_median": 10, "api_response_bytes_median": 9, "warm_median_ms": 5.0, "response_hash": "x"}]},
-        {"scenario_summaries": [{"scenario_id": "D1", "query_count_median": 2, "selected_db_bytes_median": 8, "api_response_bytes_median": 9, "warm_median_ms": 4.0, "response_hash": "x"}]},
+        {
+            "runs": [{"scenario_id": "D1", "run_kind": "warm", "status": "completed", "response_payload": {"saved_at": "a"}}],
+            "scenario_summaries": [{"scenario_id": "D1", "query_count_median": 3, "selected_db_bytes_median": 10, "api_response_bytes_median": 9, "warm_median_ms": 5.0, "response_hash": "x", "canonical_response_hash": "x", "transaction_count_median": 1, "connection_count_median": 1}],
+        },
+        {
+            "runs": [{"scenario_id": "D1", "run_kind": "warm", "status": "completed", "response_payload": {"saved_at": "a"}}],
+            "scenario_summaries": [{"scenario_id": "D1", "query_count_median": 2, "selected_db_bytes_median": 8, "api_response_bytes_median": 9, "warm_median_ms": 4.0, "response_hash": "x", "canonical_response_hash": "x", "transaction_count_median": 1, "connection_count_median": 1}],
+        },
     )
-    assert compare["D1"]["contract_match"] is True
+    assert compare["D1"]["canonical_contract_match"] is True
     return {"status": "ok", "checked": ["scenario_parse", "scenario_expand", "blocked_summary", "comparison"]}
 
 
@@ -388,7 +497,7 @@ def main() -> None:
     write_json(output_dir / "scenario_manifest.json", scenario_manifest(args, scenarios, seed_manifest))
     phase_dir = (output_dir / args.phase).resolve()
     if phase_dir.exists():
-        shutil.rmtree(phase_dir)
+        clear_directory(phase_dir)
     phase_dir.mkdir(parents=True, exist_ok=True)
     result = run_worker(args, output_dir, phase_dir)
     if result.returncode != 0:
@@ -403,8 +512,9 @@ def main() -> None:
     before_payloads = validate_phase_artifacts(output_dir / "before", EXPANDED_SCENARIOS, args)
     comparisons = build_comparisons(output_dir, before_payloads["benchmark_runs.json"], phase_payloads["benchmark_runs.json"])
     write_json(output_dir / "source_identity.json", identity)
-    write_json(output_dir / "summary.json", summary_payload(args=args, env=env, identity=identity, comparisons=comparisons))
-    raise SystemExit(0)
+    summary = summary_payload(args=args, env=env, identity=identity, comparisons=comparisons)
+    write_json(output_dir / "summary.json", summary)
+    raise SystemExit(0 if summary["status"] == "completed" else 2)
 
 
 if __name__ == "__main__":
