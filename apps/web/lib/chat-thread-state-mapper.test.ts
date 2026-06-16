@@ -204,6 +204,33 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     });
   });
 
+  it("normalizes ad_format fallback into the canonical selected channel id", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_banner",
+      thread_id: "thread_banner",
+      job_id: "job_banner",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "job_completed",
+      state_payload: {
+        user_input: "배너 광고 만들어줘",
+        ad_format: "banner",
+        context: {
+          business_type: "cafe",
+          item_or_service: "latte",
+          promotion_goal: "new_launch"
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {},
+      created_at: "2026-06-16T00:00:00+00:00"
+    });
+
+    expect(restore?.selectedChannelId).toBe("banner");
+  });
+
   it("preserves failed generation error metadata for thread restore", () => {
     const restore = mapChatThreadSnapshotToRestoreState({
       snapshot_id: "snapshot_failed",

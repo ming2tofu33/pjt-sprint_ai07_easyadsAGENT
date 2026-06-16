@@ -90,6 +90,33 @@ describe("generate chat and photo Next routes", () => {
     );
   });
 
+  it("keeps canonical channel ids intact when proxying chat brief selections", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi.fn(async () => jsonResponse({ success: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { POST } = await import("./brief/route");
+
+    const payload = {
+      jobId: "job_banner",
+      threadId: "thread_banner",
+      selectedCopyId: "copy_banner",
+      selectedChannelId: "banner"
+    };
+
+    await POST(
+      new NextRequest("http://localhost/api/generate/chat/brief", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
+      })
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://orchestrator/api/v1/marketing/chat/brief",
+      expect.objectContaining({ method: "POST", body: JSON.stringify(payload) })
+    );
+  });
+
   it("proxies chat answers to the standard marketing answer endpoint", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
     const fetchMock = vi.fn(async () => jsonResponse({ success: true }));
@@ -115,6 +142,44 @@ describe("generate chat and photo Next routes", () => {
       "http://orchestrator/api/v1/marketing/chat/answer",
       expect.objectContaining({ method: "POST", body: JSON.stringify(payload) })
     );
+  });
+
+  it("passes selectedChannelId through in copy-candidate, option-question, and brief-ready responses", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ type: "copy_candidates", jobId: "job_banner", threadId: "thread_banner", selectedChannelId: "banner" }))
+      .mockResolvedValueOnce(jsonResponse({ type: "option_question", jobId: "job_banner", threadId: "thread_banner", selectedChannelId: "banner" }))
+      .mockResolvedValueOnce(jsonResponse({ type: "brief_ready", jobId: "job_banner", threadId: "thread_banner", selectedChannelId: "banner" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const startRoute = await import("./start/route");
+    const answerRoute = await import("./answer/route");
+
+    const copyResponse = await startRoute.POST(
+      new NextRequest("http://localhost/api/generate/chat/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ userInput: "배너 광고" })
+      })
+    );
+    const questionResponse = await answerRoute.POST(
+      new NextRequest("http://localhost/api/generate/chat/answer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jobId: "job_banner", threadId: "thread_banner", field: "business_type", value: "cafe" })
+      })
+    );
+    const briefResponse = await answerRoute.POST(
+      new NextRequest("http://localhost/api/generate/chat/answer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jobId: "job_banner", threadId: "thread_banner", field: "promotion_goal", value: "new_launch" })
+      })
+    );
+
+    expect((await copyResponse.json()).selectedChannelId).toBe("banner");
+    expect((await questionResponse.json()).selectedChannelId).toBe("banner");
+    expect((await briefResponse.json()).selectedChannelId).toBe("banner");
   });
 
   it("proxies photo start to the standard marketing photo endpoint", async () => {

@@ -73,6 +73,7 @@ export type ChatStartResponse = {
   recommendedCopyId?: string | null;
   copyCandidateOrigin?: CopyCandidateOrigin;
   copyGenerationMode?: CopyGenerationMode;
+  selectedChannelId?: string | null;
 };
 
 export type ChatQuestionResponse = {
@@ -84,6 +85,7 @@ export type ChatQuestionResponse = {
   question: OptionQuestion;
   missingFields?: string[];
   generationJob?: GenerationJob;
+  selectedChannelId?: string | null;
 };
 
 export type ChatBriefReadyResponse = {
@@ -94,6 +96,7 @@ export type ChatBriefReadyResponse = {
   context: InferredContext;
   brief: ChatBrief;
   copyGenerationMode: CopyGenerationMode;
+  selectedChannelId?: string | null;
 };
 
 export type ChatTurnResponse = ChatStartResponse | ChatQuestionResponse | ChatBriefReadyResponse;
@@ -103,6 +106,7 @@ export type ChatBriefResponse = {
   threadId: string;
   status: string;
   brief: ChatBrief;
+  selectedChannelId?: string | null;
 };
 
 export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & ReferenceImageFields & ImageGenerationEngineFields & {
@@ -567,7 +571,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 export function startChatGeneration(userInput: string, options: GenerationStartOptions = {}): Promise<ChatTurnResponse> {
   return postJson<ChatTurnResponse>("/api/generate/chat/start", {
     userInput,
-    adFormat: options.adFormat ?? undefined,
+    adFormat: options.adFormat ?? "instagram_feed",
     renderProfile: options.renderProfile ?? "premium_api",
     copyGenerationMode: options.copyGenerationMode ?? undefined,
     userCustomHeadline: options.userCustomHeadline ?? undefined,

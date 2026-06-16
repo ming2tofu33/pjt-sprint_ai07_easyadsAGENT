@@ -7,6 +7,7 @@ import type {
   OptionQuestion
 } from "@/types/marketing";
 import type { ChatMessageResponse, ChatStateSnapshotResponse, GenerationJob } from "./api-client";
+import { normalizeSelectedChannelId, type ChannelId } from "./ad-formats";
 import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "./generation-engine";
 
 export type ThreadSnapshotRestoreState = {
@@ -18,7 +19,7 @@ export type ThreadSnapshotRestoreState = {
   copyCandidates: CopyOption[];
   copyCandidateOrigin: CopyCandidateOrigin;
   selectedCopyId: string;
-  selectedChannelId: string;
+  selectedChannelId: ChannelId;
   selectedTone: string;
   selectedImageGenerationEngine: ImageGenerationEngine;
   customDirection: string;
@@ -50,6 +51,17 @@ function firstString(...values: unknown[]): string {
     }
   }
   return "";
+}
+
+function selectedChannelIdValue(...values: unknown[]): ChannelId {
+  for (const value of values) {
+    const normalized = normalizeSelectedChannelId(stringValue(value));
+    if (!normalized) {
+      continue;
+    }
+    return normalized;
+  }
+  return "instagram-feed";
 }
 
 function copyMode(value: unknown): CopyGenerationMode {
@@ -261,7 +273,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     copyCandidates,
     copyCandidateOrigin: copyCandidateOrigin(payload.copy_candidate_origin ?? payload.copyCandidateOrigin),
     selectedCopyId: firstString(payload.selected_copy_id, payload.selectedCopyId, copyCandidates[0]?.id),
-    selectedChannelId: firstString(
+    selectedChannelId: selectedChannelIdValue(
       payload.selected_channel_id,
       payload.selectedChannelId,
       currentBrief.selected_channel_id,
@@ -273,7 +285,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       currentBrief.requestedAdFormat,
       asRecord(payloadContext.extra).ad_format,
       asRecord(payloadContext.extra).adFormat
-    ) || "instagram-feed",
+    ),
     selectedTone: firstString(payload.selected_tone, payload.selectedTone) || "감성적인",
     selectedImageGenerationEngine: imageEngine(
       payload.image_generation_engine ??

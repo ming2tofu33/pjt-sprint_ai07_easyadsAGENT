@@ -16,9 +16,9 @@ from orchestrator.app.api.chat import (
     _copy_candidates_response,
     _forced_user_plan,
     _interrupt_value,
+    _selected_channel_id_from_result,
     _option_question_response,
     _require_custom_copy_headline,
-    _selected_channel_id_for_ad_format,
     _thread_config,
     BRIEF_READY_COPY_MODES,
 )
@@ -130,8 +130,13 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
     interrupt = _interrupt_value(result)
 
     if interrupt and interrupt.get("type") == "option_question":
-        return _option_question_response(result, interrupt)
+        return _option_question_response(result, interrupt, fallback_ad_format=request.ad_format)
     if result.get("copy_generation_mode") in BRIEF_READY_COPY_MODES and result.get("status") == "done":
-        return _brief_ready_response(result, job_id=job_id, thread_id=thread_id, selected_channel_id=_selected_channel_id_for_ad_format(request.ad_format))
+        return _brief_ready_response(
+            result,
+            job_id=job_id,
+            thread_id=thread_id,
+            selected_channel_id=_selected_channel_id_from_result(result, fallback_ad_format=request.ad_format) or "instagram-feed",
+        )
 
-    return _copy_candidates_response(result, job_id=job_id, thread_id=thread_id, interrupt=interrupt)
+    return _copy_candidates_response(result, job_id=job_id, thread_id=thread_id, interrupt=interrupt, fallback_ad_format=request.ad_format)
