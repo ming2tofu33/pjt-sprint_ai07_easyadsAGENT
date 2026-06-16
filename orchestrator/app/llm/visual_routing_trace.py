@@ -162,7 +162,7 @@ def _build_shadow_trace(
         raise VisualRoutingTraceBuildError("shadow trace requires legacy active source")
     legacy = _select_legacy_observation(explicit_legacy_observation, execution.legacy_observation)
     if legacy is None:
-        active = _active_from_legacy_result_unavailable()
+        active = None
     else:
         active = _active_from_legacy(legacy)
     canonical = summarize_visual_strategy_decision(execution.canonical_decision) if execution.canonical_decision is not None else None
@@ -220,33 +220,50 @@ def _input_snapshot(
     legacy: LegacyVisualRouteObservation | None,
     additional_evidence_refs: Iterable[str],
 ) -> VisualRoutingInputSnapshot:
+    resolved_raw_business_type = _resolve_raw_business_type(context, raw_business_type)
     resolved_placement = _resolve_placement(context, placement)
-    conflict_codes = [conflict.conflict_id for conflict in context.input_conflicts]
+    conflict_ids = [conflict.conflict_id for conflict in context.input_conflicts]
+    conflict_types = [conflict.conflict_type for conflict in context.input_conflicts]
+    product_category_path = tuple(context.product.category_path)
+    product_visual_category_path = tuple(context.product_visual.category_path)
     evidence_refs = [
         *context.domain.evidence_refs,
         *context.business.evidence_refs,
+        *context.product.product_name_evidence_ids,
+        *(fact.evidence_id for fact in context.product.verified_facts),
+        *(observation.evidence_id for observation in context.product.visual_observations),
         *context.product_visual.evidence_refs,
         *context.campaign.evidence_refs,
         *additional_evidence_refs,
     ]
     return VisualRoutingInputSnapshot(
-        raw_business_type=raw_business_type,
+        raw_business_type=resolved_raw_business_type,
         canonical_domain=context.domain.canonical_domain,
         legacy_visual_key=legacy.legacy_route_key if legacy is not None else None,
         product_name=context.product.product_name,
-        category_path=context.product.category_path or context.product_visual.category_path,
+        product_category_path=product_category_path,
+        product_visual_category_path=product_visual_category_path,
+        category_path_match=product_category_path == product_visual_category_path,
         business_tags=context.business.business_tags,
         product_tags=context.product_visual.product_tags,
         campaign_roles=campaign_roles,
         placement=resolved_placement,
         ambiguity_flags=context.ambiguity_flags,
-        input_conflict_codes=conflict_codes,
+        input_conflict_ids=conflict_ids,
+        input_conflict_types=conflict_types,
         evidence_refs=evidence_refs,
     )
 
 
+def _resolve_raw_business_type(context: CreativeRoutingContext, raw_business_type: str | None) -> str | None:
+    context_raw = context.domain.raw_business_type
+    if raw_business_type is not None and context_raw is not None and raw_business_type.strip() != context_raw.strip():
+        raise VisualRoutingTraceBuildError("raw business type sources conflict")
+    return context_raw if context_raw is not None else raw_business_type
+
+
 def _resolve_placement(context: CreativeRoutingContext, placement: str | None) -> str | None:
-    context_placement = getattr(context.ad_format, "placement", None)
+    context_placement = str(context.ad_format.ad_format)
     if placement is not None and context_placement is not None and placement.strip() != str(context_placement).strip():
         raise VisualRoutingTraceBuildError("placement sources conflict")
     if placement is not None:
@@ -260,6 +277,8 @@ def _select_legacy_observation(
     explicit: LegacyVisualRouteObservation | None,
     execution_observation: LegacyVisualRouteObservation | None,
 ) -> LegacyVisualRouteObservation | None:
+    if explicit is not None and execution_observation is not None and explicit != execution_observation:
+        raise VisualRoutingTraceBuildError("legacy observation sources conflict")
     return explicit if explicit is not None else execution_observation
 
 
@@ -272,10 +291,6 @@ def _active_from_legacy(legacy: LegacyVisualRouteObservation) -> ActiveVisualRou
         copy_tone_profile_id=legacy.copy_tone_profile_id,
         route_version=legacy.route_version,
     )
-
-
-def _active_from_legacy_result_unavailable() -> ActiveVisualRouteSummary:
-    raise VisualRoutingTraceBuildError("shadow trace requires legacy observation for active route")
 
 
 def _active_from_canonical(canonical: CanonicalVisualStrategySummary) -> ActiveVisualRouteSummary:
@@ -297,12 +312,48 @@ def _with_shadow_error_stage(
     if shadow_error is None:
         return tuple(items)
     if shadow_error.stage == ShadowRoutingErrorStage.CANONICAL_RESOLUTION:
-        items.append(
+        return _upsert_stage_observation(
+            items,
             VisualRoutingStageObservation(
                 stage=VisualRoutingDiagnosticStage.STRATEGY_RESOLUTION,
                 status=VisualRoutingStageStatus.FAILED,
                 diagnostic_codes=(shadow_error.code.value,),
                 error_type=shadow_error.exception_type,
-            )
+            ),
+        )
+    if shadow_error.stage == ShadowRoutingErrorStage.ROUTE_COMPARISON:
+        return _upsert_stage_observation(
+            items,
+            VisualRoutingStageObservation(
+                stage=VisualRoutingDiagnosticStage.RESOURCE_REGISTRY,
+                status=VisualRoutingStageStatus.DEGRADED,
+                diagnostic_codes=(shadow_error.code.value,),
+            ),
         )
     return tuple(items)
+
+
+def _upsert_stage_observation(
+    observations: list[VisualRoutingStageObservation],
+    new_observation: VisualRoutingStageObservation,
+) -> tuple[VisualRoutingStageObservation, ...]:
+    merged: list[VisualRoutingStageObservation] = []
+    replaced = False
+    for observation in observations:
+        if observation.stage != new_observation.stage:
+            merged.append(observation)
+            continue
+        merged.append(
+            VisualRoutingStageObservation(
+                stage=observation.stage,
+                status=new_observation.status,
+                diagnostic_codes=(*observation.diagnostic_codes, *new_observation.diagnostic_codes),
+                evidence_refs=observation.evidence_refs,
+                artifact_refs=observation.artifact_refs,
+                error_type=new_observation.error_type or observation.error_type,
+            )
+        )
+        replaced = True
+    if not replaced:
+        merged.append(new_observation)
+    return tuple(merged)

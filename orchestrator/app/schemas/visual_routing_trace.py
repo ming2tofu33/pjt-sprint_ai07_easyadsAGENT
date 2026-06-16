@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
@@ -19,6 +20,8 @@ from orchestrator.app.schemas.visual_strategy_resolution import VisualStrategyFa
 
 
 VISUAL_ROUTING_TRACE_VERSION = "visual-routing-trace-v1"
+_ERROR_TYPE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
+_ARTIFACT_REF_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 def _normalize_required_string(value: Any) -> str:
@@ -34,6 +37,24 @@ def _normalize_optional_string(value: Any) -> str | None:
     if value is None:
         return None
     return _normalize_required_string(value)
+
+
+def _normalize_raw_business_type(value: Any) -> str | None:
+    normalized = _normalize_optional_string(value)
+    if normalized is None:
+        return None
+    if len(normalized) > 80 or "\n" in normalized or "\r" in normalized:
+        raise ValueError("raw_business_type must be a short scalar")
+    return normalized
+
+
+def _normalize_error_type(value: Any) -> str | None:
+    normalized = _normalize_optional_string(value)
+    if normalized is None:
+        return None
+    if len(normalized) > 120 or not _ERROR_TYPE_RE.match(normalized):
+        raise ValueError("error_type must be an exception class identifier")
+    return normalized
 
 
 def normalize_trace_strings(values: Any) -> tuple[str, ...]:
@@ -56,6 +77,22 @@ def normalize_trace_strings(values: Any) -> tuple[str, ...]:
         normalized.append(item)
         seen.add(item)
     return tuple(normalized)
+
+
+def normalize_artifact_refs(values: Any) -> tuple[str, ...]:
+    refs = normalize_trace_strings(values)
+    for ref in refs:
+        if (
+            not _ARTIFACT_REF_RE.match(ref)
+            or "/" in ref
+            or "\\" in ref
+            or "://" in ref
+            or "bucket" in ref.lower()
+            or "object_key" in ref.lower()
+            or "base64" in ref.lower()
+        ):
+            raise ValueError("artifact_refs must contain opaque artifact IDs only")
+    return refs
 
 
 class VisualRoutingTraceCompleteness(StrEnum):
@@ -94,16 +131,24 @@ class VisualRoutingInputSnapshot(BaseModel):
     canonical_domain: CanonicalBusinessDomain
     legacy_visual_key: LegacyVisualRouteKey | None = None
     product_name: str
-    category_path: tuple[str, ...] = ()
+    product_category_path: tuple[str, ...] = ()
+    product_visual_category_path: tuple[str, ...] = ()
+    category_path_match: bool
     business_tags: tuple[str, ...] = ()
     product_tags: tuple[str, ...] = ()
     campaign_roles: tuple[str, ...] = ()
     placement: str | None = None
     ambiguity_flags: tuple[str, ...] = ()
-    input_conflict_codes: tuple[str, ...] = ()
+    input_conflict_ids: tuple[str, ...] = ()
+    input_conflict_types: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
 
-    @field_validator("raw_business_type", "placement", mode="before")
+    @field_validator("raw_business_type", mode="before")
+    @classmethod
+    def normalize_raw_business_type(cls, value: Any) -> str | None:
+        return _normalize_raw_business_type(value)
+
+    @field_validator("placement", mode="before")
     @classmethod
     def normalize_optional_label(cls, value: Any) -> str | None:
         return _normalize_optional_string(value)
@@ -114,12 +159,14 @@ class VisualRoutingInputSnapshot(BaseModel):
         return _normalize_required_string(value)
 
     @field_validator(
-        "category_path",
+        "product_category_path",
+        "product_visual_category_path",
         "business_tags",
         "product_tags",
         "campaign_roles",
         "ambiguity_flags",
-        "input_conflict_codes",
+        "input_conflict_ids",
+        "input_conflict_types",
         "evidence_refs",
         mode="before",
     )
@@ -199,6 +246,20 @@ class CanonicalVisualStrategySummary(BaseModel):
     def normalize_string_tuple(cls, value: Any) -> tuple[str, ...]:
         return normalize_trace_strings(value)
 
+    @model_validator(mode="after")
+    def validate_fallback_state(self) -> "CanonicalVisualStrategySummary":
+        if not self.fallback_used:
+            if self.fallback_role is not None or self.fallback_reason is not None:
+                raise ValueError("non-fallback summary must not include fallback metadata")
+            if self.unsupported_domain or self.missing_specialized_profile:
+                raise ValueError("non-fallback summary must not include fallback diagnostics")
+        else:
+            if self.fallback_role is None or self.fallback_reason is None:
+                raise ValueError("fallback summary requires fallback metadata")
+        if self.unsupported_domain and self.missing_specialized_profile:
+            raise ValueError("fallback diagnostics are mutually exclusive")
+        return self
+
 
 class VisualRoutingStageObservation(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -210,15 +271,20 @@ class VisualRoutingStageObservation(BaseModel):
     artifact_refs: tuple[str, ...] = ()
     error_type: str | None = None
 
-    @field_validator("diagnostic_codes", "evidence_refs", "artifact_refs", mode="before")
+    @field_validator("diagnostic_codes", "evidence_refs", mode="before")
     @classmethod
     def normalize_string_tuple(cls, value: Any) -> tuple[str, ...]:
         return normalize_trace_strings(value)
 
+    @field_validator("artifact_refs", mode="before")
+    @classmethod
+    def normalize_artifact_refs(cls, value: Any) -> tuple[str, ...]:
+        return normalize_artifact_refs(value)
+
     @field_validator("error_type", mode="before")
     @classmethod
     def normalize_error_type(cls, value: Any) -> str | None:
-        return _normalize_optional_string(value)
+        return _normalize_error_type(value)
 
     @model_validator(mode="after")
     def validate_status_payload(self) -> "VisualRoutingStageObservation":
@@ -255,7 +321,7 @@ class BaseVisualRoutingTrace(BaseModel):
     routing_mode: RoutingMode
     completeness: VisualRoutingTraceCompleteness
     input_snapshot: VisualRoutingInputSnapshot
-    active_route: ActiveVisualRouteSummary
+    active_route: ActiveVisualRouteSummary | None
     stage_observations: tuple[VisualRoutingStageObservation, ...] = ()
     route_disagreement: RouteComparison | None = None
 
@@ -264,11 +330,13 @@ class BaseVisualRoutingTrace(BaseModel):
     def normalize_trace_version(cls, value: Any) -> str:
         return _normalize_required_string(value)
 
-    @field_validator("stage_observations", mode="before")
+    @field_validator("stage_observations", mode="after")
     @classmethod
-    def sort_stage_observations(cls, value: Any) -> tuple[VisualRoutingStageObservation, ...]:
-        observations = tuple(value or ())
-        return tuple(sorted(observations, key=lambda item: _STAGE_ORDER[item.stage]))
+    def sort_stage_observations(
+        cls,
+        value: tuple[VisualRoutingStageObservation, ...],
+    ) -> tuple[VisualRoutingStageObservation, ...]:
+        return tuple(sorted(value, key=lambda item: _STAGE_ORDER[item.stage]))
 
     @model_validator(mode="after")
     def validate_base_trace(self) -> "BaseVisualRoutingTrace":
@@ -291,6 +359,8 @@ class LegacyVisualRoutingTrace(BaseVisualRoutingTrace):
     def validate_legacy_trace(self) -> "LegacyVisualRoutingTrace":
         if self.completeness != VisualRoutingTraceCompleteness.COMPLETE:
             raise ValueError("legacy trace requires complete routing data")
+        if self.active_route is None:
+            raise ValueError("legacy trace requires active route")
         if self.active_route.source != RoutingSource.LEGACY:
             raise ValueError("legacy trace active route must be legacy")
         if self.active_route.strategy_id is not None:
@@ -307,11 +377,15 @@ class ShadowVisualRoutingTrace(BaseVisualRoutingTrace):
 
     @model_validator(mode="after")
     def validate_shadow_trace(self) -> "ShadowVisualRoutingTrace":
-        if self.active_route.source != RoutingSource.LEGACY:
-            raise ValueError("shadow trace active route must be legacy")
         if self.shadow_error is None:
             if self.completeness != VisualRoutingTraceCompleteness.COMPLETE:
                 raise ValueError("successful shadow trace must be complete")
+            if self.active_route is None:
+                raise ValueError("successful shadow trace requires active route")
+            if self.active_route.source != RoutingSource.LEGACY:
+                raise ValueError("shadow trace active route must be legacy")
+            if self.active_route.strategy_id is not None:
+                raise ValueError("shadow legacy active route must not include strategy_id")
             if self.legacy_observation is None or self.canonical_decision is None or self.route_disagreement is None:
                 raise ValueError("successful shadow trace requires legacy, canonical, and comparison data")
             _assert_active_matches_legacy(self.active_route, self.legacy_observation)
@@ -321,7 +395,14 @@ class ShadowVisualRoutingTrace(BaseVisualRoutingTrace):
                 raise ValueError("failed shadow trace must be partial")
             if self.route_disagreement is not None:
                 raise ValueError("failed shadow trace must not include route comparison")
+            if self.active_route is not None:
+                if self.active_route.source != RoutingSource.LEGACY:
+                    raise ValueError("shadow trace active route must be legacy")
+                if self.active_route.strategy_id is not None:
+                    raise ValueError("shadow legacy active route must not include strategy_id")
             if self.legacy_observation is not None:
+                if self.active_route is None:
+                    raise ValueError("shadow trace with legacy observation requires active route")
                 _assert_active_matches_legacy(self.active_route, self.legacy_observation)
         return self
 
@@ -337,6 +418,8 @@ class CanonicalVisualRoutingTrace(BaseVisualRoutingTrace):
     def validate_canonical_trace(self) -> "CanonicalVisualRoutingTrace":
         if self.completeness != VisualRoutingTraceCompleteness.COMPLETE:
             raise ValueError("canonical trace requires complete routing data")
+        if self.active_route is None:
+            raise ValueError("canonical trace requires active route")
         if self.active_route.source != RoutingSource.CANONICAL:
             raise ValueError("canonical trace active route must be canonical")
         if self.active_route.strategy_id != self.canonical_decision.strategy_id:
