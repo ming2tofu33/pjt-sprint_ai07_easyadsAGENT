@@ -82,18 +82,20 @@ def test_copy_candidate_generation_uses_cafe_appropriate_fallback_copy():
 def test_selected_copy_updates_marketing_copy_and_copy_spec():
     state = _state()
     state.update(copy_candidate_generation_node(state))
+    selected_candidate = next(candidate for candidate in state["copy_candidates"] if candidate["id"] == "copy_2")
     state["copy_selection"] = make_copy_selection_payload("copy_2")
     state.update(state_update_selected_copy_node(state))
     state.update(copy_spec_parser_node(state))
 
     assert state["selected_copy_id"] == "copy_2"
-    assert state["marketing_copy"]["headline"] == "회식은 역시 삼겹살"
+    assert state["marketing_copy"]["headline"] == selected_candidate["headline"]
     assert state["copy_spec"]["items"][0]["role"] == "headline"
 
 
 def test_selected_copy_node_uses_persisted_state_selection_without_resume_payload():
     state = _state()
     state.update(copy_candidate_generation_node(state))
+    selected_candidate = next(candidate for candidate in state["copy_candidates"] if candidate["id"] == "copy_2")
     state["selected_copy_id"] = "copy_2"
     state["selected_channel_id"] = "instagram-story"
     state["selected_tone"] = "깔끔한"
@@ -106,7 +108,7 @@ def test_selected_copy_node_uses_persisted_state_selection_without_resume_payloa
     assert update["selected_ad_format"] == "instagram_story"
     assert update["selected_tone"] == "깔끔한"
     assert update["custom_direction"] == "상품을 더 크게 보여줘"
-    assert update["marketing_copy"]["headline"] == "회식은 역시 삼겹살"
+    assert update["marketing_copy"]["headline"] == selected_candidate["headline"]
 
 
 def test_selected_copy_persists_frontend_choices_in_graph_state():
