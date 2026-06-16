@@ -48,6 +48,8 @@ _CHANNEL_TO_AD_FORMAT = {
     "instagram-story": "instagram_story",
     "poster": "poster",
     "flyer": "flyer",
+    "banner": "banner",
+    "product_detail": "product_detail",
 }
 _VALID_AD_FORMATS = {"instagram_feed", "instagram_story", "poster", "flyer", "banner", "product_detail"}
 _GOAL_LABELS = {
@@ -67,6 +69,8 @@ _CHANNEL_LABELS = {
     "instagram_story": "인스타 스토리 (9:16)",
     "poster": "포스터 (4:5)",
     "flyer": "전단지 (A4)",
+    "banner": "배너 (16:9)",
+    "product_detail": "상세페이지 (가로형)",
 }
 
 

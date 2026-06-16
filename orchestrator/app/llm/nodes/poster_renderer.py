@@ -42,7 +42,7 @@ def wrap_text(text: str, font: ImageFont.FreeTypeFont, max_width: int) -> list[s
     return lines
 
 
-def fit_text(text: str, font_weight: str, base_size: int, max_w: int, max_h: int) -> dict:
+def fit_text(text: str, font_weight: str, base_size: int, max_w: int, max_h: int, font_family_id: str | None = None) -> dict:
     min_size = max(10, int(base_size * 0.4))
     current_size = base_size
     font_scaled = False
@@ -56,7 +56,7 @@ def fit_text(text: str, font_weight: str, base_size: int, max_w: int, max_h: int
     final_h = 0
     
     while current_size >= min_size:
-        font = load_font(size=current_size, weight=font_weight) or ImageFont.load_default()
+        font = load_font(size=current_size, weight=font_weight, preferred=font_family_id) or ImageFont.load_default()
         line_height = int(current_size * 1.2)
         lines = wrap_text(text, font, max_w)
         final_h = line_height * len(lines)
@@ -194,7 +194,8 @@ def _draw_text_block_with_shadow(component: PosterComponent, image_width: int, i
         fit_w -= (est_offset + est_blur * 2)
         fit_h -= (est_offset + est_blur * 2)
         
-    fit = fit_text(text, font_weight, base_size, fit_w, fit_h)
+    font_family_id = component.style.get("font_family")
+    fit = fit_text(text, font_weight, base_size, fit_w, fit_h, font_family_id)
     
     # Recalculate based on final font size
     shadow_offset = int(fit["font_size"] * 0.04)
@@ -315,7 +316,8 @@ def draw_footer_panel(component: PosterComponent, image_width: int, image_height
     text_max_h = max(1, h - pad * 2)
     
     base_size = style.get("font_size", int(min(image_width, image_height) * 0.03))
-    fit = fit_text(text, "bold", base_size, text_max_w, text_max_h)
+    font_family_id = component.style.get("font_family")
+    fit = fit_text(text, "bold", base_size, text_max_w, text_max_h, font_family_id)
     
     min_readable_size = max(12, int(min(image_width, image_height) * 0.015))
     footer_readability_warning = fit["font_size"] < min_readable_size
@@ -382,7 +384,8 @@ def draw_speech_bubble(component: PosterComponent, image_width: int, image_heigh
     text_max_h = max(1, h - tail_h - pad * 2)
     
     base_size = style.get("font_size", int(min(image_width, image_height) * 0.04))
-    fit = fit_text(text, "bold", base_size, text_max_w, text_max_h)
+    font_family_id = component.style.get("font_family")
+    fit = fit_text(text, "bold", base_size, text_max_w, text_max_h, font_family_id)
     
     cursor_y = pad + max(0, (text_max_h - fit["final_h"]) // 2)
     line_height = int(fit["font_size"] * 1.2)
@@ -565,7 +568,8 @@ def draw_icon_feature_list(component: PosterComponent, image_width: int, image_h
         item_text = str(item.get("text", ""))
         
         # Fit text
-        fit = fit_text(item_text, "regular", base_size, text_max_w, text_max_h)
+        font_family_id = component.style.get("font_family")
+        fit = fit_text(item_text, "regular", base_size, text_max_w, text_max_h, font_family_id)
         
         if fit["font_scaled"]: font_scaled_any = True
         if fit["truncated"]: truncated_any = True
@@ -673,7 +677,8 @@ def draw_memo_card(component: PosterComponent, image_width: int, image_height: i
     text_max_h = max(1, h - padding * 2)
     
     base_size = style.get("font_size", int(min(image_width, image_height) * 0.035))
-    fit = fit_text(text, "regular", base_size, text_max_w, text_max_h)
+    font_family_id = component.style.get("font_family")
+    fit = fit_text(text, "regular", base_size, text_max_w, text_max_h, font_family_id)
     
     min_readable_size = max(16, int(min(image_width, image_height) * 0.02))
     if fit["font_size"] < min_readable_size:
