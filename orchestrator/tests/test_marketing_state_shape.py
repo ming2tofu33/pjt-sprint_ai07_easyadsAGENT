@@ -65,6 +65,7 @@ EXPECTED_FIELDS = frozenset({
     "final_copy_revision_attempts", "final_layout_revision_attempts", "final_style_revision_attempts",
     "final_background_regeneration_attempts", "validation_report", "result_payload", "artifact_refs",
     "error_message", "error_info", "created_at", "updated_at", "latency_ms", "route",
+    "image_analysis", "poster_layout_spec", "render_options", "renderer_mode",
 })
 
 
@@ -76,8 +77,8 @@ def test_marketing_state_has_exactly_expected_fields():
     }
 
 
-def test_marketing_state_field_count_is_165():
-    assert len(MarketingState.__annotations__) == 165
+def test_marketing_state_field_count_is_169():
+    assert len(MarketingState.__annotations__) == 169
 
 
 def test_marketing_state_all_keys_optional_under_total_false():

@@ -21,7 +21,6 @@ def test_gpt_image_1_default_env_does_not_call_api(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "false")
     monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_1", "false")
     monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "false")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-should-not-leak")
     monkeypatch.setattr(
         "orchestrator.app.generation_jobs.execution.ensure_job_output_dir",

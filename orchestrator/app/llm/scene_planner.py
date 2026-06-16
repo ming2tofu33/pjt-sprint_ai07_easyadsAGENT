@@ -3,39 +3,18 @@ from __future__ import annotations
 from typing import Any
 
 from orchestrator.app.llm.schemas.image_prompt_v3 import ScenePlan, PromptQualityPolicy
-from orchestrator.app.llm.visual_presets import select_visual_preset, VISUAL_PRESETS
+from orchestrator.app.llm.visual_presets import PRESET_ID_BY_BUSINESS_TYPE, select_visual_preset
+
+
+def _exact_visual_route_key(value: str | None) -> str | None:
+    key = str(value or "").strip().lower()
+    if key in PRESET_ID_BY_BUSINESS_TYPE:
+        return key
+    return None
 
 
 def resolve_beauty_subtype(bt_str: str, user_input: str) -> str | None:
-    bt_lower = bt_str.lower()
-    text = (user_input or "").lower()
-    
-    is_beauty = any(k in bt_lower for k in ["beauty", "salon", "skincare", "hair", "nail", "spa", "뷰티", "미용", "에스테틱"])
-    if not is_beauty:
-        return None
-        
-    # Check text/keywords in user_input
-    if any(k in text for k in ["hair", "haircut", "salon", "styling", "헤어", "미용실", "컷", "펌", "염색"]):
-        return "beauty_hair"
-    elif any(k in text for k in ["skincare", "skin", "facial", "clinic", "피부", "에스테틱", "화장품", "앰플", "크림"]):
-        return "beauty_skincare"
-    elif any(k in text for k in ["nail", "네일", "젤네일"]):
-        return "beauty_nail"
-    elif any(k in text for k in ["spa", "massage", "wellness", "스파", "마사지", "웰니스"]):
-        return "beauty_spa"
-        
-    # Check if bt_str itself contains subtype information
-    if "hair" in bt_lower:
-        return "beauty_hair"
-    if "skincare" in bt_lower or "skin" in bt_lower:
-        return "beauty_skincare"
-    if "nail" in bt_lower:
-        return "beauty_nail"
-    if "spa" in bt_lower or "massage" in bt_lower:
-        return "beauty_spa"
-        
-    # Ambiguous beauty fallback
-    return "beauty_skincare"
+    return _exact_visual_route_key(bt_str)
 
 
 def resolve_business_type(
@@ -44,46 +23,15 @@ def resolve_business_type(
     selected_reference_template: dict[str, Any] | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> str:
-    # 1. explicit metadata.business_type
-    if metadata and metadata.get("business_type"):
-        bt = metadata.get("business_type")
-        resolved = resolve_beauty_subtype(str(bt), user_input)
-        if resolved:
-            return resolved
-        return str(bt)
-    
-    # 2. selected_reference_template.business_type or category
-    if selected_reference_template:
-        ref_bt = selected_reference_template.get("business_type") or selected_reference_template.get("category")
-        if ref_bt:
-            resolved = resolve_beauty_subtype(str(ref_bt), user_input)
-            if resolved:
-                return resolved
-            return str(ref_bt)
-            
-    # 3. user_input keyword heuristic
-    text = (user_input or "").lower()
-    if any(k in text for k in ["cafe", "dessert", "bakery", "카페", "디저트", "베이커리"]):
-        return "cafe"
-    if any(k in text for k in ["bbq", "korean_food", "meat", "고기", "갈비", "삼겹살", "숯불"]):
-        return "restaurant_bbq"
-    if any(k in text for k in ["restaurant", "식당", "맛집", "치킨", "피자", "food", "음식", "dining"]):
-        return "restaurant"
-        
-    beauty_resolved = resolve_beauty_subtype("beauty", text)
-    if beauty_resolved and beauty_resolved != "beauty_skincare":
-        return beauty_resolved
+    candidates: list[str | None] = [
+        str((metadata or {}).get("business_type")) if (metadata or {}).get("business_type") else None,
+        business_type,
+    ]
+    for candidate in candidates:
+        route_key = _exact_visual_route_key(candidate)
+        if route_key:
+            return route_key
 
-    if any(k in text for k in ["beauty", "뷰티", "미용"]):
-        return "beauty_skincare"
-        
-    # 4. fallback
-    if business_type:
-        resolved = resolve_beauty_subtype(business_type, user_input)
-        if resolved:
-            return resolved
-        return business_type
-        
     return "generic"
 
 

@@ -25,6 +25,8 @@ CHANNEL_TO_AD_FORMAT = {
     "instagram-story": "instagram_story",
     "poster": "poster",
     "flyer": "flyer",
+    "banner": "banner",
+    "product_detail": "product_detail",
 }
 
 
@@ -51,6 +53,12 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
     max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
     output, llm_metadata = validate_or_fallback_candidate_output(state, output, llm_metadata)
     output = annotate_and_rank_candidate_output(output, state=state, max_candidates=max_candidates)
+    
+    ad_format = state.get("ad_format") or state.get("current_brief", {}).get("requested_ad_format") or ""
+    if ad_format in ("poster", "flyer", "banner", "product_detail"):
+        for c in output.candidates:
+            c.cta = None
+
     candidates = [apply_candidate_quality_policy(candidate) for candidate in normalize_candidate_ids(output.candidates[: max(1, max_candidates)])]
     recommended_candidate_id = output.recommended_candidate_id or candidates[0].id
     output = CopyCandidateListOutput(

@@ -8,7 +8,58 @@ from PIL import Image, ImageDraw
 
 from orchestrator.app.schemas.vision import ImagePreprocessResult, ProductPreserveSpec
 from orchestrator.app.vision.settings import VisionSettings, get_vision_settings
+from orchestrator.app.vision.adapters.vision_service_client import get_product_mask
 
+def build_product_preserve_rembg(preprocess_result: ImagePreprocessResult, job_id: str, settings: VisionSettings | None = None) -> ProductPreserveSpec:
+    settings = settings or get_vision_settings()
+    output_dir = settings.processed_dir / safe_name(job_id)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    input_path = preprocess_result.preprocessed_artifact_path
+    mask_path = output_dir / "product_mask_rembg.png"
+    preview_path = output_dir / "product_preview_rembg.png"
+    
+    # 1. vision-service API 호출을 통해 마스크 추출 시도
+    success = get_product_mask(input_path, str(mask_path))
+    
+    # 2. 통신 실패 등 에러 시 안전하게 기존 Stub으로 폴백 (Fallback)
+    if not success:
+        return build_product_preserve_stub(preprocess_result, job_id, settings)
+    
+    # 3. 추출된 실제 마스크에서 BBox(바운딩 박스) 계산
+    with Image.open(mask_path).convert("L") as mask:
+        bbox_pixels = mask.getbbox()
+        
+        # 배경만 있어서 박스를 그릴 수 없는 경우도 폴백
+        if not bbox_pixels:
+            return build_product_preserve_stub(preprocess_result, job_id, settings)
+            
+        left, top, right, bottom = bbox_pixels
+        width = mask.width
+        height = mask.height
+        
+        normalized_bbox = {
+            "x": left / width,
+            "y": top / height,
+            "w": (right - left) / width,
+            "h": (bottom - top) / height,
+        }
+        
+    # 4. 프리뷰 이미지 생성
+    with Image.open(input_path).convert("RGB") as image:
+        build_preview(image, normalized_bbox).save(preview_path)
+        
+    return ProductPreserveSpec(
+        source_image_path=preprocess_result.metadata.original_path,
+        preprocessed_image_path=input_path,
+        product_bbox=normalized_bbox,
+        mask_path=str(mask_path),
+        preview_path=str(preview_path),
+        preserve_strategy="rembg_api",
+        confidence=0.85,
+        warnings=[],
+        metadata={"rembg_used": True, "sam_used": False, "vlm_used": False, "stub": False},
+    )
 
 def build_product_preserve_stub(preprocess_result: ImagePreprocessResult, job_id: str, settings: VisionSettings | None = None) -> ProductPreserveSpec:
     settings = settings or get_vision_settings()

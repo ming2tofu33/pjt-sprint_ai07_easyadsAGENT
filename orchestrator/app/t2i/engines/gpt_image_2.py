@@ -57,13 +57,40 @@ class GPTImageActualEngine:
         require_t2i_enabled("gpt_image_2", settings)
         if prompt_package.image_call_limit != 1 or prompt_package.automatic_edit_allowed or prompt_package.automatic_retry_allowed:
             raise T2IEngineUnavailableError("Native single-shot prompt package violates image call policy.")
+        from orchestrator.app.core.config import _get_env
+        if str(_get_env("T2I_DEFAULT_ENGINE", "")).lower() == "mock":
+            output_dir.mkdir(parents=True, exist_ok=True)
+            final_path = output_dir / "final_native_image.png"
+            from PIL import Image
+            Image.new("RGB", (1024, 1024), "#E5E7EB").save(final_path)
+            sha = _sha256(final_path)
+            return {
+                "provider": "mock",
+                "model": "mock",
+                "api_operation": "generate",
+                "image_call_count": 1,
+                "edit_call_count": 0,
+                "retry_call_count": 0,
+                "max_retries": 0,
+                "request_id": "mock_req_1",
+                "image_path": final_path.as_posix(),
+                "output_sha256": sha,
+                "width": 1024,
+                "height": 1024,
+                "format": "png",
+                "latency_ms": int((perf_counter() - started) * 1000),
+                "prompt_sha256": prompt_package.prompt_sha256,
+            }
+
         try:
             from openai import OpenAI  # type: ignore
         except Exception as exc:  # pragma: no cover - optional dependency
             raise T2IEngineUnavailableError("OpenAI SDK is unavailable.") from exc
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        client = OpenAI(api_key=get_openai_api_key(), max_retries=0)
+        from orchestrator.app.t2i.settings import get_openai_api_key
+        api_key = get_openai_api_key()
+        client = OpenAI(api_key=api_key, max_retries=0)
         response = client.images.generate(
             model="gpt-image-2",
             prompt=prompt_package.final_prompt,

@@ -796,5 +796,22 @@ def _list_chat_messages_db(
 ) -> tuple[list[ChatMessageResponse], int]:
     workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     rows = chat_message_repo.list_chat_messages(thread_id, workspace_id=workspace_id, limit=limit, offset=offset)
+    generation_job_ids = [str(row.get("generation_job_id")) for row in rows if row.get("generation_job_id") and not row.get("public_job_id")]
+    job_id_map = (
+        chat_message_repo.get_public_job_ids_by_internal_ids(
+            generation_job_ids,
+            workspace_id=workspace_id,
+        )
+        if generation_job_ids
+        else {}
+    )
+    for row in rows:
+        public_job_id = row.get("public_job_id")
+        if public_job_id:
+            row["job_id"] = str(public_job_id)
+        elif row.get("generation_job_id"):
+            batch_public_job_id = job_id_map.get(str(row["generation_job_id"]))
+            if batch_public_job_id:
+                row["job_id"] = batch_public_job_id
     total = chat_message_repo.count_chat_messages(thread_id, workspace_id=workspace_id)
     return [_msg_row_to_response(r, thread_id) for r in rows], total

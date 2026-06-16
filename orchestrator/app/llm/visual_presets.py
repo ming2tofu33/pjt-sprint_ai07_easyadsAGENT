@@ -131,36 +131,31 @@ def get_visual_presets() -> dict[str, dict[str, Any]]:
     return VISUAL_PRESETS
 
 
+# Exact legacy visual route key -> preset_id mapping.
+# Ambiguous domain labels such as `beauty` and `beauty_salon` are intentionally
+# not route keys in A-4; they must pass through domain_routing evidence first.
+PRESET_ID_BY_BUSINESS_TYPE: dict[str, str] = {
+    "cafe": "cafe_dessert_soft_premium",
+    "restaurant_bbq": "restaurant_bbq_warm_grill",
+    "restaurant": "restaurant_generic_clean",
+    "beauty_skincare": "beauty_skincare_clean_premium",
+    "beauty_hair": "beauty_hair_salon_clean",
+    "beauty_nail": "beauty_nail_clean_detail",
+    "beauty_spa": "beauty_spa_soft_wellness",
+    "generic": "generic_clean_ad_background",
+}
+
+
 def select_visual_preset(
     business_type: str | None,
     ad_format: str | None = None,
     selected_reference_template: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Select appropriate visual preset based on business type and templates."""
-    bt = (business_type or "").lower()
-    
-    # Check selected reference template first for hints if present
-    ref_preset_id = (selected_reference_template or {}).get("preset_id") or (selected_reference_template or {}).get("visual_template_id")
-    if ref_preset_id and ref_preset_id in VISUAL_PRESETS:
-        return VISUAL_PRESETS[ref_preset_id]
-        
-    # Heuristics based on business_type string
-    if bt == "cafe" or "cafe" in bt or "dessert" in bt or "bakery" in bt:
-        return VISUAL_PRESETS["cafe_dessert_soft_premium"]
-    elif "bbq" in bt or "korean_food" in bt or "meat" in bt or "고기" in bt or "갈비" in bt or "삼겹살" in bt or "숯불" in bt:
-        return VISUAL_PRESETS["restaurant_bbq_warm_grill"]
-    elif "restaurant" in bt or "dining" in bt or "food" in bt:
-        return VISUAL_PRESETS["restaurant_generic_clean"]
-    elif bt == "beauty_skincare" or "skincare" in bt or "skin" in bt:
-        return VISUAL_PRESETS["beauty_skincare_clean_premium"]
-    elif bt == "beauty_hair" or "hair" in bt or "salon" in bt:
-        return VISUAL_PRESETS["beauty_hair_salon_clean"]
-    elif bt == "beauty_nail" or "nail" in bt:
-        return VISUAL_PRESETS["beauty_nail_clean_detail"]
-    elif bt == "beauty_spa" or "spa" in bt or "massage" in bt:
-        return VISUAL_PRESETS["beauty_spa_soft_wellness"]
-    elif "beauty" in bt:
-        # Default fallback for beauty
-        return VISUAL_PRESETS["beauty_skincare_clean_premium"]
-        
+    bt = (business_type or "").strip().lower()
+
+    exact = PRESET_ID_BY_BUSINESS_TYPE.get(bt)
+    if exact:
+        return VISUAL_PRESETS[exact]
+
     return VISUAL_PRESETS["generic_clean_ad_background"]

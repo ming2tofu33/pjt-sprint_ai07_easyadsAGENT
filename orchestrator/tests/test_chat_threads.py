@@ -65,6 +65,47 @@ def test_chat_start_returns_option_question_when_context_is_missing():
     assert payload["question"]["question"] == "어떤 업종의 광고인가요?"
 
 
+def test_chat_start_option_question_uses_request_ad_format_as_selected_channel_fallback(monkeypatch):
+    class FakeGraph:
+        def invoke(self, state, config):
+            return {
+                "__interrupt__": [
+                    type(
+                        "InterruptValue",
+                        (),
+                        {
+                            "value": {
+                                "type": "option_question",
+                                "job_id": state["job_id"],
+                                "thread_id": state["thread_id"],
+                                "option_question": {
+                                    "field": "business_type",
+                                    "question": "어떤 업종의 광고인가요?",
+                                    "options": [{"id": 1, "label": "카페", "value": "cafe"}],
+                                },
+                            }
+                        },
+                    )()
+                ],
+                "job_id": state["job_id"],
+                "thread_id": state["thread_id"],
+                "status": "waiting_user_selection",
+                "context": {"extra": {}},
+                "missing_fields": ["business_type"],
+            }
+
+    monkeypatch.setattr(chat_api, "get_marketing_graph", lambda: FakeGraph())
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/start",
+        json={"userInput": "광고 만들어줘", "adFormat": "banner"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["selectedChannelId"] == "banner"
+
+
 def test_chat_start_passes_reference_template_to_graph(monkeypatch):
     captured = {}
 
@@ -253,6 +294,49 @@ def test_photo_start_can_return_option_question(monkeypatch):
     assert payload["missingFields"] == ["business_type"]
 
 
+def test_photo_start_option_question_uses_request_ad_format_as_selected_channel_fallback(monkeypatch):
+    class FakeGraph:
+        def invoke(self, state, config):
+            return {
+                "__interrupt__": [
+                    type(
+                        "InterruptValue",
+                        (),
+                        {
+                            "value": {
+                                "type": "option_question",
+                                "job_id": state["job_id"],
+                                "thread_id": state["thread_id"],
+                                "option_question": {
+                                    "field": "business_type",
+                                    "question": "어떤 업종의 광고인가요?",
+                                    "options": [{"id": 1, "label": "카페", "value": "cafe"}],
+                                },
+                            }
+                        },
+                    )()
+                ],
+                "job_id": state["job_id"],
+                "thread_id": state["thread_id"],
+                "status": "waiting_user_selection",
+                "context": {"extra": {}},
+                "missing_fields": ["business_type"],
+            }
+
+    from orchestrator.app.api import photo as photo_api
+
+    monkeypatch.setattr(photo_api, "get_marketing_graph", lambda: FakeGraph())
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/photo/start",
+        json={"userInput": "사진으로 광고 만들어줘", "sourceImagePath": "data/uploads/menu.png", "adFormat": "banner"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["selectedChannelId"] == "banner"
+
+
 def test_photo_start_option_question_can_resume_via_chat_answer(tmp_path):
     source = tmp_path / "menu.png"
     write_test_png(source, color=(230, 80, 120))
@@ -394,6 +478,8 @@ def test_chat_start_no_copy_returns_brief_ready_response():
     payload = response.json()
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "no_copy"
+    assert payload["selectedChannelId"] == "instagram-feed"
+    assert payload["brief"]["selectedChannelId"] == "instagram-feed"
     assert payload["brief"]["copy"] == "문구 없이 이미지로만"
     assert payload["brief"]["finalImagePath"].endswith(".png")
 
@@ -418,8 +504,42 @@ def test_photo_start_no_copy_returns_brief_ready_response(tmp_path):
     payload = response.json()
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "no_copy"
+    assert payload["selectedChannelId"] == "instagram-feed"
+    assert payload["brief"]["selectedChannelId"] == "instagram-feed"
     assert payload["brief"]["copy"] == "문구 없이 이미지로만"
     assert payload["brief"]["finalImagePath"].endswith(".png")
+
+
+def test_chat_start_brief_ready_preserves_banner_selected_channel(monkeypatch):
+    class FakeGraph:
+        def invoke(self, state, config):
+            return {
+                "job_id": state["job_id"],
+                "thread_id": state["thread_id"],
+                "status": "done",
+                "copy_generation_mode": "no_copy",
+                "context": {
+                    "business_type": "store",
+                    "item_or_service": "signature_item",
+                    "promotion_goal": "new_launch",
+                    "extra": {"ad_format": "banner"},
+                },
+                "current_brief": {"selected_channel_id": "banner"},
+                "final_image_path": "data/outputs/job_banner/final_composite.png",
+            }
+
+    monkeypatch.setattr(chat_api, "get_marketing_graph", lambda: FakeGraph())
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/start",
+        json={"userInput": "배너 광고 만들어줘", "adFormat": "banner", "copyGenerationMode": "no_copy"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selectedChannelId"] == "banner"
+    assert payload["brief"]["selectedChannelId"] == "banner"
 
 
 def test_chat_start_auto_pilot_returns_brief_ready_response():
@@ -488,7 +608,7 @@ def test_chat_start_custom_copy_returns_brief_ready_response():
     payload = response.json()
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "custom_input"
-    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값"
+    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값\n오후 2시부터 5시까지"
     assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
@@ -514,7 +634,7 @@ def test_photo_start_custom_copy_returns_brief_ready_response(tmp_path):
     payload = response.json()
     assert payload["type"] == "brief_ready"
     assert payload["copyGenerationMode"] == "custom_input"
-    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값"
+    assert payload["brief"]["copy"] == "오늘만 딸기라떼 반값\n오후 2시부터 5시까지"
     assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
@@ -539,6 +659,34 @@ def test_chat_answer_resumes_to_next_turn():
     payload = response.json()
     assert payload["type"] == "option_question"
     assert payload["question"]["field"] == "item_or_service"
+
+
+def test_chat_start_copy_candidates_use_request_ad_format_as_selected_channel_fallback(monkeypatch):
+    class FakeGraph:
+        def invoke(self, state, config):
+            return {
+                "job_id": state["job_id"],
+                "thread_id": state["thread_id"],
+                "status": "generating_copy_candidates",
+                "context": {
+                    "business_type": "cafe",
+                    "item_or_service": "latte",
+                    "promotion_goal": "new_launch",
+                    "extra": {},
+                },
+                "copy_candidates": [{"id": "copy_1", "headline": "배너 문구"}],
+            }
+
+    monkeypatch.setattr(chat_api, "get_marketing_graph", lambda: FakeGraph())
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/start",
+        json={"userInput": "배너 광고", "adFormat": "banner"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["selectedChannelId"] == "banner"
 
 
 def test_chat_answer_uses_display_label_for_item_option_values():
@@ -677,6 +825,95 @@ def test_chat_brief_resumes_graph_with_frontend_choices(monkeypatch):
     assert payload["brief"]["tone"] == "깔끔한 분위기"
     assert payload["brief"]["channel"] == "포스터 (4:5)"
     assert payload["brief"]["imageDirection"] == "제품을 크게"
+def test_chat_brief_normalizes_selected_channel_id_from_ad_format(monkeypatch):
+    captured = {}
+
+    class FakeGraph:
+        def invoke(self, command, config):
+            captured["resume"] = command.resume
+            return {
+                "job_id": "job_1",
+                "thread_id": "thread_1",
+                "status": "done",
+                "context": {
+                    "business_type": "cafe",
+                    "item_or_service": "latte",
+                    "promotion_goal": "new_launch",
+                    "extra": {"ad_format": "instagram_story"},
+                },
+                "current_brief": {
+                    "selected_channel_id": "instagram-story",
+                    "selected_tone": "fresh",
+                },
+                "marketing_copy": {"headline": "라떼 광고"},
+                "final_image_path": "data/outputs/job_1/final_composite.png",
+            }
+
+    monkeypatch.setattr(chat_api, "get_marketing_graph", lambda: FakeGraph())
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/brief",
+        json={
+            "jobId": "job_1",
+            "threadId": "thread_1",
+            "selectedCopyId": "copy_1",
+            "selectedChannelId": "instagram_story",
+            "selectedTone": "fresh",
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["resume"]["selected_channel_id"] == "instagram-story"
+    assert captured["resume"]["selected_ad_format"] == "instagram_story"
+    payload = response.json()
+    assert payload["selectedChannelId"] == "instagram-story"
+    assert payload["brief"]["selectedChannelId"] == "instagram-story"
+
+
+def test_chat_brief_does_not_force_instagram_feed_when_selected_channel_is_missing(monkeypatch):
+    captured = {}
+
+    class FakeGraph:
+        def invoke(self, command, config):
+            captured["resume"] = command.resume
+            return {
+                "job_id": "job_1",
+                "thread_id": "thread_1",
+                "status": "done",
+                "context": {
+                    "business_type": "cafe",
+                    "item_or_service": "latte",
+                    "promotion_goal": "new_launch",
+                    "extra": {"ad_format": "banner"},
+                },
+                "current_brief": {
+                    "selected_channel_id": "banner",
+                    "selected_tone": "fresh",
+                },
+                "marketing_copy": {"headline": "배너 광고"},
+                "final_image_path": "data/outputs/job_1/final_composite.png",
+            }
+
+    monkeypatch.setattr(chat_api, "get_marketing_graph", lambda: FakeGraph())
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/brief",
+        json={
+            "jobId": "job_1",
+            "threadId": "thread_1",
+            "selectedCopyId": "copy_1",
+            "selectedTone": "fresh",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "selected_channel_id" not in captured["resume"]
+    assert "selected_ad_format" not in captured["resume"]
+    payload = response.json()
+    assert payload["selectedChannelId"] == "banner"
+    assert payload["brief"]["selectedChannelId"] == "banner"
 
 
 def test_chat_brief_hides_internal_image_prompt_from_user_summary(monkeypatch):
@@ -1148,6 +1385,78 @@ def test_message_pagination_total():
 
     assert total == 5
     assert [message.sequence_no for message in messages] == [3, 4]
+
+
+def test_chat_message_list_query_includes_generation_job_join(monkeypatch):
+    from orchestrator.app.db.repositories import chat_messages as repo
+
+    conn = FakeConn(rows=[{"id": "thread_uuid"}])
+
+    @contextmanager
+    def fake_tx(connection=None):
+        yield conn
+
+    monkeypatch.setattr(repo, "db_transaction", fake_tx)
+
+    repo.list_chat_messages("thread_public", workspace_id="workspace_uuid", limit=5, offset=0)
+
+    sql = conn._cursor._executed[1][0].lower()
+    assert "from chat_messages cm" in sql
+    assert "join generation_jobs" in sql
+
+
+def test_list_chat_messages_skips_batch_lookup_when_page_has_no_generation_jobs(monkeypatch):
+    from orchestrator.app.chat_threads import service as chat_service
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(chat_service, "_get_workspace_id_for_user", lambda user_id=None, account_type=None: "workspace_uuid")
+    monkeypatch.setattr(
+        chat_service.chat_message_repo,
+        "list_chat_messages",
+        lambda *args, **kwargs: [
+            {"id": "m1", "role": "user", "content": "a", "payload": {}, "sequence_no": 1, "created_at": "2026-06-16T00:00:00+00:00"}
+        ],
+    )
+    monkeypatch.setattr(chat_service.chat_message_repo, "count_chat_messages", lambda *args, **kwargs: 1)
+    monkeypatch.setattr(
+        chat_service.chat_message_repo,
+        "get_public_job_ids_by_internal_ids",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("batch lookup should not run")),
+    )
+
+    messages, total = chat_service.list_chat_messages("thread_public", user_id="user_a")
+
+    assert total == 1
+    assert len(messages) == 1
+
+
+def test_list_chat_messages_batches_generation_job_lookup_once(monkeypatch):
+    from orchestrator.app.chat_threads import service as chat_service
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "postgres")
+    monkeypatch.setattr(chat_service, "_get_workspace_id_for_user", lambda user_id=None, account_type=None: "workspace_uuid")
+    monkeypatch.setattr(
+        chat_service.chat_message_repo,
+        "list_chat_messages",
+        lambda *args, **kwargs: [
+            {"id": "m1", "role": "assistant", "content": "a", "payload": {}, "sequence_no": 1, "created_at": "2026-06-16T00:00:00+00:00", "generation_job_id": "job_uuid_1"},
+            {"id": "m2", "role": "assistant", "content": "b", "payload": {}, "sequence_no": 2, "created_at": "2026-06-16T00:00:00+00:00", "generation_job_id": "job_uuid_2"},
+        ],
+    )
+    monkeypatch.setattr(chat_service.chat_message_repo, "count_chat_messages", lambda *args, **kwargs: 2)
+    calls = []
+
+    def fake_batch(ids, *, workspace_id, connection=None):
+        calls.append((list(ids), workspace_id))
+        return {"job_uuid_1": "job_public_1", "job_uuid_2": "job_public_2"}
+
+    monkeypatch.setattr(chat_service.chat_message_repo, "get_public_job_ids_by_internal_ids", fake_batch)
+
+    messages, total = chat_service.list_chat_messages("thread_public", user_id="user_a", limit=50)
+
+    assert total == 2
+    assert [message.job_id for message in messages] == ["job_public_1", "job_public_2"]
+    assert calls == [(["job_uuid_1", "job_uuid_2"], "workspace_uuid")]
 
 
 def test_chat_thread_backend_files_do_not_have_duplicate_function_definitions():

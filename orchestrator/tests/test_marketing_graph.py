@@ -57,12 +57,13 @@ def test_suggest_candidates_interrupt_then_resume_to_mock():
 
     assert payload["type"] == "copy_candidate_selection"
     assert [candidate["id"] for candidate in payload["candidates"]] == ["copy_1", "copy_2"]
+    selected_candidate = next(candidate for candidate in payload["candidates"] if candidate["id"] == "copy_2")
 
     result = graph.invoke(Command(resume={"selected_copy_id": "copy_2"}), config=config)
 
     assert result["status"] == "done"
     assert result["selected_copy_id"] == "copy_2"
-    assert result["copy_spec"]["items"][0]["text"] == "회식은 역시 삼겹살"
+    assert result["copy_spec"]["items"][0]["text"] == selected_candidate["headline"]
     assert result["t2i_result"]["engine"] == "mock"
 
 
@@ -111,6 +112,7 @@ def test_suggest_candidates_with_persisted_selection_skips_interrupt_to_mock():
         )
     )
     state.update(copy_candidate_generation_node(state))
+    selected_candidate = next(candidate for candidate in state["copy_candidates"] if candidate["id"] == "copy_2")
     state["selected_copy_id"] = "copy_2"
     state["selected_channel_id"] = "instagram-feed"
     state["selected_tone"] = "깔끔한"
@@ -124,7 +126,7 @@ def test_suggest_candidates_with_persisted_selection_skips_interrupt_to_mock():
     assert "__interrupt__" not in result
     assert result["status"] == "done"
     assert result["selected_copy_id"] == "copy_2"
-    assert result["copy_spec"]["items"][0]["text"] == "회식은 역시 삼겹살"
+    assert result["copy_spec"]["items"][0]["text"] == selected_candidate["headline"]
     assert result["t2i_result"]["engine"] == "mock"
 
 
@@ -620,6 +622,12 @@ def test_marketing_graph_node_utilization_matrix_covers_all_nodes(monkeypatch, t
         "gpt_image_2_native_single_shot",
         "native_generation_review",
         "native_result_adapter",
+        "poster_layout_planner",
+        "image_aware_quality_gate",
+        "design_recommendation",
+        "poster_renderer",
+        "html_text_renderer",
+        "image_analysis",
     })
     assert covered_nodes == graph_node_names
 

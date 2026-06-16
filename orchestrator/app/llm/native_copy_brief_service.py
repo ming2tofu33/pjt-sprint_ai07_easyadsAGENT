@@ -9,7 +9,7 @@ from typing import Any
 from orchestrator.app.llm.native_copy_candidate_service import generate_native_copy_strategy_bundle
 from orchestrator.app.llm.native_copy_policy import validate_approved_native_copy_brief
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
-from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief, CreativeExecutionPlan, NativeCopyStrategyBundle
+from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief, CreativeExecutionPlan, NativeCopyStrategyBundle, NativeCopyCandidate, NativeCopyScorecard
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 
 
@@ -100,13 +100,15 @@ def generate_approved_native_copy_brief(
     state: dict[str, Any],
 ) -> ApprovedNativeCopyBrief:
     adapter = state.get("native_copy_adapter")
+    selected_id = state.get("selected_copy_id")
+    marketing_copy = state.get("marketing_copy")
     if adapter:
         payload = adapter.generate_native_copy_brief(input_evidence=input_evidence, product_understanding=product_understanding, execution_plan=execution_plan, source_visual_analysis=source_visual_analysis, state=state)
     elif state.get("native_copy_strategy_bundle"):
-        return apply_exact_custom_copy(_brief_from_strategy_bundle(NativeCopyStrategyBundle(**state["native_copy_strategy_bundle"]), input_evidence=input_evidence, product_understanding=product_understanding), state)
+        return apply_exact_custom_copy(_brief_from_strategy_bundle(NativeCopyStrategyBundle(**state["native_copy_strategy_bundle"]), input_evidence=input_evidence, product_understanding=product_understanding, selected_candidate_id=selected_id, marketing_copy=marketing_copy), state)
     else:
         bundle = generate_native_copy_strategy_bundle(input_evidence=input_evidence, product_understanding=product_understanding, source_visual_analysis=source_visual_analysis, state=state)
-        return apply_exact_custom_copy(_brief_from_strategy_bundle(bundle, input_evidence=input_evidence, product_understanding=product_understanding), state)
+        return apply_exact_custom_copy(_brief_from_strategy_bundle(bundle, input_evidence=input_evidence, product_understanding=product_understanding, selected_candidate_id=selected_id, marketing_copy=marketing_copy), state)
     copy_payload = payload.get("approved_native_copy_brief") or payload.get("copy_brief") or payload.get("copy") or payload.get("native_copy") or payload
     brief = ApprovedNativeCopyBrief(
         **_coerce_native_copy_payload(
@@ -127,9 +129,49 @@ def _brief_from_strategy_bundle(
     *,
     input_evidence: InputEvidenceBundle,
     product_understanding: ProductUnderstanding,
+    selected_candidate_id: str | None = None,
+    marketing_copy: dict[str, Any] | None = None,
 ) -> ApprovedNativeCopyBrief:
-    candidate = next((item for item in bundle.candidates if item.candidate_id == bundle.recommended_candidate_id), None)
-    scorecard = next((item for item in bundle.scorecards if item.candidate_id == bundle.recommended_candidate_id), None)
+    target_id = selected_candidate_id or bundle.recommended_candidate_id
+    candidate = next((item for item in bundle.candidates if item.candidate_id == target_id), None)
+    scorecard = next((item for item in bundle.scorecards if item.candidate_id == target_id), None)
+    
+    if marketing_copy and marketing_copy.get("headline"):
+        if candidate is None:
+            candidate = NativeCopyCandidate(
+                candidate_id=target_id or "custom_copy",
+                strategy="minimal_identity",
+                headline=marketing_copy.get("headline"),
+                supporting_copy=marketing_copy.get("subcopy"),
+                closing_copy=None,
+                action_cta=None,
+            )
+        else:
+            candidate = candidate.model_copy(update={
+                "headline": marketing_copy.get("headline"),
+                "supporting_copy": marketing_copy.get("subcopy"),
+                "action_cta": None,
+            })
+        if scorecard is None:
+            scorecard = NativeCopyScorecard(
+                candidate_id=candidate.candidate_id,
+                product_identity_clarity=1.0,
+                product_centeredness=1.0,
+                sensory_specificity=1.0,
+                evidence_grounding=1.0,
+                consumer_naturalness=1.0,
+                positioning_alignment=1.0,
+                headline_strength=1.0,
+                support_complementarity=1.0,
+                restraint=1.0,
+                native_typography_fit=1.0,
+                direct_positioning_penalty=0.0,
+                generic_prestige_penalty=0.0,
+                abstract_language_penalty=0.0,
+                repetition_penalty=0.0,
+                unsupported_claim_penalty=0.0,
+                total_score=1.0,
+            )
     if candidate is None or scorecard is None or scorecard.blocked:
         return ApprovedNativeCopyBrief(
             headline=None,
@@ -177,7 +219,7 @@ def _brief_from_strategy_bundle(
         unsupported_claim_categories=[],
         compliance_status="approved",
         rejection_reasons=[],
-        copy_source_mode="user_exact" if input_evidence.user_exact_display_copy else "generated",
+        copy_source_mode="user_exact" if (input_evidence.user_exact_display_copy or marketing_copy) else "generated",
         source_user_request=input_evidence.user_request_utterance or input_evidence.user_text,
         non_display_instructions=input_evidence.non_display_instruction_fragments,
         product_identity=product_understanding.product_name,
@@ -198,7 +240,7 @@ def _brief_from_strategy_bundle(
         support_product_specificity=candidate.support_product_specificity,
     )
     failures = validate_approved_native_copy_brief(brief)
-    if failures:
+    if failures and brief.copy_source_mode != "user_exact":
         return brief.model_copy(update={"compliance_status": "rejected", "rejection_reasons": failures})
     return brief
 
@@ -286,6 +328,7 @@ def _clean(value: Any) -> str | None:
 
 def _call_openai_native_copy(*, input_evidence: InputEvidenceBundle, product_understanding: ProductUnderstanding, execution_plan: CreativeExecutionPlan) -> dict[str, Any]:
     from openai import OpenAI  # type: ignore
+    from orchestrator.app.t2i.settings import get_openai_api_key
 
     started = time.perf_counter()
     prompt = (
@@ -294,13 +337,18 @@ def _call_openai_native_copy(*, input_evidence: InputEvidenceBundle, product_und
         "headline is required unless compliance_status is rejected. "
         "The user's utterance is a request to create an advertisement, not customer-facing display copy. "
         "First separate product identity, desired positioning, campaign intent, exact display copy if explicitly supplied, and non-display instructions. "
-        "Unless copy_source_mode=user_exact, do not copy the user's utterance into headline, do not paraphrase the system request as display copy, and do not expose request verbs or campaign instructions. "
-        "The headline must speak to the consumer, not describe what the user wants the system to do. "
-        "Prohibited meta-instruction leakage: 홍보하고 싶어, 광고해줘, 만들어줘, 소개하고 싶어, I want to promote, create an ad for. "
+        "Unless copy_source_mode=user_exact, DO NOT copy the user's utterance into headline verbatim. "
+        "The headline and supporting copy must be rewritten as genuine advertising copy that speaks to the consumer, not a description of what the user wants the system to do. "
+        "Prohibited meta-instruction leakage: 홍보하고 싶어, 광고해줘, 만들어줘, 소개하고 싶어, 손님 많이 오게, I want to promote, create an ad for. "
+        "EXAMPLES OF TRANSFORMING REQUESTS:\n"
+        "- BAD: '삼겹살집 회식 손님 많이 오게 포스터 만들어줘' -> GOOD: '즐거운 회식은 삼겹살집에서'\n"
+        "- BAD: '망고 빙수 홍보하고 싶어' -> GOOD: '달콤하고 시원한 망고 빙수'\n"
+        "- BAD: '예약 방문 유도해줘' -> GOOD: '지금 바로 예약하세요'\n"
+        "Ensure the product identity (e.g. 삼겹살집 / 삼겹살 회식) remains clear and central to the copy. "
         "Use requested positioning as creative direction, not as an unverified product claim. "
         "Return product_identity, campaign_intent, desired_positioning, non_display_instructions, copy_source_mode, transformation_performed, product_evidence_ids, creative_direction_evidence_ids, and copy_claim_evidence_ids. "
         "Use only verified evidence and ProductUnderstanding. Max two text blocks. No action CTA unless a verified destination exists; default action_cta null. "
-        "No price, discount, date, address, phone, ingredient amount, efficacy, guarantee, generic CTA, or unsupported claim. "
+        "No price, discount, date, address, phone, ingredient amount, efficacy, guarantee, generic CTA, or unsupported operational info. "
         "Input sections follow. "
         f"USER REQUEST: {input_evidence.user_request_utterance or input_evidence.user_text}\n"
         f"PRODUCT IDENTITY: {product_understanding.product_name}\n"
@@ -312,7 +360,7 @@ def _call_openai_native_copy(*, input_evidence: InputEvidenceBundle, product_und
         f"UNSUPPORTED CLAIMS: {json.dumps(product_understanding.unsupported_claim_categories, ensure_ascii=False)}\n"
         f"ExecutionPlan: {execution_plan.model_dump_json()} InputEvidenceBundle: {input_evidence.model_dump_json()} ProductUnderstanding: {product_understanding.model_dump_json()}"
     )
-    response = OpenAI(timeout=90).responses.create(model="gpt-5.4", input=prompt, temperature=0)
+    response = OpenAI(api_key=get_openai_api_key(), timeout=90).responses.create(model="gpt-5.4", input=prompt, temperature=0)
     payload = json.loads(getattr(response, "output_text", "") or "{}")
     payload.setdefault("provider_metadata", {"provider": "openai", "model": "gpt-5.4", "fallback_used": False, "token_usage": _usage_dict(response), "latency_ms": int((time.perf_counter() - started) * 1000)})
     return payload

@@ -70,6 +70,14 @@ class ReferenceStyleProfile(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class ImageAnalysisProfile(BaseModel):
+    subject_position: Literal["left", "right", "top", "bottom", "center", "unknown"]
+    background_complexity: Literal["low", "medium", "high", "unknown"]
+    safe_zone: Literal["left", "right", "top", "bottom", "center", "unknown"]
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    source: Literal["vlm", "manual", "fallback"] = "vlm"
+
+
 class ProductPreserveSpec(BaseModel):
     source_image_path: str
     preprocessed_image_path: str

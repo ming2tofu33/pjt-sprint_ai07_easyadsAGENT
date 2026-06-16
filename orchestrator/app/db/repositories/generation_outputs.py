@@ -120,6 +120,8 @@ def get_generation_output_by_id(
                 select o.*,
                        t.public_thread_id,
                        j.public_job_id,
+                       o.result_payload ->> 'download_url' as output_download_url,
+                       o.result_payload ->> 'final_image_url' as output_final_image_url,
                        a.public_url as image_url,
                        ta.public_url as thumbnail_url,
                        a.storage_provider,
@@ -225,6 +227,46 @@ def count_generation_outputs(
             )
             row = cur.fetchone()
             return int(row["total"]) if row else 0
+
+
+def get_final_generation_output_for_job(
+    *,
+    workspace_id: str,
+    public_job_id: str,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select
+                    o.id,
+                    o.workspace_id,
+                    o.job_id,
+                    o.asset_id,
+                    o.thumbnail_asset_id,
+                    o.public_output_id,
+                    o.result_payload ->> 'download_url' as output_download_url,
+                    o.result_payload ->> 'final_image_url' as output_final_image_url,
+                    a.public_url as image_url,
+                    ta.public_url as thumbnail_url,
+                    a.storage_provider,
+                    a.mime_type as asset_mime_type,
+                    a.width as asset_width,
+                    a.height as asset_height
+                from generation_outputs o
+                join generation_jobs j on j.id = o.job_id
+                left join assets a on o.asset_id = a.id
+                left join assets ta on o.thumbnail_asset_id = ta.id
+                where o.workspace_id = %s
+                  and j.public_job_id = %s
+                  and o.is_final = true
+                order by o.created_at desc
+                limit 1
+                """,
+                (workspace_id, public_job_id),
+            )
+            return cur.fetchone()
 
 
 def mark_output_final(

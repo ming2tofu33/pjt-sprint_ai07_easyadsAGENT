@@ -129,6 +129,25 @@ def test_romanized_item_recovered_from_korean_source():
     assert any("recovered from source" in w for w in warnings)
 
 
+def test_retail_business_type_is_preserved_from_brief_interpreter():
+    output = BriefInterpreterOutput(
+        business_type="retail",
+        item_or_service="돌반지",
+        promotion_goal="discount_event",
+        confidence=0.95,
+    )
+
+    updates, warnings = build_context_updates_from_brief_interpreter(
+        output,
+        source_text="돌반지 할인 이벤트",
+    )
+
+    assert updates["business_type"] == "retail"
+    assert updates["item_or_service"] == "돌반지"
+    assert updates["promotion_goal"] == "discount_event"
+    assert not any("business_type_fallback_generic" in warning for warning in warnings)
+
+
 def test_korean_item_kept_when_not_romanized():
     output = BriefInterpreterOutput(
         business_type="retail",
@@ -143,7 +162,8 @@ def test_korean_item_kept_when_not_romanized():
     )
 
     assert updates["item_or_service"] == "돌반지"
-    assert not warnings
+    assert updates["business_type"] == "retail"
+    assert not any("item_or_service" in w or "recovered" in w for w in warnings)
 
 
 def test_unprovided_phone_or_discount_is_blocked_as_invented_fact():

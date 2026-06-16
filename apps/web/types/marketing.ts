@@ -1,4 +1,5 @@
 import type { GenerationJob } from "@/lib/api-client";
+import type { ChannelId } from "@/lib/ad-formats";
 import type { ImageGenerationEngine } from "@/lib/generation-engine";
 
 export type ChatFlowStep = 1 | 2 | 3 | 4;
@@ -75,7 +76,7 @@ export type CustomCopyFields = {
 };
 
 export type ChannelOption = {
-  id: string;
+  id: ChannelId;
   label: string;
   ratio: string;
 };
@@ -86,6 +87,7 @@ export type ChatBrief = {
   copy: string;
   tone: string;
   channel: string;
+  selectedChannelId?: string | null;
   imageDirection: string;
   finalImagePath?: string | null;
   finalImageUrl?: string | null;
@@ -121,7 +123,7 @@ export type ChatFlowState = {
   copyGenerationMode: CopyGenerationMode;
   selectedTone: string;
   selectedCopyId: string;
-  selectedChannelId: string;
+  selectedChannelId: ChannelId;
   customDirection: string;
   userCustomHeadline: string;
   userCustomSubcopy: string;
@@ -164,6 +166,7 @@ export type ChatFlowAction =
       recommendedCopyId?: string | null;
       copyCandidateSource?: CopyCandidateSource;
       copyCandidateOrigin?: CopyCandidateOrigin;
+      selectedChannelId?: ChannelId | null;
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
       sourceAssetId?: string | null;
@@ -178,6 +181,7 @@ export type ChatFlowAction =
       threadId: string;
       context: PartialInferredContext;
       question: OptionQuestion;
+      selectedChannelId?: ChannelId | null;
       generationJob?: GenerationJob;
       sourceAssetId?: string | null;
       sourceImagePath?: string | null;
@@ -191,7 +195,7 @@ export type ChatFlowAction =
   | { type: "setImageGenerationEngine"; imageGenerationEngine: ImageGenerationEngine }
   | { type: "continueToCopy" }
   | { type: "selectCopy"; copyId: string }
-  | { type: "selectChannel"; channelId: string }
+  | { type: "selectChannel"; channelId: ChannelId }
   | { type: "setCustomDirection"; value: string }
   | { type: "submitBriefRefinement"; message: string; customDirection: string }
   | { type: "backendBriefSucceeded"; brief: ChatBrief }
@@ -219,7 +223,7 @@ export type ChatFlowAction =
       copyCandidates: CopyOption[];
       copyCandidateOrigin: CopyCandidateOrigin;
       selectedCopyId: string;
-      selectedChannelId: string;
+      selectedChannelId: ChannelId;
       selectedTone: string;
       selectedImageGenerationEngine: ImageGenerationEngine;
       customDirection: string;

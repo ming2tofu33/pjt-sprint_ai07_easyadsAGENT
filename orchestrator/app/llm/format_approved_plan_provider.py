@@ -55,6 +55,7 @@ def _call_openai_format_plan(
     approved_copy: ApprovedNativeCopyBrief,
 ) -> dict[str, Any]:
     from openai import OpenAI  # type: ignore
+    from orchestrator.app.t2i.settings import get_openai_api_key
 
     started = time.perf_counter()
     prompt = _build_format_plan_prompt(

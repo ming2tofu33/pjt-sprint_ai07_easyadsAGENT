@@ -86,6 +86,66 @@ def test_native_copy_brief_service_rejects_raw_user_request_headline():
     assert "user_request_copied_as_headline" in brief.rejection_reasons
 
 
+def test_native_copy_brief_service_rejects_restaurant_meta_instruction():
+    class Adapter:
+        def generate_native_copy_brief(self, **kwargs):
+            return {
+                "headline": "삼겹살집 회식 손님 많이 오게 포스터 만들어줘",
+                "supporting_copy": "예약/방문 유도",
+                "language": "korean",
+                "message_role": "headline_plus_support",
+                "allowed_texts": ["삼겹살집 회식 손님 많이 오게 포스터 만들어줘", "예약/방문 유도"],
+                "forbidden_texts": [],
+                "max_text_blocks": 2,
+                "max_total_characters": 48,
+                "verified_evidence_ids": ["e1"],
+                "unsupported_claim_categories": [],
+                "compliance_status": "approved",
+                "rejection_reasons": [],
+                "product_identity": "삼겹살집",
+            }
+
+    evidence = InputEvidenceBundle(input_mode="text_only", user_text="삼겹살집 회식 손님 많이 오게 포스터 만들어줘", user_request_utterance="삼겹살집 회식 손님 많이 오게 포스터 만들어줘", campaign_intent="product_promotion", desired_positioning=[], non_display_instruction_fragments=["만들어줘", "손님 많이 오게"], explicit_product_mentions=["삼겹살"], overall_confidence=0.9)
+    product = ProductUnderstanding(product_name="삼겹살집", normalized_product_type="restaurant", broad_category="food_and_beverage", category_path=["food_and_beverage", "restaurant"], product_name_evidence_ids=["e1"], confidence=0.9)
+
+    brief = generate_approved_native_copy_brief(input_evidence=evidence, product_understanding=product, execution_plan=plan_gpt_image2_native_single_shot(), source_visual_analysis=None, state={"native_copy_adapter": Adapter()})
+
+    assert brief.compliance_status == "rejected"
+    assert "meta_instruction_leakage_detected" in brief.rejection_reasons
+    assert "user_request_copied_as_headline" in brief.rejection_reasons
+
+
+def test_native_copy_brief_service_approves_clean_restaurant_copy():
+    class Adapter:
+        def generate_native_copy_brief(self, **kwargs):
+            return {
+                "headline": "회식은 삼겹살집에서",
+                "supporting_copy": "함께 즐기는 따뜻한 한 상",
+                "language": "korean",
+                "message_role": "headline_plus_support",
+                "allowed_texts": ["회식은 삼겹살집에서", "함께 즐기는 따뜻한 한 상"],
+                "forbidden_texts": [],
+                "max_text_blocks": 2,
+                "max_total_characters": 48,
+                "verified_evidence_ids": ["e1", "e2"],
+                "copy_claim_evidence_ids": ["e1", "e2"],
+                "unsupported_claim_categories": [],
+                "compliance_status": "approved",
+                "rejection_reasons": [],
+                "product_identity": "삼겹살집",
+                "support_basis_type": "aesthetic_expression",
+            }
+
+    evidence = InputEvidenceBundle(input_mode="text_only", user_text="삼겹살집 회식 손님 많이 오게 포스터 만들어줘", user_request_utterance="삼겹살집 회식 손님 많이 오게 포스터 만들어줘", campaign_intent="product_promotion", desired_positioning=[], non_display_instruction_fragments=["만들어줘", "손님 많이 오게"], explicit_product_mentions=["삼겹살"], overall_confidence=0.9)
+    product = ProductUnderstanding(product_name="삼겹살집", normalized_product_type="restaurant", broad_category="food_and_beverage", category_path=["food_and_beverage", "restaurant"], product_name_evidence_ids=["e1"], confidence=0.9)
+
+    brief = generate_approved_native_copy_brief(input_evidence=evidence, product_understanding=product, execution_plan=plan_gpt_image2_native_single_shot(), source_visual_analysis=None, state={"native_copy_adapter": Adapter()})
+
+    assert brief.rejection_reasons == []
+    assert brief.compliance_status == "approved"
+    assert brief.headline == "회식은 삼겹살집에서"
+
+
 def _approved_adapter():
     class Adapter:
         def generate_native_copy_brief(self, **kwargs):

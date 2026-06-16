@@ -7,6 +7,7 @@ from typing import Any
 
 from orchestrator.app.core.config import _get_env
 from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.llm.domain_routing import CANONICAL_DOMAINS, normalize_business_type
 from orchestrator.app.llm.metadata_builders import metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
 from orchestrator.app.llm.settings import get_llm_settings
@@ -16,11 +17,14 @@ from orchestrator.app.schemas.brief_llm import BriefInterpreterOutput
 ALLOWED_BRIEF_LLM_PLANS = {"economic", "premium", "internal_benchmark"}
 BRIEF_INTERPRETER_CONFIDENCE_THRESHOLD = 0.65
 
+# Brief coarse domain -> context.business_type, derived from the domain-routing
+# SSOT (orchestrator.app.llm.domain_routing). Kept as a module constant for
+# backwards compatibility; the routing logic below uses normalize_business_type
+# directly so there is a single source of truth.
 BUSINESS_TYPE_MAP = {
-    "cafe": "cafe",
-    "restaurant": "restaurant",
-    "beauty": "beauty_salon",
-    "fitness": "fitness",
+    domain: normalize_business_type(domain).business_type
+    for domain in sorted(CANONICAL_DOMAINS)
+    if normalize_business_type(domain).business_type is not None
 }
 
 PROMOTION_GOAL_MAP = {
@@ -126,9 +130,14 @@ def build_context_updates_from_brief_interpreter(
     updates: dict[str, Any] = {}
     warnings: list[str] = []
 
-    business_type = BUSINESS_TYPE_MAP.get(str(output.business_type or ""))
-    if business_type:
-        updates["business_type"] = business_type
+    normalized = normalize_business_type(output.business_type)
+    if normalized.business_type:
+        updates["business_type"] = normalized.business_type
+    if output.business_type and normalized.fallback_reason:
+        # The brief named a business type that has no (or only generic) domain
+        # routing yet. Leave a breadcrumb so the generic fallback is observable
+        # instead of silently evaporating — see docs/PRESET_ROUTING_AUDIT.md P4.
+        warnings.append(f"business_type_fallback_generic: {normalized.fallback_reason}")
 
     promotion_goal = PROMOTION_GOAL_MAP.get(str(output.promotion_goal or ""))
     if promotion_goal:

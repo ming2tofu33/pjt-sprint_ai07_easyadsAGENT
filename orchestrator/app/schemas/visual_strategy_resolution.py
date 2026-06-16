@@ -1,0 +1,434 @@
+"""Deterministic visual strategy resolution contracts."""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
+
+from orchestrator.app.schemas.visual_strategy import normalize_required_label, normalize_string_set
+
+
+def _strict_non_negative_float(value: Any, field_name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field_name} must be a number")
+    if value < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+    return float(value)
+
+
+def _strict_unit_float(value: Any, field_name: str) -> float:
+    normalized = _strict_non_negative_float(value, field_name)
+    if normalized > 1.0:
+        raise ValueError(f"{field_name} must be between 0 and 1")
+    return normalized
+
+
+class VisualStrategyRuntimeContext(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    available_provider_capabilities: frozenset[str] = Field(default_factory=frozenset)
+    campaign_roles: frozenset[str] = Field(default_factory=frozenset)
+    placement: str | None = None
+
+    @field_validator("available_provider_capabilities", "campaign_roles", mode="before")
+    @classmethod
+    def normalize_sets(cls, value: Any) -> frozenset[str]:
+        return normalize_string_set(value)
+
+    @field_validator("placement", mode="before")
+    @classmethod
+    def normalize_placement(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return normalize_required_label(value)
+
+
+class VisualStrategyScoringPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: str
+    evidence_alignment_weight: float
+    product_relevance_weight: float
+    campaign_fit_weight: float
+    format_fit_weight: float
+    environment_fit_weight: float
+    reference_fit_weight: float
+    semantic_fit_weight: float
+    fallback_penalty_weight: float
+    unrestricted_axis_score: float
+    fallback_tier_step: float
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def normalize_version(cls, value: Any) -> str:
+        return normalize_required_label(value)
+
+    @field_validator(
+        "evidence_alignment_weight",
+        "product_relevance_weight",
+        "campaign_fit_weight",
+        "format_fit_weight",
+        "environment_fit_weight",
+        "reference_fit_weight",
+        "semantic_fit_weight",
+        "fallback_penalty_weight",
+        mode="before",
+    )
+    @classmethod
+    def validate_weight(cls, value: Any) -> float:
+        return _strict_non_negative_float(value, "weight")
+
+    @field_validator("unrestricted_axis_score", "fallback_tier_step", mode="before")
+    @classmethod
+    def validate_unit_value(cls, value: Any) -> float:
+        return _strict_unit_float(value, "policy value")
+
+    @model_validator(mode="after")
+    def require_positive_weight(self) -> "VisualStrategyScoringPolicy":
+        weight_sum = (
+            self.evidence_alignment_weight
+            + self.product_relevance_weight
+            + self.campaign_fit_weight
+            + self.format_fit_weight
+            + self.environment_fit_weight
+            + self.reference_fit_weight
+            + self.semantic_fit_weight
+        )
+        if weight_sum <= 0:
+            raise ValueError("at least one positive scoring weight is required")
+        return self
+
+
+class VisualStrategyScore(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    evidence_alignment: float = Field(ge=0.0, le=1.0)
+    product_relevance: float = Field(ge=0.0, le=1.0)
+    campaign_fit: float = Field(ge=0.0, le=1.0)
+    format_fit: float = Field(ge=0.0, le=1.0)
+    environment_fit: float = Field(ge=0.0, le=1.0)
+    reference_fit: float = Field(ge=0.0, le=1.0)
+    semantic_fit: float = Field(ge=0.0, le=1.0)
+    unsupported_inference_penalty: float = Field(ge=0.0, le=1.0)
+    fallback_penalty: float = Field(ge=0.0, le=1.0)
+    total_score: float = Field(ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def require_hard_reject_penalty_zero(self) -> "VisualStrategyScore":
+        if self.unsupported_inference_penalty != 0.0:
+            raise ValueError("unsupported_inference_penalty is deprecated and must be zero")
+        return self
+
+
+class VisualStrategyRejectionCode(StrEnum):
+    DISABLED = "disabled"
+    UNSUPPORTED_DOMAIN = "unsupported_domain"
+    PLACEMENT_MISMATCH = "placement_mismatch"
+    CAMPAIGN_ROLE_MISMATCH = "campaign_role_mismatch"
+    MISSING_PROVIDER_CAPABILITY = "missing_provider_capability"
+    MISSING_REQUIRED_TAG = "missing_required_tag"
+    MISSING_SOURCE_REQUIREMENT = "missing_source_requirement"
+    EXCLUDED_TAG_PRESENT = "excluded_tag_present"
+    PROHIBITED_VISUAL_ELEMENT = "prohibited_visual_element"
+    MISSING_VISUAL_ELEMENT_EVIDENCE = "missing_visual_element_evidence"
+    UNSCOPED_REQUIRED_TAG = "unscoped_required_tag"
+
+
+class VisualStrategyFallbackReason(StrEnum):
+    UNSUPPORTED_DOMAIN = "unsupported_domain"
+    MISSING_SPECIALIZED_PROFILE = "missing_specialized_profile"
+
+
+class VisualStrategySignalSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    business_signals: frozenset[str] = Field(default_factory=frozenset)
+    product_signals: frozenset[str] = Field(default_factory=frozenset)
+    product_visual_signals: frozenset[str] = Field(default_factory=frozenset)
+    product_visual_fact_signals: frozenset[str] = Field(default_factory=frozenset)
+    product_visual_inference_signals: frozenset[str] = Field(default_factory=frozenset)
+    semantic_intent_signals: frozenset[str] = Field(default_factory=frozenset)
+    semantic_fact_signals: frozenset[str] = Field(default_factory=frozenset)
+    semantic_style_signals: frozenset[str] = Field(default_factory=frozenset)
+    all_signals: frozenset[str] = Field(default_factory=frozenset)
+    prohibited_visual_elements: frozenset[str] = Field(default_factory=frozenset)
+    campaign_roles: frozenset[str] = Field(default_factory=frozenset)
+    placement: str | None = None
+    available_provider_capabilities: frozenset[str] = Field(default_factory=frozenset)
+    reference_style_signals: frozenset[str] = Field(default_factory=frozenset)
+
+
+class VisualStrategyCandidateTrace(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    strategy_id: str
+    eligible: StrictBool
+    fallback_tier: int = Field(default=0, ge=0)
+    fallback_role: str | None = None
+    rejection_codes: tuple[VisualStrategyRejectionCode, ...] = ()
+    matched_required_tags: frozenset[str] = Field(default_factory=frozenset)
+    missing_required_tags: frozenset[str] = Field(default_factory=frozenset)
+    matched_preferred_tags: frozenset[str] = Field(default_factory=frozenset)
+    matched_excluded_tags: frozenset[str] = Field(default_factory=frozenset)
+    matched_source_requirements: tuple[str, ...] = ()
+    missing_source_requirements: tuple[str, ...] = ()
+    blocked_visual_elements: frozenset[str] = Field(default_factory=frozenset)
+    unsupported_visual_elements: frozenset[str] = Field(default_factory=frozenset)
+    matched_evidence_refs: tuple[str, ...] = ()
+    evidence_backed_visual_elements: frozenset[str] = Field(default_factory=frozenset)
+    score: VisualStrategyScore | None = None
+
+    @model_validator(mode="after")
+    def validate_candidate_state(self) -> "VisualStrategyCandidateTrace":
+        if self.eligible:
+            if self.rejection_codes:
+                raise ValueError("eligible candidate must not include rejection_codes")
+            if self.score is None:
+                raise ValueError("eligible candidate requires score")
+            if self.missing_required_tags:
+                raise ValueError("eligible candidate must not include missing_required_tags")
+            if self.missing_source_requirements:
+                raise ValueError("eligible candidate must not include missing_source_requirements")
+            if self.matched_excluded_tags:
+                raise ValueError("eligible candidate must not include matched_excluded_tags")
+            if self.blocked_visual_elements:
+                raise ValueError("eligible candidate must not include blocked_visual_elements")
+            if self.unsupported_visual_elements:
+                raise ValueError("eligible candidate must not include unsupported_visual_elements")
+        else:
+            if not self.rejection_codes:
+                raise ValueError("ineligible candidate requires rejection_codes")
+            if self.score is not None:
+                raise ValueError("ineligible candidate must not include score")
+        return self
+
+
+class VisualStrategyResolutionTrace(BaseModel):
+    """Deterministic resolver trace.
+
+    unsupported_domain means unsupported by the current enabled primary strategy
+    registry, not invalid canonical domain normalization.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    resolver_version: str
+    scoring_policy_version: str
+    registry_version: str
+    registry_snapshot_hash: str
+    candidate_count: int = Field(ge=0)
+    eligible_count: int = Field(ge=0)
+    domain_supported_primary_count: int = Field(ge=0)
+    eligible_primary_count: int = Field(ge=0)
+    eligible_fallback_count: int = Field(ge=0)
+    non_fallback_eligible_count: int = Field(ge=0)
+    fallback_eligible_count: int = Field(ge=0)
+    selected_strategy_id: str | None
+    fallback_used: StrictBool
+    fallback_reason: VisualStrategyFallbackReason | None = None
+    fallback_role: str | None = None
+    unsupported_domain: StrictBool = False
+    missing_specialized_profile: StrictBool = False
+    candidates: tuple[VisualStrategyCandidateTrace, ...]
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_derived_counts(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        if "eligible_primary_count" not in data and "non_fallback_eligible_count" in data:
+            data["eligible_primary_count"] = data["non_fallback_eligible_count"]
+        if "eligible_fallback_count" not in data and "fallback_eligible_count" in data:
+            data["eligible_fallback_count"] = data["fallback_eligible_count"]
+        if "domain_supported_primary_count" not in data:
+            data["domain_supported_primary_count"] = data.get("eligible_primary_count", 0)
+        return data
+
+    @model_validator(mode="after")
+    def validate_trace_counts(self) -> "VisualStrategyResolutionTrace":
+        strategy_ids = [candidate.strategy_id for candidate in self.candidates]
+        if len(strategy_ids) != len(set(strategy_ids)):
+            raise ValueError("candidate strategy_id values must be unique")
+        if self.candidate_count != len(self.candidates):
+            raise ValueError("candidate_count must equal candidates length")
+        eligible_count = sum(1 for candidate in self.candidates if candidate.eligible)
+        if self.eligible_count != eligible_count:
+            raise ValueError("eligible_count must match candidates")
+        non_fallback_count = sum(1 for candidate in self.candidates if candidate.eligible and candidate.fallback_tier == 0)
+        fallback_count = sum(1 for candidate in self.candidates if candidate.eligible and candidate.fallback_tier > 0)
+        if self.eligible_primary_count != non_fallback_count:
+            raise ValueError("eligible_primary_count must match candidates")
+        if self.eligible_fallback_count != fallback_count:
+            raise ValueError("eligible_fallback_count must match candidates")
+        if self.non_fallback_eligible_count != non_fallback_count:
+            raise ValueError("non_fallback_eligible_count must match candidates")
+        if self.fallback_eligible_count != fallback_count:
+            raise ValueError("fallback_eligible_count must match candidates")
+        if self.selected_strategy_id is not None:
+            selected = [candidate for candidate in self.candidates if candidate.strategy_id == self.selected_strategy_id]
+            if not selected or not selected[0].eligible:
+                raise ValueError("selected_strategy_id must reference an eligible candidate")
+            if self.fallback_used != (selected[0].fallback_tier > 0):
+                raise ValueError("fallback_used must match selected candidate")
+            if self.fallback_role != selected[0].fallback_role:
+                raise ValueError("fallback_role must match selected candidate")
+        elif self.eligible_count != 0:
+            raise ValueError("missing selected_strategy_id requires zero eligible candidates")
+        self._validate_fallback_state()
+        return self
+
+    def _validate_fallback_state(self) -> None:
+        if self.unsupported_domain and self.missing_specialized_profile:
+            raise ValueError("unsupported_domain and missing_specialized_profile are mutually exclusive")
+        if not self.fallback_used:
+            if self.fallback_reason is not None:
+                raise ValueError("non-fallback trace must not include fallback_reason")
+            if self.fallback_role is not None:
+                raise ValueError("non-fallback trace must not include fallback_role")
+            if self.selected_strategy_id is not None and (self.unsupported_domain or self.missing_specialized_profile):
+                raise ValueError("non-fallback trace must not include fallback diagnostics")
+            return
+        if self.fallback_role is None:
+            raise ValueError("fallback trace requires fallback_role")
+        if self.fallback_reason == VisualStrategyFallbackReason.UNSUPPORTED_DOMAIN:
+            if not self.unsupported_domain or self.missing_specialized_profile:
+                raise ValueError("unsupported_domain fallback reason must match diagnostics")
+            return
+        if self.fallback_reason == VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE:
+            if not self.missing_specialized_profile or self.unsupported_domain:
+                raise ValueError("missing_specialized_profile fallback reason must match diagnostics")
+            return
+        raise ValueError("fallback trace requires a supported fallback_reason")
+
+
+class VisualStrategyDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    strategy_id: str
+    route_version: str
+    resolver_version: str
+    archetype: str
+    composition_template_id: str
+    mood_preset_id: str
+    copy_tone_profile_id: str
+    copy_presence_mode: str
+    subject_guidance: tuple[str, ...]
+    environment_guidance: tuple[str, ...]
+    negative_constraints: tuple[str, ...]
+    matched_rules: tuple[str, ...]
+    rejected_strategy_ids: tuple[str, ...]
+    eligible_not_selected_strategy_ids: tuple[str, ...]
+    evidence_refs: tuple[str, ...]
+    confidence: float = Field(ge=0.0, le=1.0)
+    provider_capabilities: frozenset[str]
+    score: VisualStrategyScore
+    fallback_used: StrictBool
+    fallback_tier: int
+    fallback_role: str | None
+    fallback_reason: VisualStrategyFallbackReason | None
+    unsupported_domain: StrictBool
+    missing_specialized_profile: StrictBool
+    registry_version: str
+    registry_snapshot_hash: str
+    confidence_policy_version: str
+    trace: VisualStrategyResolutionTrace
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_fallback_defaults(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        data.setdefault("fallback_role", None)
+        data.setdefault("unsupported_domain", False)
+        data.setdefault("missing_specialized_profile", False)
+        return data
+
+    @field_validator(
+        "strategy_id",
+        "route_version",
+        "resolver_version",
+        "archetype",
+        "composition_template_id",
+        "mood_preset_id",
+        "copy_tone_profile_id",
+        "fallback_role",
+        "copy_presence_mode",
+        "registry_version",
+        "registry_snapshot_hash",
+        "confidence_policy_version",
+        mode="before",
+    )
+    @classmethod
+    def normalize_required_text(cls, value: Any) -> str:
+        if value is None:
+            return None
+        return normalize_required_label(value)
+
+    @model_validator(mode="after")
+    def validate_decision_trace(self) -> "VisualStrategyDecision":
+        if self.strategy_id != self.trace.selected_strategy_id:
+            raise ValueError("decision strategy_id must match trace selected_strategy_id")
+        if self.registry_version != self.trace.registry_version:
+            raise ValueError("decision registry_version must match trace")
+        if self.registry_snapshot_hash != self.trace.registry_snapshot_hash:
+            raise ValueError("decision registry_snapshot_hash must match trace")
+        if self.resolver_version != self.trace.resolver_version:
+            raise ValueError("decision resolver_version must match trace")
+        if self.fallback_used != (self.fallback_tier > 0):
+            raise ValueError("fallback_used must match fallback_tier")
+        if self.fallback_used and self.fallback_reason is None:
+            raise ValueError("fallback decision requires fallback_reason")
+        if self.fallback_used and self.fallback_role is None:
+            raise ValueError("fallback decision requires fallback_role")
+        if not self.fallback_used and self.fallback_reason is not None:
+            raise ValueError("non-fallback decision must not include fallback_reason")
+        if not self.fallback_used and self.fallback_role is not None:
+            raise ValueError("non-fallback decision must not include fallback_role")
+        if self.unsupported_domain and self.missing_specialized_profile:
+            raise ValueError("unsupported_domain and missing_specialized_profile are mutually exclusive")
+        if not self.fallback_used and (self.unsupported_domain or self.missing_specialized_profile):
+            raise ValueError("non-fallback decision must not include fallback diagnostics")
+        if self.fallback_reason == VisualStrategyFallbackReason.UNSUPPORTED_DOMAIN and not self.unsupported_domain:
+            raise ValueError("unsupported_domain fallback reason must match diagnostics")
+        if self.fallback_reason == VisualStrategyFallbackReason.MISSING_SPECIALIZED_PROFILE and not self.missing_specialized_profile:
+            raise ValueError("missing_specialized_profile fallback reason must match diagnostics")
+        selected = next(candidate for candidate in self.trace.candidates if candidate.strategy_id == self.strategy_id)
+        if self.score != selected.score:
+            raise ValueError("decision score must match selected candidate score")
+        if self.fallback_tier != selected.fallback_tier:
+            raise ValueError("decision fallback_tier must match selected candidate")
+        if self.fallback_role != selected.fallback_role:
+            raise ValueError("decision fallback_role must match selected candidate")
+        if self.fallback_reason != self.trace.fallback_reason:
+            raise ValueError("decision fallback_reason must match trace")
+        if self.unsupported_domain != self.trace.unsupported_domain:
+            raise ValueError("decision unsupported_domain must match trace")
+        if self.missing_specialized_profile != self.trace.missing_specialized_profile:
+            raise ValueError("decision missing_specialized_profile must match trace")
+        rejected_ids = tuple(candidate.strategy_id for candidate in self.trace.candidates if not candidate.eligible)
+        if self.rejected_strategy_ids != rejected_ids:
+            raise ValueError("rejected_strategy_ids must match trace ineligible candidates")
+        eligible_not_selected = tuple(
+            candidate.strategy_id
+            for candidate in self.trace.candidates
+            if candidate.eligible and candidate.strategy_id != self.strategy_id
+        )
+        if self.eligible_not_selected_strategy_ids != eligible_not_selected:
+            raise ValueError("eligible_not_selected_strategy_ids must match trace")
+        return self
+
+
+class VisualStrategyDecisionConfidencePolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    version: str
+    fallback_confidence_multiplier: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def normalize_version(cls, value: Any) -> str:
+        return normalize_required_label(value)
