@@ -21,6 +21,17 @@ def _state(business_type: str, reference_template: dict | None = None) -> dict:
     }
 
 
+def _with_product_visual_context(state: dict, *, product_tags: list[str]) -> dict:
+    state = dict(state)
+    state["product_visual_context"] = {
+        "product_name": state["context"]["item_or_service"],
+        "product_tags": product_tags,
+        "evidence_refs": ["test:product_visual_context"],
+        "confidence": 0.95,
+    }
+    return state
+
+
 def test_image_prompt_uses_visual_template_and_safety_terms():
     spec = build_image_prompt_spec_with_critic(_state("cafe"))
 
@@ -35,10 +46,49 @@ def test_image_prompt_uses_visual_template_and_safety_terms():
 
 def test_image_prompt_template_selection_variants():
     assert build_image_prompt_spec_with_critic(_state("restaurant")).metadata["visual_template_id"] == "restaurant_generic_clean"
-    assert build_image_prompt_spec_with_critic(_state("restaurant_bbq")).metadata["visual_template_id"] == "restaurant_bbq_warm_grill"
+    assert build_image_prompt_spec_with_critic(_state("restaurant_bbq")).metadata["visual_template_id"] == "restaurant_generic_clean"
     assert build_image_prompt_spec_with_critic(_state("beauty")).metadata["visual_template_id"] == "generic_clean_ad_background"
     assert build_image_prompt_spec_with_critic(_state("beauty_skincare")).metadata["visual_template_id"] == "beauty_salon_clean_pastel"
     assert build_image_prompt_spec_with_critic(_state("unknown")).metadata["visual_template_id"] == "generic_clean_ad_background"
+
+
+def test_image_prompt_single_resolved_key_downgrades_legacy_bbq_without_visual_evidence():
+    spec = build_image_prompt_spec_with_critic(_state("restaurant_bbq"))
+    metadata = spec.metadata
+
+    assert metadata["resolved_visual_route_key"] == "restaurant"
+    assert metadata["visual_template_id"] == "restaurant_generic_clean"
+    assert metadata["business_visual_preset_id"] == "restaurant_generic_clean"
+    assert metadata["scene_plan"]["business_type"] == "restaurant"
+    assert metadata["legacy_routing_projection"]["route_key"] == "restaurant"
+    assert "korean_bbq_without_visual_evidence" in metadata["legacy_routing_projection"]["reason_codes"]
+
+
+def test_image_prompt_single_resolved_key_allows_bbq_with_grilled_meat_product_evidence():
+    state = _with_product_visual_context(
+        _state("restaurant_bbq"),
+        product_tags=["pork", "grilled_meat"],
+    )
+
+    spec = build_image_prompt_spec_with_critic(state)
+    metadata = spec.metadata
+
+    assert metadata["resolved_visual_route_key"] == "restaurant_bbq"
+    assert metadata["visual_template_id"] == "restaurant_bbq_warm_grill"
+    assert metadata["business_visual_preset_id"] == "restaurant_bbq_warm_grill"
+    assert metadata["scene_plan"]["business_type"] == "restaurant_bbq"
+    assert metadata["legacy_routing_projection"]["route_key"] == "restaurant_bbq"
+
+
+def test_image_prompt_single_resolved_key_preserves_unsupported_fallback_breadcrumb():
+    spec = build_image_prompt_spec_with_critic(_state("fitness"))
+    metadata = spec.metadata
+
+    assert metadata["resolved_visual_route_key"] == "generic"
+    assert metadata["visual_template_id"] == "generic_clean_ad_background"
+    assert metadata["business_visual_preset_id"] == "generic_clean_ad_background"
+    assert metadata["domain_routing_result"]["unsupported_domain_hint"] == "fitness"
+    assert metadata["legacy_routing_projection"]["fallback_reason"] == "unsupported_domain_in_mvp"
 
 
 def test_image_prompt_scene_planner_does_not_infer_bbq_from_raw_user_input():
