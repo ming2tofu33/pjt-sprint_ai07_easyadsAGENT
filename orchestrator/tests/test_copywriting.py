@@ -289,6 +289,34 @@ def test_actual_prompt_contains_context_strategy_and_wrong_domain_examples():
     assert "스마트폰" in prompt
 
 
+def test_a6_copy_prompt_does_not_describe_raw_bbq_value_as_grill_business():
+    context = MarketingContext(
+        business_type="restaurant_bbq",
+        item_or_service="감자튀김",
+        promotion_goal="brand_awareness",
+    )
+    strategy = build_message_strategy(context)
+    intent = resolve_copy_visual_intent(context)
+    prompt = build_copy_generation_v2_prompt(context=context, strategy=strategy, visual_intent=intent)
+
+    assert "숯불구이 음식점" not in prompt
+    assert "'business_category': 'local business'" in prompt
+
+
+def test_a6_copy_prompt_does_not_describe_ambiguous_beauty_as_skincare():
+    context = MarketingContext(
+        business_type="beauty_salon",
+        item_or_service="첫 방문 혜택",
+        promotion_goal="brand_awareness",
+    )
+    strategy = build_message_strategy(context)
+    intent = resolve_copy_visual_intent(context)
+    prompt = build_copy_generation_v2_prompt(context=context, strategy=strategy, visual_intent=intent)
+
+    assert "스킨케어" not in prompt
+    assert "'business_category': 'local business'" in prompt
+
+
 def test_router_knows_copy_generation_v2_actual(monkeypatch):
     monkeypatch.setenv("EASYADS_LLM_MODEL", "gpt-4.1-mini")
     selection = choose_model("copy_generation_v2_actual", "premium", latency_budget="standard")
