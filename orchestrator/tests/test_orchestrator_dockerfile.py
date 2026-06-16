@@ -14,7 +14,20 @@ def test_orchestrator_runtime_requirements_include_postgres_checkpointer():
     assert "psycopg-pool==" in requirements
 
 
+def test_orchestrator_runtime_requirements_include_import_time_vision_dependencies():
+    requirements = Path("requirements.txt").read_text(encoding="utf-8")
+
+    assert "numpy==" in requirements
+    assert "Pillow==" in requirements
+
+
 def test_orchestrator_dockerfile_verifies_postgres_checkpointer_import():
     dockerfile = Path("Dockerfile.orchestrator").read_text(encoding="utf-8")
 
     assert "import langgraph.checkpoint.postgres" in dockerfile
+
+
+def test_orchestrator_dockerfile_verifies_import_time_vision_dependencies():
+    dockerfile = Path("Dockerfile.orchestrator").read_text(encoding="utf-8")
+
+    assert "import numpy" in dockerfile
