@@ -44,7 +44,6 @@ from orchestrator.app.llm.domain_routing import (
     SUPPORTED_DOMAINS,
     normalize_business_type,
     project_to_legacy_visual_route,
-    to_canonical_domain,
 )
 from orchestrator.app.llm.scene_planner import build_scene_plan
 from orchestrator.app.llm.nodes.brief_interpreter import (
@@ -489,16 +488,50 @@ def test_unsupported_domains_currently_resolve_to_generic_preset(business_type):
     assert select_visual_preset(business_type)["business_type"] == "generic"
 
 
-# --- P2: preset and template must agree on the domain family -----------------
+# --- A-7: resolved projection controls visual consumers ---------------------
 
-@pytest.mark.parametrize("business_type", ["cafe", "restaurant_bbq", "restaurant", "beauty_salon"])
-def test_preset_and_template_share_domain_family(business_type):
-    preset = select_visual_preset(business_type)
-    template = select_visual_template(business_type, "instagram_feed", None)
-    # Family judged in one place via the SSOT classifier.
-    preset_family = to_canonical_domain(preset["business_type"])
-    template_family = to_canonical_domain(template.business_types[0])
-    assert preset_family == template_family, (
-        f"{business_type!r}: preset -> {preset['business_type']!r} ({preset_family}) but "
-        f"template -> {template.template_id!r} ({template_family}); different domain families."
+@pytest.mark.parametrize(
+    ("raw_business_type", "product_tags", "scene_tags", "expected_route_key"),
+    [
+        ("cafe", set(), set(), LegacyVisualRouteKey.CAFE),
+        ("restaurant", set(), set(), LegacyVisualRouteKey.RESTAURANT),
+        ("restaurant_bbq", set(), set(), LegacyVisualRouteKey.RESTAURANT),
+        ("restaurant_bbq", {"grilled_meat"}, set(), LegacyVisualRouteKey.RESTAURANT_BBQ),
+        ("restaurant_bbq", set(), {"bbq_grill"}, LegacyVisualRouteKey.RESTAURANT_BBQ),
+        ("beauty_salon", set(), set(), LegacyVisualRouteKey.GENERIC),
+        ("beauty_skincare", set(), set(), LegacyVisualRouteKey.BEAUTY_SKINCARE),
+        ("beauty_hair", set(), set(), LegacyVisualRouteKey.BEAUTY_HAIR),
+        ("beauty_nail", set(), set(), LegacyVisualRouteKey.BEAUTY_NAIL),
+        ("beauty_spa", set(), set(), LegacyVisualRouteKey.BEAUTY_SPA),
+        ("retail", set(), set(), LegacyVisualRouteKey.GENERIC),
+        ("fitness", set(), set(), LegacyVisualRouteKey.GENERIC),
+        ("education", set(), set(), LegacyVisualRouteKey.GENERIC),
+        ("service", set(), set(), LegacyVisualRouteKey.GENERIC),
+    ],
+)
+def test_a7_projection_route_key_controls_preset_template_and_sceneplan(
+    raw_business_type,
+    product_tags,
+    scene_tags,
+    expected_route_key,
+):
+    domain_result = normalize_business_type(raw_business_type)
+    projection = project_to_legacy_visual_route(
+        domain_result,
+        product_tags=product_tags,
+        explicit_scene_tags=scene_tags,
     )
+    route_key = projection.route_key.value
+    preset = select_visual_preset(route_key)
+    template = select_visual_template(route_key, "instagram_feed", "premium", None)
+    scene_plan = build_scene_plan(
+        user_input="",
+        business_type=route_key,
+        ad_format="instagram_feed",
+        metadata={"business_type": route_key, "item_or_service": "대표 상품"},
+    )
+
+    assert projection.route_key == expected_route_key
+    assert preset["business_type"] == route_key
+    assert route_key in template.business_types
+    assert scene_plan.business_type == route_key
