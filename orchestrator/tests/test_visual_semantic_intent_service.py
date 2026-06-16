@@ -142,7 +142,7 @@ def _intent(required=None, prohibited=None, mood="novel_semantic_token_572") -> 
 def _attributions(intent: VisualSemanticIntent) -> list[SemanticIntentAttribution]:
     attrs = [
         SemanticIntentAttribution(field_name="subject_priority", source_paths=["$.product.product_name"], is_derived=True),
-        SemanticIntentAttribution(field_name="environment_priority", source_paths=["$.business"], is_derived=True),
+        SemanticIntentAttribution(field_name="environment_priority", source_paths=["$.business.confidence"], is_derived=True),
         SemanticIntentAttribution(field_name="text_priority", source_paths=["$.ad_format.ad_format"], is_derived=True),
         SemanticIntentAttribution(field_name="copy_presence_mode", item_value=intent.copy_presence_mode, source_paths=["$.ad_format.information_density"], is_derived=True),
         SemanticIntentAttribution(field_name="confidence", source_paths=["$.product_visual.confidence"], is_derived=True),
@@ -174,8 +174,10 @@ def test_generate_visual_semantic_intent_uses_projection_and_fake_generator():
     assert result.generator_id == "fake-generator"
     call = generator.calls[0]
     assert call["response_model"] is VisualSemanticIntentDraft
-    assert "metadata" not in call["input_payload"]["ad_format"]
-    assert "business_type" not in call["input_payload"]["domain"]
+    assert "metadata" not in call["input_payload"]["context"]["ad_format"]
+    assert "business_type" not in call["input_payload"]["context"]["domain"]
+    assert "product_fact_alpha" in call["input_payload"]["grounding_contract"]["required_fact_candidates"]
+    assert "prohibited_delta" in call["input_payload"]["grounding_contract"]["prohibited_element_candidates"]
     assert "model_name" not in call["system_instruction"]
     assert "product_fact_alpha" not in call["system_instruction"]
 
@@ -188,10 +190,14 @@ def test_projection_and_grounding_snapshot_are_dynamic():
     assert projection["product_visual"]["prohibited_visual_inferences"] == ["prohibited_delta"]
     assert "business_tag_epsilon" not in snapshot.required_fact_candidates
     assert "business_tag_epsilon" not in snapshot.prohibited_element_candidates
+    assert "permissible_zeta" not in snapshot.required_fact_candidates
+    assert "permissible_zeta" in snapshot.permissible_semantic_candidates
     assert "product_fact_alpha" in snapshot.required_fact_candidates
     assert "prohibited_delta" in snapshot.prohibited_element_candidates
+    assert "domain:e1" in snapshot.available_evidence_refs
     assert "product_visual:e1" in snapshot.available_evidence_refs
     assert "$.product_visual.product_tags[0]" in snapshot.available_source_paths
+    assert "$.product_visual" not in snapshot.available_source_paths
 
 
 def test_ungrounded_required_or_prohibited_items_are_rejected():
@@ -199,6 +205,8 @@ def test_ungrounded_required_or_prohibited_items_are_rejected():
         _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(_draft(_intent(required=["unknown_required"])))))
     with pytest.raises(VisualSemanticIntentGroundingError):
         _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(_draft(_intent(prohibited=["unknown_prohibited"])))))
+    with pytest.raises(VisualSemanticIntentGroundingError):
+        _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(_draft(_intent(required=["permissible_zeta"])))))
 
 
 def test_attribution_validation_rejects_invented_refs_paths_and_missing_items():
@@ -222,6 +230,39 @@ def test_attribution_validation_rejects_invented_refs_paths_and_missing_items():
         _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(missing)))
 
 
+def test_strong_fact_attribution_must_match_leaf_source_value_and_not_be_derived():
+    intent = _intent()
+    unrelated = _attributions(intent)
+    unrelated[-2] = SemanticIntentAttribution(
+        field_name="required_visual_facts",
+        item_value="product_fact_alpha",
+        source_paths=["$.campaign.campaign_intent"],
+        is_derived=False,
+    )
+    with pytest.raises(VisualSemanticIntentValidationError, match="source_path must match"):
+        _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(VisualSemanticIntentDraft(intent=intent, attributions=unrelated))))
+
+    derived = _attributions(intent)
+    derived[-2] = SemanticIntentAttribution(
+        field_name="required_visual_facts",
+        item_value="product_fact_alpha",
+        source_paths=["$.product_visual.product_tags[0]"],
+        is_derived=True,
+    )
+    with pytest.raises(VisualSemanticIntentValidationError, match="must not be derived"):
+        _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(VisualSemanticIntentDraft(intent=intent, attributions=derived))))
+
+    container = _attributions(intent)
+    container[-1] = SemanticIntentAttribution(
+        field_name="prohibited_visual_elements",
+        item_value="prohibited_delta",
+        source_paths=["$.product_visual"],
+        is_derived=False,
+    )
+    with pytest.raises(VisualSemanticIntentValidationError, match="source_path"):
+        _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(VisualSemanticIntentDraft(intent=intent, attributions=container))))
+
+
 def test_attribution_schema_rejects_unknown_field_and_empty_grounding():
     with pytest.raises(ValueError):
         SemanticIntentAttribution(field_name="desired_moods", item_value="x", is_derived=True)
@@ -242,6 +283,24 @@ def test_reserved_identifier_policy_is_injected_not_hardcoded():
 
     result = _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(_draft(_intent(mood="novel_semantic_token_572"))), validation_policy=policy))
     assert result.intent.desired_moods == ["novel_semantic_token_572"]
+
+
+def test_reserved_identifier_is_blocked_in_ambiguity_and_attribution_item_value():
+    policy = VisualSemanticIntentValidationPolicy(reserved_internal_identifiers=frozenset({"internal_ref_alpha_9281"}))
+    with pytest.raises(VisualSemanticIntentIdentifierLeakError):
+        _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(VisualSemanticIntentDraft(intent=_intent(), attributions=_attributions(_intent()), ambiguity_flags=["internal_ref_alpha_9281"])), validation_policy=policy))
+
+    attrs = _attributions(_intent())
+    attrs[0] = SemanticIntentAttribution(field_name="subject_priority", item_value="internal_ref_alpha_9281", source_paths=["$.product.product_name"], is_derived=True)
+    with pytest.raises(VisualSemanticIntentIdentifierLeakError):
+        _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(VisualSemanticIntentDraft(intent=_intent(), attributions=attrs)), validation_policy=policy))
+
+
+def test_upstream_ambiguity_flags_are_preserved_and_merged():
+    draft = VisualSemanticIntentDraft(intent=_intent(), attributions=_attributions(_intent()), ambiguity_flags=["ambiguous_alpha", "new_flag"])
+    result = _run(generate_visual_semantic_intent(_context(), generator=FakeStructuredSemanticIntentGenerator(draft)))
+
+    assert result.ambiguity_flags == ["ambiguous_alpha", "new_flag"]
 
 
 def test_product_required_prohibited_facts_are_not_changed_by_business_campaign_format_or_reference():

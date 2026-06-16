@@ -51,9 +51,11 @@ class VisualSemanticIntentValidationPolicy:
 @dataclass(frozen=True)
 class SemanticGroundingSnapshot:
     required_fact_candidates: frozenset[str]
+    permissible_semantic_candidates: frozenset[str]
     prohibited_element_candidates: frozenset[str]
     available_evidence_refs: frozenset[str]
     available_source_paths: frozenset[str]
+    source_path_values: Mapping[str, Any]
 
 
 SYSTEM_INSTRUCTION = (
@@ -62,7 +64,9 @@ SYSTEM_INSTRUCTION = (
     "must not be overridden by business environment. Campaign and ad format may "
     "inform priorities, composition, and copy presence. Omit uncertain items or "
     "record ambiguity. Do not generate preset, template, strategy, provider, or "
-    "engine identifiers. Attach source paths or evidence refs to semantic items."
+    "engine identifiers. Attach source paths or evidence refs to semantic items. "
+    "For required_visual_facts and prohibited_visual_elements, reuse exact tokens "
+    "from grounding_contract without translation, synonym replacement, or spacing changes."
 )
 
 
@@ -156,14 +160,19 @@ def build_semantic_grounding_snapshot(context: CreativeRoutingContext, projectio
     required = {
         context.product.product_name,
         *context.product.category_path,
+        *[item.normalized_value or item.value for item in context.product.verified_facts],
+        *[item.normalized_value or item.value for item in context.product.visual_observations],
         *context.product_visual.product_tags,
         *context.product_visual.visible_attributes,
         *context.product_visual.explicit_preparation_methods,
-        *context.product_visual.permissible_visual_inferences,
         *[item.normalized_value or item.value for item in context.visual_observations],
+    }
+    permissible = set(context.product_visual.permissible_visual_inferences) | {
+        item.normalized_value or item.value for item in context.product.permissible_inferences
     }
     prohibited = set(context.product_visual.prohibited_visual_inferences)
     evidence_refs = {
+        *context.domain.evidence_refs,
         *context.business.evidence_refs,
         *context.product.product_name_evidence_ids,
         *context.product_visual.evidence_refs,
@@ -173,11 +182,14 @@ def build_semantic_grounding_snapshot(context: CreativeRoutingContext, projectio
         *[item.evidence_id for item in context.product.permissible_inferences],
         *[item.evidence_id for item in context.visual_observations],
     }
+    source_path_values = _json_leaf_values(projection)
     return SemanticGroundingSnapshot(
         required_fact_candidates=frozenset(_nonempty_keys(required)),
+        permissible_semantic_candidates=frozenset(_nonempty_keys(permissible)),
         prohibited_element_candidates=frozenset(_nonempty_keys(prohibited)),
         available_evidence_refs=frozenset(ref for ref in evidence_refs if ref),
-        available_source_paths=frozenset(_json_paths(projection)),
+        available_source_paths=frozenset(source_path_values),
+        source_path_values=source_path_values,
     )
 
 
@@ -192,18 +204,29 @@ async def generate_visual_semantic_intent(
     policy = validation_policy or VisualSemanticIntentValidationPolicy()
     projection = build_visual_semantic_input_projection(context)
     snapshot = build_semantic_grounding_snapshot(context, projection)
+    generator_payload = {
+        "context": projection,
+        "grounding_contract": {
+            "required_fact_candidates": sorted(snapshot.required_fact_candidates),
+            "permissible_semantic_candidates": sorted(snapshot.permissible_semantic_candidates),
+            "prohibited_element_candidates": sorted(snapshot.prohibited_element_candidates),
+            "available_evidence_refs": sorted(snapshot.available_evidence_refs),
+            "available_source_paths": sorted(snapshot.available_source_paths),
+        },
+    }
     response = await generator.generate_structured(
         system_instruction=SYSTEM_INSTRUCTION,
-        input_payload=projection,
+        input_payload=generator_payload,
         response_model=VisualSemanticIntentDraft,
     )
     draft = response if isinstance(response, VisualSemanticIntentDraft) else VisualSemanticIntentDraft.model_validate(response)
     _validate_draft(draft, snapshot, policy)
     projection_hash = hashlib.sha256(json.dumps(projection, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    merged_ambiguity_flags = _stable_string_merge([*context.ambiguity_flags, *draft.ambiguity_flags])
     return VisualSemanticIntentGenerationResult(
         intent=draft.intent,
         attributions=draft.attributions,
-        ambiguity_flags=draft.ambiguity_flags,
+        ambiguity_flags=merged_ambiguity_flags,
         input_projection_hash=projection_hash,
         generator_id=getattr(generator, "generator_id", None),
     )
@@ -216,7 +239,7 @@ def _validate_draft(
 ) -> None:
     _validate_grounded_items(draft.intent.required_visual_facts, snapshot.required_fact_candidates, "required_visual_facts")
     _validate_grounded_items(draft.intent.prohibited_visual_elements, snapshot.prohibited_element_candidates, "prohibited_visual_elements")
-    _validate_reserved_identifiers(draft.intent, policy)
+    _validate_reserved_identifiers(draft, policy)
     _validate_attributions(draft.intent, draft.attributions, snapshot, policy)
 
 
@@ -226,11 +249,16 @@ def _validate_grounded_items(values: list[str], candidates: frozenset[str], fiel
         raise VisualSemanticIntentGroundingError(f"ungrounded {field_name}: {missing[0]}")
 
 
-def _validate_reserved_identifiers(intent: VisualSemanticIntent, policy: VisualSemanticIntentValidationPolicy) -> None:
+def _validate_reserved_identifiers(draft: VisualSemanticIntentDraft, policy: VisualSemanticIntentValidationPolicy) -> None:
     reserved = {semantic_token_key(item) for item in policy.reserved_internal_identifiers}
     if not reserved:
         return
-    for value in _semantic_values(intent):
+    values = [
+        *_semantic_values(draft.intent),
+        *draft.ambiguity_flags,
+        *[item.item_value for item in draft.attributions if item.item_value],
+    ]
+    for value in values:
         if semantic_token_key(value) in reserved:
             raise VisualSemanticIntentIdentifierLeakError(f"reserved internal identifier leaked: {value}")
 
@@ -248,6 +276,8 @@ def _validate_attributions(
             raise VisualSemanticIntentValidationError("attribution contains unavailable evidence_ref")
         if not set(attribution.source_paths).issubset(snapshot.available_source_paths):
             raise VisualSemanticIntentValidationError("attribution contains unavailable source_path")
+        if attribution.field_name in {"required_visual_facts", "prohibited_visual_elements"}:
+            _validate_strong_fact_attribution(attribution, snapshot)
     if not policy.require_attributions:
         return
     indexed = {(item.field_name, item.item_value) for item in attributions}
@@ -268,16 +298,49 @@ def _semantic_values(intent: VisualSemanticIntent) -> list[str]:
     return values
 
 
+def _validate_strong_fact_attribution(
+    attribution: SemanticIntentAttribution,
+    snapshot: SemanticGroundingSnapshot,
+) -> None:
+    if not attribution.item_value:
+        raise VisualSemanticIntentValidationError("required/prohibited attribution requires item_value")
+    if attribution.is_derived:
+        raise VisualSemanticIntentValidationError("required/prohibited attribution must not be derived")
+    item_key = semantic_token_key(attribution.item_value)
+    for path in attribution.source_paths:
+        value = snapshot.source_path_values.get(path)
+        if isinstance(value, str) and semantic_token_key(value) == item_key:
+            return
+    raise VisualSemanticIntentValidationError("required/prohibited attribution source_path must match item_value")
+
+
 def _nonempty_keys(values: set[str | None]) -> set[str]:
     return {semantic_token_key(value) for value in values if isinstance(value, str) and value.strip()}
 
 
-def _json_paths(value: Any, prefix: str = "$") -> list[str]:
-    paths = [prefix]
+def _json_leaf_values(value: Any, prefix: str = "$") -> dict[str, Any]:
     if isinstance(value, dict):
+        output: dict[str, Any] = {}
         for key, child in value.items():
-            paths.extend(_json_paths(child, f"{prefix}.{key}"))
-    elif isinstance(value, list):
+            output.update(_json_leaf_values(child, f"{prefix}.{key}"))
+        return output
+    if isinstance(value, list):
+        output: dict[str, Any] = {}
         for index, child in enumerate(value):
-            paths.extend(_json_paths(child, f"{prefix}[{index}]"))
-    return paths
+            output.update(_json_leaf_values(child, f"{prefix}[{index}]"))
+        return output
+    return {prefix: value}
+
+
+def _stable_string_merge(values: list[str]) -> list[str]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        item = value.strip()
+        if not item or item in seen:
+            continue
+        output.append(item)
+        seen.add(item)
+    return output
