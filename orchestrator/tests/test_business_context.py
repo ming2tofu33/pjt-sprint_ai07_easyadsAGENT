@@ -9,6 +9,8 @@ from orchestrator.app.llm.domain_routing import (
     DomainFallbackReason,
     DomainRoutingResult,
     DomainSupportStatus,
+    RoutingEvidenceSource,
+    RoutingTagEvidence,
 )
 from orchestrator.app.schemas.business_context import BusinessEnvironmentContext
 
@@ -210,6 +212,33 @@ def test_builder_preserves_a1_canonical_domain(domain: CanonicalBusinessDomain):
     assert context.venue_type is None
     assert context.business_tags == []
     assert context.environment_tags == []
+
+
+def test_builder_does_not_auto_copy_domain_result_business_tags():
+    domain_result = DomainRoutingResult(
+        raw_business_type="restaurant_bbq",
+        canonical_domain=CanonicalBusinessDomain.FOOD_AND_BEVERAGE,
+        support_status=DomainSupportStatus.SPECIALIZED,
+        business_tags=[
+            RoutingTagEvidence(
+                tag="restaurant",
+                source=RoutingEvidenceSource.LEGACY_ALIAS,
+                confidence=1.0,
+            ),
+            RoutingTagEvidence(
+                tag="korean_bbq",
+                source=RoutingEvidenceSource.LEGACY_ALIAS,
+                confidence=1.0,
+            ),
+        ],
+        confidence=0.95,
+    )
+
+    context = build_business_environment_context(domain_result)
+
+    assert context.broad_domain == CanonicalBusinessDomain.FOOD_AND_BEVERAGE
+    assert context.business_tags == []
+    assert context.evidence_refs == []
 
 
 def test_builder_uses_explicit_confidence_or_domain_result_confidence():

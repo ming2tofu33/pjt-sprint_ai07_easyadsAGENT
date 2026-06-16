@@ -1,3 +1,5 @@
+import orchestrator.app.graph.nodes  # noqa: F401
+
 from orchestrator.app.llm.nodes.image_prompt_planner import build_image_prompt_spec_with_critic
 from orchestrator.app.schemas.text_layout import NormalizedBBox, TextLayoutSpec
 
@@ -34,8 +36,19 @@ def test_image_prompt_uses_visual_template_and_safety_terms():
 def test_image_prompt_template_selection_variants():
     assert build_image_prompt_spec_with_critic(_state("restaurant")).metadata["visual_template_id"] == "restaurant_generic_clean"
     assert build_image_prompt_spec_with_critic(_state("restaurant_bbq")).metadata["visual_template_id"] == "restaurant_bbq_warm_grill"
-    assert build_image_prompt_spec_with_critic(_state("beauty")).metadata["visual_template_id"] == "beauty_salon_clean_pastel"
+    assert build_image_prompt_spec_with_critic(_state("beauty")).metadata["visual_template_id"] == "generic_clean_ad_background"
+    assert build_image_prompt_spec_with_critic(_state("beauty_skincare")).metadata["visual_template_id"] == "beauty_salon_clean_pastel"
     assert build_image_prompt_spec_with_critic(_state("unknown")).metadata["visual_template_id"] == "generic_clean_ad_background"
+
+
+def test_image_prompt_scene_planner_does_not_infer_bbq_from_raw_user_input():
+    state = _state("restaurant")
+    state["user_input"] = "숯불 삼겹살 맛집 포스터 만들어줘"
+
+    spec = build_image_prompt_spec_with_critic(state)
+
+    assert spec.metadata["business_visual_preset_id"] == "restaurant_generic_clean"
+    assert spec.metadata["scene_plan"]["business_type"] == "restaurant"
 
 
 def test_image_prompt_keeps_reference_template_hint():

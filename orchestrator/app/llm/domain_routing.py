@@ -142,6 +142,8 @@ class DomainRoutingResult(BaseModel):
             if "skincare" in tags:
                 return "beauty_skincare"
             return None
+        if self.canonical_domain == CanonicalBusinessDomain.RETAIL:
+            return "retail"
         if self.canonical_domain == CanonicalBusinessDomain.OTHER:
             return self.unsupported_domain_hint
         return None
@@ -244,6 +246,9 @@ _DOMAIN_ALIASES: dict[str, CanonicalBusinessDomain] = {
     "fitness": CanonicalBusinessDomain.OTHER,
     "education": CanonicalBusinessDomain.OTHER,
     "service": CanonicalBusinessDomain.OTHER,
+    "professional_service": CanonicalBusinessDomain.OTHER,
+    "local_service": CanonicalBusinessDomain.OTHER,
+    "home_service": CanonicalBusinessDomain.OTHER,
     "other": CanonicalBusinessDomain.OTHER,
 }
 
@@ -277,6 +282,9 @@ _BUSINESS_TAGS_BY_ALIAS: dict[str, tuple[str, ...]] = {
     "fitness": ("fitness",),
     "education": ("education",),
     "service": ("service",),
+    "professional_service": ("professional_service",),
+    "local_service": ("local_service",),
+    "home_service": ("home_service",),
     "other": ("other",),
 }
 
@@ -285,6 +293,9 @@ _UNSUPPORTED_DOMAIN_HINTS: dict[str, str] = {
     "fitness": "fitness",
     "education": "education",
     "service": "service",
+    "professional_service": "professional_service",
+    "local_service": "local_service",
+    "home_service": "home_service",
     "other": "other",
 }
 _SCENE_EVIDENCE_TAGS = frozenset({"bbq_grill", "charcoal_grill"})

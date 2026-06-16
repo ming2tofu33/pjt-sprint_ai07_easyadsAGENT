@@ -83,14 +83,11 @@ def test_image_prompt_v3_integration_flow():
     assert t2i_meta.get("render_text_in_image") is False
 
 
-def test_image_prompt_v3_beauty_integration():
-    template_id = "seed_cafe_strawberry_feed_001"
-    
-    # Invoke marketing graph with beauty business_type and hair salons terms in user_input
+def test_image_prompt_v3_ambiguous_beauty_integration_does_not_infer_hair():
+    # A-4: ambiguous beauty plus hair terms must not infer a specialized visual route.
     result = build_marketing_graph().invoke(
         _base_request(
             "v3-beauty-integration",
-            selected_reference_template_id=template_id,
             user_input="청담동 미용실 헤어 컷트 펌 할인 이벤트",
             context={
                 "business_type": "beauty",
@@ -108,9 +105,9 @@ def test_image_prompt_v3_beauty_integration():
     spec_meta = spec.get("metadata") or {}
     
     assert spec_meta.get("image_prompt_version") == "v3"
-    assert spec_meta.get("beauty_subtype") == "beauty_hair"
-    assert spec_meta.get("business_visual_preset_id") == "beauty_hair_salon_clean"
+    assert spec_meta.get("beauty_subtype") is None
+    assert spec_meta.get("business_visual_preset_id") == "generic_clean_ad_background"
     
     t2i_req = result.get("t2i_request") or {}
     t2i_meta = t2i_req.get("metadata") or {}
-    assert t2i_meta.get("beauty_subtype") == "beauty_hair"
+    assert t2i_meta.get("beauty_subtype") is None
