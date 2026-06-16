@@ -9,7 +9,6 @@ BusinessType = Literal[
     "cafe",
     "restaurant_bbq",
     "restaurant",
-    "beauty_salon",
     "beauty_skincare",
     "beauty_hair",
     "beauty_nail",

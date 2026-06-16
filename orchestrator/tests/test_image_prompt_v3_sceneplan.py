@@ -96,6 +96,17 @@ def test_scene_planner_fails_closed_for_ambiguous_or_raw_values():
     ) == "generic"
 
 
+def test_scene_planner_direct_beauty_salon_builds_generic_scene_plan():
+    scene_plan = build_scene_plan(
+        user_input="강남 뷰티샵 헤어 스타일링",
+        business_type="beauty_salon",
+        ad_format="instagram_feed",
+    )
+
+    assert scene_plan.business_type == "generic"
+    assert scene_plan.notes == ["Selected preset: generic_clean_ad_background"]
+
+
 def test_scene_planner_does_not_route_from_reference_business_type():
     assert resolve_business_type(
         user_input="",

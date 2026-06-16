@@ -211,6 +211,10 @@ def test_all_preset_business_types_are_valid_sceneplan_literals():
         )
 
 
+def test_a7_sceneplan_business_type_excludes_ambiguous_beauty_salon():
+    assert "beauty_salon" not in SCENEPLAN_BUSINESS_TYPES
+
+
 def test_preset_dict_keys_match_their_preset_id():
     for preset_id, preset in VISUAL_PRESETS.items():
         assert preset["preset_id"] == preset_id
