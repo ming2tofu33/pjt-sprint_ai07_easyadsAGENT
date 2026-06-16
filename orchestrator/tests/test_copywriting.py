@@ -1349,7 +1349,9 @@ def test_copy_tone_profile_returns_fallback_for_unknown_business_type():
 def test_copy_tone_profile_adds_persona_hint_when_known():
     profile = get_copy_tone_profile("restaurant", "office_worker")
 
-    assert profile["voice"] == "warm_appetizing"
+    assert profile["voice"] == "friendly_clear"
+    assert profile["business_type"] == "generic"
+    assert profile["raw_business_type"] == "restaurant"
     assert profile["persona_hint"]["energy"] == "efficient"
 
 

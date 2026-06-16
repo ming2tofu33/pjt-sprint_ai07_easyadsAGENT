@@ -243,7 +243,10 @@ _DOMAIN_ALIASES: dict[str, CanonicalBusinessDomain] = {
     "retail": CanonicalBusinessDomain.RETAIL,
     "store": CanonicalBusinessDomain.RETAIL,
     "ecommerce": CanonicalBusinessDomain.RETAIL,
+    "flower_shop": CanonicalBusinessDomain.RETAIL,
+    "bar": CanonicalBusinessDomain.OTHER,
     "fitness": CanonicalBusinessDomain.OTHER,
+    "academy": CanonicalBusinessDomain.OTHER,
     "education": CanonicalBusinessDomain.OTHER,
     "service": CanonicalBusinessDomain.OTHER,
     "professional_service": CanonicalBusinessDomain.OTHER,
@@ -279,7 +282,10 @@ _BUSINESS_TAGS_BY_ALIAS: dict[str, tuple[str, ...]] = {
     "retail": ("retail",),
     "store": ("retail", "physical_store"),
     "ecommerce": ("retail", "ecommerce"),
+    "flower_shop": ("retail", "flower_shop"),
+    "bar": ("bar",),
     "fitness": ("fitness",),
+    "academy": ("education", "academy"),
     "education": ("education",),
     "service": ("service",),
     "professional_service": ("professional_service",),
@@ -290,7 +296,9 @@ _BUSINESS_TAGS_BY_ALIAS: dict[str, tuple[str, ...]] = {
 
 _AMBIGUOUS_BEAUTY_ALIASES = frozenset({"beauty", "beauty_salon", "salon"})
 _UNSUPPORTED_DOMAIN_HINTS: dict[str, str] = {
+    "bar": "bar",
     "fitness": "fitness",
+    "academy": "education",
     "education": "education",
     "service": "service",
     "professional_service": "professional_service",

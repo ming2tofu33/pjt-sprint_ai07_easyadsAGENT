@@ -44,12 +44,13 @@ from orchestrator.app.llm.domain_routing import (
     SUPPORTED_DOMAINS,
     normalize_business_type,
     project_to_legacy_visual_route,
-    to_canonical_domain,
 )
+from orchestrator.app.llm.scene_planner import build_scene_plan
 from orchestrator.app.llm.nodes.brief_interpreter import (
     BUSINESS_TYPE_MAP,
     build_context_updates_from_brief_interpreter,
 )
+from orchestrator.app.llm.option_registry import OPTION_QUESTION_REGISTRY
 from orchestrator.app.llm.schemas.image_prompt_v3 import BusinessType as ScenePlanBusinessType
 from orchestrator.app.llm.visual_presets import (
     PRESET_ID_BY_BUSINESS_TYPE,
@@ -209,6 +210,10 @@ def test_all_preset_business_types_are_valid_sceneplan_literals():
         )
 
 
+def test_a7_sceneplan_business_type_excludes_ambiguous_beauty_salon():
+    assert "beauty_salon" not in SCENEPLAN_BUSINESS_TYPES
+
+
 def test_preset_dict_keys_match_their_preset_id():
     for preset_id, preset in VISUAL_PRESETS.items():
         assert preset["preset_id"] == preset_id
@@ -217,6 +222,30 @@ def test_preset_dict_keys_match_their_preset_id():
 def test_preset_id_mapping_points_at_real_presets():
     for business_type, preset_id in PRESET_ID_BY_BUSINESS_TYPE.items():
         assert preset_id in VISUAL_PRESETS, f"{business_type!r} -> missing preset {preset_id!r}"
+
+
+def test_a7_every_legacy_visual_route_key_has_preset_template_and_sceneplan_inventory():
+    for route_key in LegacyVisualRouteKey:
+        key = route_key.value
+        preset = select_visual_preset(key)
+        template = select_visual_template(key, "instagram_feed", "premium", None)
+        scene_plan = build_scene_plan(
+            user_input="",
+            business_type=key,
+            ad_format="instagram_feed",
+            metadata={
+                "business_type": key,
+                "item_or_service": "대표 상품",
+                "target_persona": None,
+                "promotion_goal": "brand_awareness",
+            },
+        )
+
+        assert preset["business_type"] == key
+        assert preset["preset_id"] in VISUAL_PRESETS
+        assert key in template.business_types
+        assert key in SCENEPLAN_BUSINESS_TYPES
+        assert scene_plan.business_type == key
 
 
 def test_canonical_business_types_round_trip_through_selector():
@@ -330,6 +359,67 @@ def test_a6_exact_beauty_subtype_copy_inputs_still_use_specialized_policy(
 
 # --- P4: BriefBusinessType routing table (no silent evaporation) -------------
 
+def test_a7_business_type_option_registry_values_have_explicit_routing_contract():
+    question = OPTION_QUESTION_REGISTRY["business_type"]
+    actual = {}
+
+    for option in question.options:
+        result = normalize_business_type(option.value)
+        actual[option.value] = (
+            result.canonical_domain.value,
+            result.support_status.value,
+            result.unsupported_domain_hint,
+            result.fallback_reason.value if result.fallback_reason else None,
+            result.business_type,
+            sorted(tag.tag for tag in result.business_tags),
+            result.matched_aliases,
+        )
+
+    assert actual == {
+        "restaurant": ("food_and_beverage", "specialized", None, None, "restaurant", ["restaurant"], ["restaurant"]),
+        "cafe": ("food_and_beverage", "specialized", None, None, "cafe", ["cafe"], ["cafe"]),
+        "beauty_salon": (
+            "beauty",
+            "needs_evidence",
+            None,
+            "ambiguous_beauty_subdomain",
+            None,
+            ["beauty_service"],
+            ["beauty_salon"],
+        ),
+        "bar": ("other", "generic_fallback", "bar", "unsupported_domain_in_mvp", "bar", ["bar"], ["bar"]),
+        "fitness": (
+            "other",
+            "generic_fallback",
+            "fitness",
+            "unsupported_domain_in_mvp",
+            "fitness",
+            ["fitness"],
+            ["fitness"],
+        ),
+        "academy": (
+            "other",
+            "generic_fallback",
+            "education",
+            "unsupported_domain_in_mvp",
+            "education",
+            ["academy", "education"],
+            ["academy"],
+        ),
+        "flower_shop": (
+            "retail",
+            "specialized",
+            None,
+            None,
+            "retail",
+            ["flower_shop", "retail"],
+            ["flower_shop"],
+        ),
+        "store": ("retail", "specialized", None, None, "retail", ["physical_store", "retail"], ["store"]),
+        "custom": ("other", "unresolved", None, "unrecognized_business_type", None, [], []),
+    }
+
+
 def test_every_brief_business_type_is_routed_or_observably_fellback():
     # The domain-routing SSOT is the oracle; brief_interpreter must agree with it,
     # and every unsupported/unknown domain must leave an observable breadcrumb.
@@ -398,16 +488,50 @@ def test_unsupported_domains_currently_resolve_to_generic_preset(business_type):
     assert select_visual_preset(business_type)["business_type"] == "generic"
 
 
-# --- P2: preset and template must agree on the domain family -----------------
+# --- A-7: resolved projection controls visual consumers ---------------------
 
-@pytest.mark.parametrize("business_type", ["cafe", "restaurant_bbq", "restaurant", "beauty_salon"])
-def test_preset_and_template_share_domain_family(business_type):
-    preset = select_visual_preset(business_type)
-    template = select_visual_template(business_type, "instagram_feed", None)
-    # Family judged in one place via the SSOT classifier.
-    preset_family = to_canonical_domain(preset["business_type"])
-    template_family = to_canonical_domain(template.business_types[0])
-    assert preset_family == template_family, (
-        f"{business_type!r}: preset -> {preset['business_type']!r} ({preset_family}) but "
-        f"template -> {template.template_id!r} ({template_family}); different domain families."
+@pytest.mark.parametrize(
+    ("raw_business_type", "product_tags", "scene_tags", "expected_route_key"),
+    [
+        ("cafe", set(), set(), LegacyVisualRouteKey.CAFE),
+        ("restaurant", set(), set(), LegacyVisualRouteKey.RESTAURANT),
+        ("restaurant_bbq", set(), set(), LegacyVisualRouteKey.RESTAURANT),
+        ("restaurant_bbq", {"grilled_meat"}, set(), LegacyVisualRouteKey.RESTAURANT_BBQ),
+        ("restaurant_bbq", set(), {"bbq_grill"}, LegacyVisualRouteKey.RESTAURANT_BBQ),
+        ("beauty_salon", set(), set(), LegacyVisualRouteKey.GENERIC),
+        ("beauty_skincare", set(), set(), LegacyVisualRouteKey.BEAUTY_SKINCARE),
+        ("beauty_hair", set(), set(), LegacyVisualRouteKey.BEAUTY_HAIR),
+        ("beauty_nail", set(), set(), LegacyVisualRouteKey.BEAUTY_NAIL),
+        ("beauty_spa", set(), set(), LegacyVisualRouteKey.BEAUTY_SPA),
+        ("retail", set(), set(), LegacyVisualRouteKey.GENERIC),
+        ("fitness", set(), set(), LegacyVisualRouteKey.GENERIC),
+        ("education", set(), set(), LegacyVisualRouteKey.GENERIC),
+        ("service", set(), set(), LegacyVisualRouteKey.GENERIC),
+    ],
+)
+def test_a7_projection_route_key_controls_preset_template_and_sceneplan(
+    raw_business_type,
+    product_tags,
+    scene_tags,
+    expected_route_key,
+):
+    domain_result = normalize_business_type(raw_business_type)
+    projection = project_to_legacy_visual_route(
+        domain_result,
+        product_tags=product_tags,
+        explicit_scene_tags=scene_tags,
     )
+    route_key = projection.route_key.value
+    preset = select_visual_preset(route_key)
+    template = select_visual_template(route_key, "instagram_feed", "premium", None)
+    scene_plan = build_scene_plan(
+        user_input="",
+        business_type=route_key,
+        ad_format="instagram_feed",
+        metadata={"business_type": route_key, "item_or_service": "대표 상품"},
+    )
+
+    assert projection.route_key == expected_route_key
+    assert preset["business_type"] == route_key
+    assert route_key in template.business_types
+    assert scene_plan.business_type == route_key

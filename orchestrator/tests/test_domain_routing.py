@@ -345,3 +345,21 @@ def test_is_supported_domain():
     assert not is_supported_domain("fitness")
     assert not is_supported_domain("other")
     assert not is_supported_domain(None)
+
+
+def test_is_supported_domain_is_not_route_readiness():
+    beauty_salon = normalize_business_type("beauty_salon")
+    restaurant_bbq = normalize_business_type("restaurant_bbq")
+    retail = normalize_business_type("retail")
+
+    assert is_supported_domain("beauty_salon") is True
+    assert beauty_salon.support_status == DomainSupportStatus.NEEDS_EVIDENCE
+    assert beauty_salon.business_type is None
+
+    assert is_supported_domain("restaurant_bbq") is True
+    assert restaurant_bbq.support_status == DomainSupportStatus.SPECIALIZED
+    assert restaurant_bbq.business_type == "restaurant"
+
+    assert is_supported_domain("retail") is True
+    assert retail.support_status == DomainSupportStatus.SPECIALIZED
+    assert retail.business_type == "retail"
