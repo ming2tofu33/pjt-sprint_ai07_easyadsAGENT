@@ -74,6 +74,9 @@ class VisualStrategyRegistry:
     def snapshot_hash(self) -> str:
         return self._snapshot_hash
 
+    def compute_snapshot_hash(self) -> str:
+        return self._build_snapshot_hash()
+
     def get(self, strategy_id: str) -> VisualStrategyProfile:
         return self._profiles_by_id[strategy_id]
 
