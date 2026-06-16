@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { Check, Instagram, PenLine } from "lucide-react";
 import type { ChatFlowState, CopyCandidateOrigin } from "@/types/marketing";
+import type { ChannelId } from "@/lib/ad-formats";
 import { channelOptions } from "@/lib/chat-flow";
 import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
@@ -11,7 +12,7 @@ import styles from "./generate.module.css";
 type CopyChannelStepProps = {
   state: ChatFlowState;
   onSelectCopy: (copyId: string) => void;
-  onSelectChannel: (channelId: string) => void;
+  onSelectChannel: (channelId: ChannelId) => void;
   onCustomDirection: (value: string) => void;
   onContinue: () => void;
   onBack: () => void;

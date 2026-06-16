@@ -1,5 +1,4 @@
 import type {
-  ChannelOption,
   ChatBrief,
   ChatFlowAction,
   ChatFlowState,
@@ -7,7 +6,10 @@ import type {
   InferredContext,
   ToneOption
 } from "@/types/marketing";
+import { channelOptions } from "./ad-formats";
 import { DEFAULT_IMAGE_GENERATION_ENGINE } from "./generation-engine";
+
+export { channelOptions } from "./ad-formats";
 
 export const toneOptions: ToneOption[] = [
   { id: "emotional", label: "감성적인", icon: "heart" },
@@ -16,15 +18,6 @@ export const toneOptions: ToneOption[] = [
   { id: "cute", label: "귀여운", icon: "smile" },
   { id: "clean", label: "깔끔한", icon: "sparkles" },
   { id: "bold", label: "강렬한", icon: "star" }
-];
-
-export const channelOptions: ChannelOption[] = [
-  { id: "instagram-feed", label: "인스타 피드", ratio: "1:1" },
-  { id: "instagram-story", label: "인스타 스토리", ratio: "9:16" },
-  { id: "poster", label: "포스터", ratio: "4:5" },
-  { id: "flyer", label: "전단지", ratio: "A4" },
-  { id: "banner", label: "배너", ratio: "16:9" },
-  { id: "product_detail", label: "상세페이지", ratio: "가로형" }
 ];
 
 const CHAT_ERROR_MESSAGE_BY_CODE: Partial<Record<string, string>> = {
@@ -182,6 +175,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         sourceAssetId: action.sourceAssetId ?? state.sourceAssetId ?? null,
         sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
         referenceImagePath: action.referenceImagePath ?? state.referenceImagePath ?? null,
+        selectedChannelId: action.selectedChannelId ?? state.selectedChannelId,
         inferredContext: {
           businessType: action.context.businessType ?? state.inferredContext.businessType,
           itemOrService: action.context.itemOrService ?? state.inferredContext.itemOrService,
@@ -218,13 +212,14 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         copyCandidateSource: action.copyCandidateSource ?? (hasBackendCopyCandidates ? "backend" : "empty"),
         copyCandidateOrigin: hasBackendCopyCandidates ? action.copyCandidateOrigin ?? "unknown" : "unknown",
         copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
-        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
-        sourceAssetId: action.sourceAssetId ?? state.sourceAssetId ?? null,
-        sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
-        referenceImagePath: action.referenceImagePath ?? state.referenceImagePath ?? null,
-        userCustomHeadline: action.userCustomHeadline ?? state.userCustomHeadline,
-        userCustomSubcopy: action.userCustomSubcopy ?? state.userCustomSubcopy,
-        selectedCopyId: action.recommendedCopyId || nextCopyCandidates[0]?.id || "",
+    selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
+    sourceAssetId: action.sourceAssetId ?? state.sourceAssetId ?? null,
+    sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
+    referenceImagePath: action.referenceImagePath ?? state.referenceImagePath ?? null,
+    userCustomHeadline: action.userCustomHeadline ?? state.userCustomHeadline,
+    userCustomSubcopy: action.userCustomSubcopy ?? state.userCustomSubcopy,
+    selectedChannelId: action.selectedChannelId ?? state.selectedChannelId,
+    selectedCopyId: action.recommendedCopyId || nextCopyCandidates[0]?.id || "",
         currentQuestion: null,
         conversationMessages: [
           ...state.conversationMessages,
@@ -371,7 +366,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         copyCandidateSource: action.copyCandidates.length > 0 ? "backend" : "empty",
         copyCandidateOrigin: action.copyCandidateOrigin,
         selectedCopyId: action.selectedCopyId,
-        selectedChannelId: action.selectedChannelId,
+        selectedChannelId: action.selectedChannelId || state.selectedChannelId,
         selectedTone: action.selectedTone,
         selectedImageGenerationEngine: action.selectedImageGenerationEngine,
         customDirection: action.customDirection,
@@ -546,6 +541,7 @@ export function buildBrief(state: ChatFlowState): ChatBrief {
     copy: selectedCopyLabel(state),
     tone: selectedToneSummary(state),
     channel: selectedChannelLabel(state),
+    selectedChannelId: state.selectedChannelId,
     imageDirection: fallbackImageDirection(state)
   };
 }

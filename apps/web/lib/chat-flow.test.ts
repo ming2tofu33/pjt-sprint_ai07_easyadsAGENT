@@ -365,6 +365,80 @@ describe("chat flow state", () => {
     expect(state.selectedCopyId).toBe("");
   });
 
+  it("preserves the current selected channel when backend responses omit it", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, { type: "selectChannel", channelId: "banner" });
+    state = chatFlowReducer(state, {
+      type: "backendStartSucceeded",
+      prompt: "배너 광고 만들어줘",
+      jobId: "job_banner",
+      threadId: "thread_banner",
+      context: {
+        businessType: "카페",
+        itemOrService: "딸기라떼",
+        promotionGoal: "신메뉴 출시"
+      },
+      copyCandidates: [],
+      recommendedCopyId: null
+    });
+
+    expect(state.selectedChannelId).toBe("banner");
+  });
+
+  it("applies the backend selected channel when it is provided", () => {
+    const state = chatFlowReducer(createInitialChatFlowState(), {
+      type: "backendStartSucceeded",
+      prompt: "상세페이지 광고 만들어줘",
+      jobId: "job_detail",
+      threadId: "thread_detail",
+      context: {
+        businessType: "매장",
+        itemOrService: "세럼",
+        promotionGoal: "광고 홍보"
+      },
+      copyCandidates: [],
+      recommendedCopyId: null,
+      selectedChannelId: "product_detail"
+    });
+
+    expect(state.selectedChannelId).toBe("product_detail");
+  });
+
+  it("applies selectedChannelId from backend question responses", () => {
+    const state = chatFlowReducer(createInitialChatFlowState(), {
+      type: "backendQuestionReceived",
+      jobId: "job_banner_question",
+      threadId: "thread_banner_question",
+      context: {},
+      question: {
+        field: "business_type",
+        question: "어떤 업종인가요?",
+        options: [{ id: 1, label: "카페", value: "cafe" }]
+      },
+      selectedChannelId: "banner"
+    });
+
+    expect(state.selectedChannelId).toBe("banner");
+  });
+
+  it("preserves the current selected channel when backend question responses omit it", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, { type: "selectChannel", channelId: "banner" });
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_banner_question",
+      threadId: "thread_banner_question",
+      context: {},
+      question: {
+        field: "item_or_service",
+        question: "무엇을 홍보하나요?",
+        options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+      }
+    });
+
+    expect(state.selectedChannelId).toBe("banner");
+  });
+
   it("builds a complete brief after tone copy and channel selections", () => {
     let state = createInitialChatFlowState();
     state = chatFlowReducer(state, {
