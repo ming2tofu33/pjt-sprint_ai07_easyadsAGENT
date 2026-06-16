@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from orchestrator.app.llm.copy_tone_policy import resolve_copy_route_key
 from orchestrator.app.llm.option_registry import option_label_for_value
 from orchestrator.app.schemas.llm_marketing import CopyCandidate, CopyMessageStrategy
 
@@ -28,8 +29,8 @@ class CopyTheme:
 
 THEMES: tuple[CopyTheme, ...] = (
     CopyTheme("cafe", ("cafe", "dessert", "bakery"), ("신메뉴 보기", "오늘 만나보기", "메뉴 확인하기"), "{item} 신메뉴", "오늘의 달콤한 한 잔", "{item}, 지금 만나보기", "부드럽고 산뜻한 카페 혜택 메뉴", "잠깐의 휴식에 어울리는 달콤함", "오늘 혜택과 함께 즐기기 좋은 메뉴", "warm seasonal cafe copy"),
-    CopyTheme("restaurant_bbq", ("restaurant", "restaurant_bbq", "bbq", "meat_restaurant", "korean_food"), ("예약 문의하기", "지금 예약하기", "회식 문의하기"), "숯불향 가득한 한상", "회식은 역시 {item}", "{item} 예약 가능", "따뜻하게 구워 즐기는 프리미엄 메뉴", "모임과 회식에 어울리는 든든한 시간", "편한 저녁 자리를 미리 준비하세요", "appetizing reservation copy"),
-    CopyTheme("beauty_skincare", ("beauty", "beauty_skincare", "skincare", "salon"), ("상담 예약하기", "케어 문의하기", "예약 문의하기"), "맑은 피부 루틴", "깨끗하게 빛나는 시간", "맞춤 케어 상담", "차분한 프리미엄 스킨케어", "깨끗한 무드를 위한 케어 경험", "피부 컨디션을 상담해보세요", "clean trustworthy beauty copy"),
+    CopyTheme("restaurant_bbq", (), ("예약 문의하기", "지금 예약하기", "회식 문의하기"), "숯불향 가득한 한상", "회식은 역시 {item}", "{item} 예약 가능", "따뜻하게 구워 즐기는 프리미엄 메뉴", "모임과 회식에 어울리는 든든한 시간", "편한 저녁 자리를 미리 준비하세요", "appetizing reservation copy"),
+    CopyTheme("beauty_skincare", ("beauty_skincare", "skincare"), ("상담 예약하기", "케어 문의하기", "예약 문의하기"), "맑은 피부 루틴", "깨끗하게 빛나는 시간", "맞춤 케어 상담", "차분한 프리미엄 스킨케어", "깨끗한 무드를 위한 케어 경험", "피부 컨디션을 상담해보세요", "clean trustworthy beauty copy"),
     CopyTheme("beauty_hair", ("beauty_hair", "hair", "hair_salon"), ("예약 상담하기", "스타일 상담하기", "헤어 상담하기"), "오늘의 스타일 변화", "나에게 어울리는 무드", "헤어 상담 예약", "새로운 분위기를 위한 헤어 제안", "기분까지 달라지는 스타일링", "원하는 스타일을 상담으로 시작하세요", "stylish salon copy"),
     CopyTheme("beauty_nail", ("beauty_nail", "nail"), ("디자인 상담하기", "예약 문의하기", "무드 상담하기"), "감각적인 네일 디자인", "손끝에 남는 무드", "네일 디자인 상담", "계절과 취향을 담은 섬세한 디자인", "작은 디테일까지 기분 좋게", "원하는 무드를 상담해보세요", "delicate nail copy"),
     CopyTheme("beauty_spa", ("beauty_spa", "spa", "wellness"), ("예약 문의하기", "케어 예약하기", "상담 예약하기"), "부드러운 웰니스 케어", "하루를 쉬게 하는 시간", "스파 예약 문의", "몸과 마음을 차분하게 쉬게 하는 케어", "조용히 회복되는 프리미엄 휴식", "원하는 시간에 맞춰 문의하세요", "calm wellness copy"),
@@ -121,7 +122,7 @@ def generate_fallback_candidates(context: Any, max_candidates: int = 3) -> list[
 
 
 def resolve_copy_theme(business_type: str | None) -> CopyTheme:
-    key = (business_type or "generic").strip().lower()
+    key = resolve_copy_route_key(business_type)
     for theme in THEMES:
         if key == theme.key or key in theme.aliases:
             return theme

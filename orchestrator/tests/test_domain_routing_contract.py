@@ -29,7 +29,7 @@ import pytest
 # circular-import error when brief_interpreter is the first module loaded).
 import orchestrator.app.graph.nodes  # noqa: F401
 
-from orchestrator.app.llm.copy_tone_policy import get_copy_tone_policy
+from orchestrator.app.llm.copy_tone_policy import get_copy_tone_policy, resolve_copy_route_key
 from orchestrator.app.llm.domain_routing import (
     CANONICAL_DOMAINS,
     CanonicalBusinessDomain,
@@ -280,9 +280,52 @@ def test_plain_restaurant_copy_is_not_aliased_to_bbq():
     assert policy["business_type"] == "generic"
 
 
-def test_explicit_bbq_copy_still_routes_to_bbq_policy():
-    for key in ("bbq", "meat_restaurant", "korean_food"):
-        assert get_copy_tone_policy(key)["business_type"] == "restaurant_bbq"
+@pytest.mark.parametrize(
+    "business_type",
+    ["restaurant", "restaurant_bbq", "bbq", "meat_restaurant", "korean_food"],
+)
+def test_a6_restaurant_and_bbq_like_copy_inputs_use_neutral_policy(business_type):
+    assert resolve_copy_route_key(business_type) == "generic"
+
+    policy = get_copy_tone_policy(business_type)
+
+    assert policy["policy_id"] == "generic_v1"
+    assert policy["business_type"] == "generic"
+
+
+@pytest.mark.parametrize("business_type", ["beauty", "beauty_salon", "salon"])
+def test_a6_ambiguous_beauty_copy_inputs_use_neutral_policy(business_type):
+    assert resolve_copy_route_key(business_type) == "generic"
+
+    policy = get_copy_tone_policy(business_type)
+
+    assert policy["policy_id"] == "generic_v1"
+    assert policy["business_type"] == "generic"
+
+
+@pytest.mark.parametrize(
+    ("business_type", "route_key", "policy_id"),
+    [
+        ("beauty_skincare", "beauty_skincare", "beauty_skincare_v1"),
+        ("skincare", "beauty_skincare", "beauty_skincare_v1"),
+        ("beauty_hair", "beauty_hair", "beauty_hair_v1"),
+        ("hair", "beauty_hair", "beauty_hair_v1"),
+        ("beauty_nail", "beauty_nail", "beauty_nail_v1"),
+        ("nail", "beauty_nail", "beauty_nail_v1"),
+        ("beauty_spa", "beauty_spa", "beauty_spa_v1"),
+        ("spa", "beauty_spa", "beauty_spa_v1"),
+    ],
+)
+def test_a6_exact_beauty_subtype_copy_inputs_still_use_specialized_policy(
+    business_type,
+    route_key,
+    policy_id,
+):
+    assert resolve_copy_route_key(business_type) == route_key
+
+    policy = get_copy_tone_policy(business_type)
+
+    assert policy["policy_id"] == policy_id
 
 
 # --- P4: BriefBusinessType routing table (no silent evaporation) -------------
