@@ -105,32 +105,47 @@ POLICIES: dict[str, dict[str, Any]] = {
     },
 }
 
-ALIASES = {
-    # NOTE: plain "restaurant" is intentionally NOT aliased to restaurant_bbq.
-    # Doing so tilted every generic restaurant's copy toward grill/reservation
-    # tone (불판/회식/예약). Only explicit BBQ/Korean-meat keywords below route to
-    # the bbq policy; plain restaurant falls through to the generic neutral policy
-    # (a dedicated restaurant copy policy is Phase 4). See docs/PRESET_ROUTING_AUDIT.md.
-    "bbq": "restaurant_bbq",
-    "meat_restaurant": "restaurant_bbq",
-    "korean_food": "restaurant_bbq",
-    "beauty": "beauty_skincare",
-    "salon": "beauty_skincare",
+COPY_NEUTRAL_FALLBACK_KEYS = frozenset(
+    {
+        # A-6: raw business strings must not select BBQ copy behavior.
+        # BBQ copy requires a future product/scene/campaign-aware strategy resolver.
+        "restaurant",
+        "restaurant_bbq",
+        "bbq",
+        "meat_restaurant",
+        "korean_food",
+        # Ambiguous beauty values must not silently become skincare copy.
+        "beauty",
+        "beauty_salon",
+        "salon",
+    }
+)
+
+COPY_ROUTE_ALIASES = {
+    "dessert": "cafe",
+    "dessert_macaron": "macaron",
+    "macaron": "macaron",
+    "bakery": "cafe",
     "skincare": "beauty_skincare",
     "hair_salon": "beauty_hair",
     "hair": "beauty_hair",
     "nail": "beauty_nail",
     "spa": "beauty_spa",
-    "dessert": "cafe",
-    "dessert_macaron": "macaron",
-    "macaron": "macaron",
-    "bakery": "cafe",
 }
 
 
-def get_copy_tone_policy(business_type: str | None) -> dict[str, Any]:
+def resolve_copy_route_key(business_type: str | None) -> str:
+    """Resolve raw copy business strings without legacy scene/subtype shortcuts."""
     key = (business_type or "generic").strip().lower()
-    key = ALIASES.get(key, key)
+    if not key:
+        return "generic"
+    if key in COPY_NEUTRAL_FALLBACK_KEYS:
+        return "generic"
+    return COPY_ROUTE_ALIASES.get(key, key)
+
+
+def get_copy_tone_policy(business_type: str | None) -> dict[str, Any]:
+    key = resolve_copy_route_key(business_type)
     return deepcopy(POLICIES.get(key, POLICIES["generic"]))
 
 
