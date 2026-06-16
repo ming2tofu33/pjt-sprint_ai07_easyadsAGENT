@@ -1,6 +1,6 @@
 import orchestrator.app.graph.nodes  # noqa: F401
 
-from orchestrator.app.llm.nodes.image_prompt_planner import build_image_prompt_spec_with_critic
+from orchestrator.app.llm.nodes.image_prompt_planner import build_image_prompt_spec_with_critic, build_legacy_image_prompt
 from orchestrator.app.schemas.text_layout import NormalizedBBox, TextLayoutSpec
 from orchestrator.app.schemas.visual_routing_shadow import RoutingMode, RoutingSource
 
@@ -274,3 +274,39 @@ def test_image_prompt_keeps_reference_template_hint():
 
     assert spec.metadata["selected_reference_template"]["title"] == "Pastel Beauty"
     assert "Pastel Beauty" in spec.positive_prompt_en
+
+
+def test_a8_shadow_wiring_keeps_existing_legacy_route_matrix():
+    cases = [
+        ("cafe", "cafe", "cafe_dessert_soft_premium", "cafe_dessert_soft_premium"),
+        ("restaurant", "restaurant", "restaurant_generic_clean", "restaurant_generic_clean"),
+        ("restaurant_bbq", "restaurant", "restaurant_generic_clean", "restaurant_generic_clean"),
+        ("beauty_salon", "generic", "generic_clean_ad_background", "generic_clean_ad_background"),
+        ("beauty_skincare", "beauty_skincare", "beauty_skincare_clean_premium", "beauty_salon_clean_pastel"),
+        ("retail", "generic", "generic_clean_ad_background", "generic_clean_ad_background"),
+        ("education", "generic", "generic_clean_ad_background", "generic_clean_ad_background"),
+        ("service", "generic", "generic_clean_ad_background", "generic_clean_ad_background"),
+    ]
+
+    for business_type, route_key, preset_id, template_id in cases:
+        spec = build_image_prompt_spec_with_critic(_state(business_type))
+        metadata = spec.metadata
+
+        _assert_single_resolved_visual_key(
+            metadata,
+            route_key=route_key,
+            preset_id=preset_id,
+            template_id=template_id,
+        )
+        assert metadata["visual_routing"]["active_source"] == RoutingSource.LEGACY.value
+
+
+def test_a8_legacy_image_prompt_carries_visual_routing_metadata():
+    state = _state("cafe")
+    spec = build_image_prompt_spec_with_critic(state)
+    image_prompt = build_legacy_image_prompt(state, spec)
+
+    assert image_prompt.metadata["resolved_visual_route_key"] == "cafe"
+    assert image_prompt.metadata["visual_routing"] == spec.metadata["visual_routing"]
+    assert image_prompt.metadata["visual_routing"]["routing_mode"] == RoutingMode.SHADOW.value
+    assert image_prompt.metadata["visual_routing"]["active_source"] == RoutingSource.LEGACY.value
