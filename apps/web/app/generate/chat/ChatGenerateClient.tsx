@@ -2372,6 +2372,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const hasThreadLimitError = state.errorCode === "thread_limit_reached";
   const displayState = hasThreadLimitError ? { ...state, errorMessage: null } : state;
   const canEditCurrentChat = appSurface === "chat" && !currentThreadIsArchived;
+  const hasInitialPromptStartFailure =
+    state.step === 2 &&
+    Boolean(state.errorMessage) &&
+    !state.jobId &&
+    !state.threadId &&
+    state.contextSource === "empty";
 
   return (
     <MobileShell>
@@ -2462,7 +2468,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
             setShowHistory(false);
           }}
         />
-      ) : canEditCurrentChat && state.step === 1 ? (
+      ) : canEditCurrentChat && (state.step === 1 || hasInitialPromptStartFailure) ? (
         <ChatStartStep
           onSubmit={handleSubmitPrompt}
           onBack={handleBackToFlowEntry}
@@ -2483,7 +2489,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {canEditCurrentChat && state.step === 2 && state.currentQuestion ? (
+      {canEditCurrentChat && !hasInitialPromptStartFailure && state.step === 2 && state.currentQuestion ? (
         <ChatContextQuestionStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}
@@ -2492,7 +2498,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {canEditCurrentChat && state.step === 2 && !state.currentQuestion && state.isLoading ? (
+      {canEditCurrentChat && !hasInitialPromptStartFailure && state.step === 2 && !state.currentQuestion && state.isLoading ? (
         <ChatAnalysisPendingStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}
@@ -2500,7 +2506,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {canEditCurrentChat && state.step === 2 && !state.currentQuestion && !state.isLoading ? (
+      {canEditCurrentChat && !hasInitialPromptStartFailure && state.step === 2 && !state.currentQuestion && !state.isLoading ? (
         <IntentReviewStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}

@@ -544,6 +544,9 @@ function normalizeApiErrorMessage(message: string, errorCode?: string): string {
   if (errorCode === "thread_limit_reached") {
     return "작업은 최대 3개까지만 만들 수 있어요. 새 작업을 시작하려면 기존 작업 하나를 삭제해주세요.";
   }
+  if (errorCode === "upstream_orchestrator_unavailable") {
+    return "생성 서버에 연결하지 못했어요. 입력 내용은 유지했으니 잠시 후 다시 시도해 주세요.";
+  }
   if (message.includes("OPENAI_API_KEY missing")) {
     return "이미지 생성 API 키가 설정되지 않았어요. OPENAI_API_KEY를 확인해주세요.";
   }

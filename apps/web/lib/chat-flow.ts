@@ -27,7 +27,8 @@ const CHAT_ERROR_MESSAGE_BY_CODE: Partial<Record<string, string>> = {
   archive_workspace_required: "보관함을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
   usage_workspace_required: "사용량 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
   invalid_or_expired_session: "로그인이 만료됐어요. 다시 로그인한 뒤 이어서 진행해 주세요.",
-  supabase_auth_configuration_missing: "로그인 설정을 확인해야 해요. 관리자에게 문의해 주세요."
+  supabase_auth_configuration_missing: "로그인 설정을 확인해야 해요. 관리자에게 문의해 주세요.",
+  upstream_orchestrator_unavailable: "생성 서버에 연결하지 못했어요. 입력 내용은 유지했으니 잠시 후 다시 시도해 주세요."
 };
 
 const CHAT_FALLBACK_ERROR_MESSAGE = "요청 처리 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.";
@@ -232,11 +233,21 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
     }
     case "backendRequestFailed":
       const backendFailure = chatFailureFromError(action);
-      if (action.recoverToStart) {
+      if (action.recoverToStart && backendFailure.errorCode === "thread_limit_reached") {
         return {
           ...state,
           step: 1,
           progress: { current: 0, total: 4, label: "대화 시작" },
+          currentQuestion: null,
+          isLoading: false,
+          errorMessage: backendFailure.message,
+          errorCode: backendFailure.errorCode
+        };
+      }
+      if (action.recoverToStart) {
+        return {
+          ...state,
+          progress: { ...state.progress, label: "작업 시작 실패" },
           currentQuestion: null,
           isLoading: false,
           errorMessage: backendFailure.message,
