@@ -13,6 +13,8 @@ from orchestrator.app.llm.domain_routing import CanonicalBusinessDomain
 def normalize_open_label(value: str | None) -> str | None:
     if value is None:
         return None
+    if not isinstance(value, str):
+        raise ValueError("open label must be a string")
     normalized = value.strip()
     return normalized or None
 
@@ -25,9 +27,8 @@ def normalize_tag_list(values: Iterable[str] | None) -> list[str]:
     seen: set[str] = set()
     for value in values:
         if not isinstance(value, str):
-            normalized_value = str(value).strip()
-        else:
-            normalized_value = value.strip()
+            raise ValueError("tag and evidence lists must contain strings only")
+        normalized_value = value.strip()
         if not normalized_value or normalized_value in seen:
             continue
         normalized.append(normalized_value)
@@ -36,6 +37,13 @@ def normalize_tag_list(values: Iterable[str] | None) -> list[str]:
 
 
 class BusinessEnvironmentContext(BaseModel):
+    """Evidence-backed business and venue context.
+
+    This model describes the business environment only. It must not contain
+    product identity, preparation methods, creative copy, or visual strategy
+    identifiers.
+    """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     broad_domain: CanonicalBusinessDomain
@@ -52,9 +60,7 @@ class BusinessEnvironmentContext(BaseModel):
     @field_validator("venue_type", "service_model", mode="before")
     @classmethod
     def normalize_optional_label(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        return normalize_open_label(str(value))
+        return normalize_open_label(value)
 
     @field_validator("business_tags", "environment_tags", "evidence_refs", mode="before")
     @classmethod
