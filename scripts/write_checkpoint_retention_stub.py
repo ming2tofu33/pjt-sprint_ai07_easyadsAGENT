@@ -22,14 +22,29 @@ def write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def run_self_check() -> dict[str, Any]:
-    payload = {
-        "status": "dry_run_only",
+def build_stub_payload() -> dict[str, Any]:
+    return {
+        "status": "policy_defined_not_planned",
         "destructive_retention_enabled": False,
+        "reason": "Runtime checkpoint metadata inputs were not collected in the no-go audit path.",
+        "required_runtime_inputs": [
+            "job_status",
+            "checkpoint_created_at",
+            "last_resume_time",
+            "thread_or_job_scope",
+            "final_canonical_result_present",
+            "retention_age",
+        ],
         "candidates": [],
     }
+
+
+def run_self_check() -> dict[str, Any]:
+    payload = build_stub_payload()
     assert payload["destructive_retention_enabled"] is False
-    return {"status": "ok", "checked": ["dry_run_only", "no_destructive_cleanup"]}
+    assert payload["status"] == "policy_defined_not_planned"
+    assert payload["candidates"] == []
+    return {"status": "ok", "checked": ["stub_named_explicitly", "no_destructive_cleanup"]}
 
 
 def main() -> None:
@@ -38,14 +53,7 @@ def main() -> None:
         print(json.dumps(run_self_check(), ensure_ascii=False))
         return
     output_dir = Path(args.output_dir)
-    write_json(
-        output_dir / "cleanup_candidates.json",
-        {
-            "status": "dry_run_only",
-            "destructive_retention_enabled": False,
-            "candidates": [],
-        },
-    )
+    write_json(output_dir / "cleanup_candidates.json", build_stub_payload())
 
 
 if __name__ == "__main__":
