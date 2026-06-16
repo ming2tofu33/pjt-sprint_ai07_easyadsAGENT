@@ -8,6 +8,7 @@ from orchestrator.app.graph.state import read_model
 from orchestrator.app.llm.domain_routing import normalize_business_type, project_to_legacy_visual_route
 from orchestrator.app.llm.metadata_builders import build_image_prompt_planner_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
+from orchestrator.app.llm.visual_routing_integration import build_image_prompt_visual_routing_metadata
 from orchestrator.app.llm.visual_templates import select_visual_template
 from orchestrator.app.schemas.llm_marketing import ImagePrompt, MarketingContext
 from orchestrator.app.schemas.text_layout import ImagePromptSpec, NormalizedBBox, TextLayoutSpec
@@ -158,6 +159,16 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
         selected_reference_template=selected_reference_template
     )
     preset_id = preset["preset_id"]
+    visual_routing_metadata = build_image_prompt_visual_routing_metadata(
+        state=state,
+        marketing_context=context,
+        domain_result=domain_result,
+        legacy_projection=legacy_projection,
+        visual_template=visual_template,
+        preset=preset,
+        ad_format_spec=ad_format_spec,
+        route_family_id=resolved_visual_route_key,
+    )
     policy = build_prompt_quality_policy(preset)
     engine = state.get("engine") or "gpt_image_1"
     adapter_output = render_engine_prompt(engine, scene_plan, policy, preset_id=preset_id)
@@ -251,6 +262,7 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
             "resolved_visual_route_key": resolved_visual_route_key,
             "domain_routing_result": domain_result.model_dump(mode="json"),
             "legacy_routing_projection": legacy_projection.model_dump(mode="json"),
+            "visual_routing": visual_routing_metadata,
         },
     )
     return spec
@@ -269,6 +281,7 @@ def build_legacy_image_prompt(state: MarketingState, spec: ImagePromptSpec) -> I
         "resolved_visual_route_key",
         "domain_routing_result",
         "legacy_routing_projection",
+        "visual_routing",
     ]:
         if key in spec.metadata:
             v3_meta[key] = spec.metadata[key]
