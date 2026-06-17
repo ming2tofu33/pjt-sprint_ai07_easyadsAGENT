@@ -3,6 +3,7 @@
 import { Diamond, Heart, Leaf, Smile, Sparkles, Star } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { toneOptions } from "@/lib/chat-flow";
+import { contextItemSummary, contextPurposeSummary } from "@/lib/context-presentation";
 import { ChoiceChip } from "./ChoiceChip";
 import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
@@ -39,11 +40,18 @@ type IntentReviewCardProps = Omit<IntentReviewStepProps, "onBack" | "onDelete">;
 
 export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentReviewCardProps) {
   const hasBackendSession = Boolean(state.jobId && state.threadId);
+  const itemSummary = contextItemSummary(state.inferredContext) || "확인 필요";
+  const purposeSummary = contextPurposeSummary(state.inferredContext) || "확인 필요";
   const hasBackendContext =
     state.contextSource === "backend" &&
-    Boolean(state.inferredContext.businessType && state.inferredContext.itemOrService && state.inferredContext.promotionGoal);
+    Boolean(
+      state.inferredContext.businessType &&
+      (state.inferredContext.itemOrService || state.inferredContext.advertisedSubject) &&
+      (state.inferredContext.promotionGoal || state.inferredContext.campaignIntent)
+    );
   const cannotContinue = state.isLoading || !hasBackendSession || !hasBackendContext;
   const contextBadge = hasBackendContext ? "요청 분석" : state.isLoading ? "진행 중" : "확인 필요";
+  const progressPercent = state.progress.total > 0 ? `${Math.max(0, Math.min(100, (state.progress.current / state.progress.total) * 100))}%` : "0%";
 
   return (
     <>
@@ -98,11 +106,11 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
               </div>
               <div className={styles.contextItem}>
                 <span>상품/서비스</span>
-                <strong>{state.inferredContext.itemOrService || "확인 필요"}</strong>
+                <strong>{itemSummary}</strong>
               </div>
               <div className={styles.contextItem}>
                 <span>광고 목적</span>
-                <strong>{state.inferredContext.promotionGoal || "확인 필요"}</strong>
+                <strong>{purposeSummary}</strong>
               </div>
             </div>
           </>
@@ -155,7 +163,7 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
             정보 입력 {state.progress.current}/{state.progress.total}
           </span>
           <span className={styles.progressTrack}>
-            <span className={styles.progressBar} style={{ width: "25%" }} />
+            <span className={styles.progressBar} style={{ width: progressPercent }} />
           </span>
         </div>
 

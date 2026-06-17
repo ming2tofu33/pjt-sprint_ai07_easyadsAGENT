@@ -994,7 +994,7 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="chat" />);
 
     await waitFor(() => expect(screen.getAllByText("어떤 목적의 광고를 만들까요?").length).toBeGreaterThan(0));
-    expect(screen.getByText("음식점/식당")).toBeTruthy();
+    expect(screen.getByText("외식업/식당")).toBeTruthy();
     expect(screen.getByText("원육")).toBeTruthy();
     expect(screen.getAllByText("확인 필요")).toHaveLength(1);
   });
@@ -1077,7 +1077,7 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="chat" initialStage="generating" />);
 
     await waitFor(() => expect(screen.getAllByText("어떤 목적의 광고를 만들까요?").length).toBeGreaterThan(0));
-    expect(screen.getByText("음식점/식당")).toBeTruthy();
+    expect(screen.getByText("외식업/식당")).toBeTruthy();
     expect(screen.getByText("원육")).toBeTruthy();
     expect(screen.getAllByText("확인 필요")).toHaveLength(1);
   });
@@ -1209,7 +1209,7 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() => expect(screen.getAllByText("홍보할 상품이나 서비스는 무엇인가요?")).toHaveLength(2));
-    expect(screen.getByText("음식점/식당")).toBeTruthy();
+    expect(screen.getByText("외식업/식당")).toBeTruthy();
     expect(screen.getByText("할인 이벤트")).toBeTruthy();
     expect(api.createGenerationJob).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1666,7 +1666,7 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     await waitFor(() => expect(screen.getAllByText("어떤 목적의 광고를 만들까요?").length).toBeGreaterThan(0));
-    expect(screen.getByText("음식점/식당")).toBeTruthy();
+    expect(screen.getByText("외식업/식당")).toBeTruthy();
     expect(screen.getByText("원육")).toBeTruthy();
     expect(screen.getAllByText("확인 필요")).toHaveLength(1);
   });

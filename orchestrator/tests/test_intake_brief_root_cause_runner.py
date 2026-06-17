@@ -58,9 +58,11 @@ def test_runner_records_multiturn_business_answer_projection_without_false_rc12(
     assert r6["frontend_projection"]["status"] == "executed"
 
 
-def test_empty_context_projection_uses_user_visible_defaults():
+def test_empty_context_projection_returns_null_contract():
     projected = chat_api._context_from_state({"context": {}})
 
-    assert projected.business_type == "카페"
-    assert projected.item_or_service == "대표 메뉴"
-    assert projected.promotion_goal == "광고 홍보"
+    assert projected.business_type is None
+    assert projected.item_or_service is None
+    assert projected.promotion_goal is None
+    assert projected.advertised_subject is None
+    assert projected.campaign_intent is None

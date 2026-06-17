@@ -110,6 +110,41 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     ]);
   });
 
+  it("restores question progress state and campaign intent labels from waiting snapshots", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_progress",
+      thread_id: "thread_progress",
+      job_id: "job_progress",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "waiting_user_input",
+      state_payload: {
+        user_input: "뷰티 광고 만들어줘",
+        current_brief: {
+          advertised_subject: "프리미엄 뷰티샵",
+          campaign_intent: "store_opening"
+        },
+        pending_interrupt: {
+          type: "option_question",
+          option_question: {
+            field: "copy_generation_mode",
+            question: "문구는 어떻게 준비할까요?",
+            options: [{ id: 1, label: "AI 추천", value: "suggest_candidates" }],
+            progress_state: { current_step: 3, total_steps: 5, current_label: "정보 입력" }
+          }
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {},
+      created_at: "2026-06-17T00:00:00+00:00"
+    });
+
+    expect(restore?.context.campaignIntent).toBe("신규 오픈 홍보");
+    expect(restore?.currentQuestion?.progressState).toEqual({ current: 3, total: 5, label: "정보 입력" });
+  });
+
   it("restores nested graph context from a waiting snapshot", () => {
     const restore = mapChatThreadSnapshotToRestoreState({
       snapshot_id: "snapshot_nested_context",
@@ -143,8 +178,8 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
       created_at: "2026-06-06T00:00:00+00:00"
     });
 
-    expect(restore?.context).toEqual({
-      businessType: "음식점/식당",
+    expect(restore?.context).toMatchObject({
+      businessType: "외식업/식당",
       itemOrService: "원육",
       promotionGoal: ""
     });

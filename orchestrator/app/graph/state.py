@@ -101,6 +101,8 @@ class ReferenceVisionState(TypedDict, total=False):
 class ContextValidationState(TypedDict, total=False):
     """Resolved marketing context, validator output, and option questions."""
     context: dict[str, Any] | MarketingContext
+    campaign_context: dict[str, Any] | None
+    intake_question_policy_decision: dict[str, Any] | None
     validator_output: dict[str, Any] | None
     missing_fields: list[MissingField]
     option_question: dict[str, Any] | None
@@ -435,6 +437,10 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "renderer_mode": getattr(request, "renderer_mode", None),
         "requested_template_id": getattr(request, "requested_template_id", None),
         "requested_asset_id": getattr(request, "requested_asset_id", None),
+        "advertised_subject": None,
+        "advertised_subject_type": None,
+        "campaign_intent": None,
+        "question_policy_version": None,
     }
     copy_required = request.copy_generation_mode != "no_copy"
     text_overlay_pending = request.copy_generation_mode != "no_copy"
@@ -498,6 +504,8 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "product_preserve_spec": None,
         "reference_style": None,
         "context": context.model_dump(),
+        "campaign_context": None,
+        "intake_question_policy_decision": None,
         "validator_output": None,
         "missing_fields": [],
         "option_question": None,

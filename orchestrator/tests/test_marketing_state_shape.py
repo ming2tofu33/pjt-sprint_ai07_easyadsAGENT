@@ -1,6 +1,6 @@
 """Characterization guard for the MarketingState field surface.
 
-Locks the exact set of 171 fields so the sub-state reorganization cannot
+Locks the exact set of 173 fields so the sub-state reorganization cannot
 silently drop, rename, duplicate, or re-type a field.
 """
 
@@ -25,7 +25,7 @@ EXPECTED_FIELDS = frozenset({
     "vision_pipeline_results", "image_preprocess_result", "image_features",
     "reference_style_profile", "product_preserve_spec", "reference_style",
     # context / validation / options
-    "context", "validator_output", "missing_fields", "option_question",
+    "context", "campaign_context", "intake_question_policy_decision", "validator_output", "missing_fields", "option_question",
     # copy
     "ad_format_spec", "layout_spec", "marketing_copy", "copywriting_output", "copy_generation_mode",
     "copy_candidates", "copy_candidate_origin", "selected_copy_id", "selected_channel_id",
@@ -78,8 +78,8 @@ def test_marketing_state_has_exactly_expected_fields():
     }
 
 
-def test_marketing_state_field_count_is_171():
-    assert len(MarketingState.__annotations__) == 171
+def test_marketing_state_field_count_is_173():
+    assert len(MarketingState.__annotations__) == 173
 
 
 def test_marketing_state_all_keys_optional_under_total_false():

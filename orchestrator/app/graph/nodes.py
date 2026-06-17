@@ -8,7 +8,6 @@ from langgraph.types import interrupt
 
 from orchestrator.app.graph.state import (
     OPTIONAL_CONTEXT_FIELDS,
-    REQUIRED_CONTEXT_FIELDS,
     MarketingState,
     append_message,
     build_message,
@@ -21,6 +20,7 @@ from orchestrator.app.graph.state import (
     update_current_brief,
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
+from orchestrator.app.llm.intake_question_policy import campaign_context_from_intake_understanding, resolve_intake_question_policy
 from orchestrator.app.llm.intake_understanding_service import (
     _source_text_hash,
     project_intake_to_context,
@@ -64,7 +64,16 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     context_data["extra"] = extra
     context = MarketingContext(**context_data)
 
-    missing_fields = calculate_missing_fields(context)
+    campaign_context = campaign_context_from_intake_understanding(intake_result, context)
+    question_policy = resolve_intake_question_policy(
+        context=context,
+        intake=intake_result,
+        campaign=campaign_context,
+        requested_ad_format=requested_ad_format,
+        input_conflicts=intake_result.input_conflicts,
+        confirmed_fields=state.get("dirty_fields", []),
+    )
+    missing_fields = list(question_policy.missing_fields)
     copy_mode, copy_mode_output = resolve_copy_generation_mode(state, text, track_in_state=False)
     copy_mode_from_brief = intake_trace.get("copy_generation_mode_candidate")
     if copy_mode is None and copy_mode_from_brief:
@@ -84,7 +93,11 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         missing_fields.append("copy_generation_mode")
     if copy_mode_confirmed and "copy_generation_mode" in missing_fields:
         missing_fields.remove("copy_generation_mode")
-    progress_state = build_progress_state(missing_fields)
+    progress_state = build_progress_state(
+        missing_fields,
+        effective_required_fields=[*question_policy.required_fields, "copy_generation_mode"],
+        waived_fields=question_policy.waived_fields,
+    )
     inferred_ad_format = build_ad_format_spec(requested_ad_format) if requested_ad_format else None
     validator_output = ValidatorOutput(
         context=context,
@@ -105,7 +118,14 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
             "warnings": intake_trace.get("brief_interpreter", {}).get("warnings", []),
         }
     }
-    current_brief_updates = {"ready_for_planning": not bool(missing_fields), "copy_generation_mode": copy_mode}
+    current_brief_updates = {
+        "ready_for_planning": not bool(missing_fields),
+        "copy_generation_mode": copy_mode,
+        "advertised_subject": intake_result.advertised_subject,
+        "advertised_subject_type": intake_result.advertised_subject_type,
+        "campaign_intent": campaign_context.campaign_intent,
+        "question_policy_version": question_policy.policy_version,
+    }
     if requested_ad_format:
         current_brief_updates["requested_ad_format"] = requested_ad_format
     next_brief = update_current_brief(state.get("current_brief"), current_brief_updates)
@@ -121,6 +141,8 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         "intake_extraction_trace": intake_trace,
         "validator_output": validator_output.model_dump(),
         "validator_metadata": validator_metadata,
+        "campaign_context": campaign_context.model_dump(),
+        "intake_question_policy_decision": question_policy.model_dump(),
         "missing_fields": missing_fields,
         "progress_state": progress_state.model_dump(),
         "current_brief": next_brief,
@@ -160,7 +182,16 @@ def options_node(state: MarketingState) -> dict[str, Any]:
     else:
         option_tracking = {}
 
-    question = question.model_copy(update={"progress_state": build_progress_state(state.get("missing_fields", []) )})
+    policy_decision = state.get("intake_question_policy_decision") or {}
+    question = question.model_copy(
+        update={
+            "progress_state": build_progress_state(
+                state.get("missing_fields", []),
+                effective_required_fields=[*(policy_decision.get("required_fields") or []), "copy_generation_mode"],
+                waived_fields=policy_decision.get("waived_fields") or [],
+            )
+        }
+    )
     payload = {
         "type": "option_question",
         "job_id": state["job_id"],
@@ -457,10 +488,10 @@ def infer_ad_format(text: str) -> str | None:
     return None
 
 
-def calculate_missing_fields(context: MarketingContext) -> list[str]:
+def calculate_missing_fields_legacy(context: MarketingContext) -> list[str]:
     missing: list[str] = []
     context_data = context.model_dump()
-    for field in REQUIRED_CONTEXT_FIELDS:
+    for field in ("business_type", "item_or_service", "promotion_goal", "ad_format"):
         if field == "ad_format":
             if not context.extra.get("ad_format"):
                 missing.append(field)
@@ -469,8 +500,13 @@ def calculate_missing_fields(context: MarketingContext) -> list[str]:
     return missing
 
 
-def build_progress_state(missing_fields: list[str]) -> ProgressState:
-    required = REQUIRED_CONTEXT_FIELDS + ["copy_generation_mode"]
+def build_progress_state(
+    missing_fields: list[str],
+    *,
+    effective_required_fields: list[str] | tuple[str, ...] | None = None,
+    waived_fields: list[str] | tuple[str, ...] | None = None,
+) -> ProgressState:
+    required = list(effective_required_fields or ("business_type", "item_or_service", "promotion_goal", "ad_format", "copy_generation_mode"))
     total = len(required)
     remaining = [field for field in missing_fields if field in required + OPTIONAL_CONTEXT_FIELDS]
     current_step = max(0, total - len([field for field in required if field in remaining]))
@@ -478,6 +514,7 @@ def build_progress_state(missing_fields: list[str]) -> ProgressState:
         current_step=current_step,
         total_steps=total,
         current_label="필수 정보 확인" if remaining else "기획 준비 완료",
+        skipped_steps=list(waived_fields or []),
         remaining_fields=remaining,
-        can_skip_question_screen=not any(field in REQUIRED_CONTEXT_FIELDS for field in remaining),
+        can_skip_question_screen=not any(field in required for field in remaining),
     )

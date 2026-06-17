@@ -6,6 +6,7 @@ import type {
   InferredContext,
   ToneOption
 } from "@/types/marketing";
+import { campaignIntentLabel, contextItemSummary, contextPurposeSummary } from "./context-presentation";
 import { channelOptions } from "./ad-formats";
 import { DEFAULT_IMAGE_GENERATION_ENGINE } from "./generation-engine";
 
@@ -50,15 +51,14 @@ export function chatFailureFromError(error: ChatFailureLike): { message: string;
 }
 
 export function inferContextFromPrompt(prompt: string): InferredContext {
-  const normalized = prompt.replace(/\s+/g, "");
-  const businessType = normalized.includes("카페") ? "카페" : "카페";
-  const itemOrService = normalized.includes("딸기라떼") ? "딸기라떼" : "대표 메뉴";
-  const promotionGoal = normalized.includes("신메뉴") ? "신메뉴 출시" : "광고 홍보";
-
+  void prompt;
   return {
-    businessType,
-    itemOrService,
-    promotionGoal
+    businessType: null,
+    itemOrService: null,
+    promotionGoal: null,
+    advertisedSubject: null,
+    advertisedSubjectType: null,
+    campaignIntent: null
   };
 }
 
@@ -71,9 +71,12 @@ export function createInitialChatFlowState(): ChatFlowState {
     threadId: "",
     userInput: "",
     inferredContext: {
-      businessType: "",
-      itemOrService: "",
-      promotionGoal: ""
+      businessType: null,
+      itemOrService: null,
+      promotionGoal: null,
+      advertisedSubject: null,
+      advertisedSubjectType: null,
+      campaignIntent: null
     },
     contextSource: "empty",
     copyCandidates: [],
@@ -100,6 +103,17 @@ export function createInitialChatFlowState(): ChatFlowState {
     errorMessage: null,
     errorCode: null
   };
+}
+
+function progressFromQuestion(
+  question: { progressState?: ChatFlowState["progress"] | null } | null | undefined,
+  fallback: ChatFlowState["progress"]
+): ChatFlowState["progress"] {
+  const progress = question?.progressState;
+  if (!progress) {
+    return fallback;
+  }
+  return { current: progress.current, total: progress.total, label: progress.label };
 }
 
 function applyUserPromptToTranscript(
@@ -155,9 +169,12 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
         selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
         inferredContext: {
-          businessType: "",
-          itemOrService: "",
-          promotionGoal: ""
+          businessType: null,
+          itemOrService: null,
+          promotionGoal: null,
+          advertisedSubject: null,
+          advertisedSubjectType: null,
+          campaignIntent: null
         },
         contextSource: "empty",
         conversationMessages: applyUserPromptToTranscript(state.conversationMessages, action.prompt, action.transcriptMode),
@@ -169,7 +186,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         step: 2,
-        progress: { current: 1, total: 4, label: "정보 입력" },
+        progress: action.progress ?? progressFromQuestion(action.question, { current: 1, total: 4, label: "정보 입력" }),
         jobId: action.jobId,
         threadId: action.threadId,
         generationJob: action.generationJob ?? state.generationJob,
@@ -180,7 +197,10 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         inferredContext: {
           businessType: action.context.businessType ?? state.inferredContext.businessType,
           itemOrService: action.context.itemOrService ?? state.inferredContext.itemOrService,
-          promotionGoal: action.context.promotionGoal ?? state.inferredContext.promotionGoal
+          promotionGoal: action.context.promotionGoal ?? state.inferredContext.promotionGoal,
+          advertisedSubject: action.context.advertisedSubject ?? state.inferredContext.advertisedSubject,
+          advertisedSubjectType: action.context.advertisedSubjectType ?? state.inferredContext.advertisedSubjectType,
+          campaignIntent: action.context.campaignIntent ?? state.inferredContext.campaignIntent
         },
         contextSource: "backend",
         currentQuestion: action.question,
@@ -362,11 +382,17 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         step: 4,
-        progress: {
-          current: 4,
-          total: 4,
-          label: action.currentQuestion ? "추가 정보" : "정보 입력"
-        },
+        progress: action.currentQuestion
+          ? progressFromQuestion(action.currentQuestion, {
+              current: 4,
+              total: 4,
+              label: "추가 정보"
+            })
+          : {
+              current: 4,
+              total: 4,
+              label: "정보 입력"
+            },
         userInput: action.prompt,
         jobId: action.jobId,
         threadId: action.threadId,
@@ -467,7 +493,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         step: 4,
-        progress: { current: 4, total: 4, label: "추가 정보" },
+        progress: action.progress ?? progressFromQuestion(action.question, { current: 4, total: 4, label: "추가 정보" }),
         generationJob: action.generationJob,
         sourceAssetId: action.sourceAssetId ?? state.sourceAssetId ?? null,
         sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
@@ -475,7 +501,10 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         inferredContext: {
           businessType: action.context?.businessType ?? state.inferredContext.businessType,
           itemOrService: action.context?.itemOrService ?? state.inferredContext.itemOrService,
-          promotionGoal: action.context?.promotionGoal ?? state.inferredContext.promotionGoal
+          promotionGoal: action.context?.promotionGoal ?? state.inferredContext.promotionGoal,
+          advertisedSubject: action.context?.advertisedSubject ?? state.inferredContext.advertisedSubject,
+          advertisedSubjectType: action.context?.advertisedSubjectType ?? state.inferredContext.advertisedSubjectType,
+          campaignIntent: action.context?.campaignIntent ?? state.inferredContext.campaignIntent
         },
         contextSource: action.context ? "backend" : state.contextSource,
         currentQuestion: action.question,
@@ -527,19 +556,27 @@ export function selectedChannelLabel(state: ChatFlowState): string {
 }
 
 export function selectedToneSummary(state: ChatFlowState): string {
-  return state.selectedTone ? `${state.selectedTone} 분위기` : "브랜드에 맞춘 분위기";
+  return state.selectedTone ? `${state.selectedTone} 분위기` : "브랜드에 맞는 분위기";
+}
+
+function contextItemLabel(context: InferredContext): string {
+  return contextItemSummary(context) || "상품/서비스";
+}
+
+function contextPurposeLabel(context: InferredContext): string {
+  return contextPurposeSummary(context) || campaignIntentLabel(context.campaignIntent) || "";
 }
 
 export function fallbackImageDirection(state: ChatFlowState): string {
   if (state.customDirection) {
     return state.customDirection;
   }
-  const item = state.inferredContext.itemOrService || "상품/서비스";
+  const item = contextItemLabel(state.inferredContext);
   const tonePrefix = state.selectedTone ? `${state.selectedTone} 분위기를 살려 ` : "";
   if (item.includes("예약") || item.endsWith("서비스")) {
-    return `${tonePrefix}${item} 안내가 잘 보이도록 깔끔한 배경과 읽기 쉬운 여백을 구성해요.`;
+    return `${tonePrefix}${item} 안내가 잘 보이도록 깔끔한 배경과 구도로 구성해요.`;
   }
-  return `${tonePrefix}${item} 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.`;
+  return `${tonePrefix}${item} 중심의 깔끔한 광고 구도로 구성해요.`;
 }
 
 export function buildBrief(state: ChatFlowState): ChatBrief {
@@ -547,8 +584,8 @@ export function buildBrief(state: ChatFlowState): ChatBrief {
     return state.brief;
   }
   return {
-    purpose: state.inferredContext.promotionGoal,
-    item: state.inferredContext.itemOrService,
+    purpose: contextPurposeLabel(state.inferredContext),
+    item: contextItemLabel(state.inferredContext),
     copy: selectedCopyLabel(state),
     tone: selectedToneSummary(state),
     channel: selectedChannelLabel(state),
