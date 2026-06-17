@@ -82,6 +82,7 @@ export function CopyChannelCard({
   const originLabel = copyCandidateOriginLabel(state.copyCandidateOrigin);
   const originNote = copyCandidateOriginNote(state.copyCandidateOrigin);
   const cannotContinue = state.isLoading || !hasBackendSession || (!usesDeferredCopySelection && !hasBackendCopyCandidates);
+  const progressPercent = state.progress.total > 0 ? `${Math.max(0, Math.min(100, (state.progress.current / state.progress.total) * 100))}%` : "0%";
 
   return (
     <>
@@ -183,7 +184,7 @@ export function CopyChannelCard({
             정보 입력 {state.progress.current}/{state.progress.total}
           </span>
           <span className={styles.progressTrack}>
-            <span className={styles.progressBar} style={{ width: "75%" }} />
+            <span className={styles.progressBar} style={{ width: progressPercent }} />
           </span>
         </div>
 

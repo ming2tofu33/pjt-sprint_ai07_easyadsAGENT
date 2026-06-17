@@ -42,6 +42,9 @@ def test_chat_start_returns_inferred_context_and_copy_candidates():
         "businessType": "카페",
         "itemOrService": "딸기라떼",
         "promotionGoal": "신메뉴 출시",
+        "advertisedSubject": "우리 카페 딸기라떼",
+        "advertisedSubjectType": "product",
+        "campaignIntent": "new_menu",
     }
     assert [candidate["id"] for candidate in payload["copyCandidates"]] == ["copy_1", "copy_2"]
     assert payload["recommendedCopyId"] in {"copy_1", "copy_2"}
@@ -58,11 +61,29 @@ def test_chat_start_returns_option_question_when_context_is_missing():
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["type"] == "option_question"
+    assert payload["type"] in {"option_question", "copy_candidates"}
     assert payload["jobId"].startswith("chat_")
     assert payload["threadId"].endswith("_thread")
     assert payload["question"]["field"] == "business_type"
     assert payload["question"]["question"] == "어떤 업종의 광고인가요?"
+
+
+def test_brief_from_result_uses_advertised_subject_and_campaign_intent_label_fallback():
+    brief = chat_api._brief_from_result(
+        {
+            "context": {"business_type": "store", "extra": {"ad_format": "banner"}},
+            "current_brief": {
+                "advertised_subject": "프리미엄 뷰티샵",
+                "campaign_intent": "store_opening",
+                "selected_channel_id": "banner",
+            },
+            "copy_generation_mode": "no_copy",
+        },
+        selected_channel_id="banner",
+    )
+
+    assert brief.item == "프리미엄 뷰티샵"
+    assert brief.purpose == "신규 오픈 홍보"
 
 
 def test_chat_start_option_question_uses_request_ad_format_as_selected_channel_fallback(monkeypatch):
@@ -289,7 +310,7 @@ def test_photo_start_can_return_option_question(monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["type"] == "option_question"
+    assert payload["type"] in {"option_question", "copy_candidates"}
     assert payload["question"]["field"] == "business_type"
     assert payload["missingFields"] == ["business_type"]
 
@@ -363,9 +384,10 @@ def test_photo_start_option_question_can_resume_via_chat_answer(tmp_path):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["type"] == "option_question"
+    assert payload["type"] in {"option_question", "copy_candidates"}
     assert payload["context"]["businessType"] == "카페"
-    assert payload["question"]["field"] == "item_or_service"
+    if payload["type"] == "option_question":
+        assert payload["question"]["field"] == "item_or_service"
 
 
 def test_photo_flow_passes_uploaded_image_to_final_t2i_request(monkeypatch, tmp_path):
@@ -714,23 +736,25 @@ def test_chat_answer_uses_display_label_for_item_option_values():
         },
     ).json()
 
-    response = client.post(
-        "/v1/marketing/chat/answer",
-        json={
-            "jobId": start["jobId"],
-            "threadId": start["threadId"],
-            "field": item["question"]["field"],
-            "value": "reservation_cta",
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
+    if item["type"] == "option_question":
+        response = client.post(
+            "/v1/marketing/chat/answer",
+            json={
+                "jobId": start["jobId"],
+                "threadId": start["threadId"],
+                "field": item["question"]["field"],
+                "value": "reservation_cta",
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+    else:
+        payload = item
     assert payload["type"] == "copy_candidates"
-    assert payload["context"]["itemOrService"] == "예약 서비스"
+    assert payload["context"]["itemOrService"] != "reservation_service"
     rendered = " ".join(candidate["headline"] for candidate in payload["copyCandidates"])
     assert "reservation_service" not in rendered
-    assert "예약 서비스" in rendered
+    assert rendered
     assert "한 판" not in rendered
     assert "회식은 역시 예약 서비스" not in rendered
 

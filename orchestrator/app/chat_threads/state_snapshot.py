@@ -47,6 +47,7 @@ PERSISTENT_FIELDS = {
     # these belong to context in MarketingState, but keeping flat semantics is fine
     "context", 
     "current_brief",
+    "confirmed_context_fields",
     "marketing_copy",
     "copy_candidates",
     "copy_candidate_origin",

@@ -150,13 +150,18 @@ def _coerce_candidate(payload: dict[str, Any], *, index: int, product_name: str,
     headline = str(data.get("headline") or "").strip()
     support = str(data.get("supporting_copy") or data.get("support") or data.get("subcopy") or "").strip() or None
     closing = str(data.get("closing_copy") or "").strip() or None
+    headline, support, closing = _fit_candidate_text_budget(
+        headline=headline or product_name,
+        support=support,
+        closing=closing,
+    )
     strategy = _normalize_strategy(data.get("strategy"), index)
     texts = [headline, support or closing or ""]
     sensory_terms = list(data.get("sensory_terms_used") or _sensory_terms_used(" ".join(texts)))
     return NativeCopyCandidate(
         candidate_id=str(data.get("candidate_id") or f"candidate_{index + 1}"),
         strategy=strategy,  # type: ignore[arg-type]
-        headline=headline or product_name,
+        headline=headline,
         supporting_copy=support,
         closing_copy=closing if not support else None,
         action_cta=None,
@@ -173,6 +178,26 @@ def _coerce_candidate(payload: dict[str, Any], *, index: int, product_name: str,
         text_block_count=len([text for text in texts if text]),
         total_character_count=sum(len(text) for text in texts if text),
     )
+
+
+def _fit_candidate_text_budget(*, headline: str, support: str | None, closing: str | None) -> tuple[str, str | None, str | None]:
+    text_budget = 80
+    if len(headline) > text_budget:
+        return headline[:text_budget], None, None
+    secondary = support or closing
+    if not secondary:
+        return headline, support, closing
+    remaining = text_budget - len(headline)
+    if remaining <= 0:
+        return headline, None, None
+    if len(secondary) <= remaining:
+        return headline, support, closing
+    trimmed = secondary[:remaining].strip()
+    if not trimmed:
+        return headline, None, None
+    if support:
+        return headline, trimmed, None
+    return headline, None, trimmed
 
 
 def _fallback_candidate_shells(product_name: str, product_ids: list[str], *, start: int, limit: int) -> list[NativeCopyCandidate]:

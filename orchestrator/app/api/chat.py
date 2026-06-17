@@ -38,6 +38,17 @@ GOAL_LABELS = {
     "seasonal_campaign": "시즌 한정 홍보",
 }
 
+CAMPAIGN_INTENT_LABELS = {
+    "store_opening": "신규 오픈 홍보",
+    "grand_opening": "그랜드 오픈 홍보",
+    "student_recruitment": "수강생 모집",
+    "brand_awareness": "브랜드 인지도",
+    "product_promotion": "상품 홍보",
+    "local_business_promotion": "매장 홍보",
+    "business_introduction": "매장 소개",
+    "organization_promotion": "기관 홍보",
+}
+
 CHANNEL_LABELS = {
     "instagram-feed": "인스타 피드 (1:1)",
     "instagram-story": "인스타 스토리 (9:16)",
@@ -66,15 +77,21 @@ class CamelModel(BaseModel):
 
 
 class ChatContext(CamelModel):
-    business_type: str = Field(alias="businessType")
-    item_or_service: str = Field(alias="itemOrService")
-    promotion_goal: str = Field(alias="promotionGoal")
+    business_type: str | None = Field(default=None, alias="businessType")
+    item_or_service: str | None = Field(default=None, alias="itemOrService")
+    promotion_goal: str | None = Field(default=None, alias="promotionGoal")
+    advertised_subject: str | None = Field(default=None, alias="advertisedSubject")
+    advertised_subject_type: str | None = Field(default=None, alias="advertisedSubjectType")
+    campaign_intent: str | None = Field(default=None, alias="campaignIntent")
 
 
 class PartialChatContext(CamelModel):
     business_type: str | None = Field(default=None, alias="businessType")
     item_or_service: str | None = Field(default=None, alias="itemOrService")
     promotion_goal: str | None = Field(default=None, alias="promotionGoal")
+    advertised_subject: str | None = Field(default=None, alias="advertisedSubject")
+    advertised_subject_type: str | None = Field(default=None, alias="advertisedSubjectType")
+    campaign_intent: str | None = Field(default=None, alias="campaignIntent")
 
 
 class CopyCandidate(CamelModel):
@@ -205,6 +222,13 @@ def _label(mapping: dict[str, str], value: str | None, fallback: str) -> str:
     return mapping.get(value, value)
 
 
+def _campaign_intent_label(value: str | None) -> str | None:
+    cleaned = _clean_optional_text(value)
+    if not cleaned:
+        return None
+    return CAMPAIGN_INTENT_LABELS.get(cleaned, cleaned)
+
+
 def _item_or_service_label(value: str | None) -> str:
     if not value:
         return "대표 메뉴"
@@ -235,19 +259,32 @@ def _image_direction_summary(context: ChatContext, selected_tone: str | None, cu
 
 def _context_from_state(state: dict[str, Any]) -> ChatContext:
     context = state.get("context") or {}
+    current_brief = state.get("current_brief") or {}
+    campaign_context = state.get("campaign_context") or {}
+    business_type = _label(BUSINESS_LABELS, context.get("business_type"), "") or None
+    item_or_service = _item_or_service_label(context.get("item_or_service")) if context.get("item_or_service") else None
+    promotion_goal = _label(GOAL_LABELS, context.get("promotion_goal"), "") or None
     return ChatContext(
-        businessType=_label(BUSINESS_LABELS, context.get("business_type"), "카페"),
-        itemOrService=_item_or_service_label(context.get("item_or_service")),
-        promotionGoal=_label(GOAL_LABELS, context.get("promotion_goal"), "광고 홍보"),
+        businessType=business_type,
+        itemOrService=item_or_service,
+        promotionGoal=promotion_goal,
+        advertisedSubject=_clean_optional_text(current_brief.get("advertised_subject")),
+        advertisedSubjectType=_clean_optional_text(current_brief.get("advertised_subject_type")),
+        campaignIntent=_clean_optional_text(current_brief.get("campaign_intent") or campaign_context.get("campaign_intent")),
     )
 
 
 def _partial_context_from_state(state: dict[str, Any]) -> PartialChatContext:
     context = state.get("context") or {}
+    current_brief = state.get("current_brief") or {}
+    campaign_context = state.get("campaign_context") or {}
     return PartialChatContext(
         businessType=_label(BUSINESS_LABELS, context.get("business_type"), "") or None,
         itemOrService=_item_or_service_label(context.get("item_or_service")) if context.get("item_or_service") else None,
         promotionGoal=_label(GOAL_LABELS, context.get("promotion_goal"), "") or None,
+        advertisedSubject=_clean_optional_text(current_brief.get("advertised_subject")),
+        advertisedSubjectType=_clean_optional_text(current_brief.get("advertised_subject_type")),
+        campaignIntent=_clean_optional_text(current_brief.get("campaign_intent") or campaign_context.get("campaign_intent")),
     )
 
 
@@ -377,9 +414,11 @@ def _brief_from_result(
         copy_text = headline
     else:
         copy_text = "문구 없이 이미지로만" if result.get("copy_generation_mode") == "no_copy" else "봄을 닮은 한 잔, 딸기라떼 출시"
+    brief_purpose = context.promotion_goal or _campaign_intent_label(context.campaign_intent) or "확인 필요"
+    brief_item = context.item_or_service or context.advertised_subject or "확인 필요"
     return ChatBrief(
-        purpose=context.promotion_goal,
-        item=context.item_or_service,
+        purpose=brief_purpose,
+        item=brief_item,
         copy=copy_text,
         tone=_tone_summary(final_tone),
         channel=CHANNEL_LABELS.get(final_channel_id, final_channel_id),

@@ -3,9 +3,12 @@
 import { Diamond, Heart, Leaf, Smile, Sparkles, Star } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { toneOptions } from "@/lib/chat-flow";
+import { contextItemSummary, contextPurposeSummary } from "@/lib/context-presentation";
+import { resolveWaitingStatusCopy } from "@/lib/generation-waiting-copy";
 import { ChoiceChip } from "./ChoiceChip";
 import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
+import { WaitingStatusCard } from "./WaitingStatusCard";
 import styles from "./generate.module.css";
 
 const toneIconMap = {
@@ -16,8 +19,6 @@ const toneIconMap = {
   sparkles: Sparkles,
   star: Star
 };
-
-const loadingAnalysisSteps = ["요청 문장 읽는 중", "필요한 정보 찾는 중", "다음 질문 준비 중"];
 
 type IntentReviewStepProps = {
   state: ChatFlowState;
@@ -39,11 +40,19 @@ type IntentReviewCardProps = Omit<IntentReviewStepProps, "onBack" | "onDelete">;
 
 export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentReviewCardProps) {
   const hasBackendSession = Boolean(state.jobId && state.threadId);
+  const itemSummary = contextItemSummary(state.inferredContext) || "확인 필요";
+  const purposeSummary = contextPurposeSummary(state.inferredContext) || "확인 필요";
   const hasBackendContext =
     state.contextSource === "backend" &&
-    Boolean(state.inferredContext.businessType && state.inferredContext.itemOrService && state.inferredContext.promotionGoal);
+    Boolean(
+      state.inferredContext.businessType &&
+      (state.inferredContext.itemOrService || state.inferredContext.advertisedSubject) &&
+      (state.inferredContext.promotionGoal || state.inferredContext.campaignIntent)
+    );
   const cannotContinue = state.isLoading || !hasBackendSession || !hasBackendContext;
   const contextBadge = hasBackendContext ? "요청 분석" : state.isLoading ? "진행 중" : "확인 필요";
+  const progressPercent = state.progress.total > 0 ? `${Math.max(0, Math.min(100, (state.progress.current / state.progress.total) * 100))}%` : "0%";
+  const waitingCopy = resolveWaitingStatusCopy({ state, context: "chat_analysis" });
 
   return (
     <>
@@ -71,18 +80,8 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
 
         {state.isLoading ? (
           <>
-            <p className={styles.contextSourceNote}>
-              업종, 상품, 광고 목적을 안전하게 정리한 뒤 보여드릴게요.
-            </p>
-            <div className={styles.analysisLoadingSteps} aria-label="요청 분석 진행 상태">
-              {loadingAnalysisSteps.map((step, index) => (
-                <span key={step} className={styles.analysisLoadingStep} style={{ ["--step-index" as string]: index }}>
-                  <span className={styles.analysisLoadingDot} aria-hidden="true" />
-                  {step}
-                </span>
-              ))}
-            </div>
-            <div className={styles.analysisLoadingBar} aria-hidden="true" />
+            <p className={styles.contextSourceNote}>{waitingCopy.description}</p>
+            <WaitingStatusCard copy={waitingCopy} compact />
           </>
         ) : (
           <>
@@ -98,11 +97,11 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
               </div>
               <div className={styles.contextItem}>
                 <span>상품/서비스</span>
-                <strong>{state.inferredContext.itemOrService || "확인 필요"}</strong>
+                <strong>{itemSummary}</strong>
               </div>
               <div className={styles.contextItem}>
                 <span>광고 목적</span>
-                <strong>{state.inferredContext.promotionGoal || "확인 필요"}</strong>
+                <strong>{purposeSummary}</strong>
               </div>
             </div>
           </>
@@ -139,12 +138,7 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
         {state.errorMessage ? (
           <p className={styles.helperText}>{state.errorMessage}</p>
         ) : state.isLoading ? (
-          <p className={`${styles.helperText} ${styles.loadingHelperText}`}>
-            AI가 요청을 읽고 있어요
-            <span aria-hidden="true">.</span>
-            <span aria-hidden="true">.</span>
-            <span aria-hidden="true">.</span>
-          </p>
+          <p className={styles.helperText}>{waitingCopy.title}</p>
         ) : !hasBackendSession ? (
           <p className={styles.helperText}>응답을 받은 뒤 문구 선택으로 이동할 수 있어요.</p>
         ) : !hasBackendContext ? (
@@ -155,7 +149,7 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
             정보 입력 {state.progress.current}/{state.progress.total}
           </span>
           <span className={styles.progressTrack}>
-            <span className={styles.progressBar} style={{ width: "25%" }} />
+            <span className={styles.progressBar} style={{ width: progressPercent }} />
           </span>
         </div>
 

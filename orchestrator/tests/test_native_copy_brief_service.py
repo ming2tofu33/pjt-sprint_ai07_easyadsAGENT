@@ -2,10 +2,28 @@ from orchestrator.app.llm.native_copy_brief_service import (
     generate_approved_native_copy_brief,
     resolve_approved_primary_copy,
 )
+from orchestrator.app.llm.native_copy_candidate_service import _coerce_candidate
 from orchestrator.app.llm.native_copy_policy import plan_gpt_image2_native_single_shot
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
+
+
+def test_coerce_candidate_trims_secondary_copy_to_schema_budget():
+    candidate = _coerce_candidate(
+        {
+            "candidate_id": "c1",
+            "strategy": "product_detail",
+            "headline": "라떼 카페 라떼",
+            "supporting_copy": "부드러운 맛과 은은한 단맛을 길게 반복해서 설명하는 문장입니다. 부드러운 맛과 은은한 단맛을 다시 설명합니다.",
+        },
+        index=0,
+        product_name="라떼 카페 라떼",
+        product_ids=["e1"],
+    )
+
+    assert candidate.total_character_count <= 80
+    assert candidate.text_block_count in {1, 2}
 
 
 def test_native_copy_brief_service_rejects_invalid_adapter_copy():

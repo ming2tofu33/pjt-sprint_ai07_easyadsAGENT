@@ -7,10 +7,12 @@ import {
   getGenerationResultNotice,
   getResultArtifactPayload
 } from "@/lib/generation-result-utils";
+import { resolveWaitingStatusCopy } from "@/lib/generation-waiting-copy";
 import type { ChatFlowState } from "@/types/marketing";
 import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
 import { ValidationSummaryPanel } from "./ValidationSummaryPanel";
+import { WaitingStatusCard } from "./WaitingStatusCard";
 import styles from "./generate.module.css";
 
 type GenerationCompleteStepProps = {
@@ -35,6 +37,7 @@ export function GenerationCompleteStep({
   onDelete
 }: GenerationCompleteStepProps) {
   const generatedJob = state.generationJob ?? null;
+  const waitingCopy = resolveWaitingStatusCopy({ state, context: "result_pending" });
   const resultPayload = getResultArtifactPayload(generatedJob);
   const resultNotice = getGenerationResultNotice(generatedJob);
   const fallbackErrorMessage = !generatedJob ? state.errorMessage : null;
@@ -125,9 +128,7 @@ export function GenerationCompleteStep({
       {isInProgress ? (
         <section className={styles.resultStatusPanel} aria-label="이미지 생성 진행 상황" data-result-state="pending">
           <div className={styles.pendingPreviewFrame}>
-            <LoaderCircle size={26} aria-hidden="true" />
-            <strong>미리보기는 완성 후 표시돼요</strong>
-            <p>이미지가 준비되면 이 영역이 결과 카드로 바뀝니다.</p>
+            <WaitingStatusCard copy={waitingCopy} compact />
           </div>
           <ol className={styles.resultStatusList} aria-label="진행 단계">
             {pendingSteps.map((step) => {
