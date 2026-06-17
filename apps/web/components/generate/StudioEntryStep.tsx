@@ -37,6 +37,44 @@ function formatThreadDate(value: string | null | undefined): string {
   return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
+function workspaceActionLabel(thread: ChatThreadResponse): string {
+  if (thread.archived_at) {
+    return "보기";
+  }
+  if (thread.resume_state?.action === "view_result") {
+    return "보기";
+  }
+  if (thread.resume_state?.action === "locked_running") {
+    return "진행 보기";
+  }
+  if (thread.resume_state?.action === "retry_failed_job") {
+    return "다시 시도";
+  }
+  if (thread.has_final_output || thread.final_output_id) {
+    return "보기";
+  }
+  return "이어하기";
+}
+
+function workspaceStateDescription(thread: ChatThreadResponse, statusLabel: string): string {
+  if (thread.archived_at) {
+    return "보관됨 · 보기만 가능해요";
+  }
+  if (thread.resume_state?.action === "view_result" || thread.has_final_output || thread.final_output_id) {
+    return `${statusLabel} · 결과 저장됨`;
+  }
+  if (thread.resume_state?.action === "locked_running" || thread.active_job_id) {
+    return `${statusLabel} · AI 작업 중`;
+  }
+  if (thread.resume_state?.action === "answer_pending_job") {
+    return `${statusLabel} · 답변이 필요해요`;
+  }
+  if (thread.resume_state?.action === "retry_failed_job") {
+    return `${statusLabel} · 다시 시도할 수 있어요`;
+  }
+  return `${statusLabel} · 이어갈 수 있어요`;
+}
+
 export function StudioEntryStep({
   onGoHome,
   onOpenChat,
@@ -207,6 +245,7 @@ export function StudioEntryStep({
             {visibleThreads.slice(0, RECENT_WORKSPACE_LIMIT).map((thread) => {
               const statusLabel = statusLabelByThreadStatus[thread.status] ?? "작업 중";
               const isArchived = Boolean(thread.archived_at);
+              const actionLabel = workspaceActionLabel(thread);
               return (
                 <div key={thread.thread_id} className={styles.workspaceCard}>
                   <button className={styles.workspaceOpenButton} type="button" onClick={() => onOpenThread(thread.thread_id)}>
@@ -216,7 +255,7 @@ export function StudioEntryStep({
                     <div>
                       <strong>{thread.title || "새 광고 작업"}</strong>
                       <p>
-                        {isArchived ? "보관됨 · 보기만 가능해요" : `${statusLabel} · ${thread.has_final_output ? "결과 저장됨" : thread.active_job_id ? "AI 작업 중" : "이어갈 수 있어요"}`}
+                        {workspaceStateDescription(thread, statusLabel)}
                       </p>
                       <small>
                         <Clock size={12} aria-hidden="true" />
@@ -226,7 +265,7 @@ export function StudioEntryStep({
                   </button>
                   <span className={styles.workspaceActions}>
                     <button className={styles.workspaceAction} type="button" onClick={() => onOpenThread(thread.thread_id)}>
-                      {isArchived || thread.status === "completed" ? "보기" : "이어하기"}
+                      {actionLabel}
                     </button>
                     {isArchived ? (
                       <button

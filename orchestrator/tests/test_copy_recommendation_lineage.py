@@ -3,6 +3,7 @@ import argparse
 from orchestrator.app.graph.state import create_initial_marketing_state
 from orchestrator.app.llm.copy_recommendation_lineage import (
     build_candidate_quality_metrics,
+    build_copy_input_projection,
     build_copy_prompt_projection,
 )
 from orchestrator.app.llm.nodes.copy_candidates import copy_candidate_generation_node
@@ -215,6 +216,16 @@ def test_prompt_projection_measures_diversity_instruction_from_prompt_text():
     assert projection_without_diversity["diversity_instruction_present"] is False
     assert projection_with_diversity["diversity_instruction_present"] is True
     assert projection_output_format_only["diversity_instruction_present"] is False
+
+
+def test_copy_input_projection_includes_campaign_intent_from_campaign_context():
+    state = _state()
+    state["campaign_context"] = {"campaign_intent": "store_opening"}
+    state["current_brief"] = {"campaign_intent": "store_opening"}
+
+    projection = build_copy_input_projection(state)
+
+    assert projection["campaign_intent"] == "store_opening"
 
 
 def test_candidate_quality_metrics_are_computed_from_candidates(monkeypatch):

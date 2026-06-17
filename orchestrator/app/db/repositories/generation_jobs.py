@@ -178,6 +178,33 @@ def get_generation_job_by_public_id(
             return cur.fetchone()
 
 
+def get_latest_waiting_generation_job_for_thread(
+    *,
+    public_thread_id: str,
+    workspace_id: str,
+    connection: object | None = None,
+    for_update: bool = False,
+) -> dict | None:
+    lock_clause = " for update of gj" if for_update else ""
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                select gj.*, ct.public_thread_id as public_thread_id
+                from generation_jobs gj
+                join chat_threads ct on ct.id = gj.thread_id
+                where ct.public_thread_id = %s
+                  and gj.workspace_id = %s::uuid
+                  and gj.status = 'waiting_user_input'
+                order by gj.updated_at desc, gj.created_at desc
+                limit 1
+                {lock_clause}
+                """,
+                (public_thread_id, workspace_id),
+            )
+            return cur.fetchone()
+
+
 def get_generation_job_scoped_by_public_id(
     public_job_id: str,
     *,

@@ -179,7 +179,7 @@ def test_create_generation_job_db_asset_integration(monkeypatch):
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.workspace_repo", type("W", (), {"get_workspace_for_user": lambda *a, **k: {"id": "11111111-1111-1111-1111-111111111111", "owner_user_id": None}})())
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.chat_thread_repo", type("T", (), {"get_chat_thread_by_public_id": lambda *a, **k: {"id": "t1"}, "create_chat_thread": lambda *a, **k: {"id": "t1"}, "set_chat_thread_active_job": lambda *a, **k: True})())
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.chat_message_repo", type("M", (), {"append_chat_message": lambda *a, **k: {"id": "m1"}, "append_generation_job_chat_event": lambda *a, **k: {"id": "m2"}})())
-    monkeypatch.setattr("orchestrator.app.generation_jobs.service.state_service", type("S", (), {"save_thread_state_snapshot": lambda *a, **k: None, "get_latest_thread_state_snapshot": lambda *a, **k: None, "restore_thread_state": lambda *a, **k: {}})())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.service.state_service", type("S", (), {"save_thread_state_snapshot": lambda *a, **k: None, "get_latest_thread_state_snapshot": lambda *a, **k: None, "restore_thread_state": lambda *a, **k: {}, "restore_thread_state_for_generation": lambda *a, **k: {}})())
 
     _create_generation_job_db(req)
 
@@ -1013,6 +1013,7 @@ def test_execute_generation_job_graph_state_restoration(monkeypatch):
         thread_id=job1.thread_id,
         user_id=job1.user_id,
         copy_generation_mode="custom_input",
+        continuation_mode="new_turn",
     )
     job2 = create_generation_job(req2)
     executed2 = execute_generation_job_graph(job2.job_id, req2)
@@ -1385,7 +1386,9 @@ def test_execute_generation_job_graph_waiting_user_input(monkeypatch):
     assert executed.status == "waiting_user_input"
     assert executed.progress.current_stage == "waiting_user_input"
 
-def test_execute_generation_job_graph_waiting_and_resume(monkeypatch):
+def test_execute_generation_job_graph_waiting_rejects_duplicate_create(monkeypatch):
+    from orchestrator.app.chat_threads.errors import ChatThreadHasPendingJobError
+
     class MockGraphWaiting:
         def invoke(self, payload: dict, config: dict | None = None) -> dict:
             state = dict(payload)
@@ -1410,22 +1413,16 @@ def test_execute_generation_job_graph_waiting_and_resume(monkeypatch):
     thread = get_chat_thread(job1.thread_id, job1.user_id)
     assert thread.active_job_id is None
 
-    # 5. 동일 thread로 두 번째 GenerationJob 생성 성공
+    # Waiting jobs must be resumed through the answer endpoint, not by creating
+    # a competing job on the same thread.
     req2 = GenerationJobCreateRequest(
         user_input="resume with more details",
         run_mode="graph_job",
         thread_id=job1.thread_id,
         user_id=job1.user_id,
     )
-    job2 = create_generation_job(req2)
-    assert job2.job_id != job1.job_id
-
-    # Check input snapshot
-    from orchestrator.app.chat_threads.state_service import get_latest_thread_state_for_user
-    snap = get_latest_thread_state_for_user(job1.thread_id, job1.user_id)
-    assert snap.snapshot_kind == "restored_input"
-    assert snap.state_payload["business_type"] == "cafe"
-    assert snap.state_payload["user_input"] == "resume with more details"
+    with pytest.raises(ChatThreadHasPendingJobError):
+        create_generation_job(req2)
 
 
 def test_waiting_generation_job_exposes_pending_option_question(monkeypatch):
@@ -3365,3 +3362,357 @@ def test_graph_receives_web_request_contract_with_custom_copy_selected_ad_format
     # selected engine remains gpt_image_2 in the execution metadata.
     assert received_payload["engine"] == "gpt_image_2"
     assert received_payload["current_brief"]["requested_engine"] == "gpt_image_2"
+
+
+def test_create_generation_job_rejects_pending_thread_without_continuation_mode(monkeypatch):
+    from contextlib import nullcontext
+
+    from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+    from orchestrator.app.chat_threads.errors import ChatThreadHasPendingJobError
+    from orchestrator.app.generation_jobs import service
+
+    monkeypatch.setattr(service.db_settings, "get_db_backend", lambda: "postgres")
+    monkeypatch.setattr(service, "db_transaction", lambda: nullcontext())
+    monkeypatch.setattr(service, "_resolve_db_workspace_for_generation_request", lambda request, connection=None: {"id": "workspace_1"})
+    monkeypatch.setattr(
+        service.chat_thread_repo,
+        "get_chat_thread_by_public_id",
+        lambda *args, **kwargs: {
+            "id": "thread-internal",
+            "public_thread_id": "thread_pending",
+            "archived_at": None,
+            "active_job_id": None,
+            "final_output_id": None,
+        },
+    )
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "get_latest_waiting_generation_job_for_thread",
+        lambda *args, **kwargs: {"public_job_id": "job_waiting", "metadata": {}},
+    )
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "create_generation_job_row",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before generation job row creation"),
+    )
+    monkeypatch.setattr(
+        service.chat_message_repo,
+        "append_chat_message",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before user message creation"),
+    )
+    monkeypatch.setattr(
+        service.state_service,
+        "save_thread_state_snapshot",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before state snapshot creation"),
+    )
+
+    request = GenerationJobCreateRequest(
+        threadId="thread_pending",
+        userInput="다시 이어서 만들어줘",
+        runMode="queued_only",
+    )
+
+    with pytest.raises(ChatThreadHasPendingJobError):
+        service.create_generation_job(request)
+
+
+def test_restore_thread_state_for_generation_strips_waiting_transients():
+    from types import SimpleNamespace
+
+    from orchestrator.app.chat_threads.state_service import restore_thread_state_for_generation
+
+    snapshot = SimpleNamespace(
+        state_payload={
+            "business_type": "beauty_salon",
+            "missing_fields": ["item_or_service"],
+            "context": {"pending_question": "어떤 업종의 광고인가요?"},
+            "copy_candidates": [{"id": "old"}],
+            "result_payload": {"image_url": "old.png"},
+            "selected_reference_template_id": "ref_1",
+            "brand_kit_id": "brand_1",
+        }
+    )
+
+    restored = restore_thread_state_for_generation(
+        snapshot,
+        current_request_fields={"ad_format": "poster"},
+        user_input="강남 프리미엄 뷰티살롱 포스터",
+        continuation_mode="new_turn",
+    )
+
+    assert restored["business_type"] == "beauty_salon"
+    assert restored["selected_reference_template_id"] == "ref_1"
+    assert restored["brand_kit_id"] == "brand_1"
+    assert restored["ad_format"] == "poster"
+    assert restored["user_input"] == "강남 프리미엄 뷰티살롱 포스터"
+    assert restored["continuation_mode"] == "new_turn"
+    assert "missing_fields" not in restored
+    assert "context" not in restored
+    assert "copy_candidates" not in restored
+    assert "result_payload" not in restored
+
+
+def test_create_generation_job_rejects_pending_thread_with_explicit_continuation_mode(monkeypatch):
+    from contextlib import nullcontext
+
+    from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+    from orchestrator.app.chat_threads.errors import ChatThreadHasPendingJobError
+    from orchestrator.app.generation_jobs import service
+
+    monkeypatch.setattr(service.db_settings, "get_db_backend", lambda: "postgres")
+    monkeypatch.setattr(service, "db_transaction", lambda: nullcontext())
+    monkeypatch.setattr(service, "_resolve_db_workspace_for_generation_request", lambda request, connection=None: {"id": "workspace_1"})
+    monkeypatch.setattr(
+        service.chat_thread_repo,
+        "get_chat_thread_by_public_id",
+        lambda *args, **kwargs: {
+            "id": "thread-internal",
+            "public_thread_id": "thread_pending",
+            "archived_at": None,
+            "active_job_id": None,
+            "final_output_id": None,
+        },
+    )
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "get_latest_waiting_generation_job_for_thread",
+        lambda *args, **kwargs: {"public_job_id": "job_waiting", "metadata": {}},
+    )
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "create_generation_job_row",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before generation job row creation"),
+    )
+    monkeypatch.setattr(
+        service.chat_message_repo,
+        "append_chat_message",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before user message creation"),
+    )
+    monkeypatch.setattr(
+        service.state_service,
+        "save_thread_state_snapshot",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before state snapshot creation"),
+    )
+
+    request = GenerationJobCreateRequest(
+        threadId="thread_pending",
+        userInput="새 턴으로 다시 만들어줘",
+        runMode="queued_only",
+        continuationMode="new_turn",
+    )
+
+    with pytest.raises(ChatThreadHasPendingJobError):
+        service.create_generation_job(request)
+
+
+def test_implicit_existing_thread_create_preserves_waiting_transients_in_snapshot(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+    from orchestrator.app.generation_jobs import service
+
+    saved_snapshots = []
+    latest_snapshot = SimpleNamespace(
+        snapshot_id="snapshot_prev",
+        state_payload={
+            "business_type": "beauty_salon",
+            "missing_fields": ["item_or_service"],
+            "context": {"pending_question": "어떤 서비스를 홍보할까요?"},
+        },
+    )
+
+    monkeypatch.setattr(service.db_settings, "get_db_backend", lambda: "postgres")
+    monkeypatch.setattr(service, "db_transaction", lambda: nullcontext())
+    monkeypatch.setattr(
+        service,
+        "_resolve_db_workspace_for_generation_request",
+        lambda request, connection=None: {"id": DEFAULT_WORKSPACE_ID},
+    )
+    monkeypatch.setattr(
+        service.chat_thread_repo,
+        "get_chat_thread_by_public_id",
+        lambda *args, **kwargs: {
+            "id": "thread_uuid",
+            "public_thread_id": "thread_existing",
+            "archived_at": None,
+            "active_job_id": None,
+            "final_output_id": None,
+        },
+    )
+    monkeypatch.setattr(service.generation_job_repo, "get_latest_waiting_generation_job_for_thread", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "create_generation_job_row",
+        lambda **kwargs: make_generation_job_row(
+            public_job_id=kwargs["public_job_id"],
+            workspace_id=DEFAULT_WORKSPACE_ID,
+            thread_id="thread_uuid",
+            metadata={**kwargs["metadata"], "public_thread_id": "thread_existing"},
+        ),
+    )
+    monkeypatch.setattr(service.chat_message_repo, "append_chat_message", lambda **kwargs: {"id": "msg_uuid"})
+    monkeypatch.setattr(service.state_service, "get_latest_thread_state_snapshot", lambda **kwargs: latest_snapshot)
+    monkeypatch.setattr(service.state_service, "save_thread_state_snapshot", lambda **kwargs: saved_snapshots.append(kwargs) or {"snapshot_id": "snap_uuid"})
+    monkeypatch.setattr(service.chat_thread_repo, "set_chat_thread_active_job", lambda *args, **kwargs: {"id": "thread_uuid"})
+    monkeypatch.setattr(service.chat_message_repo, "append_generation_job_chat_event", lambda **kwargs: {"id": "msg_uuid"})
+    monkeypatch.setattr(service.generation_job_event_repo, "record_generation_job_event", lambda **kwargs: {"id": "event_uuid"})
+
+    service.create_generation_job(
+        GenerationJobCreateRequest(
+            threadId="thread_existing",
+            userInput="이 답변으로 이어서 진행해줘",
+            runMode="queued_only",
+        )
+    )
+
+    restored_payload = saved_snapshots[0]["state_payload"]
+    assert restored_payload["missing_fields"] == ["item_or_service"]
+    assert restored_payload["context"] == {"pending_question": "어떤 서비스를 홍보할까요?"}
+    assert restored_payload["continuation_mode"] == "legacy_restore"
+
+
+def test_restore_thread_state_for_generation_preserves_durable_context():
+    from types import SimpleNamespace
+
+    from orchestrator.app.chat_threads.state_service import restore_thread_state_for_generation
+
+    snapshot = SimpleNamespace(
+        state_payload={
+            "context": {
+                "business_type": "beauty_salon",
+                "item_or_service": "프리미엄 케어",
+                "durable_extra": "keep-me",
+                "pending_question": "어떤 서비스를 홍보할까요?",
+                "pending_interrupt": {"field": "item_or_service"},
+            }
+        }
+    )
+
+    restored = restore_thread_state_for_generation(
+        snapshot,
+        current_request_fields={},
+        user_input="프리미엄 케어 포스터",
+        continuation_mode="new_turn",
+    )
+
+    assert restored["context"]["business_type"] == "beauty_salon"
+    assert restored["context"]["item_or_service"] == "프리미엄 케어"
+    assert restored["context"]["durable_extra"] == "keep-me"
+    assert "pending_question" not in restored["context"]
+    assert "pending_interrupt" not in restored["context"]
+
+
+def test_memory_create_generation_job_rejects_waiting_thread_even_with_continuation_mode(monkeypatch):
+    from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+    from orchestrator.app.chat_threads.errors import ChatThreadHasPendingJobError
+    from orchestrator.app.generation_jobs import service
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "memory")
+    service.reset_generation_job_store_for_tests()
+
+    job = service.create_generation_job(
+        GenerationJobCreateRequest(userInput="광고를 만들어줘", userId="user_memory", runMode="queued_only")
+    )
+    service.mark_generation_job_waiting_user_input(
+        job.job_id,
+        {"missing_fields": ["item_or_service"], "context": {"pending_question": "무엇을 홍보할까요?"}},
+        ["missing_fields", "context"],
+        assistant_message="무엇을 홍보할까요?",
+    )
+
+    monkeypatch.setattr(
+        service.chat_thread_service,
+        "set_thread_active_job",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before memory active job claim"),
+    )
+    monkeypatch.setattr(
+        service.chat_thread_service,
+        "append_generation_job_chat_event_memory",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before memory message creation"),
+    )
+    monkeypatch.setattr(
+        service.state_service,
+        "save_thread_state_snapshot",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before memory snapshot creation"),
+    )
+
+    with pytest.raises(ChatThreadHasPendingJobError):
+        service.create_generation_job(
+            GenerationJobCreateRequest(
+                threadId=job.thread_id,
+                userInput="새 턴으로 다시 만들어줘",
+                userId="user_memory",
+                runMode="queued_only",
+                continuationMode="new_turn",
+            )
+        )
+
+
+def test_create_generation_job_rejects_completed_thread_without_continuation_mode(monkeypatch):
+    from contextlib import nullcontext
+
+    from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+    from orchestrator.app.chat_threads.errors import ChatThreadRequiresContinuationModeError
+    from orchestrator.app.generation_jobs import service
+
+    monkeypatch.setattr(service.db_settings, "get_db_backend", lambda: "postgres")
+    monkeypatch.setattr(service, "db_transaction", lambda: nullcontext())
+    monkeypatch.setattr(service, "_resolve_db_workspace_for_generation_request", lambda request, connection=None: {"id": "workspace_1"})
+    monkeypatch.setattr(
+        service.chat_thread_repo,
+        "get_chat_thread_by_public_id",
+        lambda *args, **kwargs: {
+            "id": "thread-internal",
+            "public_thread_id": "thread_done",
+            "archived_at": None,
+            "active_job_id": None,
+            "final_output_id": "output-internal",
+        },
+    )
+    monkeypatch.setattr(service.generation_job_repo, "get_latest_waiting_generation_job_for_thread", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "create_generation_job_row",
+        lambda *args, **kwargs: pytest.fail("completed guard should run before generation job row creation"),
+    )
+
+    with pytest.raises(ChatThreadRequiresContinuationModeError):
+        service.create_generation_job(
+            GenerationJobCreateRequest(
+                threadId="thread_done",
+                userInput="이 결과에서 다시 만들어줘",
+                runMode="queued_only",
+            )
+        )
+
+
+def test_memory_create_generation_job_rejects_completed_thread_without_continuation_mode(monkeypatch):
+    from orchestrator.app.api.schemas.chat_threads import ChatThreadCreateRequest
+    from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+    from orchestrator.app.chat_threads.errors import ChatThreadRequiresContinuationModeError
+    from orchestrator.app.generation_jobs import service
+
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "memory")
+    service.reset_generation_job_store_for_tests()
+
+    thread = service.chat_thread_service.create_chat_thread(
+        ChatThreadCreateRequest(userId="user_memory", title="완료된 광고")
+    )
+    service.chat_thread_service.set_thread_final_output(thread.thread_id, "output_internal")
+
+    monkeypatch.setattr(
+        service.chat_thread_service,
+        "set_thread_active_job",
+        lambda *args, **kwargs: pytest.fail("completed guard should run before memory active job claim"),
+    )
+
+    with pytest.raises(ChatThreadRequiresContinuationModeError):
+        service.create_generation_job(
+            GenerationJobCreateRequest(
+                threadId=thread.thread_id,
+                userInput="완료된 결과에서 다시 만들어줘",
+                userId="user_memory",
+                runMode="queued_only",
+            )
+        )

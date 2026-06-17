@@ -221,6 +221,105 @@ def restore_thread_state(
     
     return restored
 
+
+_NEW_GENERATION_TRANSIENT_KEYS = {
+    "job_id",
+    "missing_fields",
+    "current_brief",
+    "marketing_copy",
+    "copy_candidates",
+    "copy_candidate_origin",
+    "progress_state",
+    "quality_gate_decision",
+    "quality_gate_status",
+    "quality_gate_retry_feedback",
+    "ocr_gate_decision",
+    "ocr_gate_status",
+    "ocr_gate_retry_feedback",
+    "image_prompt_spec",
+    "copy_spec",
+    "copy_required",
+    "text_layout_spec",
+    "text_style_spec",
+    "text_overlay_pending",
+    "t2i_request",
+    "t2i_result",
+    "candidates",
+    "artifact_refs",
+    "background_validation_report",
+    "safe_area_report",
+    "readability_report",
+    "render_result",
+    "final_validation_report",
+    "result_payload",
+    "final_image_path",
+    "error_message",
+    "error_info",
+    "selected_copy",
+    "selected_copy_id",
+    "selected_channel_id",
+    "selected_tone",
+    "custom_direction",
+    "user_custom_headline",
+    "user_custom_subcopy",
+}
+
+_NEW_GENERATION_TRANSIENT_CONTEXT_KEYS = {
+    "__interrupt__",
+    "current_question",
+    "interrupt",
+    "interrupts",
+    "pending_field",
+    "pending_fields",
+    "pending_interrupt",
+    "pending_option",
+    "pending_options",
+    "pending_question",
+    "question",
+    "resume_payload",
+    "waiting_for",
+}
+
+
+def _strip_transient_context(context: Any) -> dict[str, Any] | None:
+    if not isinstance(context, dict):
+        return None
+    stripped = {
+        key: value
+        for key, value in context.items()
+        if str(key) not in _NEW_GENERATION_TRANSIENT_CONTEXT_KEYS
+    }
+    return stripped or None
+
+
+def restore_thread_state_for_generation(
+    latest_snapshot: ChatStateSnapshotResponse | None,
+    current_request_fields: dict[str, Any],
+    user_input: str,
+    continuation_mode: str | None,
+) -> dict[str, Any]:
+    from orchestrator.app.chat_threads.state_snapshot import restore_persistent_state
+
+    restored = restore_persistent_state(latest_snapshot.state_payload if latest_snapshot else None)
+
+    if continuation_mode in {"new_turn", "retry_failed", "regenerate_from_output"}:
+        for key in _NEW_GENERATION_TRANSIENT_KEYS:
+            restored.pop(key, None)
+        stripped_context = _strip_transient_context(restored.get("context"))
+        if stripped_context:
+            restored["context"] = stripped_context
+        else:
+            restored.pop("context", None)
+
+    for k, v in current_request_fields.items():
+        restored[k] = v
+
+    restored["user_input"] = user_input
+    restored["continuation_mode"] = continuation_mode
+
+    return restored
+
+
 def get_latest_thread_state_for_user(
     public_thread_id: str,
     user_id: str | None = None,
