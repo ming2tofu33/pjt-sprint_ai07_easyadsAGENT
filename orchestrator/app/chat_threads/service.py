@@ -15,7 +15,6 @@ from orchestrator.app.api.schemas.chat_threads import (
     ChatThreadResumeStateResponse,
     ChatThreadUpdateRequest,
 )
-from orchestrator.app.chat_threads import state_service
 from orchestrator.app.db import settings as db_settings
 from orchestrator.app.db.errors import DatabaseConfigurationError, DatabaseDependencyError
 from orchestrator.app.db.repositories import chat_messages as chat_message_repo
@@ -687,6 +686,8 @@ def _thread_resume_inputs(
     user_id: str | None = None,
     connection: object | None = None,
 ) -> tuple[object | None, dict | None]:
+    from orchestrator.app.chat_threads import state_service
+
     try:
         latest_snapshot = state_service.get_latest_thread_state_snapshot(
             public_thread_id=public_thread_id,
@@ -757,7 +758,11 @@ def get_chat_thread_resume_state(
         thread = _get_chat_thread_memory(thread_id, user_id=user_id)
         if not thread:
             return None
-        return thread.resume_state
+        return compute_thread_resume_state(
+            thread=thread.model_dump(mode="json"),
+            latest_snapshot=None,
+            waiting_job=None,
+        )
 
     workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     row = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
@@ -797,15 +802,7 @@ def _list_chat_threads_db(
         if include_total
         else offset + len(rows)
     )
-    threads: list[ChatThreadResponse] = []
-    for row in rows:
-        latest_snapshot, waiting_job = _thread_resume_inputs(
-            public_thread_id=str(row["public_thread_id"]),
-            workspace_id=workspace_id,
-            user_id=user_id,
-        )
-        threads.append(_thread_row_to_response(row, latest_snapshot=latest_snapshot, waiting_job=waiting_job))
-    return threads, total
+    return [_thread_row_to_response(row) for row in rows], total
 
 
 def _update_chat_thread_db(
@@ -853,7 +850,10 @@ def _archive_chat_thread_db(
     if existing.get("active_job_id") and not force:
         raise ChatThreadHasActiveJobError()
     row = chat_thread_repo.archive_chat_thread(thread_id, workspace_id=workspace_id, force=force)
-    return _thread_row_to_response(row) if row else None
+    if not row:
+        return None
+    joined = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
+    return _thread_row_to_response(joined or row)
 
 
 def _restore_chat_thread_db(
@@ -874,7 +874,10 @@ def _restore_chat_thread_db(
             f"Workspace already has the maximum of {max_threads} active chat threads."
         )
     row = chat_thread_repo.restore_chat_thread(thread_id, workspace_id=workspace_id)
-    return _thread_row_to_response(row) if row else None
+    if not row:
+        return None
+    joined = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
+    return _thread_row_to_response(joined or row)
 
 
 def _append_chat_message_db(
