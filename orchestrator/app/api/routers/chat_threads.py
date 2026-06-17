@@ -14,6 +14,8 @@ from orchestrator.app.api.schemas.chat_threads import (
     ChatThreadGetResponse,
     ChatThreadListResponse,
     ChatThreadArchiveRequest,
+    ChatThreadResumeStateGetResponse,
+    ChatThreadResumeStateResponse,
     ChatThreadRestoreRequest,
     ChatThreadUpdateRequest,
     ChatThreadStateGetResponse,
@@ -207,6 +209,29 @@ def restore_chat_thread_route(
     if not thread:
         _not_found(thread_id)
     return ChatThreadGetResponse(thread=thread)
+
+
+@router.get(
+    "/chat-threads/{thread_id}/resume-state",
+    response_model=ChatThreadResumeStateGetResponse,
+)
+def get_chat_thread_resume_state_route(
+    thread_id: str,
+    user_id: str | None = Query(default=None, alias="userId"),
+    account_type: str | None = Query(default=None, alias="accountType"),
+) -> ChatThreadResumeStateGetResponse:
+    resume_state = chat_service.get_chat_thread_resume_state(
+        thread_id,
+        **_user_scope_kwargs(user_id, account_type),
+    )
+    if not resume_state:
+        _not_found(thread_id)
+    return ChatThreadResumeStateGetResponse(
+        resume_state=ChatThreadResumeStateResponse.model_validate(
+            resume_state,
+            from_attributes=True,
+        )
+    )
 
 
 @router.get(
