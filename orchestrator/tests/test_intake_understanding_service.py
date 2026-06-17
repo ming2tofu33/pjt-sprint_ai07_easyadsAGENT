@@ -168,7 +168,7 @@ def test_hybrid_intake_rejects_whole_prompt_item_and_routes_business_candidate_t
     assert result.product_or_service_candidate is None
     assert result.campaign_intent_candidate == "store_opening"
     assert "item_or_service" not in updates
-    assert "business_type" not in updates
+    assert updates["business_type"] == "beauty"
     assert metadata["domain_routing_result"]["canonical_domain"] == "beauty"
     assert metadata["domain_routing_result"]["support_status"] == "needs_evidence"
 

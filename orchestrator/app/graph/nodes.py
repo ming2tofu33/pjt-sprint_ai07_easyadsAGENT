@@ -71,6 +71,16 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     requested_ad_format = resolve_requested_ad_format(state) or infer_ad_format(text)
     if requested_ad_format:
         extra["ad_format"] = requested_ad_format
+    intake_domain = intake_projection.get("domain_routing_result") if isinstance(intake_projection.get("domain_routing_result"), dict) else {}
+    extra["canonical_domain"] = intake_domain.get("canonical_domain")
+    extra["domain_support_status"] = intake_domain.get("support_status")
+    extra["business_phrase"] = intake_result.business_candidate
+    extra["venue_type_candidate"] = intake_result.venue_type_candidate
+    extra["advertised_subject"] = intake_result.advertised_subject
+    extra["advertised_subject_type"] = intake_result.advertised_subject_type
+    extra["rejected_item_candidate"] = intake_projection.get("rejected_item_candidate")
+    extra["rejection_reason"] = intake_projection.get("rejection_reason")
+    extra["intake_evidence_refs"] = intake_projection.get("evidence_refs") or []
     context_data["extra"] = extra
     context = MarketingContext(**context_data)
 

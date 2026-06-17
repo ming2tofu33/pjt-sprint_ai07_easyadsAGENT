@@ -7,12 +7,14 @@ from typing import Any
 
 from orchestrator.app.llm.copy_fallbacks import build_message_strategy
 from orchestrator.app.llm.copy_grounding import evaluate_copy_grounding
+from orchestrator.app.llm.copy_subject_anchor import resolve_copy_subject_anchor
 from orchestrator.app.schemas.llm_marketing import CopyCandidate, MarketingContext
 
 def build_copy_input_projection(state: dict[str, Any]) -> dict[str, Any]:
     context = _dict(state.get("context"))
     current_brief = _dict(state.get("current_brief"))
     campaign_context = _dict(state.get("campaign_context"))
+    anchor = resolve_copy_subject_anchor(state)
     return {
         "user_input_present": bool((state.get("user_input") or "").strip()),
         "business_type": _string_or_none(context.get("business_type")),
@@ -27,6 +29,11 @@ def build_copy_input_projection(state: dict[str, Any]) -> dict[str, Any]:
         "contact_or_order_method": _string_or_none(context.get("contact_or_order_method")),
         "requested_ad_format": _requested_ad_format(state),
         "copy_generation_mode": _string_or_none(state.get("copy_generation_mode")),
+        "copy_subject_anchor": anchor.value,
+        "copy_subject_source": anchor.source,
+        "copy_subject_evidence_refs": list(anchor.evidence_refs),
+        "copy_subject_safe_for_copy": anchor.safe_for_copy,
+        "copy_subject_rejection_reason": anchor.rejection_reason,
     }
 
 

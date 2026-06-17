@@ -307,12 +307,47 @@ _UNSUPPORTED_DOMAIN_HINTS: dict[str, str] = {
     "other": "other",
 }
 _SCENE_EVIDENCE_TAGS = frozenset({"bbq_grill", "charcoal_grill"})
+_SOURCE_ALIAS_SPANS: dict[str, str] = {
+    "뷰티샵": "beauty",
+    "뷰티": "beauty",
+    "미용실": "beauty_salon",
+    "살롱": "salon",
+    "네일샵": "beauty_nail",
+    "네일": "nail",
+    "스파": "spa",
+    "카페": "cafe",
+    "베이커리": "bakery",
+    "레스토랑": "restaurant",
+    "음식점": "restaurant",
+    "식당": "restaurant",
+    "고깃집": "restaurant_bbq",
+    "매장": "store",
+    "상점": "store",
+    "소품샵": "store",
+    "꽃집": "flower_shop",
+}
 
 
 def _normalized_key(value: str | CanonicalBusinessDomain | None) -> str:
     if isinstance(value, CanonicalBusinessDomain):
         return value.value
     return str(value or "").strip().lower()
+
+
+def find_business_alias_span(text: str | None) -> tuple[str | None, str | None]:
+    source = str(text or "").strip()
+    if not source:
+        return None, None
+    for phrase in sorted(_SOURCE_ALIAS_SPANS, key=len, reverse=True):
+        if phrase in source:
+            return phrase, _SOURCE_ALIAS_SPANS[phrase]
+    lowered = source.lower()
+    for alias in sorted(_DOMAIN_ALIASES, key=len, reverse=True):
+        if not alias or "_" in alias:
+            continue
+        if alias in lowered:
+            return alias, alias
+    return None, None
 
 
 def _tag(

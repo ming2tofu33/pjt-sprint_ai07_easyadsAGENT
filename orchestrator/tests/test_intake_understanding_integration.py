@@ -29,9 +29,10 @@ def _evidence(key: str, value: str, *, source: str = "deterministic_parser") -> 
 def test_validator_marks_missing_business_without_forcing_item_or_service():
     result = _validate("Create a poster for our premium beauty salon opening.")
 
-    assert result["context"]["business_type"] is None
+    assert result["context"]["business_type"] == "beauty"
     assert result["context"]["item_or_service"] is None
     assert "business_type" in result["missing_fields"]
+    assert result["context"]["extra"]["canonical_domain"] == "beauty"
     assert result["intake_understanding_result"]["advertised_subject_type"] == "business"
 
 
