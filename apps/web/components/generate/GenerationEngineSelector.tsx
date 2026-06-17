@@ -11,11 +11,11 @@ type GenerationEngineSelectorProps = {
   onChange: (engine: ImageGenerationEngine) => void;
 };
 
-const icons = {
+const icons: Partial<Record<ImageGenerationEngine, typeof Sparkles>> = {
   gpt_image_2: Sparkles,
   flux2_klein_4b: Zap,
   sd35_large: Cpu
-} satisfies Partial<Record<ImageGenerationEngine, typeof Sparkles>>;
+};
 
 export function GenerationEngineSelector({ value, onChange }: GenerationEngineSelectorProps) {
   return (
