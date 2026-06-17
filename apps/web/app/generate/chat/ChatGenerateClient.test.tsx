@@ -634,6 +634,19 @@ vi.mock("@/lib/api-client", () => ({
       updated_at: "2026-06-07T00:00:00+00:00"
     }
   })),
+  getChatThreadResumeState: vi.fn(async (threadId: string) => ({
+    success: true,
+    resume_state: {
+      action: "continue_draft",
+      thread_id: threadId,
+      resume_job_id: null,
+      final_output_id: null,
+      latest_snapshot_id: null,
+      snapshot_kind: null,
+      reason: "thread_is_draft",
+      current_question: null
+    }
+  })),
   getChatThreadState: vi.fn(async () => ({
     success: true,
     snapshot: {
@@ -936,6 +949,99 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getAllByText("홍보할 상품이나 서비스는 무엇인가요?").length).toBeGreaterThan(0));
     expect(screen.getByText("처음 요청한 광고 내용")).toBeTruthy();
     expect(screen.getAllByText("카페").length).toBeGreaterThan(0);
+  });
+
+  it("opens a pending thread from the authoritative resume job without creating a new job", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.createGenerationJob).mockClear();
+    vi.mocked(api.getGenerationJob).mockClear();
+    vi.mocked(api.getChatThreadResumeState).mockResolvedValueOnce({
+      success: true,
+      resume_state: {
+        action: "answer_pending_job",
+        thread_id: "thread_pending_resume",
+        resume_job_id: "job_pending_resume",
+        final_output_id: null,
+        latest_snapshot_id: "snapshot_pending_resume",
+        snapshot_kind: "waiting_user_input",
+        reason: "job_waiting_user_input",
+        current_question: {
+          field: "item_or_service",
+          question: "홍보할 상품이나 서비스는 무엇인가요?",
+          options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+        }
+      }
+    });
+    vi.mocked(api.getGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_pending_resume",
+        thread_id: "thread_pending_resume",
+        status: "waiting_user_input",
+        progress: { progress_percent: 50, current_stage: "waiting_user_input" },
+        result_payload: null,
+        metadata: {
+          context: {
+            business_type: "beauty_salon",
+            item_or_service: null,
+            promotion_goal: "new_launch"
+          },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "item_or_service",
+              question: "홍보할 상품이나 서비스는 무엇인가요?",
+              options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+            }
+          }
+        },
+        created_at: "2026-06-06T00:00:00+00:00",
+        updated_at: "2026-06-06T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
+      success: true,
+      snapshot: {
+        snapshot_id: "snapshot_pending_resume",
+        thread_id: "thread_pending_resume",
+        job_id: "job_pending_resume",
+        snapshot_version: 1,
+        schema_version: 1,
+        snapshot_kind: "waiting_user_input",
+        state_payload: {
+          user_input: "프리미엄 뷰티살롱 홍보 포스터 만들어줘",
+          context: {
+            business_type: "beauty_salon",
+            item_or_service: null,
+            promotion_goal: "new_launch"
+          },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "item_or_service",
+              question: "홍보할 상품이나 서비스는 무엇인가요?",
+              options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+            }
+          }
+        },
+        changed_fields: [],
+        reference_template_snapshot: {},
+        brand_kit_snapshot: {},
+        metadata: {},
+        created_at: "2026-06-06T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({ success: true, messages: [], total: 0 });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    searchParamsMock.value = new URLSearchParams("threadId=thread_pending_resume");
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(api.getChatThreadResumeState).toHaveBeenCalledWith("thread_pending_resume"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_pending_resume"));
+    await waitFor(() => expect(screen.getAllByText("홍보할 상품이나 서비스는 무엇인가요?").length).toBeGreaterThan(0));
+    expect(api.createGenerationJob).not.toHaveBeenCalled();
   });
 
   it("restores nested graph context while showing a waiting job question", async () => {
@@ -3157,6 +3263,49 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
 
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?threadId=thread_strawberry");
+  });
+
+  it("shows a view action for draft studio workspaces with a completed result", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listChatThreads).mockResolvedValueOnce({
+      success: true,
+      threads: [
+        {
+          thread_id: "thread_beauty_done",
+          title: "프리미엄 뷰티살롱 포스터",
+          status: "draft",
+          brand_kit_id: null,
+          project_id: null,
+          final_brief: {},
+          active_job_id: null,
+          has_final_output: true,
+          final_output_id: "output_beauty_done",
+          resume_state: {
+            action: "view_result",
+            thread_id: "thread_beauty_done",
+            resume_job_id: "job_beauty_done",
+            final_output_id: "output_beauty_done",
+            latest_snapshot_id: "snapshot_beauty_done",
+            snapshot_kind: "job_completed",
+            reason: "thread_has_final_output",
+            current_question: null
+          },
+          last_message_at: "2026-06-07T00:00:00+00:00",
+          archived_at: null,
+          created_at: "2026-06-07T00:00:00+00:00",
+          updated_at: "2026-06-07T00:00:00+00:00"
+        }
+      ],
+      total: 1
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="studio" />);
+
+    await waitFor(() => expect(screen.getByText("프리미엄 뷰티살롱 포스터")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "보기" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "이어하기" })).toBeNull();
   });
 
   it("separates active and archived studio workspaces", async () => {

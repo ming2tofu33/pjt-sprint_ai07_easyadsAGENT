@@ -223,6 +223,7 @@ export type BrandKitPayload = Record<string, unknown>;
 export interface GenerationJobCreateInput {
   userInput: string;
   threadId?: string | null;
+  continuationMode?: "new_thread" | "new_turn" | "retry_failed" | "regenerate_from_output";
   brandKitId?: string | null;
   entryMode?: string;
   selectedReferenceTemplateId?: string | null;
@@ -1075,6 +1076,24 @@ function mapArchiveItem(item: RawArchiveItem): ArchiveItem {
 
 // --- Chat Thread API ---
 
+export type ThreadResumeAction =
+  | "continue_draft"
+  | "answer_pending_job"
+  | "view_result"
+  | "locked_running"
+  | "retry_failed_job";
+
+export interface ChatThreadResumeState {
+  action: ThreadResumeAction;
+  thread_id: string;
+  resume_job_id?: string | null;
+  final_output_id?: string | null;
+  latest_snapshot_id?: string | null;
+  snapshot_kind?: string | null;
+  reason?: string | null;
+  current_question?: Record<string, unknown> | null;
+}
+
 export interface ChatThreadResponse {
   thread_id: string;
   title?: string | null;
@@ -1084,6 +1103,8 @@ export interface ChatThreadResponse {
   final_brief: Record<string, unknown>;
   active_job_id?: string | null;
   has_final_output: boolean;
+  final_output_id?: string | null;
+  resume_state?: ChatThreadResumeState | null;
   last_message_at: string;
   archived_at?: string | null;
   created_at: string;
@@ -1144,6 +1165,11 @@ export interface ChatThreadStateGetResponse {
   meta?: Record<string, unknown>;
 }
 
+export interface ChatThreadResumeStateGetResponse {
+  success: true;
+  resume_state: ChatThreadResumeState;
+}
+
 export async function listChatThreads(
   params: { limit?: number; offset?: number; includeTotal?: boolean; includeArchived?: boolean } = {}
 ): Promise<ChatThreadListResponse> {
@@ -1172,6 +1198,15 @@ export async function getChatThreadMessages(threadId: string, params: { limit?: 
 export async function getChatThreadState(threadId: string): Promise<ChatThreadStateGetResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   return getJson<ChatThreadStateGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/state`, undefined, authHeaders);
+}
+
+export async function getChatThreadResumeState(threadId: string): Promise<ChatThreadResumeStateGetResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return getJson<ChatThreadResumeStateGetResponse>(
+    `/api/chat-threads/${encodeURIComponent(threadId)}/resume-state`,
+    undefined,
+    authHeaders
+  );
 }
 
 export type ArchiveChatThreadOptions = {

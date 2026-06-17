@@ -30,6 +30,7 @@ import {
   deleteArchiveItem,
   getChatThread,
   getChatThreadMessages,
+  getChatThreadResumeState,
   getChatThreadState,
   getGenerationJob,
   listArchiveItems,
@@ -61,7 +62,11 @@ import {
   type ChatFlowSnapshot,
   type ChatTurnSnapshot
 } from "@/lib/chat-snapshots";
-import { mapChatMessagesToTranscript, mapChatThreadSnapshotToRestoreState } from "@/lib/chat-thread-state-mapper";
+import {
+  mapChatMessagesToTranscript,
+  mapChatThreadSnapshotToRestoreState,
+  type ThreadSnapshotRestoreState
+} from "@/lib/chat-thread-state-mapper";
 import { buildBrief, chatFlowReducer, createInitialChatFlowState, mergeInferredContext } from "@/lib/chat-flow";
 import { normalizeSelectedChannelId, toCanonicalAdFormat } from "@/lib/ad-formats";
 import { campaignIntentLabel } from "@/lib/context-presentation";
@@ -680,6 +685,22 @@ function initialChatIntakeFromTurnSnapshot(snapshot: ChatTurnSnapshot): InitialC
   };
 }
 
+function initialChatIntakeFromRestoreState(restoreState: ThreadSnapshotRestoreState): InitialChatIntakeContext {
+  return {
+    prompt: restoreState.prompt,
+    copyGenerationMode: restoreState.copyGenerationMode,
+    imageGenerationEngine: restoreState.selectedImageGenerationEngine,
+    selectedChannelId: restoreState.selectedChannelId,
+    sourceAssetId: restoreState.sourceAssetId,
+    sourceImagePath: restoreState.sourceImagePath,
+    referenceImagePath: restoreState.referenceImagePath,
+    selectedReferenceTemplateId: restoreState.selectedReferenceTemplateId,
+    selectedReferenceTemplateTitle: restoreState.selectedReferenceTemplateTitle,
+    userCustomHeadline: restoreState.userCustomHeadline,
+    userCustomSubcopy: restoreState.userCustomSubcopy
+  };
+}
+
 function applyReferenceTemplateFromTurnSnapshot(state: ChatFlowState, snapshot: ChatTurnSnapshot): ChatFlowState {
   if (!snapshot.selectedReferenceTemplateId) {
     return state;
@@ -1242,9 +1263,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       let isActive = true;
       Promise.all([
         getChatThread(threadIdParam).catch(() => null),
+        getChatThreadResumeState(threadIdParam).catch(() => null),
         getChatThreadState(threadIdParam),
         getChatThreadMessages(threadIdParam, { limit: 120 }).catch(() => ({ success: true as const, messages: [], total: 0 }))
-      ]).then(([threadResponse, stateResponse, messagesResponse]) => {
+      ]).then(async ([threadResponse, resumeStateResponse, stateResponse, messagesResponse]) => {
         if (!isActive) {
           return;
         }
@@ -1253,7 +1275,118 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         }
 
         setCurrentThreadIsArchived(Boolean(threadResponse?.thread.archived_at));
+        const resumeState = resumeStateResponse?.resume_state ?? null;
         const restoreState = mapChatThreadSnapshotToRestoreState(stateResponse.snapshot);
+        const transcript = mapChatMessagesToTranscript(messagesResponse.messages);
+
+        if (resumeState?.action === "view_result") {
+          const finalJobResponse = resumeState.resume_job_id
+            ? await getGenerationJob(resumeState.resume_job_id).catch(() => null)
+            : null;
+          if (!isActive || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
+            return;
+          }
+          const finalJob = finalJobResponse?.job ?? null;
+          if (!finalJob) {
+            showToast("완료된 결과를 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+            return;
+          }
+
+          if (restoreState) {
+            let nextContext = restoreState.context;
+            try {
+              const turnResponse = generationJobToChatTurnResponse(finalJob, restoreState.copyGenerationMode);
+              nextContext = mergeContextFromTurnResponse(restoreState.context, turnResponse);
+            } catch {
+              nextContext = restoreState.context;
+            }
+            dispatch({
+              type: "restoreThreadSnapshot",
+              ...restoreState,
+              context: nextContext,
+              generationJob: finalJob,
+              conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
+            });
+          } else {
+            dispatch({ type: "showResultShell" });
+            dispatch({ type: "generationJobUpdated", generationJob: finalJob });
+          }
+          setShowHistory(false);
+          setGenerationStage("complete");
+          lastPrimedStageRef.current = "complete";
+          return;
+        }
+
+        if (resumeState?.action === "answer_pending_job") {
+          const waitingJobResponse = resumeState.resume_job_id
+            ? await getGenerationJob(resumeState.resume_job_id).catch(() => null)
+            : null;
+          if (!isActive || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
+            return;
+          }
+          const waitingJob = waitingJobResponse?.job ?? null;
+          if (waitingJob) {
+            const restoreIntake = restoreState ? initialChatIntakeFromRestoreState(restoreState) : undefined;
+            if (restoreState) {
+              let nextContext = restoreState.context;
+              try {
+                const turnResponse = generationJobToChatTurnResponse(waitingJob, restoreState.copyGenerationMode);
+                nextContext = mergeContextFromTurnResponse(restoreState.context, turnResponse);
+              } catch {
+                nextContext = restoreState.context;
+              }
+              dispatch({
+                type: "restoreThreadSnapshot",
+                ...restoreState,
+                context: nextContext,
+                generationJob: waitingJob,
+                conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
+              });
+            } else {
+              dispatch({ type: "generationJobUpdated", generationJob: waitingJob });
+            }
+            setShowHistory(false);
+            if (stopForGenerationJobWaitingState(waitingJob, restoreIntake)) {
+              return;
+            }
+            if (isTerminalGenerationJobStatus(waitingJob.status)) {
+              setGenerationStage("complete");
+              lastPrimedStageRef.current = "complete";
+              return;
+            }
+            setGenerationStage("generating");
+            lastPrimedStageRef.current = "generating";
+            void pollGenerationJobUntilDoneOrQuestion(waitingJob, restoreIntake);
+            return;
+          }
+        }
+
+        if (resumeState?.action === "locked_running" && resumeState.resume_job_id) {
+          const runningJobResponse = await getGenerationJob(resumeState.resume_job_id).catch(() => null);
+          if (!isActive || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
+            return;
+          }
+          const runningJob = runningJobResponse?.job ?? null;
+          if (runningJob) {
+            const restoreIntake = restoreState ? initialChatIntakeFromRestoreState(restoreState) : undefined;
+            if (restoreState) {
+              dispatch({
+                type: "restoreThreadSnapshot",
+                ...restoreState,
+                generationJob: runningJob,
+                conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
+              });
+            } else {
+              dispatch({ type: "generationJobUpdated", generationJob: runningJob });
+            }
+            setShowHistory(false);
+            setGenerationStage("generating");
+            lastPrimedStageRef.current = "generating";
+            void pollGenerationJobUntilDoneOrQuestion(runningJob, restoreIntake);
+            return;
+          }
+        }
+
         if (!restoreState) {
           const pendingTurn = readChatTurnSnapshot();
           if (chatTurnSnapshotMatchesThread(pendingTurn, threadIdParam)) {
@@ -1264,29 +1397,17 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           return;
         }
 
-        const transcript = mapChatMessagesToTranscript(messagesResponse.messages);
         dispatch({
           type: "restoreThreadSnapshot",
           ...restoreState,
           conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
         });
         setShowHistory(false);
-        const restoreIntake: InitialChatIntakeContext = {
-          prompt: restoreState.prompt,
-          copyGenerationMode: restoreState.copyGenerationMode,
-          imageGenerationEngine: restoreState.selectedImageGenerationEngine,
-          sourceAssetId: restoreState.sourceAssetId,
-          sourceImagePath: restoreState.sourceImagePath,
-          referenceImagePath: restoreState.referenceImagePath,
-          selectedReferenceTemplateId: restoreState.selectedReferenceTemplateId,
-          selectedReferenceTemplateTitle: restoreState.selectedReferenceTemplateTitle,
-          userCustomHeadline: restoreState.userCustomHeadline,
-          userCustomSubcopy: restoreState.userCustomSubcopy
-        };
+        const restoreIntake = initialChatIntakeFromRestoreState(restoreState);
         // interrupt(라이브 상태)가 스냅샷보다 우선. waiting이면 단일 디사이더로 stage 결정.
         if (
           restoreState.generationJob.status === "waiting_user_input" &&
-          stopForGenerationJobInterrupt(restoreState.generationJob, restoreIntake)
+          stopForGenerationJobWaitingState(restoreState.generationJob, restoreIntake)
         ) {
           return;
         }
@@ -1460,6 +1581,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const response = await createGenerationJob({
         userInput: appendSavedBrandKitContext(prompt),
         threadId: activeThreadId,
+        continuationMode: activeThreadId ? "new_turn" : "new_thread",
         ...(options.adFormat ? { adFormat: options.adFormat } : {}),
         runMode: "graph_job",
         copyGenerationMode: options.copyGenerationMode ?? undefined,
@@ -1650,6 +1772,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const backendEngine = engineOption.backendEngine;
       const response = await createGenerationJob({
         userInput: appendSavedBrandKitContext(input.prompt),
+        continuationMode: "new_thread",
         entryMode: "photo_start",
         runMode: "graph_job",
         sourceAssetId: upload.sourceAssetId,
@@ -2159,6 +2282,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const created = await createGenerationJob({
         userInput: requestUserInput,
         threadId: toGenerationJobThreadId(state.threadId),
+        continuationMode: state.threadId ? "new_turn" : "new_thread",
         entryMode: state.entryMode,
         copyGenerationMode: finalCopyGenerationMode,
         adFormat: finalAdFormat,
