@@ -5,7 +5,10 @@ headline/subcopy precedence, and grounded product-detail feature extraction.
 Flyer mode classification grounding and graph wiring are out of this scope.
 """
 
+from types import SimpleNamespace
+
 from orchestrator.app.llm.format_approved_plan_service import build_format_approved_plan_bundle
+from orchestrator.app.llm.format_approved_plan_provider import DefaultFormatApprovedPlanProvider
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 from orchestrator.app.schemas.native_creative import ApprovedNativeCopyBrief, FormatApprovedPlanBundle
 from orchestrator.app.schemas.product_understanding import ProductUnderstanding
@@ -269,6 +272,75 @@ def test_default_provider_invented_operational_text_fails_closed(monkeypatch):
     assert bundle.decision == "rejected"
     assert "invented_operational_text" in bundle.reason_codes
     assert bundle.flyer_promotional_approved_copy_plan is None
+
+
+def test_editorial_flyer_normalizes_grounded_optional_fields_into_schema_budget():
+    payload = {
+        "decision": "approved",
+        "flyer_mode": "editorial",
+        "plan": {
+            "body_copy": "에스프레소와 우유로 만든 메뉴",
+            "info_cards": ["부드러운 맛", "은은한 단맛", "매장에서 편하게 즐길 수 있음"],
+            "bottom_notice": "따뜻하게 또는 아이스로 제공",
+        },
+    }
+    evidence = InputEvidenceBundle(
+        input_mode="text_only",
+        user_text=(
+            "라떼 카페 라떼 전단지를 만들어줘. "
+            "에스프레소와 우유로 만든 메뉴. 부드러운 맛. 은은한 단맛. "
+            "따뜻하게 또는 아이스로 제공. 매장에서 편하게 즐길 수 있음."
+        ),
+        explicit_product_mentions=["라떼 카페 라떼"],
+        overall_confidence=0.9,
+    )
+
+    bundle = _build(
+        "flyer",
+        adapter=_RecordingAdapter(payload),
+        evidence=evidence,
+        approved_copy=_approved_copy("라떼 카페 라떼", "부드럽고 은은한 단맛의 라떼"),
+    )
+
+    assert bundle.decision == "approved"
+    assert bundle.flyer_approved_copy_plan is not None
+    assert 4 <= len(bundle.flyer_approved_copy_plan.allowed_texts) <= 6
+
+
+def test_default_provider_uses_llm_adapter_path(monkeypatch):
+    captured = {}
+
+    def fake_invoke_structured(self, schema, prompt, model_selection, metadata=None):
+        captured["schema_name"] = getattr(schema, "__name__", "")
+        captured["provider"] = model_selection.provider
+        captured["selected_model_class"] = model_selection.selected_model_class
+        captured["metadata"] = metadata
+        return SimpleNamespace(
+            success=True,
+            output={"decision": "approved", "plan": {"feature_labels": ["피부 진정", "수분 충전"]}, "provider_metadata": {}},
+            metadata={"provider": "openai", "provider_profile": "openai", "model": "gpt-5.4"},
+            error=None,
+        )
+
+    monkeypatch.setattr(
+        "orchestrator.app.llm.format_approved_plan_provider.OpenAIAdapter.invoke_structured",
+        fake_invoke_structured,
+    )
+
+    payload = DefaultFormatApprovedPlanProvider().generate_format_approved_plan(
+        ad_format="product_detail",
+        input_evidence=_evidence(),
+        product_understanding=_product(),
+        approved_copy=_approved_copy(),
+        state={},
+    )
+
+    assert payload["decision"] == "approved"
+    assert payload["plan"]["feature_labels"] == ["피부 진정", "수분 충전"]
+    assert captured["schema_name"] == "_FormatApprovedPlanPayload"
+    assert captured["provider"] == "openai"
+    assert captured["selected_model_class"] == "api_full"
+    assert captured["metadata"] == {"ad_format": "product_detail"}
 
 
 def test_product_detail_single_label_returns_manual_review():
