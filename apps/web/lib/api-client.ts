@@ -473,6 +473,27 @@ function compactPayload(payload: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined && value !== null));
 }
 
+async function withRefreshedSupabaseAuthRetry<TResponse>(
+  request: (headers: RequestHeaders) => Promise<TResponse>
+): Promise<TResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  try {
+    return await request(authHeaders);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.errorCode !== "invalid_or_expired_session") {
+      throw error;
+    }
+    const refreshedHeaders = await getSupabaseAuthorizationHeader({
+      allowAnonymous: false,
+      forceRefresh: true
+    });
+    if (!refreshedHeaders.authorization || refreshedHeaders.authorization === authHeaders.authorization) {
+      throw error;
+    }
+    return request(refreshedHeaders);
+  }
+}
+
 async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
   const url = buildBffUrlWithParams(path, params);
   return measureWebPerf(
@@ -942,8 +963,10 @@ export function updateBrandKit(brandKitId: string, payload: BrandKitPayload): Pr
 }
 
 export async function createGenerationJob(payload: GenerationJobCreateInput): Promise<GenerationJobResponse> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
-  return postJson<GenerationJobResponse>("/api/generation-jobs", compactPayload(payload), authHeaders);
+  const requestPayload = compactPayload(payload);
+  return withRefreshedSupabaseAuthRetry((authHeaders) =>
+    postJson<GenerationJobResponse>("/api/generation-jobs", requestPayload, authHeaders)
+  );
 }
 
 export async function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
