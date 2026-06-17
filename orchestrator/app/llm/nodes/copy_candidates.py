@@ -10,6 +10,8 @@ from langgraph.types import interrupt
 
 from orchestrator.app.graph.state import MarketingState, context_to_model, set_requested_ad_format
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
+from orchestrator.app.llm.copy_fallbacks import build_message_strategy
+from orchestrator.app.llm.copy_prompts import build_copy_generation_v2_prompt
 from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
 from orchestrator.app.llm.copy_quality_v2 import annotate_and_rank_candidate_output, generate_copy_candidates_v2
 from orchestrator.app.llm.copy_recommendation_lineage import (
@@ -511,18 +513,23 @@ def build_candidate_prompt(state: MarketingState, metadata_contract: dict[str, A
         node_name="copy_candidate_generation",
         output_schema=CopyCandidateListOutput,
     )
-    return (
-        "Generate structured Korean ad copy candidates. "
-        f"business_type={context.business_type}, item_or_service={context.item_or_service}, "
-        f"promotion_goal={context.promotion_goal}, brand_tone={context.brand_tone}, "
-        f"forbidden_claims={tone.get('forbidden_claims', [])}. "
-        "Do not invent phone numbers, addresses, prices, discounts, or event periods. "
-        "headline and subcopy must contain ONLY the final ad text. Never include labels, "
-        "prefixes, or meta such as 'AI추천=', 'Sub:', 'Headline:'. Put any reasoning in the "
-        "rationale field only. "
-        "Bad: headline='AI추천=여름 샌들 할인 / Sub: 시원한 여름 보내세요'. "
-        "Good: headline='올여름을 더 시원하게, 썸머 샌들 특가', subcopy='발끝까지 편안한 여름 준비', rationale='시즌 상품 강조 + 편안함 어필'. "
-        f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}."
+    grounded_prompt = build_copy_generation_v2_prompt(
+        context=context,
+        strategy=build_message_strategy(context),
+        visual_intent=None,
+    )
+    return "\n".join(
+        [
+            grounded_prompt,
+            "Return strict JSON only for CopyCandidateListOutput.",
+            "Each candidate must keep angle as one of: product_first, emotion_first, benefit_action_first.",
+            "Each candidate must use at least one explicit business fact from the provided context.",
+            "Use a different message angle for each candidate and avoid repeating the same sentence structure.",
+            f"forbidden_claims={tone.get('forbidden_claims', [])}.",
+            "Do not invent phone numbers, addresses, prices, discounts, event periods, guarantees, or qualifications.",
+            "headline and subcopy must contain ONLY the final ad text. Never include labels, prefixes, or meta text.",
+            f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}.",
+        ]
     )
 
 
