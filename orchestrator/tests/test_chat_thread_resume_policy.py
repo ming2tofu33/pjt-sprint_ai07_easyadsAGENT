@@ -125,3 +125,76 @@ def test_resume_state_continues_plain_draft():
 
     assert state.action == "continue_draft"
     assert state.reason == "thread_is_draft"
+
+
+def test_resume_state_does_not_expose_internal_active_job_id():
+    state = compute_thread_resume_state(
+        thread={
+            "public_thread_id": "thread_internal_active",
+            "status": "draft",
+            "active_public_job_id": None,
+            "active_job_id": "internal-active-job",
+            "final_public_output_id": None,
+        },
+        latest_snapshot=_snapshot("input"),
+        waiting_job=None,
+    )
+
+    assert state.action == "continue_draft"
+    assert state.resume_job_id is None
+
+
+def test_resume_state_does_not_answer_pending_job_from_internal_waiting_job_id():
+    state = compute_thread_resume_state(
+        thread={
+            "public_thread_id": "thread_internal_waiting",
+            "status": "draft",
+            "active_public_job_id": None,
+            "final_public_output_id": None,
+        },
+        latest_snapshot=_snapshot("waiting_user_input"),
+        waiting_job={
+            "public_job_id": None,
+            "job_id": "internal-waiting-job",
+            "metadata": {
+                "pending_interrupt": {"field": "business_type"},
+                "assistant_message": "어떤 업종의 광고인가요?",
+            },
+        },
+    )
+
+    assert state.action == "continue_draft"
+    assert state.resume_job_id is None
+
+
+def test_resume_state_does_not_expose_internal_final_output_id():
+    state = compute_thread_resume_state(
+        thread={
+            "public_thread_id": "thread_internal_output",
+            "status": "draft",
+            "active_public_job_id": None,
+            "final_public_output_id": None,
+            "final_output_id": "internal-final-output",
+        },
+        latest_snapshot=_snapshot("input"),
+        waiting_job=None,
+    )
+
+    assert state.action == "continue_draft"
+    assert state.final_output_id is None
+
+
+def test_resume_state_does_not_expose_internal_snapshot_id():
+    state = compute_thread_resume_state(
+        thread={
+            "public_thread_id": "thread_internal_snapshot",
+            "status": "draft",
+            "active_public_job_id": None,
+            "final_public_output_id": None,
+        },
+        latest_snapshot=_snapshot("input", snapshot_id="internal-snapshot"),
+        waiting_job=None,
+    )
+
+    assert state.action == "continue_draft"
+    assert state.latest_snapshot_id is None
