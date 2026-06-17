@@ -6,6 +6,7 @@ export type RequestHeaders = Record<string, string>;
 
 export type SupabaseAuthorizationOptions = {
   allowAnonymous?: boolean;
+  forceRefresh?: boolean;
 };
 
 export class SupabaseGuestSessionError extends Error {
@@ -61,6 +62,19 @@ async function createAnonymousAccessToken(supabase: ReturnType<typeof import("./
   return guestToken;
 }
 
+async function refreshAccessToken(
+  supabase: ReturnType<typeof import("./browser").createSupabaseBrowserClient>
+): Promise<string | null> {
+  if (!supabase || typeof supabase.auth.refreshSession !== "function") {
+    return null;
+  }
+  const result = await supabase.auth.refreshSession();
+  if (!result || result.error) {
+    return null;
+  }
+  return sessionToken(result.data.session);
+}
+
 export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptions = {}): Promise<string | null> {
   if (typeof window === "undefined") {
     return null;
@@ -70,6 +84,16 @@ export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptio
   const supabase = createSupabaseBrowserClient();
   if (!supabase) {
     return null;
+  }
+
+  if (options.forceRefresh) {
+    const refreshedToken = await refreshAccessToken(supabase);
+    if (refreshedToken) {
+      return refreshedToken;
+    }
+    if (options.allowAnonymous === false) {
+      return null;
+    }
   }
 
   const {
