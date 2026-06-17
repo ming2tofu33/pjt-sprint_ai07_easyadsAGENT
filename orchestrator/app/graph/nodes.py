@@ -21,6 +21,11 @@ from orchestrator.app.graph.state import (
     update_current_brief,
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
+from orchestrator.app.llm.intake_understanding_service import (
+    _source_text_hash,
+    project_intake_to_context,
+    understand_intake,
+)
 from orchestrator.app.llm.metadata_builders import build_copy_mode_inference_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.nodes.brief_interpreter import build_context_updates_from_brief_interpreter, interpret_brief_with_llm
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -44,26 +49,15 @@ def input_node(input_value: MarketingState | InitialMarketingRequest | dict[str,
 def validator_node(state: MarketingState) -> dict[str, Any]:
     context = context_to_model(state.get("context"))
     text = " ".join(str(value or "") for value in [state.get("user_input"), state.get("current_brief", {}).get("custom_request")])
-    updates = infer_marketing_context(text)
+    intake_result, intake_trace = _resolve_intake_understanding(state, text)
+    updates, intake_projection = project_intake_to_context(intake_result)
     context_data = context.model_dump()
     extra = dict(context_data.get("extra") or {})
     if updates.pop("ad_format", None):
-        extra["ad_format"] = infer_ad_format(text)
-    copy_mode_from_brief: str | None = None
+        extra["ad_format"] = intake_result.ad_format_candidate or infer_ad_format(text)
     for key, value in updates.items():
         if value and not context_data.get(key):
             context_data[key] = value
-    brief_interpreter_output, brief_interpreter_metadata = interpret_brief_with_llm(state, text)
-    brief_interpreter_warnings: list[str] = []
-    if brief_interpreter_output:
-        llm_updates, brief_interpreter_warnings = build_context_updates_from_brief_interpreter(
-            brief_interpreter_output,
-            source_text=text,
-        )
-        copy_mode_from_brief = llm_updates.pop("copy_generation_mode", None)
-        for key, value in llm_updates.items():
-            if value and not context_data.get(key):
-                context_data[key] = value
     requested_ad_format = resolve_requested_ad_format(state) or infer_ad_format(text)
     if requested_ad_format:
         extra["ad_format"] = requested_ad_format
@@ -72,11 +66,12 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
 
     missing_fields = calculate_missing_fields(context)
     copy_mode, copy_mode_output = resolve_copy_generation_mode(state, text, track_in_state=False)
+    copy_mode_from_brief = intake_trace.get("copy_generation_mode_candidate")
     if copy_mode is None and copy_mode_from_brief:
         copy_mode = copy_mode_from_brief
         copy_mode_output = CopyModeInferenceOutput(
             copy_generation_mode=copy_mode_from_brief,
-            confidence=brief_interpreter_output.confidence if brief_interpreter_output else 0.65,
+            confidence=float(intake_trace.get("brief_interpreter", {}).get("llm_metadata", {}).get("confidence") or 0.65),
             source="brief_interpreter_llm",
             reasoning_summary="Copy mode inferred by guarded brief interpreter.",
             metadata={"source": "brief_interpreter_llm", "source_detail": "copy_generation_mode inferred by guarded brief interpreter"},
@@ -103,10 +98,11 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         reasoning_summary="Rule-based v1 validator with guarded brief interpretation fallback.",
     )
     validator_metadata = {
+        "intake_understanding": intake_projection,
         "brief_interpreter": {
-            "used": bool(brief_interpreter_output),
-            "llm_metadata": brief_interpreter_metadata,
-            "warnings": brief_interpreter_warnings,
+            "used": bool(intake_trace.get("brief_interpreter", {}).get("used")),
+            "llm_metadata": intake_trace.get("brief_interpreter", {}).get("llm_metadata"),
+            "warnings": intake_trace.get("brief_interpreter", {}).get("warnings", []),
         }
     }
     current_brief_updates = {"ready_for_planning": not bool(missing_fields), "copy_generation_mode": copy_mode}
@@ -116,11 +112,13 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     copy_required = copy_mode != "no_copy" if copy_mode else state.get("copy_required", True)
     text_overlay_pending = copy_mode != "no_copy" if copy_mode else state.get("text_overlay_pending", True)
     tracking = _merge_llm_tracking(
-        brief_interpreter_metadata,
+        intake_trace.get("brief_interpreter", {}).get("llm_metadata"),
         copy_mode_output.metadata.get("llm_metadata") if copy_mode_output else None,
     )
     return {
         "context": context.model_dump(),
+        "intake_understanding_result": intake_result.model_dump(),
+        "intake_extraction_trace": intake_trace,
         "validator_output": validator_output.model_dump(),
         "validator_metadata": validator_metadata,
         "missing_fields": missing_fields,
@@ -177,6 +175,26 @@ def options_node(state: MarketingState) -> dict[str, Any]:
         "current_brief": next_brief,
         **option_tracking,
     }
+
+
+def _resolve_intake_understanding(state: MarketingState, text: str):
+    cached = state.get("intake_understanding_result")
+    trace = dict(state.get("intake_extraction_trace") or {})
+    current_text_hash = _source_text_hash(text)
+    if cached and trace.get("source_text_hash") == current_text_hash:
+        from orchestrator.app.schemas.intake_understanding import IntakeUnderstandingResult
+
+        try:
+            return IntakeUnderstandingResult(**cached), trace
+        except Exception:
+            trace = {}
+    return understand_intake(
+        state,
+        text,
+        deterministic_hints=infer_marketing_context(text),
+        brief_interpreter=interpret_brief_with_llm,
+        brief_projector=build_context_updates_from_brief_interpreter,
+    )
 
 
 def _augment_options(state: MarketingState, field: str, question: OptionQuestion):

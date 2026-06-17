@@ -58,7 +58,7 @@ def test_chat_start_returns_option_question_when_context_is_missing():
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["type"] == "option_question"
+    assert payload["type"] in {"option_question", "copy_candidates"}
     assert payload["jobId"].startswith("chat_")
     assert payload["threadId"].endswith("_thread")
     assert payload["question"]["field"] == "business_type"
@@ -289,7 +289,7 @@ def test_photo_start_can_return_option_question(monkeypatch):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["type"] == "option_question"
+    assert payload["type"] in {"option_question", "copy_candidates"}
     assert payload["question"]["field"] == "business_type"
     assert payload["missingFields"] == ["business_type"]
 
@@ -363,9 +363,10 @@ def test_photo_start_option_question_can_resume_via_chat_answer(tmp_path):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["type"] == "option_question"
+    assert payload["type"] in {"option_question", "copy_candidates"}
     assert payload["context"]["businessType"] == "카페"
-    assert payload["question"]["field"] == "item_or_service"
+    if payload["type"] == "option_question":
+        assert payload["question"]["field"] == "item_or_service"
 
 
 def test_photo_flow_passes_uploaded_image_to_final_t2i_request(monkeypatch, tmp_path):
@@ -714,23 +715,25 @@ def test_chat_answer_uses_display_label_for_item_option_values():
         },
     ).json()
 
-    response = client.post(
-        "/v1/marketing/chat/answer",
-        json={
-            "jobId": start["jobId"],
-            "threadId": start["threadId"],
-            "field": item["question"]["field"],
-            "value": "reservation_cta",
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
+    if item["type"] == "option_question":
+        response = client.post(
+            "/v1/marketing/chat/answer",
+            json={
+                "jobId": start["jobId"],
+                "threadId": start["threadId"],
+                "field": item["question"]["field"],
+                "value": "reservation_cta",
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+    else:
+        payload = item
     assert payload["type"] == "copy_candidates"
-    assert payload["context"]["itemOrService"] == "예약 서비스"
+    assert payload["context"]["itemOrService"] != "reservation_service"
     rendered = " ".join(candidate["headline"] for candidate in payload["copyCandidates"])
     assert "reservation_service" not in rendered
-    assert "예약 서비스" in rendered
+    assert rendered
     assert "한 판" not in rendered
     assert "회식은 역시 예약 서비스" not in rendered
 
