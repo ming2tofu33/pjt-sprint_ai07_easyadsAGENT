@@ -62,9 +62,9 @@ import {
   type ChatTurnSnapshot
 } from "@/lib/chat-snapshots";
 import { mapChatMessagesToTranscript, mapChatThreadSnapshotToRestoreState } from "@/lib/chat-thread-state-mapper";
-import { buildBrief, chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
+import { buildBrief, chatFlowReducer, createInitialChatFlowState, mergeInferredContext } from "@/lib/chat-flow";
 import { normalizeSelectedChannelId, toCanonicalAdFormat } from "@/lib/ad-formats";
-import { campaignIntentLabel, displayContextValue } from "@/lib/context-presentation";
+import { campaignIntentLabel } from "@/lib/context-presentation";
 import {
   buildDashboardHref,
   type DashboardStage,
@@ -352,23 +352,23 @@ function getCopyCandidateOrigin(payload: Record<string, unknown>, ...keys: strin
 
 function normalizePartialContext(context: Record<string, unknown>): PartialInferredContext {
   return {
-    businessType: displayContextValue(getPayloadString(context, "businessType", "business_type")),
-    itemOrService: displayContextValue(getPayloadString(context, "itemOrService", "item_or_service")),
-    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal")),
-    advertisedSubject: displayContextValue(getPayloadString(context, "advertisedSubject", "advertised_subject")),
+    businessType: getPayloadString(context, "businessType", "business_type"),
+    itemOrService: getPayloadString(context, "itemOrService", "item_or_service"),
+    promotionGoal: getPayloadString(context, "promotionGoal", "promotion_goal"),
+    advertisedSubject: getPayloadString(context, "advertisedSubject", "advertised_subject"),
     advertisedSubjectType: getPayloadString(context, "advertisedSubjectType", "advertised_subject_type"),
-    campaignIntent: displayContextValue(getPayloadString(context, "campaignIntent", "campaign_intent"))
+    campaignIntent: getPayloadString(context, "campaignIntent", "campaign_intent")
   };
 }
 
 function normalizeInferredContext(context: Record<string, unknown>): InferredContext {
   return {
-    businessType: displayContextValue(getPayloadString(context, "businessType", "business_type")) ?? null,
-    itemOrService: displayContextValue(getPayloadString(context, "itemOrService", "item_or_service")) ?? null,
-    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal")) ?? null,
-    advertisedSubject: displayContextValue(getPayloadString(context, "advertisedSubject", "advertised_subject")) ?? null,
+    businessType: getPayloadString(context, "businessType", "business_type") ?? null,
+    itemOrService: getPayloadString(context, "itemOrService", "item_or_service") ?? null,
+    promotionGoal: getPayloadString(context, "promotionGoal", "promotion_goal") ?? null,
+    advertisedSubject: getPayloadString(context, "advertisedSubject", "advertised_subject") ?? null,
     advertisedSubjectType: getPayloadString(context, "advertisedSubjectType", "advertised_subject_type") ?? null,
-    campaignIntent: displayContextValue(getPayloadString(context, "campaignIntent", "campaign_intent")) ?? null
+    campaignIntent: getPayloadString(context, "campaignIntent", "campaign_intent") ?? null
   };
 }
 
@@ -622,14 +622,7 @@ function mergeContextFromTurnResponse(
   baseContext: InferredContext,
   response: ChatTurnResponse
 ): InferredContext {
-  return {
-    businessType: response.context.businessType || baseContext.businessType,
-    itemOrService: response.context.itemOrService || baseContext.itemOrService,
-    promotionGoal: response.context.promotionGoal || baseContext.promotionGoal,
-    advertisedSubject: response.context.advertisedSubject || baseContext.advertisedSubject,
-    advertisedSubjectType: response.context.advertisedSubjectType || baseContext.advertisedSubjectType,
-    campaignIntent: response.context.campaignIntent || baseContext.campaignIntent
-  };
+  return mergeInferredContext(baseContext, response.context);
 }
 
 type PhotoGenerateInput = {
@@ -1246,11 +1239,19 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         return;
       }
 
+      let isActive = true;
       Promise.all([
         getChatThread(threadIdParam).catch(() => null),
         getChatThreadState(threadIdParam),
         getChatThreadMessages(threadIdParam, { limit: 120 }).catch(() => ({ success: true as const, messages: [], total: 0 }))
       ]).then(([threadResponse, stateResponse, messagesResponse]) => {
+        if (!isActive) {
+          return;
+        }
+        if (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId) {
+          return;
+        }
+
         setCurrentThreadIsArchived(Boolean(threadResponse?.thread.archived_at));
         const restoreState = mapChatThreadSnapshotToRestoreState(stateResponse.snapshot);
         if (!restoreState) {
@@ -1297,9 +1298,13 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         setGenerationStage(restoreState.currentQuestion ? "jobQuestion" : "brief");
         lastPrimedStageRef.current = restoreState.currentQuestion ? "generating" : "brief";
       }).catch(() => {
-        showToast("대화 기록을 불러오는데 실패했습니다.");
+        if (isActive) {
+          showToast("대화 기록을 불러오는데 실패했습니다.");
+        }
       });
-      return;
+      return () => {
+        isActive = false;
+      };
     }
 
     setCurrentThreadIsArchived(false);
@@ -1583,7 +1588,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
-    dispatch({ type: "submitQuestionAnswer", label: input.label });
+    dispatch({ 
+      type: "submitQuestionAnswer", 
+      label: input.label,
+      field: state.currentQuestion.field,
+      value: input.customText ?? input.value
+    });
     try {
       if (state.generationJob?.status === "waiting_user_input") {
         const answerPayload = {
@@ -1962,7 +1972,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
-    dispatch({ type: "submitGenerationJobAnswer", label: input.label });
+    dispatch({ 
+      type: "submitGenerationJobAnswer", 
+      label: input.label,
+      field: question.field,
+      value: input.customText ?? input.value
+    });
 
     try {
       const shouldShowFinalGenerationProgress = isClientFinalImageGenerationJob(state.generationJob);

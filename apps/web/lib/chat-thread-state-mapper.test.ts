@@ -141,7 +141,7 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
       created_at: "2026-06-17T00:00:00+00:00"
     });
 
-    expect(restore?.context.campaignIntent).toBe("신규 오픈 홍보");
+    expect(restore?.context.campaignIntent).toBe("store_opening");
     expect(restore?.currentQuestion?.progressState).toEqual({ current: 3, total: 5, label: "정보 입력" });
   });
 
@@ -179,7 +179,7 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     });
 
     expect(restore?.context).toMatchObject({
-      businessType: "음식점/식당",
+      businessType: "restaurant",
       itemOrService: "원육",
       promotionGoal: ""
     });
@@ -326,7 +326,7 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
       brand_kit_snapshot: {},
       metadata: {
         context: {
-          businessType: "뷰티"
+          businessType: "beauty_salon"
         },
         pending_interrupt: {
           type: "option_question",
@@ -340,9 +340,31 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
       created_at: "2026-06-17T00:00:00+00:00"
     });
 
-    expect(restore?.context.businessType).toBe("뷰티");
-    expect(restore?.selectedChannelId).toBe("instagram-feed");
+    expect(restore?.context.businessType).toBe("beauty_salon");
+    expect(restore?.selectedChannelId).toBeNull();
     expect(restore?.currentQuestion?.field).toBe("business_type");
+  });
+
+  it("returns null selectedChannelId when snapshot has no channel information", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_no_channel",
+      thread_id: "thread_no_channel",
+      job_id: "job_no_channel",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "waiting_user_input",
+      state_payload: {
+        user_input: "\uc0c1\ud488 \uad11\uace0",
+        business_type: "\uce74\ud398"
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {},
+      created_at: "2026-06-17T00:00:00+00:00"
+    });
+
+    expect(restore?.selectedChannelId).toBeNull();
   });
 });
 

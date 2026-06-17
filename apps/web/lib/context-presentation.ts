@@ -1,18 +1,22 @@
 import type { InferredContext } from "@/types/marketing";
 
 const CONTEXT_DISPLAY_LABELS: Record<string, string> = {
-  beauty_nail: "\ub124\uc77c",
-  beauty_salon: "\ubdf0\ud2f0/\ubbf8\uc6a9",
-  brand_awareness: "\ube0c\ub79c\ub4dc \uc778\uc9c0\ub3c4",
-  cafe: "\uce74\ud398",
-  discount_event: "\ud560\uc778 \uc774\ubca4\ud2b8",
-  new_launch: "\uc2e0\uba54\ub274/\uc2e0\uc0c1\ud488 \ucd9c\uc2dc",
-  reservation_cta: "\uc608\uc57d/\ubc29\ubb38 \uc720\ub3c4",
-  restaurant: "\uc74c\uc2dd\uc810/\uc2dd\ub2f9",
-  retention: "\uc7ac\ubc29\ubb38 \uc720\ub3c4",
-  review_event: "\ub9ac\ubdf0 \uc774\ubca4\ud2b8",
-  seasonal_limited: "\uc2dc\uc98c \ud55c\uc815 \ud64d\ubcf4",
-  store: "\uc77c\ubc18 \ub9e4\uc7a5/\uc18c\ub9e4",
+  beauty_nail: "네일",
+  beauty_salon: "뷰티/미용",
+  brand_awareness: "브랜드 인지도",
+  cafe: "카페",
+  discount_event: "할인 이벤트",
+  new_launch: "신메뉴/신상품 출시",
+  new_menu_launch: "신메뉴 출시",
+  new_product_launch: "신상품 출시",
+  reservation_cta: "예약/방문 유도",
+  restaurant: "음식점/식당",
+  retention: "재방문 유도",
+  review_event: "리뷰 이벤트",
+  seasonal_limited: "시즌 한정 홍보",
+  store: "일반 매장/소매",
+  store_opening: "신규 오픈 홍보",
+  service_launch: "신규 서비스 시작",
 };
 
 const CAMPAIGN_INTENT_LABELS: Record<string, string> = {
@@ -33,20 +37,40 @@ export function campaignIntentLabel(value: string | null | undefined): string | 
   if (!value) {
     return null;
   }
-  return CAMPAIGN_INTENT_LABELS[value] ?? value;
+  return CAMPAIGN_INTENT_LABELS[value] ?? null;
 }
 
 export function displayContextValue(value: string | null | undefined): string | undefined {
   if (!value) {
     return undefined;
   }
-  return CONTEXT_DISPLAY_LABELS[value] ?? campaignIntentLabel(value) ?? value;
+  if (CONTEXT_DISPLAY_LABELS[value]) {
+    return CONTEXT_DISPLAY_LABELS[value];
+  }
+  if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(value)) {
+    return undefined; // Hide unknown internal tokens
+  }
+  return value; // Pass through free-text (e.g. Korean user input or open domain words)
+}
+
+export function contextBusinessSummary(context: InferredContext): string | null {
+  return displayContextValue(context.businessType) ?? null;
 }
 
 export function contextItemSummary(context: InferredContext): string | null {
   return context.itemOrService || context.advertisedSubject || null;
 }
 
+export function contextItemLabel(context: InferredContext): "\uc0c1\ud488/\uc11c\ube44\uc2a4" | "\uad11\uace0 \ub300\uc0c1" {
+  if (context.itemOrService) {
+    return "\uc0c1\ud488/\uc11c\ube44\uc2a4";
+  }
+  if (context.advertisedSubject) {
+    return "\uad11\uace0 \ub300\uc0c1";
+  }
+  return "\uc0c1\ud488/\uc11c\ube44\uc2a4";
+}
+
 export function contextPurposeSummary(context: InferredContext): string | null {
-  return context.promotionGoal || campaignIntentLabel(context.campaignIntent) || null;
+  return displayContextValue(context.promotionGoal) ?? campaignIntentLabel(context.campaignIntent) ?? null;
 }

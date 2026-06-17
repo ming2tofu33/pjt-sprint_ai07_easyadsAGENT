@@ -4891,4 +4891,147 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("속눈썹 펌")).toBeTruthy();
     expect(screen.getAllByText("확인 필요")).toHaveLength(1);
   });
+
+  it("prioritizes explicit answer over delayed backend context and persists across reload restore", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.getChatThreadState).mockClear();
+    vi.mocked(api.getChatThreadMessages).mockClear();
+    vi.mocked(api.getGenerationJob).mockClear();
+    vi.mocked(api.answerChatQuestion).mockClear();
+    
+    vi.mocked(api.getGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_priority_test",
+        thread_id: "thread_priority_test",
+        status: "waiting_user_input",
+        created_at: "2026-06-17T00:00:00+00:00",
+        updated_at: "2026-06-17T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
+      success: true,
+      snapshot: {
+        snapshot_id: "snapshot_priority_test_waiting",
+        job_id: "job_priority_test",
+        thread_id: "thread_priority_test",
+        snapshot_version: 1,
+        schema_version: 1,
+        snapshot_kind: "waiting_user_input",
+        state_payload: {
+          user_input: "test",
+          context: { business_type: null, item_or_service: "프리미엄 뷰티샵", promotion_goal: null },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "business_type",
+              question: "어떤 업종인가요?",
+              options: [{ id: 1, label: "뷰티/미용", value: "beauty_salon" }]
+            }
+          }
+        },
+        changed_fields: [],
+        reference_template_snapshot: {},
+        brand_kit_snapshot: {},
+        metadata: {},
+        created_at: "2026-06-17T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({
+      success: true,
+      total: 1,
+      messages: [{ message_id: "msg1", thread_id: "thread_priority_test", sequence_no: 1, role: "assistant", content: "어떤 업종인가요?", payload: {}, created_at: "2026-06-17T00:00:00+00:00" }]
+    });
+
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    searchParamsMock.value = new URLSearchParams("threadId=thread_priority_test");
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    const { unmount } = render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(screen.getAllByText("어떤 업종인가요?").length).toBeGreaterThan(0));
+    
+    // User submits explicit answer 'beauty_salon' (뷰티/미용)
+    const button = screen.getByRole("button", { name: "뷰티/미용" });
+    fireEvent.click(button);
+    const submitButton = screen.getByRole("button", { name: "선택 완료" });
+
+    vi.mocked(api.answerGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_priority_test",
+        thread_id: "thread_priority_test",
+        status: "waiting_user_input",
+        metadata: {
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "promotion_goal",
+              question: "목적은?",
+              options: [{ id: 1, label: "개업", value: "store_opening" }]
+            }
+          }
+        },
+        result_payload: {
+          context: { business_type: "store", item_or_service: "프리미엄 뷰티샵", promotion_goal: "store_opening" }
+        }
+      } as any
+    });
+
+    fireEvent.click(submitButton);
+
+    // Wait for the next turn
+    await waitFor(() => expect(screen.getAllByText("목적은?").length).toBeGreaterThan(0));
+
+    // Check immediate DOM matches explicit + backend context
+    expect(screen.getAllByText("뷰티/미용").length).toBeGreaterThan(0); // explicit answer preserved over backend's 'store'
+    expect(screen.getByText("프리미엄 뷰티샵")).toBeTruthy(); // backend item
+    expect(screen.getByText("신규 오픈 홍보")).toBeTruthy(); // backend goal
+
+    unmount();
+
+    // Now reload (remount) and check snapshot restore keeps the same explicit answer
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
+      success: true,
+      snapshot: {
+        snapshot_id: "snapshot_priority_test_waiting_after_answer",
+        job_id: "job_priority_test",
+        snapshot_version: 2,
+        thread_id: "thread_priority_test",
+        schema_version: 1,
+        snapshot_kind: "waiting_user_input",
+        state_payload: {
+          user_input: "test",
+          context: { business_type: "store", item_or_service: "프리미엄 뷰티샵", promotion_goal: "store_opening" },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "promotion_goal",
+              question: "목적은?",
+              options: []
+            }
+          }
+        },
+        changed_fields: [],
+        reference_template_snapshot: {},
+        brand_kit_snapshot: {},
+        metadata: {},
+        created_at: "2026-06-17T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({
+      success: true,
+      total: 2,
+      messages: [{ message_id: "msg2", thread_id: "thread_priority_test", sequence_no: 2, role: "user", content: "뷰티/미용", payload: {}, created_at: "2026-06-17T00:00:00+00:00" }]
+    });
+    
+    // We mock localStorage so that pendingExplicitContextPatch is restored from session storage
+    // Actually the explicit patch is handled by local chatTurnSnapshot (localStorage)
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(screen.getAllByText("목적은?").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("뷰티/미용").length).toBeGreaterThan(0);
+    expect(screen.getByText("프리미엄 뷰티샵")).toBeTruthy();
+    expect(screen.getByText("신규 오픈 홍보")).toBeTruthy();
+  });
 });
