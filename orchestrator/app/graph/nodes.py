@@ -51,12 +51,22 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
     text = " ".join(str(value or "") for value in [state.get("user_input"), state.get("current_brief", {}).get("custom_request")])
     intake_result, intake_trace = _resolve_intake_understanding(state, text)
     updates, intake_projection = project_intake_to_context(intake_result)
+    llm_projected_updates = (
+        ((intake_trace.get("brief_interpreter") or {}).get("projected_context_updates"))
+        if isinstance(intake_trace.get("brief_interpreter"), dict)
+        else {}
+    ) or {}
     context_data = context.model_dump()
     extra = dict(context_data.get("extra") or {})
     if updates.pop("ad_format", None):
         extra["ad_format"] = intake_result.ad_format_candidate or infer_ad_format(text)
     for key, value in updates.items():
         if value and not context_data.get(key):
+            context_data[key] = value
+    for key, value in llm_projected_updates.items():
+        if key == "business_type":
+            continue
+        if key in context_data and value and not context_data.get(key):
             context_data[key] = value
     requested_ad_format = resolve_requested_ad_format(state) or infer_ad_format(text)
     if requested_ad_format:

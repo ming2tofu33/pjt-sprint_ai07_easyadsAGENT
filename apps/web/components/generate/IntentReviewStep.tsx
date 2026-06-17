@@ -3,7 +3,12 @@
 import { Diamond, Heart, Leaf, Smile, Sparkles, Star } from "lucide-react";
 import type { ChatFlowState } from "@/types/marketing";
 import { toneOptions } from "@/lib/chat-flow";
-import { contextItemSummary, contextPurposeSummary } from "@/lib/context-presentation";
+import {
+  contextBusinessSummary,
+  contextItemLabel,
+  contextItemSummary,
+  contextPurposeSummary,
+} from "@/lib/context-presentation";
 import { resolveWaitingStatusCopy } from "@/lib/generation-waiting-copy";
 import { ChoiceChip } from "./ChoiceChip";
 import { ChatTimelineStep } from "./ChatTimelineStep";
@@ -40,8 +45,10 @@ type IntentReviewCardProps = Omit<IntentReviewStepProps, "onBack" | "onDelete">;
 
 export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentReviewCardProps) {
   const hasBackendSession = Boolean(state.jobId && state.threadId);
+  const businessSummary = contextBusinessSummary(state.inferredContext) || "확인 필요";
   const itemSummary = contextItemSummary(state.inferredContext) || "확인 필요";
   const purposeSummary = contextPurposeSummary(state.inferredContext) || "확인 필요";
+  const itemLabel = contextItemLabel(state.inferredContext);
   const hasBackendContext =
     state.contextSource === "backend" &&
     Boolean(
@@ -93,10 +100,10 @@ export function IntentReviewCard({ state, onSelectTone, onContinue }: IntentRevi
             <div className={styles.contextGrid}>
               <div className={styles.contextItem}>
                 <span>업종</span>
-                <strong>{state.inferredContext.businessType || "확인 필요"}</strong>
+                <strong>{businessSummary}</strong>
               </div>
               <div className={styles.contextItem}>
-                <span>상품/서비스</span>
+                <span>{itemLabel}</span>
                 <strong>{itemSummary}</strong>
               </div>
               <div className={styles.contextItem}>

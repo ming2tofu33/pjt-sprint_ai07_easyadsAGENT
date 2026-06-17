@@ -52,7 +52,7 @@ def test_runner_records_multiturn_business_answer_projection_without_false_rc12(
 
     assert r6["chat_start"]["payload"]["type"] == "option_question"
     assert r6["multiturn"]["answer_status_code"] == 200
-    assert r6["multiturn"]["answer_payload"]["context"]["businessType"] == "뷰티"
+    assert r6["multiturn"]["answer_payload"]["context"]["businessType"] == "beauty_salon"
     assert "MULTITURN_BACKEND_UPDATE_CONFIRMED" in r6["root_cause_codes"]
     assert "RC-12" not in r6["root_cause_codes"]
     assert r6["frontend_projection"]["status"] == "executed"

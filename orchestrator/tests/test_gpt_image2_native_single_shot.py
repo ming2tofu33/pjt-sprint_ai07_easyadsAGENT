@@ -153,41 +153,6 @@ def test_gpt_image2_native_single_shot_forbids_mock_default_in_production_envs(m
     assert not (tmp_path / "final_native_image.png").exists()
 
 
-@pytest.mark.parametrize(
-    "env_name",
-    ["EASYADS_ENV", "APP_ENV", "ENVIRONMENT", "RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "NODE_ENV"],
-)
-def test_gpt_image2_native_single_shot_forbids_mock_default_in_production_envs(monkeypatch, tmp_path, env_name):
-    for key in ("EASYADS_ENV", "APP_ENV", "ENVIRONMENT", "RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "NODE_ENV"):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv(env_name, "production")
-    monkeypatch.setenv("EASYADS_ENABLE_EXTERNAL_T2I", "true")
-    monkeypatch.setenv("EASYADS_ENABLE_GPT_IMAGE_2", "true")
-    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
-    monkeypatch.setenv("T2I_DEFAULT_ENGINE", "mock")
-
-    brief = ApprovedNativeCopyBrief(
-        headline="아포가토 한 잔",
-        supporting_copy="진한 에스프레소와 달콤한 아이스크림",
-        language="korean",
-        message_role="headline_plus_support",
-        allowed_texts=["아포가토 한 잔", "진한 에스프레소와 달콤한 아이스크림"],
-        forbidden_texts=[],
-        max_text_blocks=2,
-        max_total_characters=48,
-        verified_evidence_ids=["e1"],
-        unsupported_claim_categories=[],
-        compliance_status="approved",
-        rejection_reasons=[],
-    )
-    package = build_native_prompt_package(product_understanding={"product_name": "아포가토"}, copy_brief=brief)
-
-    with pytest.raises(T2IEngineUnavailableError, match="mock_engine_forbidden_in_production"):
-        GPTImage2ActualEngine().generate_native_single_shot(prompt_package=package, output_dir=tmp_path)
-
-    assert not (tmp_path / "final_native_image.png").exists()
-
-
 # ===== Task 9: web-shaped request -> native typography pipeline regression =====
 import sys as _sys
 import types as _types

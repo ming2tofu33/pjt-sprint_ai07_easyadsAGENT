@@ -3,7 +3,7 @@
 import { Send } from "lucide-react";
 import { useState } from "react";
 import type { ChatFlowState, OptionItem } from "@/types/marketing";
-import { contextItemSummary, contextPurposeSummary } from "@/lib/context-presentation";
+import { contextBusinessSummary, contextItemSummary, contextPurposeSummary, contextItemLabel } from "@/lib/context-presentation";
 import { ChoiceChip } from "./ChoiceChip";
 import { MascotImage } from "./MascotImage";
 import { SmartChatInput } from "./SmartChatInput";
@@ -66,8 +66,10 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
   const shouldShowSelectionButton = Boolean(selectedOption) || (isCopyGenerationModeQuestion && !hideCopyModeSubmit);
   const chipGridClassName =
     isCopyGenerationModeQuestion ? `${styles.chipGrid} ${styles.copyModeGrid}` : styles.chipGrid;
+  const businessSummary = contextBusinessSummary(state.inferredContext) || "확인 필요";
   const itemSummary = contextItemSummary(state.inferredContext) || "확인 필요";
   const purposeSummary = contextPurposeSummary(state.inferredContext) || "확인 필요";
+  const itemLabel = contextItemLabel(state.inferredContext);
 
   return (
     <>
@@ -96,10 +98,10 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
         <div className={styles.contextGrid}>
           <div className={styles.contextItem}>
             <span>업종</span>
-            <strong>{state.inferredContext.businessType || "확인 필요"}</strong>
+            <strong>{businessSummary}</strong>
           </div>
           <div className={styles.contextItem}>
-            <span>상품/서비스</span>
+            <span>{itemLabel}</span>
             <strong>{itemSummary}</strong>
           </div>
           <div className={styles.contextItem}>

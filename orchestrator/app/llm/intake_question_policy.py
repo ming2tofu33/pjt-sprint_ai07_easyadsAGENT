@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from orchestrator.app.llm.campaign_semantics import (
+    campaign_intent_subject_requirement,
+    is_business_level_campaign_intent,
+    is_item_level_campaign_intent,
+)
 from orchestrator.app.llm.campaign_context_service import build_campaign_context
 from orchestrator.app.llm.domain_routing import DomainSupportStatus, normalize_business_type
 from orchestrator.app.schemas.campaign_context import CampaignContext
@@ -18,29 +23,6 @@ from orchestrator.app.schemas.llm_marketing import MarketingContext
 
 
 POLICY_VERSION = "advertised_subject_campaign_aware_v1"
-BUSINESS_LEVEL_CAMPAIGN_INTENTS = frozenset(
-    {
-        "store_opening",
-        "grand_opening",
-        "brand_awareness",
-        "local_business_promotion",
-        "business_introduction",
-        "organization_promotion",
-    }
-)
-PRODUCT_LEVEL_CAMPAIGN_HINTS = frozenset(
-    {
-        "product_promotion",
-        "new_product_launch",
-        "new_menu_launch",
-        "discount_event",
-        "reservation_cta",
-        "review_event",
-        "seasonal_limited",
-        "seasonal_campaign",
-        "new_launch",
-    }
-)
 PRODUCT_OR_SERVICE_TYPES = frozenset({"product", "service"})
 BUSINESS_SUBJECT_TYPES = frozenset({"business", "brand", "venue"})
 QUESTION_POLICY_FIELDS = ("business_type", "item_or_service", "promotion_goal", "ad_format")
@@ -270,6 +252,7 @@ def _item_or_service_decision(
     subject_confidence = float(intake.confidence_by_field.get("advertised_subject") or 0.0)
     subject_refs = _evidence_refs(intake, "advertised_subject")
     intent = (campaign.campaign_intent or "").strip().lower()
+    subject_requirement = campaign_intent_subject_requirement(intent)
 
     if (
         subject_type in PRODUCT_OR_SERVICE_TYPES
@@ -295,7 +278,7 @@ def _item_or_service_decision(
         and intake.advertised_subject
         and subject_refs
         and subject_confidence >= policy.structured_inference_min_confidence
-        and intent in BUSINESS_LEVEL_CAMPAIGN_INTENTS
+        and is_business_level_campaign_intent(intent)
         and routeable
         and not has_blocking_conflicts
         and not has_blocking_ambiguities
@@ -312,7 +295,11 @@ def _item_or_service_decision(
             resolution_kind="waived",
         )
 
-    if intent in PRODUCT_LEVEL_CAMPAIGN_HINTS or subject_type in BUSINESS_SUBJECT_TYPES:
+    if (
+        is_item_level_campaign_intent(intent)
+        or subject_requirement in {"product", "menu_or_product", "service"}
+        or subject_type in BUSINESS_SUBJECT_TYPES
+    ):
         return FieldRequirementDecision(
             field="item_or_service",
             required=True,

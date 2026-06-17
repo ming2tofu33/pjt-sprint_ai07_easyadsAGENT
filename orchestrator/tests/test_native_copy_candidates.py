@@ -88,3 +88,28 @@ def test_candidate_bundle_strips_support_when_only_product_name_is_verified():
     assert bundle.candidates[0].headline == "Product A"
     assert bundle.candidates[0].supporting_copy is None
     assert bundle.candidates[0].text_block_count == 1
+
+
+def test_candidate_bundle_fits_overlong_candidate_before_schema_validation():
+    evidence, product = _fixture()
+    long_support = (
+        "강남에서 새롭게 만나는 프리미엄 뷰티 살롱의 섬세한 케어와 우아한 무드를 경험하세요. "
+        "고객 한 분마다 맞춤 상담과 헤어 메이크업 피부 관리까지 완성하는 특별한 오픈 혜택을 만나보세요"
+    )
+    payload = {
+        "candidates": [
+            {
+                "candidate_id": "too_long",
+                "strategy": "brand_editorial",
+                "headline": "프리미엄 뷰티살롱",
+                "supporting_copy": long_support,
+                "headline_basis_ids": product.product_name_evidence_ids,
+            }
+        ]
+    }
+
+    bundle = coerce_native_copy_strategy_bundle(payload, input_evidence=evidence, product_understanding=product)
+
+    candidate = bundle.candidates[0]
+    assert candidate.total_character_count <= 80
+    assert len(candidate.headline) + len(candidate.supporting_copy or candidate.closing_copy or "") <= 80

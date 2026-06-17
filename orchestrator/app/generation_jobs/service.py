@@ -35,6 +35,8 @@ from orchestrator.app.db.session import db_transaction
 from orchestrator.app.chat_threads.errors import (
     ChatThreadArchivedError,
     ChatThreadHasActiveJobError,
+    ChatThreadHasPendingJobError,
+    ChatThreadRequiresContinuationModeError,
     ChatThreadNotFoundError,
 )
 from orchestrator.app.generation_jobs.errors import (
@@ -86,6 +88,7 @@ _RESERVED_METADATA_KEYS = {
     "requested_run_mode",
     "effective_run_mode",
     "execution_mode",
+    "continuation_mode",
     "account_type",
     "user_input_preview",
 }
@@ -233,6 +236,23 @@ def append_generation_job_user_answer_message(
     )
 
 
+def _get_memory_waiting_generation_job_for_thread(
+    public_thread_id: str,
+    *,
+    workspace_id: str | None = None,
+    user_id: str | None = None,
+) -> GenerationJobResponse | None:
+    for job in _GENERATION_JOBS.values():
+        if job.thread_id != public_thread_id or job.status != "waiting_user_input":
+            continue
+        if workspace_id and (_GENERATION_JOB_WORKSPACES.get(job.job_id) or "mem_workspace") != workspace_id:
+            continue
+        if user_id and job.user_id and job.user_id != user_id:
+            continue
+        return job
+    return None
+
+
 def _create_generation_job_memory(request: GenerationJobCreateRequest) -> GenerationJobResponse:
     with _GENERATION_JOB_LOCK:
         now = _now_iso()
@@ -251,6 +271,18 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
                 raise ChatThreadArchivedError()
             if existing_thread.active_job_id:
                 raise ChatThreadHasActiveJobError()
+            if _get_memory_waiting_generation_job_for_thread(
+                existing_thread.thread_id,
+                workspace_id=workspace_id,
+                user_id=request.user_id,
+            ):
+                raise ChatThreadHasPendingJobError(
+                    "This thread is waiting for an answer. Resume the waiting generation job instead of creating a new one."
+                )
+            if existing_thread.has_final_output and not request.continuation_mode:
+                raise ChatThreadRequiresContinuationModeError(
+                    "Completed threads require continuationMode before creating another generation job."
+                )
             public_thread_id = existing_thread.thread_id
         else:
             from orchestrator.app.api.schemas.chat_threads import ChatThreadCreateRequest
@@ -263,6 +295,8 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
             )
             public_thread_id = new_thread.thread_id
 
+        metadata_continuation_mode = request.continuation_mode or ("new_thread" if not request.thread_id else "new_turn")
+        restore_continuation_mode = request.continuation_mode or ("new_thread" if not request.thread_id else "legacy_restore")
         job = GenerationJobResponse(
             job_id=f"job_{uuid4().hex}",
             thread_id=public_thread_id,
@@ -287,6 +321,7 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
                 "requested_run_mode": request.run_mode,
                 "effective_run_mode": effective_run_mode,
                 "execution_mode": execution_mode,
+                "continuation_mode": metadata_continuation_mode,
                 "user_input_preview": _preview_user_input(request.user_input),
                 "brand_kit_id": request.brand_kit_id,
                 "user_id": request.user_id,
@@ -346,10 +381,11 @@ def _create_generation_job_memory(request: GenerationJobCreateRequest) -> Genera
             ]:
                 explicit_fields[k] = getattr(request, k)
 
-        restored_payload = state_service.restore_thread_state(
+        restored_payload = state_service.restore_thread_state_for_generation(
             latest_snapshot,
             current_request_fields=explicit_fields,
             user_input=request.user_input,
+            continuation_mode=restore_continuation_mode,
         )
         _apply_generation_engine_to_state(restored_payload, request)
         changed_fields = calculate_changed_fields(
@@ -1424,6 +1460,8 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
     prompt_preview = _preview_user_input(request.user_input)
     request_payload = _request_payload_summary(request)
     engine_preference = _engine_preference_for_request(request)
+    metadata_continuation_mode = request.continuation_mode or ("new_thread" if not request.thread_id else "new_turn")
+    restore_continuation_mode = request.continuation_mode or ("new_thread" if not request.thread_id else "legacy_restore")
     r2_usage_payload: dict | None = None
     with db_transaction() as conn:
         workspace = _resolve_db_workspace_for_generation_request(request, connection=conn)
@@ -1443,6 +1481,20 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
                 raise ChatThreadArchivedError()
             if thread_row.get("active_job_id"):
                 raise ChatThreadHasActiveJobError()
+            pending_job = generation_job_repo.get_latest_waiting_generation_job_for_thread(
+                public_thread_id=request.thread_id,
+                workspace_id=workspace_id,
+                connection=conn,
+                for_update=True,
+            )
+            if pending_job:
+                raise ChatThreadHasPendingJobError(
+                    "This thread is waiting for an answer. Resume the waiting generation job instead of creating a new one."
+                )
+            if thread_row.get("final_output_id") and not request.continuation_mode:
+                raise ChatThreadRequiresContinuationModeError(
+                    "Completed threads require continuationMode before creating another generation job."
+                )
             thread = thread_row
         else:
             thread = chat_thread_repo.create_chat_thread(
@@ -1479,6 +1531,7 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             "requested_run_mode": request.run_mode,
             "effective_run_mode": effective_run_mode,
             "execution_mode": execution_mode,
+            "continuation_mode": metadata_continuation_mode,
             "account_type": request.account_type or ("guest" if str(request.user_id or "").startswith("guest_") else "user"),
             "user_input_preview": prompt_preview,
             "brand_kit_id": request.brand_kit_id,
@@ -1564,10 +1617,11 @@ def _create_generation_job_db(request: GenerationJobCreateRequest) -> Generation
             ]:
                 explicit_fields[k] = getattr(request, k)
 
-        restored_payload = state_service.restore_thread_state(
+        restored_payload = state_service.restore_thread_state_for_generation(
             latest_snapshot,
             current_request_fields=explicit_fields,
             user_input=request.user_input,
+            continuation_mode=restore_continuation_mode,
         )
         _apply_generation_engine_to_state(restored_payload, request)
         changed_fields = calculate_changed_fields(
