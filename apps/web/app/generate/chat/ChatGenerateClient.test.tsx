@@ -1429,7 +1429,7 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
-    expect(screen.getByText(/요청을 읽고 있어요/)).toBeTruthy();
+    expect(screen.getByText(/요청 내용을 분석하고 있어요/)).toBeTruthy();
     expect(screen.queryByText("요청을 살펴보고 있어요")).toBeNull();
     expect(screen.queryByText("진행 중")).toBeNull();
     expect(screen.queryByText(/업종, 상품, 광고 목적을 안전하게 정리/)).toBeNull();
@@ -1469,7 +1469,7 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_analyzing"));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
-    expect(screen.getByText(/요청을 읽고 있어요/)).toBeTruthy();
+    expect(screen.getByText(/요청 내용을 분석하고 있어요/)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "광고 생성 중" })).toBeNull();
     expect(screen.queryByText("생성 결과를 준비하고 있어요")).toBeNull();
   });
@@ -1509,7 +1509,7 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_reference_analyzing"));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
-    expect(screen.getByText(/요청을 읽고 있어요/)).toBeTruthy();
+    expect(screen.getByText(/참고 스타일을 읽고 있어요/)).toBeTruthy();
 
     view.unmount();
     render(<ChatGenerateClient initialSurface="chat" />);
@@ -1517,7 +1517,7 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledTimes(2));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
     expect(screen.getByText("미니멀 카페 피드 스타일로 카페24의 카페 광고를 만들어줘")).toBeTruthy();
-    expect(screen.getByText(/요청을 읽고 있어요/)).toBeTruthy();
+    expect(screen.getByText(/참고 스타일을 읽고 있어요/)).toBeTruthy();
     expect(screen.queryByText("대화로 찰떡 이미지 만들기")).toBeNull();
     expect(screen.queryByRole("heading", { name: "광고 생성 중" })).toBeNull();
   });
