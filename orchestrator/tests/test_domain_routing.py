@@ -23,6 +23,7 @@ from orchestrator.app.llm.domain_routing import (
     RoutingTagEvidence,
     is_supported_domain,
     normalize_business_type,
+    find_business_alias_span,
     project_to_legacy_visual_route,
     to_canonical_domain,
 )
@@ -47,6 +48,23 @@ def test_canonical_domains_are_mvp_3_plus_other():
         "retail",
         "other",
     }
+
+
+@pytest.mark.parametrize("text", ["barber", "space", "thumbnail", "restored"])
+def test_find_business_alias_span_does_not_match_english_substrings(text):
+    assert find_business_alias_span(text) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_alias"),
+    [
+        ("premium beauty salon opening", "beauty"),
+        ("new cafe menu", "cafe"),
+        ("retail store launch", "retail"),
+    ],
+)
+def test_find_business_alias_span_matches_english_word_boundaries(text, expected_alias):
+    assert find_business_alias_span(text) == (expected_alias, expected_alias)
 
 
 def test_supported_domains_are_mvp_specialized_domains():

@@ -9,6 +9,7 @@ temporary compatibility properties for legacy callers.
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from typing import Literal
 
@@ -345,7 +346,7 @@ def find_business_alias_span(text: str | None) -> tuple[str | None, str | None]:
     for alias in sorted(_DOMAIN_ALIASES, key=len, reverse=True):
         if not alias or "_" in alias:
             continue
-        if alias in lowered:
+        if re.search(rf"\b{re.escape(alias)}\b", lowered):
             return alias, alias
     return None, None
 

@@ -33,6 +33,7 @@ def build_copy_input_projection(state: dict[str, Any]) -> dict[str, Any]:
         "copy_subject_source": anchor.source,
         "copy_subject_evidence_refs": list(anchor.evidence_refs),
         "copy_subject_safe_for_copy": anchor.safe_for_copy,
+        "copy_subject_validation_status": anchor.validation_status,
         "copy_subject_rejection_reason": anchor.rejection_reason,
     }
 

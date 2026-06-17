@@ -203,9 +203,7 @@ def _display_item(value: str | None) -> str:
 
 
 def _anchor_value(context: Any) -> str | None:
-    if isinstance(context, dict) and "context" in context:
-        return resolve_copy_subject_anchor(context).value
-    return _get(context, "item_or_service")
+    return resolve_copy_subject_anchor(context).value
 
 
 def _get(context: Any, key: str) -> Any:
