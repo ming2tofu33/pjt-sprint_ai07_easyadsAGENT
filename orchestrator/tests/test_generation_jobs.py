@@ -179,7 +179,7 @@ def test_create_generation_job_db_asset_integration(monkeypatch):
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.workspace_repo", type("W", (), {"get_workspace_for_user": lambda *a, **k: {"id": "11111111-1111-1111-1111-111111111111", "owner_user_id": None}})())
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.chat_thread_repo", type("T", (), {"get_chat_thread_by_public_id": lambda *a, **k: {"id": "t1"}, "create_chat_thread": lambda *a, **k: {"id": "t1"}, "set_chat_thread_active_job": lambda *a, **k: True})())
     monkeypatch.setattr("orchestrator.app.generation_jobs.service.chat_message_repo", type("M", (), {"append_chat_message": lambda *a, **k: {"id": "m1"}, "append_generation_job_chat_event": lambda *a, **k: {"id": "m2"}})())
-    monkeypatch.setattr("orchestrator.app.generation_jobs.service.state_service", type("S", (), {"save_thread_state_snapshot": lambda *a, **k: None, "get_latest_thread_state_snapshot": lambda *a, **k: None, "restore_thread_state": lambda *a, **k: {}})())
+    monkeypatch.setattr("orchestrator.app.generation_jobs.service.state_service", type("S", (), {"save_thread_state_snapshot": lambda *a, **k: None, "get_latest_thread_state_snapshot": lambda *a, **k: None, "restore_thread_state": lambda *a, **k: {}, "restore_thread_state_for_generation": lambda *a, **k: {}})())
 
     _create_generation_job_db(req)
 
@@ -3365,3 +3365,91 @@ def test_graph_receives_web_request_contract_with_custom_copy_selected_ad_format
     # selected engine remains gpt_image_2 in the execution metadata.
     assert received_payload["engine"] == "gpt_image_2"
     assert received_payload["current_brief"]["requested_engine"] == "gpt_image_2"
+
+
+def test_create_generation_job_rejects_pending_thread_without_continuation_mode(monkeypatch):
+    from contextlib import nullcontext
+
+    from orchestrator.app.api.schemas.generation_jobs import GenerationJobCreateRequest
+    from orchestrator.app.chat_threads.errors import ChatThreadHasPendingJobError
+    from orchestrator.app.generation_jobs import service
+
+    monkeypatch.setattr(service.db_settings, "get_db_backend", lambda: "postgres")
+    monkeypatch.setattr(service, "db_transaction", lambda: nullcontext())
+    monkeypatch.setattr(service, "_resolve_db_workspace_for_generation_request", lambda request, connection=None: {"id": "workspace_1"})
+    monkeypatch.setattr(
+        service.chat_thread_repo,
+        "get_chat_thread_by_public_id",
+        lambda *args, **kwargs: {
+            "id": "thread-internal",
+            "public_thread_id": "thread_pending",
+            "archived_at": None,
+            "active_job_id": None,
+            "final_output_id": None,
+        },
+    )
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "get_latest_waiting_generation_job_for_thread",
+        lambda *args, **kwargs: {"public_job_id": "job_waiting", "metadata": {}},
+    )
+    monkeypatch.setattr(
+        service.generation_job_repo,
+        "create_generation_job_row",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before generation job row creation"),
+    )
+    monkeypatch.setattr(
+        service.chat_message_repo,
+        "append_chat_message",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before user message creation"),
+    )
+    monkeypatch.setattr(
+        service.state_service,
+        "save_thread_state_snapshot",
+        lambda *args, **kwargs: pytest.fail("pending guard should run before state snapshot creation"),
+    )
+
+    request = GenerationJobCreateRequest(
+        threadId="thread_pending",
+        userInput="다시 이어서 만들어줘",
+        runMode="queued_only",
+    )
+
+    with pytest.raises(ChatThreadHasPendingJobError):
+        service.create_generation_job(request)
+
+
+def test_restore_thread_state_for_generation_strips_waiting_transients():
+    from types import SimpleNamespace
+
+    from orchestrator.app.chat_threads.state_service import restore_thread_state_for_generation
+
+    snapshot = SimpleNamespace(
+        state_payload={
+            "business_type": "beauty_salon",
+            "missing_fields": ["item_or_service"],
+            "context": {"pending_question": "어떤 업종의 광고인가요?"},
+            "copy_candidates": [{"id": "old"}],
+            "result_payload": {"image_url": "old.png"},
+            "selected_reference_template_id": "ref_1",
+            "brand_kit_id": "brand_1",
+        }
+    )
+
+    restored = restore_thread_state_for_generation(
+        snapshot,
+        current_request_fields={"ad_format": "poster"},
+        user_input="강남 프리미엄 뷰티살롱 포스터",
+        continuation_mode="new_turn",
+    )
+
+    assert restored["business_type"] == "beauty_salon"
+    assert restored["selected_reference_template_id"] == "ref_1"
+    assert restored["brand_kit_id"] == "brand_1"
+    assert restored["ad_format"] == "poster"
+    assert restored["user_input"] == "강남 프리미엄 뷰티살롱 포스터"
+    assert restored["continuation_mode"] == "new_turn"
+    assert "missing_fields" not in restored
+    assert "context" not in restored
+    assert "copy_candidates" not in restored
+    assert "result_payload" not in restored
