@@ -270,6 +270,44 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
       }
     });
   });
+
+  it("preserves the latest backend businessType during restore without falling back to defaults", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_beauty_restore",
+      thread_id: "thread_beauty_restore",
+      job_id: "job_beauty_restore",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "waiting_user_input",
+      state_payload: {
+        user_input: "뷰티 광고 만들어줘",
+        current_brief: {
+          business_type: "cafe"
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {
+        context: {
+          businessType: "뷰티"
+        },
+        pending_interrupt: {
+          type: "option_question",
+          option_question: {
+            field: "business_type",
+            question: "어떤 뷰티 업종인가요?",
+            options: [{ id: 1, label: "헤어", value: "beauty_hair" }]
+          }
+        }
+      },
+      created_at: "2026-06-17T00:00:00+00:00"
+    });
+
+    expect(restore?.context.businessType).toBe("뷰티");
+    expect(restore?.selectedChannelId).toBe("instagram-feed");
+    expect(restore?.currentQuestion?.field).toBe("business_type");
+  });
 });
 
 describe("mapChatMessagesToTranscript", () => {

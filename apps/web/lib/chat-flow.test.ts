@@ -645,4 +645,46 @@ describe("chat flow state", () => {
     expect(state.copyCandidateOrigin).toBe("llm");
     expect(state.selectedCopyId).toBe("copy_1");
   });
+  it("preserves backend businessType when a later partial question omits that field", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "뷰티 광고 만들어줘"
+    });
+
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_beauty",
+      threadId: "thread_beauty",
+      context: {
+        businessType: "뷰티",
+        itemOrService: "",
+        promotionGoal: ""
+      },
+      question: {
+        field: "business_type",
+        question: "어떤 뷰티 업종인가요?",
+        options: [{ id: 1, label: "헤어", value: "beauty_hair" }]
+      }
+    });
+
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_beauty",
+      threadId: "thread_beauty",
+      context: {
+        itemOrService: "속눈썹 펌",
+        promotionGoal: ""
+      },
+      question: {
+        field: "promotion_goal",
+        question: "무엇을 알리고 싶나요?",
+        options: [{ id: 1, label: "오픈", value: "store_opening" }]
+      }
+    });
+
+    expect(state.inferredContext.businessType).toBe("뷰티");
+    expect(state.inferredContext.itemOrService).toBe("속눈썹 펌");
+    expect(state.contextSource).toBe("backend");
+  });
 });

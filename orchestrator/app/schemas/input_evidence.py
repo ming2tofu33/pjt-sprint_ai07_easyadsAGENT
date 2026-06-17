@@ -8,7 +8,17 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, model_validator
 
 
-EvidenceSource = Literal["user_text", "image_vlm", "asset_metadata", "brand_profile", "reference_metadata"]
+EvidenceSource = Literal[
+    "user_text",
+    "user_option",
+    "previous_confirmed_state",
+    "deterministic_parser",
+    "structured_llm",
+    "image_vlm",
+    "asset_metadata",
+    "brand_profile",
+    "reference_metadata",
+]
 EvidenceClass = Literal["verified_fact", "visual_observation", "creative_inference"]
 InputMode = Literal["text_only", "image_only", "text_and_image"]
 ConflictType = Literal["identity_mismatch", "attribute_mismatch", "claim_mismatch", "brand_mismatch", "intent_mismatch"]

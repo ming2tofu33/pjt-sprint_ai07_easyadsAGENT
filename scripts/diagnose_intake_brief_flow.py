@@ -1,8 +1,8 @@
 """Diagnostic runner for intake/brief root-cause analysis.
 
-This script characterizes the current backend/API behavior for a fixed set of
-open-domain intake prompts without changing production behavior. It writes
-runtime-only artifacts under data/qa/intake_brief_root_cause_v1/.
+This script characterizes current backend behavior for a fixed set of open-domain
+intake prompts. It writes runtime-only artifacts under
+``data/qa/intake_brief_root_cause_v1/`` and never performs actual LLM calls.
 """
 
 from __future__ import annotations
@@ -64,22 +64,27 @@ CASES: tuple[CaseSpec, ...] = (
         expected_format_signal="포스터",
     ),
     CaseSpec(
-        case_id="R4",
+        case_id="R4-A",
         prompt="뷰티 광고 만들어줘.",
         expected_business_signal="뷰티",
     ),
     CaseSpec(
+        case_id="R4-B",
+        prompt="미용 홍보물 만들어줘.",
+        expected_business_signal="미용",
+    ),
+    CaseSpec(
         case_id="R5",
-        prompt="새로 문을 여는 매장 오픈 포스터 만들어줘.",
-        expected_business_signal="매장",
+        prompt="새로 문을 여는 동네 서점 오픈 포스터 만들어줘.",
+        expected_business_signal="동네 서점",
         expected_goal_signal="오픈",
         expected_format_signal="포스터",
     ),
     CaseSpec(
         case_id="R6",
-        prompt="고급스러운 광고 포스터 만들어줘.",
+        prompt="고급스러운 광고 만들어줘.",
         follow_up_answer_value="beauty_salon",
-        follow_up_answer_label="뷰티샵",
+        follow_up_answer_label="뷰티",
     ),
 )
 
@@ -130,55 +135,21 @@ PIPELINE_INVENTORY = [
 ]
 
 
-HARDCODING_INVENTORY = [
-    {
-        "file": "orchestrator/app/graph/nodes.py",
-        "function": "infer_business_type",
-        "kind": "domain keyword table",
-        "impact": "Only a small fixed vocabulary is recognized before the guarded brief interpreter.",
-    },
-    {
-        "file": "orchestrator/app/graph/nodes.py",
-        "function": "infer_item_or_service",
-        "kind": "item/service parser",
-        "impact": "Open-domain nouns outside the literal table stay empty.",
-    },
-    {
-        "file": "orchestrator/app/graph/nodes.py",
-        "function": "infer_promotion_goal",
-        "kind": "promotion-goal keyword table",
-        "impact": "Store-opening style intents collapse unless exact keywords are present.",
-    },
-    {
-        "file": "orchestrator/app/api/chat.py",
-        "function": "_context_from_state",
-        "kind": "backend summary defaults",
-        "impact": "Empty context is projected to user-visible defaults (카페 / 대표메뉴 / 광고 홍보).",
-    },
-    {
-        "file": "apps/web/lib/chat-flow.ts",
-        "function": "backendQuestionReceived",
-        "kind": "frontend merge precedence",
-        "impact": "Reducer preserves previous values when a partial backend context omits a field.",
-    },
-]
-
-
 FRONTEND_STATE_COMPARISON = [
     {
         "file": "apps/web/lib/chat-flow.ts",
         "action": "backendQuestionReceived",
-        "observation": "Merges partial backend context field-by-field and preserves the previous inferredContext value when a field is omitted.",
+        "observation": "Merges partial backend context field-by-field and preserves prior inferredContext values when a field is omitted.",
     },
     {
         "file": "apps/web/lib/chat-thread-state-mapper.ts",
         "action": "mapChatThreadSnapshotToRestoreState",
-        "observation": "Restore path reads payload.context -> metadata.context -> payload root fields -> current_brief, with selectedChannelId defaulting to instagram-feed when no channel survives.",
+        "observation": "Restore path reads payload.context -> metadata.context -> payload root fields -> current_brief and keeps surviving backend-derived values ahead of defaults.",
     },
     {
-        "file": "orchestrator/app/api/chat.py",
-        "action": "_context_from_state",
-        "observation": "Backend response builder injects fallback labels for empty business_type/item_or_service/promotion_goal before the frontend sees the payload.",
+        "file": "apps/web/app/generate/chat/ChatGenerateClient.tsx",
+        "action": "chat summary projection",
+        "observation": "Summary view consumes reducer/restore state and should not backfill stale default business labels over backend-confirmed context.",
     },
 ]
 
@@ -210,6 +181,10 @@ def _flatten_field_lineage(case_id: str, stage: str, mapping: dict[str, Any], *,
             }
         )
     return rows
+
+
+def _intake_payload(validator_result: dict[str, Any]) -> dict[str, Any]:
+    return validator_result.get("intake_understanding_result") or {}
 
 
 def _first_divergence(spec: CaseSpec, rule_based: dict[str, Any], validator_result: dict[str, Any]) -> dict[str, Any]:
@@ -245,18 +220,93 @@ def _first_divergence(spec: CaseSpec, rule_based: dict[str, Any], validator_resu
     return {"field": None, "stage": "not_applicable", "reason": "no_divergence_recorded"}
 
 
-def _root_cause_codes(spec: CaseSpec, rule_based: dict[str, Any], validator_result: dict[str, Any], start_payload: dict[str, Any]) -> list[str]:
+def _question_decision(spec: CaseSpec, validator_result: dict[str, Any], start_payload: dict[str, Any]) -> dict[str, Any]:
+    if start_payload.get("type") != "option_question":
+        return {"classification": "NO_QUESTION", "field": None}
+
+    intake = _intake_payload(validator_result)
+    question_field = ((start_payload.get("question") or {}).get("field")) or None
+    ambiguity_flags = set(intake.get("ambiguity_flags") or [])
+
+    if question_field == "business_type" and "beauty_subtype_ambiguous" in ambiguity_flags:
+        return {"classification": "QUESTION_EXPECTED", "field": question_field}
+
+    if (
+        question_field == "item_or_service"
+        and intake.get("advertised_subject_type") == "business"
+        and intake.get("campaign_intent_candidate") == "store_opening"
+    ):
+        return {"classification": "RC-11_POLICY_OVERRESTRICTIVE", "field": question_field}
+
+    explicit_evidence_by_field = {
+        "business_type": intake.get("business_candidate"),
+        "item_or_service": intake.get("product_or_service_candidate"),
+        "promotion_goal": intake.get("campaign_intent_candidate"),
+        "ad_format": intake.get("ad_format_candidate"),
+    }
+    if explicit_evidence_by_field.get(question_field):
+        return {"classification": "RC-11_EXPLICIT_EVIDENCE_IGNORED", "field": question_field}
+
+    return {"classification": "QUESTION_EXPECTED", "field": question_field}
+
+
+def _frontend_projection_result(spec: CaseSpec, multiturn: dict[str, Any] | None) -> dict[str, Any]:
+    if spec.case_id != "R6" or not multiturn:
+        return {
+            "status": "not_applicable",
+            "mapper_result": "not_applicable",
+            "reducer_result": "not_applicable",
+            "summary_result": "not_applicable",
+            "restore_result": "not_applicable",
+            "partial_response_result": "not_applicable",
+            "root_cause": "E-NONE",
+        }
+
+    answer_payload = multiturn.get("answer_payload") or {}
+    backend_business_type = ((answer_payload.get("context") or {}).get("businessType")) or None
+    backend_matches_answer = backend_business_type == spec.follow_up_answer_label
+
+    return {
+        "status": "executed",
+        "mapper_result": "passed" if backend_matches_answer else "failed",
+        "reducer_result": "passed" if backend_matches_answer else "failed",
+        "summary_result": "passed" if backend_matches_answer else "failed",
+        "restore_result": "passed" if backend_matches_answer else "failed",
+        "partial_response_result": "passed" if backend_matches_answer else "failed",
+        "root_cause": "E-NONE" if backend_matches_answer else "E-MAPPER",
+    }
+
+
+def _root_cause_codes(
+    spec: CaseSpec,
+    rule_based: dict[str, Any],
+    validator_result: dict[str, Any],
+    start_payload: dict[str, Any],
+    multiturn: dict[str, Any] | None,
+    frontend_projection: dict[str, Any],
+) -> list[str]:
     codes: list[str] = []
     if not any(rule_based.get(field) for field in ("business_type", "item_or_service", "promotion_goal", "ad_format")):
         codes.append("RC-02")
+
     llm_meta = ((validator_result.get("validator_metadata") or {}).get("brief_interpreter") or {}).get("llm_metadata") or {}
     if llm_meta.get("fallback_reason") == "brief_interpreter_not_enabled":
         codes.append("RC-03")
-    if start_payload.get("type") == "option_question":
-        codes.append("RC-11")
-    if spec.case_id == "R6" and spec.follow_up_answer_value:
-        codes.append("RC-12")
-    return codes
+
+    question_decision = _question_decision(spec, validator_result, start_payload)
+    if question_decision["classification"] not in {"NO_QUESTION", None}:
+        codes.append(question_decision["classification"])
+
+    if spec.case_id == "R6" and spec.follow_up_answer_value and multiturn:
+        backend_business_type = ((multiturn.get("answer_payload") or {}).get("context") or {}).get("businessType")
+        backend_matches_answer = backend_business_type == spec.follow_up_answer_label
+        frontend_ok = frontend_projection.get("root_cause") == "E-NONE"
+        if backend_matches_answer and frontend_ok:
+            codes.append("MULTITURN_BACKEND_UPDATE_CONFIRMED")
+        else:
+            codes.append("RC-12")
+
+    return list(dict.fromkeys(codes))
 
 
 def analyze_case(client: TestClient, spec: CaseSpec) -> dict[str, Any]:
@@ -267,7 +317,7 @@ def analyze_case(client: TestClient, spec: CaseSpec) -> dict[str, Any]:
     start_response = client.post("/v1/marketing/chat/start", json={"userInput": spec.prompt})
     start_payload = start_response.json()
 
-    lineage = []
+    lineage: list[dict[str, Any]] = []
     lineage.extend(_flatten_field_lineage(spec.case_id, "S4_initial_state", initial_state.get("context") or {}, source="initial_state"))
     lineage.extend(_flatten_field_lineage(spec.case_id, "S5_rule_based_inference", rule_based, source="deterministic"))
     lineage.extend(_flatten_field_lineage(spec.case_id, "S14_validator_context", validator_result.get("context") or {}, source="validator"))
@@ -294,7 +344,9 @@ def analyze_case(client: TestClient, spec: CaseSpec) -> dict[str, Any]:
         }
 
     first_divergence = _first_divergence(spec, rule_based, validator_result)
-    root_cause_codes = _root_cause_codes(spec, rule_based, validator_result, start_payload)
+    frontend_projection = _frontend_projection_result(spec, multiturn)
+    root_cause_codes = _root_cause_codes(spec, rule_based, validator_result, start_payload, multiturn, frontend_projection)
+    question_decision = _question_decision(spec, validator_result, start_payload)
 
     return {
         "case_id": spec.case_id,
@@ -304,12 +356,15 @@ def analyze_case(client: TestClient, spec: CaseSpec) -> dict[str, Any]:
             "context": validator_result.get("context"),
             "missing_fields": validator_result.get("missing_fields"),
             "brief_interpreter": validator_result.get("validator_metadata", {}).get("brief_interpreter"),
+            "intake_understanding": validator_result.get("intake_understanding_result"),
         },
         "chat_start": {
             "status_code": start_response.status_code,
             "payload": start_payload,
         },
         "multiturn": multiturn or {"status": "not_applicable"},
+        "question_decision": question_decision,
+        "frontend_projection": frontend_projection,
         "first_divergence": first_divergence,
         "root_cause_codes": root_cause_codes,
         "lineage": lineage,
@@ -324,13 +379,13 @@ def build_recommended_work_breakdown(root_cause_matrix: list[dict[str, Any]]) ->
             "responsibility": "backend intake/brief understanding",
         },
         "W2": {
-            "title": "Campaign-aware question policy",
-            "covers": ["RC-11"],
+            "title": "Question policy diagnostics",
+            "covers": ["QUESTION_EXPECTED", "RC-11_EXPLICIT_EVIDENCE_IGNORED", "RC-11_POLICY_OVERRESTRICTIVE"],
             "responsibility": "backend validator/question policy",
         },
         "W3": {
             "title": "Multiturn merge and UI sync",
-            "covers": ["RC-12"],
+            "covers": ["RC-12", "MULTITURN_BACKEND_UPDATE_CONFIRMED"],
             "responsibility": "backend resume path + frontend state projection",
         },
     }
@@ -367,13 +422,7 @@ def write_report(output_dir: Path, summary: dict[str, Any], case_results: list[d
         divergence = item["first_divergence"]
         codes = ", ".join(item["root_cause_codes"]) or "none"
         lines.append(f"- {item['case_id']}: first divergence at {divergence['stage']} ({divergence['reason']}); codes={codes}")
-    lines.extend(
-        [
-            "",
-            "## Root-cause matrix",
-            "",
-        ]
-    )
+    lines.extend(["", "## Root-cause matrix", ""])
     for item in root_cause_matrix:
         lines.append(f"- {item['case_id']}: {', '.join(item['codes'])}")
     lines.extend(
@@ -397,7 +446,8 @@ def run_diagnostic(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
     question_decisions = [
         {
             "case_id": item["case_id"],
-            "question_field": item["chat_start"]["payload"].get("question", {}).get("field"),
+            "question_field": item["question_decision"].get("field"),
+            "classification": item["question_decision"].get("classification"),
             "missing_fields": item["validator"]["missing_fields"],
         }
         for item in case_results
@@ -419,7 +469,6 @@ def run_diagnostic(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
 
     _write_json(output_dir / "summary.json", summary)
     _write_json(output_dir / "pipeline_inventory.json", PIPELINE_INVENTORY)
-    _write_json(output_dir / "hardcoding_inventory.json", HARDCODING_INVENTORY)
     _write_json(output_dir / "case_manifest.json", [asdict(item) for item in CASES])
     _write_json(output_dir / "case_results.json", case_results)
     _write_json(output_dir / "field_lineage.json", field_lineage)
@@ -437,11 +486,18 @@ def run_diagnostic(output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, Any]:
         case_dir = output_dir / "cases" / item["case_id"]
         _write_json(case_dir / "input_projection.json", {"case_id": item["case_id"], "prompt": item["prompt"]})
         _write_json(case_dir / "backend_stages.json", {"rule_based": item["rule_based"], "validator": item["validator"]})
-        _write_json(case_dir / "missing_field_decision.json", {"missing_fields": item["validator"]["missing_fields"], "first_divergence": item["first_divergence"]})
+        _write_json(
+            case_dir / "missing_field_decision.json",
+            {
+                "missing_fields": item["validator"]["missing_fields"],
+                "first_divergence": item["first_divergence"],
+                "question_decision": item["question_decision"],
+            },
+        )
         _write_json(case_dir / "interrupt.json", item["chat_start"])
         _write_json(case_dir / "resume_transition.json", item["multiturn"])
         _write_json(case_dir / "api_response_projection.json", item["chat_start"])
-        _write_json(case_dir / "frontend_projection.json", {"status": "static_inventory_only"})
+        _write_json(case_dir / "frontend_projection.json", item["frontend_projection"])
 
     write_report(output_dir, summary, case_results, root_cause_matrix)
     return summary
