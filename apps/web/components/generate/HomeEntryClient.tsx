@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircle } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ChatGenerateClient } from "@/app/generate/chat/ChatGenerateClient";
@@ -30,9 +30,7 @@ export function HomeEntryClient() {
     return (
       <MobileShell>
         <section className={styles.homeGate} role="status" aria-live="polite">
-          <span className={styles.homeGateMark} aria-hidden="true">
-            <MessageCircle size={28} />
-          </span>
+          <Image alt="" aria-hidden="true" className={styles.homeGateLogo} height={64} src="/brand/gaetteok-logo.png" width={64} priority />
           <strong>개떡찰떡을 준비하고 있어요</strong>
           <small>처음 방문하셨다면 사용법을 안내해 드릴게요.</small>
         </section>
