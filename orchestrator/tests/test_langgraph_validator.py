@@ -244,6 +244,79 @@ def test_service_subject_satisfies_item_requirement_without_marking_it_waived():
     assert next(item for item in decision.field_decisions if item.field == "item_or_service").resolution_kind == "satisfied"
 
 
+def test_product_launch_without_subject_keeps_item_question_open():
+    decision = resolve_intake_question_policy(
+        context=MarketingContext(business_type="cafe", extra={"ad_format": "banner"}),
+        intake=_policy_input(
+            business_candidate="cafe",
+            advertised_subject="우리 카페",
+            advertised_subject_type="business",
+            campaign_intent_candidate="new_product_launch",
+            ad_format_candidate="banner",
+        ),
+        campaign=CampaignContext(campaign_intent="new_product_launch", evidence_refs=("campaign:intent",), confidence=0.9),
+        requested_ad_format="banner",
+        input_conflicts=(),
+    )
+
+    assert "item_or_service" in decision.missing_fields
+
+
+def test_new_menu_launch_without_subject_keeps_item_question_open():
+    decision = resolve_intake_question_policy(
+        context=MarketingContext(business_type="cafe", extra={"ad_format": "banner"}),
+        intake=_policy_input(
+            business_candidate="cafe",
+            advertised_subject="우리 카페",
+            advertised_subject_type="business",
+            campaign_intent_candidate="new_menu_launch",
+            ad_format_candidate="banner",
+        ),
+        campaign=CampaignContext(campaign_intent="new_menu_launch", evidence_refs=("campaign:intent",), confidence=0.9),
+        requested_ad_format="banner",
+        input_conflicts=(),
+    )
+
+    assert "item_or_service" in decision.missing_fields
+
+
+def test_service_launch_without_service_subject_keeps_item_question_open():
+    decision = resolve_intake_question_policy(
+        context=MarketingContext(business_type="beauty_salon", extra={"ad_format": "banner"}),
+        intake=_policy_input(
+            business_candidate="beauty",
+            advertised_subject="프리미엄 뷰티샵",
+            advertised_subject_type="business",
+            campaign_intent_candidate="service_launch",
+            ad_format_candidate="banner",
+        ),
+        campaign=CampaignContext(campaign_intent="service_launch", evidence_refs=("campaign:intent",), confidence=0.9),
+        requested_ad_format="banner",
+        input_conflicts=(),
+    )
+
+    assert "item_or_service" in decision.missing_fields
+
+
+def test_new_product_launch_with_product_subject_satisfies_item_requirement():
+    decision = resolve_intake_question_policy(
+        context=MarketingContext(business_type="store", extra={"ad_format": "banner"}),
+        intake=_policy_input(
+            business_candidate="store",
+            advertised_subject="세럼",
+            advertised_subject_type="product",
+            campaign_intent_candidate="new_product_launch",
+            ad_format_candidate="banner",
+        ),
+        campaign=CampaignContext(campaign_intent="new_product_launch", evidence_refs=("campaign:intent",), confidence=0.9),
+        requested_ad_format="banner",
+        input_conflicts=(),
+    )
+
+    assert "item_or_service" in decision.satisfied_fields
+    assert "item_or_service" not in decision.missing_fields
+
+
 def test_policy_schema_rejects_inconsistent_summary_fields():
     with pytest.raises(ValidationError):
         IntakeQuestionPolicyDecision(

@@ -127,6 +127,8 @@ def test_a8_builds_shadow_strategy_context_from_product_understanding_and_market
             "height": 1024,
             "aspect_ratio": "1:1",
         },
+        "campaign_context": {"campaign_intent": "new_product_launch"},
+        "current_brief": {"campaign_intent": "new_product_launch"},
     }
     marketing_context = MarketingContext(
         item_or_service="Cica Serum",
@@ -150,11 +152,36 @@ def test_a8_builds_shadow_strategy_context_from_product_understanding_and_market
     assert context.product_visual.category_path == ("beauty_and_personal_care", "skincare", "serum")
     assert context.product_visual.evidence_refs == ("state:product_understanding.product_name",)
     assert "skincare" in context.business.business_tags
+    assert context.campaign.campaign_intent == "new_product_launch"
     assert context.campaign.promotion_goal == "new_product_launch"
-    assert context.campaign.evidence_refs == ("state:context.promotion_goal",)
+    assert context.campaign.evidence_refs == ("state:campaign_context.campaign_intent", "state:context.promotion_goal")
     assert context.ad_format.ad_format == "instagram_feed"
     assert context.ad_format.platform == "instagram"
     assert context.ad_format.output_strategy == "generate_text_free_background_then_overlay"
+
+
+def test_a8_runtime_context_maps_campaign_intent_to_roles():
+    runtime = build_visual_strategy_runtime_context(
+        state={"campaign_context": {"campaign_intent": "store_opening"}},
+        ad_format_spec={"ad_format": "banner", "width": 1200, "height": 675, "aspect_ratio": "16:9"},
+    )
+
+    assert runtime.campaign_roles == frozenset({"announcement"})
+
+
+def test_a8_runtime_context_maps_launch_and_service_intents_to_safe_roles():
+    assert build_visual_strategy_runtime_context(
+        state={"campaign_context": {"campaign_intent": "new_product_launch"}},
+        ad_format_spec={"ad_format": "banner", "width": 1200, "height": 675, "aspect_ratio": "16:9"},
+    ).campaign_roles == frozenset({"promotion"})
+    assert build_visual_strategy_runtime_context(
+        state={"campaign_context": {"campaign_intent": "new_menu_launch"}},
+        ad_format_spec={"ad_format": "banner", "width": 1200, "height": 675, "aspect_ratio": "16:9"},
+    ).campaign_roles == frozenset({"promotion"})
+    assert build_visual_strategy_runtime_context(
+        state={"campaign_context": {"campaign_intent": "service_launch"}},
+        ad_format_spec={"ad_format": "banner", "width": 1200, "height": 675, "aspect_ratio": "16:9"},
+    ).campaign_roles == frozenset({"information"})
 
 
 def test_a8_partial_product_understanding_mapping_is_backfilled_with_defaults():

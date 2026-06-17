@@ -11,11 +11,14 @@ from orchestrator.app.schemas.llm_marketing import CopyCandidate, MarketingConte
 
 def build_copy_input_projection(state: dict[str, Any]) -> dict[str, Any]:
     context = _dict(state.get("context"))
+    current_brief = _dict(state.get("current_brief"))
+    campaign_context = _dict(state.get("campaign_context"))
     return {
         "user_input_present": bool((state.get("user_input") or "").strip()),
         "business_type": _string_or_none(context.get("business_type")),
         "item_or_service": _string_or_none(context.get("item_or_service")),
         "promotion_goal": _string_or_none(context.get("promotion_goal")),
+        "campaign_intent": _string_or_none(current_brief.get("campaign_intent")) or _string_or_none(campaign_context.get("campaign_intent")),
         "brand_tone": _string_or_none(context.get("brand_tone")),
         "target_persona": _string_or_none(context.get("target_persona")),
         "time_context": _string_or_none(context.get("time_context")),

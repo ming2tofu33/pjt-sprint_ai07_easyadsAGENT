@@ -264,7 +264,7 @@ def _frontend_projection_result(spec: CaseSpec, multiturn: dict[str, Any] | None
 
     answer_payload = multiturn.get("answer_payload") or {}
     backend_business_type = ((answer_payload.get("context") or {}).get("businessType")) or None
-    backend_matches_answer = backend_business_type == spec.follow_up_answer_label
+    backend_matches_answer = backend_business_type == spec.follow_up_answer_value
 
     return {
         "status": "executed",
@@ -299,7 +299,7 @@ def _root_cause_codes(
 
     if spec.case_id == "R6" and spec.follow_up_answer_value and multiturn:
         backend_business_type = ((multiturn.get("answer_payload") or {}).get("context") or {}).get("businessType")
-        backend_matches_answer = backend_business_type == spec.follow_up_answer_label
+        backend_matches_answer = backend_business_type == spec.follow_up_answer_value
         frontend_ok = frontend_projection.get("root_cause") == "E-NONE"
         if backend_matches_answer and frontend_ok:
             codes.append("MULTITURN_BACKEND_UPDATE_CONFIRMED")

@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from orchestrator.app.llm.campaign_semantics import normalize_campaign_intent, project_legacy_promotion_goal
 from orchestrator.app.llm.domain_routing import normalize_business_type
 from orchestrator.app.llm.native_campaign_copy_rules import detect_campaign_status, strip_generic_request_language
 from orchestrator.app.schemas.brief_llm import BriefInterpreterOutput
@@ -62,6 +63,7 @@ def understand_intake(
             "used": False,
             "llm_metadata": {"llm_attempted": False},
             "warnings": [],
+            "projected_context_updates": {},
         },
     }
 
@@ -71,6 +73,7 @@ def understand_intake(
     llm_output, llm_metadata = brief_interpreter(state, text)
     warnings: list[str] = []
     suggested_copy_mode: str | None = None
+    projected_context_updates: dict[str, Any] = {}
     merged = deterministic
     if llm_output is None:
         merged = deterministic.model_copy(
@@ -82,6 +85,7 @@ def understand_intake(
     else:
         llm_updates, warnings = brief_projector(llm_output, source_text=text)
         suggested_copy_mode = llm_updates.pop("copy_generation_mode", None)
+        projected_context_updates = dict(llm_updates)
         structured = _brief_output_to_structured_intake(llm_output, llm_updates, text)
         merged = _merge_structured_intake(deterministic, structured, text, llm_output.confidence)
 
@@ -95,6 +99,7 @@ def understand_intake(
         "used": llm_output is not None,
         "llm_metadata": llm_metadata,
         "warnings": warnings,
+        "projected_context_updates": projected_context_updates,
     }
     return merged, trace
 
@@ -118,7 +123,11 @@ def build_deterministic_intake_understanding(
         hints.get("item_or_service"),
     )
     advertised_subject, advertised_subject_type = _advertised_subject(user_text, product_candidate)
-    campaign_candidate = _campaign_intent_candidate(user_text, confirmed_context.get("promotion_goal") or hints.get("promotion_goal"))
+    campaign_candidate = _campaign_intent_candidate(
+        user_text,
+        confirmed_context.get("promotion_goal") or hints.get("promotion_goal"),
+        advertised_subject_type=advertised_subject_type,
+    )
     ad_format_candidate = _explicit_format_candidate(
         user_text,
         confirmed_context.get("extra", {}).get("ad_format") if isinstance(confirmed_context.get("extra"), dict) else None,
@@ -275,7 +284,10 @@ def _merge_structured_intake(
     product_candidate = structured.product_or_service_phrase or deterministic.product_or_service_candidate
     advertised_subject = structured.advertised_subject or deterministic.advertised_subject
     advertised_subject_type = structured.advertised_subject_type or deterministic.advertised_subject_type
-    campaign_candidate = structured.campaign_intent_phrase or deterministic.campaign_intent_candidate
+    campaign_candidate = normalize_campaign_intent(
+        structured.campaign_intent_phrase or deterministic.campaign_intent_candidate,
+        advertised_subject_type=advertised_subject_type,
+    )
     tone_candidates = tuple(dict.fromkeys([*deterministic.tone_candidates, *structured.tone_phrases]))
     target_candidates = tuple(dict.fromkeys([*deterministic.target_candidates, *structured.target_phrases]))
     evidence_items = list(deterministic.evidence_items)
@@ -387,32 +399,24 @@ def _business_subject_phrase(text: str) -> str | None:
     return _normalize_phrase(sentence)
 
 
-def _campaign_intent_candidate(text: str, confirmed_or_hint: str | None) -> str | None:
+def _campaign_intent_candidate(
+    text: str,
+    confirmed_or_hint: str | None,
+    *,
+    advertised_subject_type: str | None,
+) -> str | None:
     status = detect_campaign_status(text)
     if status:
-        return status
+        return normalize_campaign_intent(status, advertised_subject_type=advertised_subject_type, campaign_status=status)
     if any(re.search(pattern, text, re.IGNORECASE) for pattern in _OPENING_PATTERNS):
-        return "store_opening"
+        return normalize_campaign_intent("store_opening", advertised_subject_type=advertised_subject_type)
     if any(re.search(pattern, text, re.IGNORECASE) for pattern in _RECRUIT_PATTERNS):
         return "student_recruitment"
-    return _normalize_phrase(confirmed_or_hint)
+    return normalize_campaign_intent(_normalize_phrase(confirmed_or_hint), advertised_subject_type=advertised_subject_type)
 
 
 def _promotion_goal_from_candidate(candidate: str | None) -> str | None:
-    mapping = {
-        "new_menu": "new_launch",
-        "new_product": "new_launch",
-        "seasonal": "seasonal_limited",
-        "seasonal_limited": "seasonal_limited",
-        "seasonal_campaign": "seasonal_limited",
-        "new_launch": "new_launch",
-        "discount_event": "discount_event",
-        "reservation": "reservation_cta",
-        "reservation_cta": "reservation_cta",
-        "review_event": "review_event",
-        "brand_awareness": "brand_awareness",
-    }
-    return mapping.get(str(candidate or "").strip())
+    return project_legacy_promotion_goal(candidate)
 
 
 def _explicit_format_candidate(text: str, confirmed_ad_format: str | None, hinted_ad_format: str | None) -> str | None:

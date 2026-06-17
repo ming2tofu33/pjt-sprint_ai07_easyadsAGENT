@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from orchestrator.app.llm.business_context_service import build_business_environment_context_from_domain_routing
+from orchestrator.app.llm.campaign_semantics import campaign_roles_for_intent
 from orchestrator.app.llm.creative_routing_context_service import build_creative_routing_context
 from orchestrator.app.llm.domain_routing import DomainRoutingResult, LegacyRoutingProjection
 from orchestrator.app.llm import visual_strategy_resolver
@@ -313,9 +314,15 @@ def build_visual_strategy_runtime_context(
     ad_format_spec: Mapping[str, Any],
 ) -> VisualStrategyRuntimeContext:
     ad_format = _read_ad_format_spec(ad_format_spec, state=state)
+    campaign_context = state.get("campaign_context") if isinstance(state.get("campaign_context"), Mapping) else {}
+    current_brief = state.get("current_brief") if isinstance(state.get("current_brief"), Mapping) else {}
     return VisualStrategyRuntimeContext(
         placement=ad_format.ad_format,
-        campaign_roles=frozenset(),
+        campaign_roles=campaign_roles_for_intent(
+            _string_or_none(campaign_context.get("campaign_intent"))
+            or _string_or_none(current_brief.get("campaign_intent"))
+            or _string_or_none((state.get("context") or {}).get("promotion_goal"))  # type: ignore[index]
+        ),
     )
 
 
@@ -330,13 +337,24 @@ def build_visual_strategy_context_for_shadow(
     product = _read_or_build_product_understanding(state, marketing_context=marketing_context)
     product_visual = _read_or_build_product_visual_context(state, product=product)
     business = build_business_environment_context_from_domain_routing(domain_result)
+    raw_campaign_intent = _string_or_none((state.get("campaign_context") or {}).get("campaign_intent")) or _string_or_none(
+        (state.get("current_brief") or {}).get("campaign_intent")
+    )
     promotion_goal = _string_or_none(marketing_context.promotion_goal) or _string_or_none(
         state.get("promotion_goal")
     )
     campaign = CampaignContext(
+        campaign_intent=raw_campaign_intent,
         promotion_goal=promotion_goal,
-        evidence_refs=("state:context.promotion_goal",) if promotion_goal else (),
-        confidence=0.8 if promotion_goal else 0.0,
+        evidence_refs=tuple(
+            ref
+            for ref in (
+                "state:campaign_context.campaign_intent" if raw_campaign_intent else None,
+                "state:context.promotion_goal" if promotion_goal else None,
+            )
+            if ref
+        ),
+        confidence=0.8 if raw_campaign_intent or promotion_goal else 0.0,
     )
     ad_format = _read_ad_format_spec(state.get("ad_format_spec"), state=state)
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from orchestrator.app.api.marketing_graph import get_marketing_graph
 from orchestrator.app.core.config import _get_env
 from orchestrator.app.graph.state import resolve_requested_ad_format
+from orchestrator.app.llm.campaign_semantics import campaign_intent_label
 from orchestrator.app.llm.option_registry import option_label_for_value
 
 router = APIRouter(prefix="/v1/marketing/chat", tags=["marketing-chat"])
@@ -223,10 +224,7 @@ def _label(mapping: dict[str, str], value: str | None, fallback: str) -> str:
 
 
 def _campaign_intent_label(value: str | None) -> str | None:
-    cleaned = _clean_optional_text(value)
-    if not cleaned:
-        return None
-    return CAMPAIGN_INTENT_LABELS.get(cleaned, cleaned)
+    return campaign_intent_label(value)
 
 
 def _item_or_service_label(value: str | None) -> str:
@@ -261,13 +259,10 @@ def _context_from_state(state: dict[str, Any]) -> ChatContext:
     context = state.get("context") or {}
     current_brief = state.get("current_brief") or {}
     campaign_context = state.get("campaign_context") or {}
-    business_type = _label(BUSINESS_LABELS, context.get("business_type"), "") or None
-    item_or_service = _item_or_service_label(context.get("item_or_service")) if context.get("item_or_service") else None
-    promotion_goal = _label(GOAL_LABELS, context.get("promotion_goal"), "") or None
     return ChatContext(
-        businessType=business_type,
-        itemOrService=item_or_service,
-        promotionGoal=promotion_goal,
+        businessType=_clean_optional_text(context.get("business_type")),
+        itemOrService=_clean_optional_text(context.get("item_or_service")),
+        promotionGoal=_clean_optional_text(context.get("promotion_goal")),
         advertisedSubject=_clean_optional_text(current_brief.get("advertised_subject")),
         advertisedSubjectType=_clean_optional_text(current_brief.get("advertised_subject_type")),
         campaignIntent=_clean_optional_text(current_brief.get("campaign_intent") or campaign_context.get("campaign_intent")),
@@ -279,9 +274,9 @@ def _partial_context_from_state(state: dict[str, Any]) -> PartialChatContext:
     current_brief = state.get("current_brief") or {}
     campaign_context = state.get("campaign_context") or {}
     return PartialChatContext(
-        businessType=_label(BUSINESS_LABELS, context.get("business_type"), "") or None,
-        itemOrService=_item_or_service_label(context.get("item_or_service")) if context.get("item_or_service") else None,
-        promotionGoal=_label(GOAL_LABELS, context.get("promotion_goal"), "") or None,
+        businessType=_clean_optional_text(context.get("business_type")),
+        itemOrService=_clean_optional_text(context.get("item_or_service")),
+        promotionGoal=_clean_optional_text(context.get("promotion_goal")),
         advertisedSubject=_clean_optional_text(current_brief.get("advertised_subject")),
         advertisedSubjectType=_clean_optional_text(current_brief.get("advertised_subject_type")),
         campaignIntent=_clean_optional_text(current_brief.get("campaign_intent") or campaign_context.get("campaign_intent")),

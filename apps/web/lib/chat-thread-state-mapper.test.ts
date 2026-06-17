@@ -179,7 +179,7 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     });
 
     expect(restore?.context).toMatchObject({
-      businessType: "외식업/식당",
+      businessType: "음식점/식당",
       itemOrService: "원육",
       promotionGoal: ""
     });
