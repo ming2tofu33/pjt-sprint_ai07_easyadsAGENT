@@ -74,6 +74,14 @@ def _handle_service_error(exc: ChatThreadServiceError, thread_id: str) -> None:
             detail=f"thread_id={thread_id}",
         )
         return
+    if exc.error_code == "chat_thread_requires_continuation_mode":
+        raise_api_error(
+            status_code=409,
+            error_code=exc.error_code,
+            message=exc.message,
+            detail=f"thread_id={thread_id}",
+        )
+        return
     if exc.error_code == "chat_thread_not_found":
         _not_found(thread_id)
         return
