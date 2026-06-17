@@ -64,6 +64,7 @@ import {
 import { mapChatMessagesToTranscript, mapChatThreadSnapshotToRestoreState } from "@/lib/chat-thread-state-mapper";
 import { buildBrief, chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
 import { normalizeSelectedChannelId, toCanonicalAdFormat } from "@/lib/ad-formats";
+import { campaignIntentLabel, displayContextValue } from "@/lib/context-presentation";
 import {
   buildDashboardHref,
   type DashboardStage,
@@ -350,41 +351,36 @@ function getCopyCandidateOrigin(payload: Record<string, unknown>, ...keys: strin
   return value === "llm" || value === "rule_based" || value === "fallback" || value === "unknown" ? value : "unknown";
 }
 
-const contextDisplayLabels: Record<string, string> = {
-  beauty_nail: "네일샵",
-  beauty_salon: "뷰티/미용실",
-  cafe: "카페",
-  restaurant: "음식점/식당",
-  store: "일반 매장/소매",
-  seasonal_limited: "시즌 한정 홍보",
-  discount_event: "할인 이벤트",
-  new_launch: "신메뉴/신상품 출시",
-  reservation_cta: "예약/방문 유도",
-  brand_awareness: "브랜드 인지도",
-  review_event: "리뷰 이벤트",
-  retention: "재방문 유도"
-};
-
-function displayContextValue(value: string | null | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  return contextDisplayLabels[value] ?? value;
-}
-
 function normalizePartialContext(context: Record<string, unknown>): PartialInferredContext {
   return {
     businessType: displayContextValue(getPayloadString(context, "businessType", "business_type")),
     itemOrService: displayContextValue(getPayloadString(context, "itemOrService", "item_or_service")),
-    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal"))
+    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal")),
+    advertisedSubject: displayContextValue(getPayloadString(context, "advertisedSubject", "advertised_subject")),
+    advertisedSubjectType: getPayloadString(context, "advertisedSubjectType", "advertised_subject_type"),
+    campaignIntent: displayContextValue(getPayloadString(context, "campaignIntent", "campaign_intent"))
   };
 }
 
 function normalizeInferredContext(context: Record<string, unknown>): InferredContext {
   return {
-    businessType: displayContextValue(getPayloadString(context, "businessType", "business_type")) ?? "",
-    itemOrService: displayContextValue(getPayloadString(context, "itemOrService", "item_or_service")) ?? "",
-    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal")) ?? ""
+    businessType: displayContextValue(getPayloadString(context, "businessType", "business_type")) ?? null,
+    itemOrService: displayContextValue(getPayloadString(context, "itemOrService", "item_or_service")) ?? null,
+    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal")) ?? null,
+    advertisedSubject: displayContextValue(getPayloadString(context, "advertisedSubject", "advertised_subject")) ?? null,
+    advertisedSubjectType: getPayloadString(context, "advertisedSubjectType", "advertised_subject_type") ?? null,
+    campaignIntent: displayContextValue(getPayloadString(context, "campaignIntent", "campaign_intent")) ?? null
+  };
+}
+
+function normalizeOptionQuestion(question: Record<string, unknown>): OptionQuestion {
+  const progress = asRecord(question.progress_state ?? question.progressState);
+  const current = Number(progress.current_step ?? progress.currentStep ?? progress.current);
+  const total = Number(progress.total_steps ?? progress.totalSteps ?? progress.total);
+  const label = getPayloadString(progress, "currentLabel", "current_label", "label") ?? null;
+  return {
+    ...(question as unknown as OptionQuestion),
+    progressState: Number.isFinite(current) && Number.isFinite(total) && label ? { current, total, label } : null
   };
 }
 
@@ -425,8 +421,8 @@ function normalizeChatBrief(
   const downloadUrl = getPayloadString(brief, "downloadUrl", "download_url") ?? getPayloadString(payload, "downloadUrl", "download_url");
 
   return {
-    purpose: getPayloadString(brief, "purpose", "promotion_goal") ?? context.promotionGoal,
-    item: getPayloadString(brief, "item", "item_or_service") ?? context.itemOrService,
+    purpose: getPayloadString(brief, "purpose", "promotion_goal", "campaign_intent") ?? context.promotionGoal ?? campaignIntentLabel(context.campaignIntent) ?? "",
+    item: getPayloadString(brief, "item", "item_or_service", "advertised_subject") ?? context.itemOrService ?? context.advertisedSubject ?? "",
     copy,
     tone: getPayloadString(brief, "tone", "brand_tone", "selected_tone") ?? "",
     channel: getPayloadString(brief, "channel", "selected_channel_id", "requested_ad_format") ?? "",
@@ -551,7 +547,8 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
         threadId,
         status: "waiting",
         context: normalizePartialContext(context),
-        question: interrupt.optionQuestion as never,
+        question: normalizeOptionQuestion(interrupt.optionQuestion as Record<string, unknown>) as never,
+        progress: normalizeOptionQuestion(interrupt.optionQuestion as Record<string, unknown>).progressState ?? null,
         missingFields: getPayloadArray<string>(metadata, "missingFields", "missing_fields"),
         generationJob: job,
         selectedChannelId: getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
@@ -574,7 +571,8 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
       threadId,
       status: "waiting",
       context: normalizePartialContext(context),
-      question: question as never,
+      question: normalizeOptionQuestion(question as Record<string, unknown>) as never,
+      progress: normalizeOptionQuestion(question as Record<string, unknown>).progressState ?? null,
       missingFields,
       generationJob: job,
       selectedChannelId: getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
@@ -628,7 +626,10 @@ function mergeContextFromTurnResponse(
   return {
     businessType: response.context.businessType || baseContext.businessType,
     itemOrService: response.context.itemOrService || baseContext.itemOrService,
-    promotionGoal: response.context.promotionGoal || baseContext.promotionGoal
+    promotionGoal: response.context.promotionGoal || baseContext.promotionGoal,
+    advertisedSubject: response.context.advertisedSubject || baseContext.advertisedSubject,
+    advertisedSubjectType: response.context.advertisedSubjectType || baseContext.advertisedSubjectType,
+    campaignIntent: response.context.campaignIntent || baseContext.campaignIntent
   };
 }
 
@@ -981,6 +982,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         threadId: response.threadId,
         context: response.context,
         question: response.question,
+      progress: response.question.progressState ?? null,
         selectedChannelId: normalizeSelectedChannelId(response.selectedChannelId ?? fallbackSelectedChannelId) ?? null,
         generationJob: response.generationJob,
         sourceAssetId: sourceAssetId ?? null,
@@ -1846,7 +1848,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         dispatch({
           type: "generationJobQuestionReceived",
           generationJob: job,
-          question: incoming,
+          question: normalizeOptionQuestion(incoming as Record<string, unknown>),
+          progress: normalizeOptionQuestion(incoming as Record<string, unknown>).progressState ?? null,
           context,
           sourceAssetId: initialChatIntake?.sourceAssetId ?? null,
           sourceImagePath: initialChatIntake?.sourceImagePath ?? null,
@@ -1878,7 +1881,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     dispatch({
       type: "generationJobQuestionReceived",
       generationJob: job,
-      question: turnResponse.question,
+      question: normalizeOptionQuestion(turnResponse.question as Record<string, unknown>),
+      progress: normalizeOptionQuestion(turnResponse.question as Record<string, unknown>).progressState ?? null,
       context: turnResponse.context,
       sourceAssetId: initialChatIntake?.sourceAssetId ?? null,
       sourceImagePath: initialChatIntake?.sourceImagePath ?? null,

@@ -16,6 +16,7 @@ def test_state_update_applies_regular_context_value():
 
     assert update["context"]["promotion_goal"] == "discount_event"
     assert "promotion_goal" not in update["missing_fields"]
+    assert update["confirmed_context_fields"] == ["promotion_goal"]
     assert update["revision"] == 2
 
 
@@ -36,6 +37,7 @@ def test_state_update_applies_ad_format_to_extra_and_current_brief():
 
     assert update["context"]["extra"]["ad_format"] == "instagram_feed"
     assert update["current_brief"]["requested_ad_format"] == "instagram_feed"
+    assert update["confirmed_context_fields"] == ["ad_format"]
     assert state["current_brief"]["requested_ad_format"] is None
 
 

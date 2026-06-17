@@ -42,6 +42,9 @@ def test_chat_start_returns_inferred_context_and_copy_candidates():
         "businessType": "카페",
         "itemOrService": "딸기라떼",
         "promotionGoal": "신메뉴 출시",
+        "advertisedSubject": "우리 카페 딸기라떼",
+        "advertisedSubjectType": "product",
+        "campaignIntent": "new_menu",
     }
     assert [candidate["id"] for candidate in payload["copyCandidates"]] == ["copy_1", "copy_2"]
     assert payload["recommendedCopyId"] in {"copy_1", "copy_2"}
@@ -63,6 +66,24 @@ def test_chat_start_returns_option_question_when_context_is_missing():
     assert payload["threadId"].endswith("_thread")
     assert payload["question"]["field"] == "business_type"
     assert payload["question"]["question"] == "어떤 업종의 광고인가요?"
+
+
+def test_brief_from_result_uses_advertised_subject_and_campaign_intent_label_fallback():
+    brief = chat_api._brief_from_result(
+        {
+            "context": {"business_type": "store", "extra": {"ad_format": "banner"}},
+            "current_brief": {
+                "advertised_subject": "프리미엄 뷰티샵",
+                "campaign_intent": "store_opening",
+                "selected_channel_id": "banner",
+            },
+            "copy_generation_mode": "no_copy",
+        },
+        selected_channel_id="banner",
+    )
+
+    assert brief.item == "프리미엄 뷰티샵"
+    assert brief.purpose == "신규 오픈 홍보"
 
 
 def test_chat_start_option_question_uses_request_ad_format_as_selected_channel_fallback(monkeypatch):

@@ -8,6 +8,7 @@ import type {
   ImageGenerationEngineFields,
   OptionQuestion,
   PartialInferredContext,
+  ProgressState,
   ReferenceImageFields,
   ReferenceTemplateFields
 } from "@/types/marketing";
@@ -83,6 +84,7 @@ export type ChatQuestionResponse = {
   status: string;
   context: PartialInferredContext;
   question: OptionQuestion;
+  progress?: ProgressState | null;
   missingFields?: string[];
   generationJob?: GenerationJob;
   selectedChannelId?: string | null;

@@ -32,6 +32,10 @@ function resolveSnapshotImageUrl(snapshot: GeneratedCreativeSnapshot): string | 
   return snapshot.brief.finalImageUrl || snapshot.brief.downloadUrl || buildGeneratedAssetUrl(snapshot.brief.finalImagePath);
 }
 
+function isNonEmptyString(value: string | null | undefined): value is string {
+  return Boolean(value);
+}
+
 function creativeFromSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative {
   const channelMatch = snapshot.brief.channel.match(/\(([^)]+)\)/);
   const imageUrl = resolveSnapshotImageUrl(snapshot);
@@ -56,7 +60,7 @@ function creativeFromSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative
       snapshot.context.itemOrService,
       snapshot.context.promotionGoal,
       snapshot.brief.channel.replace(/\s*\(.+\)/, "")
-    ].filter(Boolean)
+    ].filter(isNonEmptyString)
   };
 }
 
