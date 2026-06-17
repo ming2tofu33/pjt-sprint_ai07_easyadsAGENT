@@ -14,7 +14,7 @@ EXPECTED_FIELDS = frozenset({
     "entry_mode", "generation_route", "engine", "render_profile", "progress_state",
     # intake / brief / product understanding
     "user_input", "prompt_json", "messages", "conversation_summary", "current_brief",
-    "dirty_fields", "user_selection", "image_input", "reference_input", "source_asset_id",
+    "dirty_fields", "confirmed_context_fields", "user_selection", "image_input", "reference_input", "source_asset_id",
     "reference_asset_id", "source_image_path", "reference_image_path", "input_evidence_bundle",
     "input_normalization_status", "input_conflicts", "unresolved_questions", "intake_understanding_result",
     "intake_extraction_trace", "product_understanding",
@@ -78,8 +78,8 @@ def test_marketing_state_has_exactly_expected_fields():
     }
 
 
-def test_marketing_state_field_count_is_173():
-    assert len(MarketingState.__annotations__) == 173
+def test_marketing_state_field_count_is_174():
+    assert len(MarketingState.__annotations__) == 174
 
 
 def test_marketing_state_all_keys_optional_under_total_false():

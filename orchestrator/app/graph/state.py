@@ -63,6 +63,7 @@ class IntakeState(TypedDict, total=False):
     conversation_summary: str | None
     current_brief: dict[str, Any]
     dirty_fields: list[str]
+    confirmed_context_fields: list[str]
     user_selection: dict[str, Any] | None
     image_input: dict[str, Any] | None
     reference_input: dict[str, Any] | None
@@ -442,6 +443,12 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "campaign_intent": None,
         "question_policy_version": None,
     }
+    confirmed_context_fields: list[str] = []
+    for field in ("business_type", "item_or_service", "promotion_goal", "brand_tone", "target_persona", "region_type"):
+        if getattr(context, field, None):
+            confirmed_context_fields.append(field)
+    if request.requested_ad_format or (context.extra or {}).get("ad_format"):
+        confirmed_context_fields.append("ad_format")
     copy_required = request.copy_generation_mode != "no_copy"
     text_overlay_pending = request.copy_generation_mode != "no_copy"
     initial_message = build_message("user", request.user_input)
@@ -471,6 +478,7 @@ def create_initial_marketing_state(request: InitialMarketingRequest) -> Marketin
         "conversation_summary": None,
         "current_brief": current_brief,
         "dirty_fields": [],
+        "confirmed_context_fields": confirmed_context_fields,
         "user_selection": None,
         "image_input": model_to_dict(request.image_input),
         "reference_input": model_to_dict(request.reference_input),

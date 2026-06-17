@@ -145,6 +145,25 @@ def test_validator_marks_ready_for_planning_when_required_fields_exist():
     assert state["current_brief"]["ready_for_planning"] is True
 
 
+def test_validator_does_not_reask_confirmed_ambiguous_business_type():
+    request = InitialMarketingRequest(
+        user_input="미용실 헤어 커트 할인 이벤트",
+        copy_generation_mode="auto_pilot",
+        context=MarketingContext(
+            business_type="beauty",
+            item_or_service="헤어 스타일링",
+            promotion_goal="reservation_cta",
+            extra={"ad_format": "instagram_feed"},
+        ),
+    )
+    state = create_initial_marketing_state(request)
+
+    update = validator_node(state)
+
+    assert "business_type" in state["confirmed_context_fields"]
+    assert "business_type" not in update["missing_fields"]
+
+
 def test_confirmed_business_type_resolves_business_ambiguity_without_reasking():
     decision = resolve_intake_question_policy(
         context=MarketingContext(business_type="beauty_salon", extra={"ad_format": "banner"}),

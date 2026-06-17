@@ -71,7 +71,7 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         campaign=campaign_context,
         requested_ad_format=requested_ad_format,
         input_conflicts=intake_result.input_conflicts,
-        confirmed_fields=state.get("dirty_fields", []),
+        confirmed_fields=state.get("confirmed_context_fields", []),
     )
     missing_fields = list(question_policy.missing_fields)
     copy_mode, copy_mode_output = resolve_copy_generation_mode(state, text, track_in_state=False)
@@ -313,11 +313,16 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
     missing_fields = [item for item in state.get("missing_fields", []) if item != field] if updated else list(state.get("missing_fields", []))
     next_brief = update_current_brief(next_brief, {field: value})
     dirty_fields = calculate_dirty_fields(state, [field])
+    confirmed_context_fields = list(state.get("confirmed_context_fields", []))
+    if updated and field in {"business_type", "item_or_service", "promotion_goal", "brand_tone", "target_persona", "region_type", "ad_format"}:
+        if field not in confirmed_context_fields:
+            confirmed_context_fields.append(field)
     return {
         "context": MarketingContext(**context_data).model_dump(),
         "current_brief": next_brief,
         "missing_fields": missing_fields,
         "dirty_fields": dirty_fields,
+        "confirmed_context_fields": confirmed_context_fields,
         "revision": int(state.get("revision", 0)) + 1,
         "status": "updating_state",
         "user_selection": None,

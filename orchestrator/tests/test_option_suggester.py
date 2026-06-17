@@ -111,29 +111,26 @@ def test_suggest_options_llm_off_returns_none(mock_should):
 @patch("orchestrator.app.graph.nodes._augment_options")
 def test_options_node_eligible_augmented(mock_augment):
     # We invoke the graph with an eligible missing field
-    graph = build_intake_graph()
-    config = {"configurable": {"thread_id": "thread-123"}}
-    
-    question = get_option_question("item_or_service")
     from orchestrator.app.schemas.llm_marketing import OptionItem
     mock_augment.return_value = [
         OptionItem(id=1, label="다이나믹 1", value="dynamic_1"),
         OptionItem(id=2, label="직접 입력", value="custom")
     ]
     
-    # We supply missing_fields manually by constructing a state that goes to options
-    result = graph.invoke({
-        "schema_version": "1.0",
+    state: MarketingState = {
         "job_id": "job-123",
         "user_input": "Test",
         "thread_id": "thread-123",
-        "missing_fields": ["item_or_service"], # Force item_or_service first
+        "missing_fields": ["item_or_service"],
         "context": {"business_type": "restaurant"},
         "status": "validating_context",
-    }, config=config)
-    
-    # It should interrupt
-    interrupt_payload = result["__interrupt__"][0].value
+        "current_brief": {},
+        "intake_question_policy_decision": {"required_fields": ["item_or_service"], "waived_fields": []},
+    }
+    with patch("orchestrator.app.graph.nodes.interrupt", lambda payload: payload):
+        result = options_node(state)
+
+    interrupt_payload = result["user_selection"]
     assert interrupt_payload["type"] == "option_question"
     
     q = interrupt_payload["option_question"]
@@ -180,9 +177,6 @@ def test_options_node_enum_unchanged(mock_augment):
 @patch("orchestrator.app.graph.nodes._augment_options")
 def test_options_node_cached_stable(mock_augment):
     # If there are cached options in current_brief, the LLM is not called again
-    graph = build_intake_graph()
-    config = {"configurable": {"thread_id": "thread-789"}}
-    
     cached_options_dict = {
         "item_or_service": [
             {"id": 1, "label": "대표 메뉴", "value": "signature_item"},
@@ -195,22 +189,20 @@ def test_options_node_cached_stable(mock_augment):
     # preserves current_brief.cached_options instead of rebuilding from scratch.
     # Full required context except item_or_service → item_or_service asked first,
     # cache used, no _augment_options call.
-    from orchestrator.app.graph.state import create_initial_marketing_state
-    from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest
-
-    state = create_initial_marketing_state(
-        InitialMarketingRequest(user_input="Test", thread_id="thread-789")
-    )
-    state["context"] = {
-        "business_type": "restaurant",
-        "promotion_goal": "discount_event",
-        "extra": {"ad_format": "instagram_feed"},
+    state: MarketingState = {
+        "job_id": "job-789",
+        "thread_id": "thread-789",
+        "user_input": "Test",
+        "status": "validating_context",
+        "context": {"business_type": "restaurant"},
+        "missing_fields": ["item_or_service"],
+        "current_brief": {"cached_options": cached_options_dict},
+        "intake_question_policy_decision": {"required_fields": ["item_or_service"], "waived_fields": []},
     }
-    state["missing_fields"] = ["item_or_service"]
-    state["current_brief"] = {**state.get("current_brief", {}), "cached_options": cached_options_dict}
-    result = graph.invoke(state, config=config)
-    
-    interrupt_payload = result["__interrupt__"][0].value
+    with patch("orchestrator.app.graph.nodes.interrupt", lambda payload: payload):
+        result = options_node(state)
+
+    interrupt_payload = result["user_selection"]
     q = interrupt_payload["option_question"]
     labels = [opt["label"] for opt in q["options"]]
     
