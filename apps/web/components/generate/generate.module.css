@@ -1819,6 +1819,82 @@
   color: var(--color-text-inverse);
 }
 
+.waitingStatusCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid rgba(17, 185, 129, 0.24);
+  border-radius: 8px;
+  background: #ecfdf5;
+  color: #0f172a;
+}
+
+.waitingStatusCardCompact {
+  padding: 13px 14px;
+}
+
+.waitingStatusIcon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #059669;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.waitingStatusIcon svg:last-child {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  color: #111827;
+  animation: waitingStatusSpin 1.2s linear infinite;
+}
+
+.waitingStatusText {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.waitingStatusEyebrow {
+  font-size: 11px;
+  font-weight: 800;
+  color: #059669;
+}
+
+.waitingStatusText strong {
+  font-size: 16px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.waitingStatusText p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #334155;
+}
+
+.waitingStatusText small {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #065f46;
+}
+
 .engineStatusNote {
   margin: -2px 0 12px;
   color: var(--color-muted);
@@ -4080,6 +4156,15 @@
 }
 
 @keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes waitingStatusSpin {
+  from {
+    transform: rotate(0deg);
+  }
   to {
     transform: rotate(360deg);
   }

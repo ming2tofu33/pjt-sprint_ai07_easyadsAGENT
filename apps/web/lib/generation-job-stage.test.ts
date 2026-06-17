@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GenerationJob } from "@/lib/api-client";
 import { generationStageViewFromJob, generationStatusSteps } from "./generation-job-stage";
+import { resolveWaitingStatusCopy } from "./generation-waiting-copy";
 
 function job(status: string, currentStage?: string): GenerationJob {
   return {
@@ -48,6 +49,24 @@ describe("generation job stage view", () => {
 
     expect(view.progressPercent).toBe(72);
     expect(view.detail).toBe("FLUX 모델이 이미지를 만들고 있어요.");
+  });
+
+  it("keeps waiting copy independent from backend progress percent", () => {
+    const copy = resolveWaitingStatusCopy({
+      context: "generation",
+      generationJob: {
+        job_id: "job_progress_copy",
+        status: "running",
+        progress: {
+          progress_percent: 72,
+          current_stage: "modal_running"
+        },
+        metadata: { source: "web_generation_flow" }
+      }
+    });
+
+    expect(copy.title).toBe("광고 이미지를 생성하는 중이에요");
+    expect(copy.loop).toContain("선택한 모델이 광고 이미지를 만들고 있어요");
   });
 
   it("marks completed jobs as terminal storage-ready work", () => {

@@ -4,12 +4,14 @@ import { FileImage, ImagePlus, MessageCircle, PenLine, Send, Sparkles, UploadClo
 import { type ChangeEvent, type DragEvent, type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CopyGenerationMode, CustomCopyFields } from "@/types/marketing";
 import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "@/lib/generation-engine";
+import { resolveWaitingStatusCopy } from "@/lib/generation-waiting-copy";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChoiceChip } from "./ChoiceChip";
 import { GenerationEngineSelector } from "./GenerationEngineSelector";
 import { MascotImage } from "./MascotImage";
 import { SmartChatInput } from "./SmartChatInput";
 import { StepHeader } from "./StepHeader";
+import { WaitingStatusCard } from "./WaitingStatusCard";
 import styles from "./generate.module.css";
 
 type PhotoGenerateInput = {
@@ -50,6 +52,7 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
   const [customSubcopy, setCustomSubcopy] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const photoWaitingCopy = resolveWaitingStatusCopy({ context: "photo_upload" });
 
   useEffect(() => {
     if (!selectedFile || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
@@ -228,6 +231,8 @@ export function PhotoGenerateStep({ onBack, onGoHome, onOpenChat, onGenerate }: 
           <MessageCircle size={17} aria-hidden="true" />
           이미지 없이 대화로 시작하기
         </button>
+
+        {isSubmitting ? <WaitingStatusCard copy={photoWaitingCopy} compact /> : null}
 
         <SmartChatInput
           className={`${styles.startInputCard} ${styles.photoInputCard}`}

@@ -37,7 +37,7 @@ describe("chat flow state", () => {
     });
     expect(next.contextSource).toBe("empty");
     expect(next.copyCandidateSource).toBe("empty");
-    expect(next.selectedImageGenerationEngine).toBe("gpt_image_1");
+    expect(next.selectedImageGenerationEngine).toBe("gpt_image_2");
   });
 
   it("clears a thread-limit error code when retrying from the prompt flow", () => {
@@ -653,6 +653,7 @@ describe("chat flow state", () => {
     expect(state.inferredContext.itemOrService).toBe("딸기라떼");
     expect(state.copyGenerationMode).toBe("custom_input");
     expect(state.currentQuestion?.field).toBe("item_or_service");
+    expect(state.selectedImageGenerationEngine).toBe("gpt_image_2");
     expect(state.conversationMessages.at(0)?.text).toBe("오늘 저녁 카페 딸기라떼 할인 광고");
   });
 
@@ -685,6 +686,7 @@ describe("chat flow state", () => {
     expect(state.copyCandidates).toEqual([{ id: "copy_1", headline: "오늘 저녁 원육 한 판" }]);
     expect(state.copyCandidateOrigin).toBe("llm");
     expect(state.selectedCopyId).toBe("copy_1");
+    expect(state.selectedImageGenerationEngine).toBe("gpt_image_2");
   });
   it("preserves backend businessType when a later partial question omits that field", () => {
     let state = createInitialChatFlowState();
