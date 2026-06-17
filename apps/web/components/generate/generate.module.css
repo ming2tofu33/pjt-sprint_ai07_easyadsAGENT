@@ -76,6 +76,14 @@
   box-shadow: 0 14px 30px rgba(176, 203, 32, 0.18);
 }
 
+.homeGateLogo {
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+  object-fit: cover;
+  box-shadow: 0 14px 30px rgba(176, 203, 32, 0.2);
+}
+
 .homeGate strong {
   color: var(--color-text-primary);
   font-size: 18px;
@@ -286,7 +294,7 @@
 }
 
 .dashboardHeader {
-  min-height: 40px;
+  min-height: 72px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -297,6 +305,20 @@
   font-size: 19px;
   font-weight: 950;
   letter-spacing: 0;
+}
+
+.dashboardBrand {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  line-height: 1;
+}
+
+.dashboardBrand img {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  object-fit: contain;
 }
 
 .dashboardHeader div {
