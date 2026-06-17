@@ -67,9 +67,10 @@ def compute_thread_resume_state(
     """Return the single server-owned action for opening a generated thread."""
 
     thread_id = _public_thread_id(thread)
-    active_job_id = _public_id(_get_value(thread, "active_public_job_id"), "job_") or _public_id(
-        _get_value(thread, "active_job_id"), "job_"
-    )
+    active_public_job_value = _get_value(thread, "active_public_job_id")
+    active_job_value = _get_value(thread, "active_job_id")
+    has_active_job = bool(active_public_job_value or active_job_value)
+    active_job_id = _public_id(active_public_job_value, "job_") or _public_id(active_job_value, "job_")
     final_job_id = _public_id(_get_value(thread, "final_public_job_id"), "job_")
     final_output_id = _public_id(_get_value(thread, "final_public_output_id"), "output_") or _public_id(
         _get_value(thread, "final_output_id"), "output_"
@@ -81,7 +82,7 @@ def compute_thread_resume_state(
     snapshot_kind = _snapshot_kind(latest_snapshot)
     status = str(_get_value(thread, "status") or "draft")
 
-    if active_job_id:
+    if has_active_job:
         return ChatThreadResumeStateResponse(
             action="locked_running",
             thread_id=thread_id,
