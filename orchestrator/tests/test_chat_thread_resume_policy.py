@@ -127,7 +127,7 @@ def test_resume_state_continues_plain_draft():
     assert state.reason == "thread_is_draft"
 
 
-def test_resume_state_does_not_expose_internal_active_job_id():
+def test_resume_state_locks_internal_active_job_without_exposing_id():
     state = compute_thread_resume_state(
         thread={
             "public_thread_id": "thread_internal_active",
@@ -140,8 +140,9 @@ def test_resume_state_does_not_expose_internal_active_job_id():
         waiting_job=None,
     )
 
-    assert state.action == "continue_draft"
+    assert state.action == "locked_running"
     assert state.resume_job_id is None
+    assert state.reason == "thread_has_active_job"
 
 
 def test_resume_state_does_not_answer_pending_job_from_internal_waiting_job_id():
