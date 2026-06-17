@@ -3,7 +3,7 @@
 import { Send } from "lucide-react";
 import { useState } from "react";
 import type { ChatFlowState, OptionItem } from "@/types/marketing";
-import { contextBusinessSummary, contextItemSummary, contextPurposeSummary } from "@/lib/context-presentation";
+import { contextBusinessSummary, contextItemSummary, contextPurposeSummary, contextItemLabel } from "@/lib/context-presentation";
 import { ChoiceChip } from "./ChoiceChip";
 import { MascotImage } from "./MascotImage";
 import { SmartChatInput } from "./SmartChatInput";
@@ -69,6 +69,7 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
   const businessSummary = contextBusinessSummary(state.inferredContext) || "확인 필요";
   const itemSummary = contextItemSummary(state.inferredContext) || "확인 필요";
   const purposeSummary = contextPurposeSummary(state.inferredContext) || "확인 필요";
+  const itemLabel = contextItemLabel(state.inferredContext);
 
   return (
     <>
@@ -100,7 +101,7 @@ export function ChatContextQuestionStep({ state, onAnswer, onBack, onDelete }: C
             <strong>{businessSummary}</strong>
           </div>
           <div className={styles.contextItem}>
-            <span>상품/서비스</span>
+            <span>{itemLabel}</span>
             <strong>{itemSummary}</strong>
           </div>
           <div className={styles.contextItem}>

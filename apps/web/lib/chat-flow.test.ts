@@ -970,7 +970,7 @@ describe("explicit answer context priority", () => {
 
     expect(state.inferredContext.businessType).toBe("beauty_salon");
     expect(state.inferredContext.campaignIntent).toBe("store_opening");
-    expect(state.pendingExplicitContextPatch).toBeNull();
+    expect(state.pendingExplicitContextPatch).toEqual({ businessType: "beauty_salon" });
   });
 
   it("explicit beauty_salon + Backend campaignIntent=store_opening both preserved", () => {

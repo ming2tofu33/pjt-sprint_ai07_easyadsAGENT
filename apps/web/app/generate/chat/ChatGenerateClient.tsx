@@ -1589,7 +1589,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
-    dispatch({ type: "submitQuestionAnswer", label: input.label });
+    dispatch({ 
+      type: "submitQuestionAnswer", 
+      label: input.label,
+      field: state.currentQuestion.field,
+      value: input.customText ?? input.value
+    });
     try {
       if (state.generationJob?.status === "waiting_user_input") {
         const answerPayload = {
@@ -1968,7 +1973,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
-    dispatch({ type: "submitGenerationJobAnswer", label: input.label });
+    dispatch({ 
+      type: "submitGenerationJobAnswer", 
+      label: input.label,
+      field: question.field,
+      value: input.customText ?? input.value
+    });
 
     try {
       const shouldShowFinalGenerationProgress = isClientFinalImageGenerationJob(state.generationJob);

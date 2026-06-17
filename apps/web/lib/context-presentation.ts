@@ -47,10 +47,10 @@ export function displayContextValue(value: string | null | undefined): string | 
   if (CONTEXT_DISPLAY_LABELS[value]) {
     return CONTEXT_DISPLAY_LABELS[value];
   }
-  if (/^[a-zA-Z0-9_]+$/.test(value)) {
+  if (/^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/.test(value)) {
     return undefined; // Hide unknown internal tokens
   }
-  return value; // Pass through free-text (e.g. Korean user input)
+  return value; // Pass through free-text (e.g. Korean user input or open domain words)
 }
 
 export function contextBusinessSummary(context: InferredContext): string | null {
