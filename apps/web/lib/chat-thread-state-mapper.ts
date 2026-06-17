@@ -8,7 +8,6 @@ import type {
 } from "@/types/marketing";
 import type { ChatMessageResponse, ChatStateSnapshotResponse, GenerationJob } from "./api-client";
 import { normalizeSelectedChannelId, type ChannelId } from "./ad-formats";
-import { displayContextValue } from "./context-presentation";
 import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "./generation-engine";
 
 export type ThreadSnapshotRestoreState = {
@@ -20,7 +19,7 @@ export type ThreadSnapshotRestoreState = {
   copyCandidates: CopyOption[];
   copyCandidateOrigin: CopyCandidateOrigin;
   selectedCopyId: string;
-  selectedChannelId: ChannelId;
+  selectedChannelId: ChannelId | null;
   selectedTone: string;
   selectedImageGenerationEngine: ImageGenerationEngine;
   customDirection: string;
@@ -54,7 +53,7 @@ function firstString(...values: unknown[]): string {
   return "";
 }
 
-function selectedChannelIdValue(...values: unknown[]): ChannelId {
+function selectedChannelIdValue(...values: unknown[]): ChannelId | null {
   for (const value of values) {
     const normalized = normalizeSelectedChannelId(stringValue(value));
     if (!normalized) {
@@ -62,7 +61,7 @@ function selectedChannelIdValue(...values: unknown[]): ChannelId {
     }
     return normalized;
   }
-  return "instagram-feed";
+  return null;
 }
 
 function copyMode(value: unknown): CopyGenerationMode {
@@ -121,11 +120,6 @@ function copyCandidatesFrom(value: unknown): CopyOption[] {
 function copyCandidateOrigin(value: unknown): CopyCandidateOrigin {
   const origin = stringValue(value);
   return origin === "llm" || origin === "rule_based" || origin === "fallback" || origin === "unknown" ? origin : "unknown";
-}
-
-function contextValue(...values: unknown[]): string {
-  const value = firstString(...values);
-  return displayContextValue(value) ?? value;
 }
 
 function optionQuestionFrom(value: unknown): OptionQuestion | null {
@@ -198,7 +192,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
   const copyCandidates = copyCandidatesFrom(payload.copy_candidates ?? payload.copyCandidates);
   const status = snapshotStatus(snapshot.snapshot_kind, payload, currentQuestion);
   const context = {
-    businessType: contextValue(
+    businessType: firstString(
       payloadContext.business_type,
       payloadContext.businessType,
       metadataContext.business_type,
@@ -208,7 +202,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       currentBrief.business_type,
       currentBrief.businessType
     ),
-    itemOrService: contextValue(
+    itemOrService: firstString(
       payloadContext.item_or_service,
       payloadContext.itemOrService,
       metadataContext.item_or_service,
@@ -218,7 +212,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       currentBrief.item_or_service,
       currentBrief.itemOrService
     ),
-    promotionGoal: contextValue(
+    promotionGoal: firstString(
       payloadContext.promotion_goal,
       payloadContext.promotionGoal,
       metadataContext.promotion_goal,
@@ -228,7 +222,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       currentBrief.promotion_goal,
       currentBrief.promotionGoal
     ),
-    advertisedSubject: contextValue(
+    advertisedSubject: firstString(
       payloadContext.advertised_subject,
       payloadContext.advertisedSubject,
       metadataContext.advertised_subject,
@@ -248,7 +242,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       currentBrief.advertised_subject_type,
       currentBrief.advertisedSubjectType
     ),
-    campaignIntent: contextValue(
+    campaignIntent: firstString(
       payloadContext.campaign_intent,
       payloadContext.campaignIntent,
       metadataContext.campaign_intent,
@@ -307,7 +301,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       asRecord(payloadContext.extra).ad_format,
       asRecord(payloadContext.extra).adFormat
     ),
-    selectedTone: firstString(payload.selected_tone, payload.selectedTone) || "감성적인",
+    selectedTone: firstString(payload.selected_tone, payload.selectedTone) || "\uac10\uc131\uc801\uc778",
     selectedImageGenerationEngine: imageEngine(
       payload.image_generation_engine ??
         payload.imageGenerationEngine ??
@@ -350,7 +344,7 @@ function messageContent(message: ChatMessageResponse): string {
   if (content === "Waiting for user input.") {
     return "";
   }
-  const briefMarkerIndex = content.indexOf("[광고 브리프]");
+  const briefMarkerIndex = content.indexOf("[\uad11\uace0 \ube0c\ub9ac\ud504]");
   if (briefMarkerIndex > -1) {
     return content.slice(0, briefMarkerIndex).trim();
   }

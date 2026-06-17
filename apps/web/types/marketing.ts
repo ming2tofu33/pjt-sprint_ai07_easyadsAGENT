@@ -139,6 +139,7 @@ export type ChatFlowState = {
   sourceAssetId?: string | null;
   sourceImagePath?: string | null;
   referenceImagePath?: string | null;
+  pendingExplicitContextPatch: Partial<InferredContext> | null;
   currentQuestion: OptionQuestion | null;
   conversationMessages: ChatTranscriptMessage[];
   isLoading: boolean;
@@ -192,7 +193,7 @@ export type ChatFlowAction =
       sourceImagePath?: string | null;
       referenceImagePath?: string | null;
     }
-  | { type: "submitQuestionAnswer"; label: string }
+  | { type: "submitQuestionAnswer"; label: string; field?: string; value?: string }
   | { type: "backendRequestFailed"; message: string; errorCode?: string; recoverToStart?: boolean }
   | { type: "beginBriefRequest" }
   | { type: "selectTone"; tone: string }
@@ -228,7 +229,7 @@ export type ChatFlowAction =
       copyCandidates: CopyOption[];
       copyCandidateOrigin: CopyCandidateOrigin;
       selectedCopyId: string;
-      selectedChannelId: ChannelId;
+      selectedChannelId: ChannelId | null;
       selectedTone: string;
       selectedImageGenerationEngine: ImageGenerationEngine;
       customDirection: string;
@@ -265,5 +266,5 @@ export type ChatFlowAction =
       referenceImagePath?: string | null;
     }
   | { type: "generationJobInterruptReceived"; generationJob: GenerationJob }
-  | { type: "submitGenerationJobAnswer"; label: string }
+  | { type: "submitGenerationJobAnswer"; label: string; field?: string; value?: string }
   | { type: "generationJobFailed"; message: string };
