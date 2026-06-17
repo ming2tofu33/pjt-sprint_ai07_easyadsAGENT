@@ -12,6 +12,12 @@ from orchestrator.app.graph.state import MarketingState, context_to_model, set_r
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
 from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
 from orchestrator.app.llm.copy_quality_v2 import annotate_and_rank_candidate_output, generate_copy_candidates_v2
+from orchestrator.app.llm.copy_recommendation_lineage import (
+    build_copy_input_projection,
+    build_copy_llm_call_lineage,
+    build_copy_prompt_projection,
+    build_copy_stage_snapshots,
+)
 from orchestrator.app.llm.copy_tone_policy import normalize_copy_for_business
 from orchestrator.app.llm.metadata_builders import build_copy_generation_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -47,11 +53,17 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
         latency_budget="interactive",
         metadata=metadata_contract,
     )
+    raw_candidates = (
+        [candidate.model_dump() for candidate in output.candidates]
+        if isinstance(output, CopyCandidateListOutput)
+        else []
+    )
     if not isinstance(output, CopyCandidateListOutput) or not output.candidates:
         output = build_rule_based_candidate_output(state)
         llm_metadata = {**llm_metadata, "fallback_used": True, "fallback_reason": "invalid_candidate_output"}
     max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
     output, llm_metadata = validate_or_fallback_candidate_output(state, output, llm_metadata)
+    validated_candidates = [candidate.model_dump() for candidate in output.candidates]
     output = annotate_and_rank_candidate_output(output, state=state, max_candidates=max_candidates)
     
     ad_format = state.get("ad_format") or state.get("current_brief", {}).get("requested_ad_format") or ""
@@ -71,12 +83,39 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
     serialized, compliance_records, compliance_status, compliance_ready = _attach_compliance_badges(
         serialized, state
     )
+    ranked_ids = [
+        str(card.get("candidate_id") or "")
+        for card in ((output.metadata or {}).get("copy_quality_v2_ranking") or {}).get("scorecards", [])
+        if card.get("candidate_id")
+    ]
+    copy_generation_trace = {
+        "schema_version": "copy_recommendation_lineage_v1",
+        "input_projection": build_copy_input_projection(dict(state)),
+        "prompt_projection": build_copy_prompt_projection(metadata_contract, dict(state)),
+        "lineage": build_copy_llm_call_lineage(
+            dict(state),
+            llm_metadata,
+            raw_candidate_count=len(raw_candidates),
+            parsed_candidate_count=len(validated_candidates),
+            final_candidate_count=len(serialized),
+        ),
+        "raw_candidates": build_copy_stage_snapshots(raw_candidates, stage="S3_raw_structured_response", source="llm_raw"),
+        "parsed_candidates": build_copy_stage_snapshots(validated_candidates, stage="S4_parsed_candidates", source="parsed_llm"),
+        "final_candidates": build_copy_stage_snapshots(
+            serialized,
+            stage="S7_ranked_candidates",
+            source=candidate_origin,
+            compliance_records=compliance_records,
+            ranked_ids=ranked_ids,
+        ),
+    }
     return {
         "copy_candidates": serialized,
         "copy_compliance": compliance_records,
         "copy_compliance_status": compliance_status,
         "copy_compliance_publication_ready": compliance_ready,
         "copy_candidate_origin": candidate_origin,
+        "copy_generation_trace": copy_generation_trace,
         "copywriting_output": output.model_dump(),
         "copy_generation_mode": "suggest_candidates",
         "copy_required": True,
