@@ -45,7 +45,7 @@ def test_brief_interpreter_disabled_does_not_call_runner(monkeypatch):
     assert called is False
 
 
-def test_validator_merges_valid_brief_interpreter_output(monkeypatch):
+def test_validator_merges_valid_brief_interpreter_output_without_promoting_closed_business_literal(monkeypatch):
     llm_output = BriefInterpreterOutput(
         business_type="cafe",
         item_or_service="Strawberry latte",
@@ -60,7 +60,7 @@ def test_validator_merges_valid_brief_interpreter_output(monkeypatch):
 
     result = validator_node(state)
 
-    assert result["context"]["business_type"] == "cafe"
+    assert result["context"]["business_type"] is None
     assert result["context"]["item_or_service"] == "Strawberry latte"
     assert result["context"]["promotion_goal"] == "new_launch"
     assert result["context"]["target_persona"] == "office workers"
@@ -68,7 +68,7 @@ def test_validator_merges_valid_brief_interpreter_output(monkeypatch):
     assert result["copy_generation_mode"] == "suggest_candidates"
     assert result["copy_mode_inference_output"]["source"] == "brief_interpreter_llm"
     assert result["copy_mode_inference_output"]["metadata"]["source"] == "brief_interpreter_llm"
-    assert "business_type" not in result["missing_fields"]
+    assert "business_type" in result["missing_fields"]
     assert result["validator_metadata"]["brief_interpreter"]["used"] is True
 
 
@@ -171,7 +171,7 @@ def test_validator_turns_ambiguous_beauty_domain_into_business_type_question(mon
     )
 
 
-def test_validator_preserves_generic_fallback_business_type_without_question(monkeypatch):
+def test_validator_keeps_generic_fallback_business_literal_out_of_public_context(monkeypatch):
     llm_output = BriefInterpreterOutput(
         business_type="education",
         item_or_service="영어 회화반",
@@ -186,8 +186,8 @@ def test_validator_preserves_generic_fallback_business_type_without_question(mon
 
     result = validator_node(_state())
 
-    assert result["context"]["business_type"] == "education"
-    assert "business_type" not in result["missing_fields"]
+    assert result["context"]["business_type"] is None
+    assert "business_type" in result["missing_fields"]
     assert any(
         "business_type_fallback_generic: unsupported_domain_in_mvp" in warning
         for warning in result["validator_metadata"]["brief_interpreter"]["warnings"]

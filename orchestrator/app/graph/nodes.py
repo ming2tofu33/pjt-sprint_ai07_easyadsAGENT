@@ -21,7 +21,11 @@ from orchestrator.app.graph.state import (
     update_current_brief,
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
-from orchestrator.app.llm.intake_understanding_service import project_intake_to_context, understand_intake
+from orchestrator.app.llm.intake_understanding_service import (
+    _source_text_hash,
+    project_intake_to_context,
+    understand_intake,
+)
 from orchestrator.app.llm.metadata_builders import build_copy_mode_inference_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.nodes.brief_interpreter import build_context_updates_from_brief_interpreter, interpret_brief_with_llm
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -176,7 +180,8 @@ def options_node(state: MarketingState) -> dict[str, Any]:
 def _resolve_intake_understanding(state: MarketingState, text: str):
     cached = state.get("intake_understanding_result")
     trace = dict(state.get("intake_extraction_trace") or {})
-    if cached:
+    current_text_hash = _source_text_hash(text)
+    if cached and trace.get("source_text_hash") == current_text_hash:
         from orchestrator.app.schemas.intake_understanding import IntakeUnderstandingResult
 
         try:

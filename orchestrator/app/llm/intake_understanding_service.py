@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from orchestrator.app.llm.domain_routing import normalize_business_type
-from orchestrator.app.llm.native_campaign_copy_rules import clean_product_identity, detect_campaign_status, strip_generic_request_language
+from orchestrator.app.llm.native_campaign_copy_rules import detect_campaign_status, strip_generic_request_language
 from orchestrator.app.schemas.brief_llm import BriefInterpreterOutput
 from orchestrator.app.schemas.input_evidence import EvidenceItem
 from orchestrator.app.schemas.intake_understanding import IntakeUnderstandingResult
@@ -16,31 +18,28 @@ BriefProjector = Callable[[BriefInterpreterOutput, str], tuple[dict[str, Any], l
 
 _PHONE_RE = re.compile(r"01\d[-\s]?\d{3,4}[-\s]?\d{4}")
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-_PRICE_RE = re.compile(r"\d[\d,]*\s*(?:원|%|만원)")
-_DISTRICT_RE = re.compile(r"([가-힣A-Za-z0-9]+(?:구|동|역|시))")
+_PRICE_RE = re.compile(r"\d[\d,]*\s*(?:원|만원|%|퍼센트)")
+_TIME_TOKEN_RE = re.compile(r"(평일\s*저녁|평일|저녁|주말|점심)")
+_LOCATION_TOKEN_RE = re.compile(r"([가-힣A-Za-z0-9]+(?:구|동|역|시|군))")
+_FORMAT_TOKEN_RE = re.compile(r"(포스터|배너|전단지|인스타\s*스토리|인스타\s*피드|상세\s*페이지)", re.IGNORECASE)
 _OPENING_PATTERNS = (r"오픈", r"개업", r"새로\s+문", r"opening", r"grand\s+open")
-_RECRUIT_PATTERNS = (r"모집", r"수강생", r"신청", r"등록")
-_SERVICE_PATTERNS = (r"수업", r"강의", r"레슨", r"클래스", r"회화반", r"상담", r"서비스")
-_PRODUCT_PATTERNS = (r"라떼", r"메뉴", r"음료", r"제품", r"상품", r"케이크")
-_GENERIC_BEAUTY_PATTERNS = (r"뷰티", r"미용")
-_FORMAT_TERMS = (r"포스터", r"배너", r"전단지", r"스토리", r"피드", r"상세\s*페이지")
-_TONE_MARKERS = {
-    "premium": (r"프리미엄", r"고급"),
-    "elegant": (r"우아", r"세련"),
-    "friendly": (r"친근", r"편안"),
-    "clean": (r"깔끔", r"미니멀"),
-}
-_TIME_MARKERS = {
-    "weekday_evening": (r"평일\s*저녁",),
-    "weekday": (r"평일",),
-    "evening": (r"저녁",),
-    "weekend": (r"주말",),
-    "lunch": (r"점심",),
-}
-_TARGET_MARKERS = {
-    "office_workers": (r"직장인",),
-    "students": (r"학생", r"수강생"),
-}
+_RECRUIT_PATTERNS = (r"모집", r"수강생", r"채용", r"등록")
+_PRODUCT_SERVICE_SUFFIX_RE = re.compile(
+    r"(회화반|수업|강의|레슨|클래스|상담|서비스|라떼|메뉴|음료|제품|상품|케이크)$",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class StructuredIntakeOutput:
+    business_candidate_phrase: str | None = None
+    venue_candidate_phrase: str | None = None
+    advertised_subject: str | None = None
+    advertised_subject_type: str | None = None
+    product_or_service_phrase: str | None = None
+    campaign_intent_phrase: str | None = None
+    tone_phrases: tuple[str, ...] = ()
+    target_phrases: tuple[str, ...] = ()
 
 
 def understand_intake(
@@ -56,9 +55,14 @@ def understand_intake(
         "mode": deterministic.extraction_mode,
         "fallback_used": deterministic.fallback_used,
         "fallback_reason": deterministic.fallback_reason,
-        "field_sources": _field_sources_for(deterministic, source="deterministic_parser"),
+        "field_sources": _field_sources_for(deterministic),
         "candidate_counts": _candidate_counts_for(deterministic),
-        "brief_interpreter": {"used": False, "llm_metadata": {"llm_attempted": False}, "warnings": []},
+        "source_text_hash": _source_text_hash(text),
+        "brief_interpreter": {
+            "used": False,
+            "llm_metadata": {"llm_attempted": False},
+            "warnings": [],
+        },
     }
 
     if not _should_attempt_structured_intake(deterministic) or brief_interpreter is None or brief_projector is None:
@@ -68,15 +72,23 @@ def understand_intake(
     warnings: list[str] = []
     suggested_copy_mode: str | None = None
     merged = deterministic
-    if llm_output is not None:
+    if llm_output is None:
+        merged = deterministic.model_copy(
+            update={
+                "fallback_used": bool(llm_metadata.get("fallback_used") or llm_metadata.get("fallback_reason")),
+                "fallback_reason": llm_metadata.get("fallback_reason"),
+            }
+        )
+    else:
         llm_updates, warnings = brief_projector(llm_output, source_text=text)
         suggested_copy_mode = llm_updates.pop("copy_generation_mode", None)
-        merged = _merge_structured_intake(deterministic, llm_output, llm_updates, text)
+        structured = _brief_output_to_structured_intake(llm_output, llm_updates, text)
+        merged = _merge_structured_intake(deterministic, structured, text, llm_output.confidence)
 
     trace["mode"] = merged.extraction_mode
     trace["fallback_used"] = merged.fallback_used
     trace["fallback_reason"] = merged.fallback_reason
-    trace["field_sources"] = _field_sources_for(merged, source="structured_llm" if llm_output is not None else "deterministic_parser")
+    trace["field_sources"] = _field_sources_for(merged)
     trace["candidate_counts"] = _candidate_counts_for(merged)
     trace["copy_generation_mode_candidate"] = suggested_copy_mode
     trace["brief_interpreter"] = {
@@ -95,47 +107,57 @@ def build_deterministic_intake_understanding(
 ) -> IntakeUnderstandingResult:
     bundle = state.get("input_evidence_bundle") or {}
     user_text = str(bundle.get("user_text") or text or "").strip()
-    product_candidate = _product_or_service_candidate(bundle, hints, user_text)
-    business_candidate = _business_candidate(hints, user_text, product_candidate)
+    confirmed_context = ((state.get("context") or {}) if isinstance(state.get("context"), dict) else {}) or {}
+    business_candidate = _first_non_empty(
+        confirmed_context.get("business_type"),
+        hints.get("business_type"),
+    )
+    product_candidate = _first_non_empty(
+        confirmed_context.get("item_or_service"),
+        _first_explicit_product_mention(bundle),
+        hints.get("item_or_service"),
+    )
     advertised_subject, advertised_subject_type = _advertised_subject(user_text, product_candidate)
-    campaign_candidate = _campaign_intent_candidate(user_text, hints)
-    ad_format_candidate = hints.get("ad_format")
-    tone_candidates = _keyword_candidates(user_text, _TONE_MARKERS)
-    mood_candidates = _mood_candidates(user_text)
-    target_candidates = _keyword_candidates(user_text, _TARGET_MARKERS)
-    time_context = _keyword_candidates(user_text, _TIME_MARKERS)
-    location_context = _location_candidates(user_text)
-    contact_context = _contact_candidates(user_text)
-    price_context = _price_candidates(user_text)
+    campaign_candidate = _campaign_intent_candidate(user_text, confirmed_context.get("promotion_goal") or hints.get("promotion_goal"))
+    ad_format_candidate = _explicit_format_candidate(
+        user_text,
+        confirmed_context.get("extra", {}).get("ad_format") if isinstance(confirmed_context.get("extra"), dict) else None,
+        hints.get("ad_format"),
+    )
+    time_context = _time_context(user_text)
+    location_context = _location_context(user_text)
+    contact_context = _contact_context(user_text)
+    price_context = _price_context(user_text)
     ambiguity_flags = _ambiguity_flags(business_candidate, user_text)
 
     evidence_items: list[EvidenceItem] = []
     confidence_by_field: dict[str, float] = {}
 
-    def add_scalar(field: str, value: str | None, *, confidence: float = 0.9) -> None:
+    def add_scalar(field: str, value: str | None, *, confidence: float, exact_span: str | None = None) -> None:
         if not value:
             return
-        evidence_items.append(_evidence_item(field, value, source="deterministic_parser", confidence=confidence))
+        item = _evidence_item(field, value, user_text=user_text, source="deterministic_parser", confidence=confidence, exact_span=exact_span)
+        evidence_items.append(item)
         confidence_by_field[field] = confidence
 
-    def add_many(field: str, values: tuple[str, ...], *, confidence: float = 0.85) -> None:
+    def add_many(field: str, values: tuple[str, ...], *, confidence: float) -> None:
         if not values:
             return
-        evidence_items.append(_evidence_item(field, ", ".join(values), source="deterministic_parser", confidence=confidence))
+        span = next((value for value in values if value in user_text), user_text or ", ".join(values))
+        evidence_items.append(
+            _evidence_item(field, ", ".join(values), user_text=user_text, source="deterministic_parser", confidence=confidence, exact_span=span)
+        )
         confidence_by_field[field] = confidence
 
-    add_scalar("business_candidate", business_candidate, confidence=0.92 if business_candidate else 0.0)
-    add_scalar("venue_type_candidate", advertised_subject if advertised_subject_type == "business" else None, confidence=0.78)
-    add_scalar("advertised_subject", advertised_subject, confidence=0.88)
-    add_scalar("advertised_subject_type", advertised_subject_type, confidence=0.88)
-    add_scalar("product_or_service_candidate", product_candidate, confidence=0.9)
-    add_scalar("campaign_intent_candidate", campaign_candidate, confidence=0.82)
-    add_scalar("ad_format_candidate", ad_format_candidate, confidence=0.95)
-    add_many("tone_candidates", tone_candidates)
-    add_many("mood_candidates", mood_candidates)
-    add_many("target_candidates", target_candidates)
-    add_many("time_context", time_context)
-    add_many("location_context", location_context)
+    add_scalar("business_candidate", business_candidate, confidence=0.75, exact_span=_span_if_present(user_text, business_candidate))
+    add_scalar("venue_type_candidate", advertised_subject if advertised_subject_type == "business" else None, confidence=0.7, exact_span=_span_if_present(user_text, advertised_subject))
+    add_scalar("advertised_subject", advertised_subject, confidence=0.72, exact_span=_span_if_present(user_text, advertised_subject))
+    add_scalar("advertised_subject_type", advertised_subject_type, confidence=0.7, exact_span=_span_if_present(user_text, advertised_subject))
+    add_scalar("product_or_service_candidate", product_candidate, confidence=0.78, exact_span=_span_if_present(user_text, product_candidate))
+    add_scalar("campaign_intent_candidate", campaign_candidate, confidence=0.8, exact_span=_campaign_span(user_text, campaign_candidate))
+    add_scalar("ad_format_candidate", ad_format_candidate, confidence=0.9, exact_span=_format_span(user_text, ad_format_candidate))
+    add_many("time_context", time_context, confidence=0.84)
+    add_many("location_context", location_context, confidence=0.84)
     add_many("contact_context", contact_context, confidence=0.99)
     add_many("price_context", price_context, confidence=0.99)
 
@@ -147,9 +169,9 @@ def build_deterministic_intake_understanding(
         product_or_service_candidate=product_candidate,
         campaign_intent_candidate=campaign_candidate,
         ad_format_candidate=ad_format_candidate,
-        tone_candidates=tone_candidates,
-        mood_candidates=mood_candidates,
-        target_candidates=target_candidates,
+        tone_candidates=(),
+        mood_candidates=(),
+        target_candidates=(),
         time_context=time_context,
         location_context=location_context,
         contact_context=contact_context,
@@ -182,6 +204,8 @@ def project_intake_to_context(result: IntakeUnderstandingResult) -> tuple[dict[s
     promotion_goal = _promotion_goal_from_candidate(result.campaign_intent_candidate)
     if promotion_goal:
         updates["promotion_goal"] = promotion_goal
+    elif result.campaign_intent_candidate:
+        metadata["unprojected_campaign_intent_candidate"] = result.campaign_intent_candidate
     if result.target_candidates:
         updates["target_persona"] = result.target_candidates[0]
     if result.time_context:
@@ -202,76 +226,96 @@ def _should_attempt_structured_intake(result: IntakeUnderstandingResult) -> bool
         return True
     if not result.campaign_intent_candidate:
         return True
+    if result.advertised_subject_type == "business" and result.product_or_service_candidate is None:
+        return True
     if "beauty_subtype_ambiguous" in result.ambiguity_flags:
         return True
     return False
 
 
-def _merge_structured_intake(
-    deterministic: IntakeUnderstandingResult,
+def _brief_output_to_structured_intake(
     llm_output: BriefInterpreterOutput,
     llm_updates: dict[str, Any],
     source_text: str,
-) -> IntakeUnderstandingResult:
-    product_candidate = llm_updates.get("item_or_service") or deterministic.product_or_service_candidate
-    business_candidate = llm_output.business_type or deterministic.business_candidate
-    if product_candidate:
-        advertised_subject = product_candidate
-        advertised_subject_type = "service" if _looks_like_service_phrase(product_candidate) else "product"
+) -> StructuredIntakeOutput:
+    product_phrase = _normalize_phrase(llm_updates.get("item_or_service") or llm_output.item_or_service)
+    advertised_subject = product_phrase or _business_subject_phrase(source_text)
+    if product_phrase:
+        advertised_subject_type = "service" if _looks_like_service_phrase(product_phrase) else "product"
     else:
-        advertised_subject = deterministic.advertised_subject or _business_subject_phrase(source_text)
-        advertised_subject_type = deterministic.advertised_subject_type
-    campaign_candidate = str(llm_output.promotion_goal or deterministic.campaign_intent_candidate or "").strip() or None
+        advertised_subject_type = "business" if advertised_subject else None
+    tone_phrases = tuple(
+        value
+        for value in (
+            _normalize_phrase(llm_updates.get("brand_tone")),
+            _normalize_phrase(llm_output.tone),
+        )
+        if value
+    )
+    target_phrases = tuple(value for value in (_normalize_phrase(llm_output.target_persona),) if value)
+    return StructuredIntakeOutput(
+        business_candidate_phrase=None,
+        venue_candidate_phrase=_normalize_phrase(_business_subject_phrase(source_text)),
+        advertised_subject=advertised_subject,
+        advertised_subject_type=advertised_subject_type,
+        product_or_service_phrase=product_phrase,
+        campaign_intent_phrase=_normalize_phrase(llm_output.promotion_goal),
+        tone_phrases=tone_phrases,
+        target_phrases=target_phrases,
+    )
+
+
+def _merge_structured_intake(
+    deterministic: IntakeUnderstandingResult,
+    structured: StructuredIntakeOutput,
+    source_text: str,
+    llm_confidence: float,
+) -> IntakeUnderstandingResult:
+    business_candidate = deterministic.business_candidate
+    product_candidate = structured.product_or_service_phrase or deterministic.product_or_service_candidate
+    advertised_subject = structured.advertised_subject or deterministic.advertised_subject
+    advertised_subject_type = structured.advertised_subject_type or deterministic.advertised_subject_type
+    campaign_candidate = structured.campaign_intent_phrase or deterministic.campaign_intent_candidate
+    tone_candidates = tuple(dict.fromkeys([*deterministic.tone_candidates, *structured.tone_phrases]))
+    target_candidates = tuple(dict.fromkeys([*deterministic.target_candidates, *structured.target_phrases]))
     evidence_items = list(deterministic.evidence_items)
 
-    def add_if_present(key: str, value: str | None, *, confidence: float | None = None) -> None:
+    def add_if_present(key: str, value: str | None) -> None:
         if not value:
             return
         evidence_items.append(
             _evidence_item(
                 key,
                 value,
+                user_text=source_text,
                 source="structured_llm",
-                confidence=confidence if confidence is not None else max(0.65, llm_output.confidence),
+                confidence=max(0.65, llm_confidence),
+                exact_span=_span_if_present(source_text, value),
             )
         )
 
-    add_if_present("business_candidate", business_candidate)
     add_if_present("advertised_subject", advertised_subject)
     add_if_present("advertised_subject_type", advertised_subject_type)
     add_if_present("product_or_service_candidate", product_candidate)
     add_if_present("campaign_intent_candidate", campaign_candidate)
     if deterministic.ad_format_candidate:
-        add_if_present("ad_format_candidate", deterministic.ad_format_candidate, confidence=0.95)
-    if llm_updates.get("brand_tone"):
-        add_if_present("tone_candidates", llm_updates["brand_tone"])
-    if llm_output.target_persona:
-        add_if_present("target_candidates", llm_output.target_persona)
+        add_if_present("ad_format_candidate", deterministic.ad_format_candidate)
+    if tone_candidates:
+        add_if_present("tone_candidates", tone_candidates[0])
+    if target_candidates:
+        add_if_present("target_candidates", target_candidates[0])
 
     confidence_map = dict(deterministic.confidence_by_field)
-    if business_candidate:
-        confidence_map["business_candidate"] = llm_output.confidence
     if product_candidate:
-        confidence_map["product_or_service_candidate"] = llm_output.confidence
+        confidence_map["product_or_service_candidate"] = llm_confidence
     if campaign_candidate:
-        confidence_map["campaign_intent_candidate"] = llm_output.confidence
+        confidence_map["campaign_intent_candidate"] = llm_confidence
+    if tone_candidates:
+        confidence_map["tone_candidates"] = llm_confidence
+    if target_candidates:
+        confidence_map["target_candidates"] = llm_confidence
 
-    tone_candidates = deterministic.tone_candidates
-    if llm_updates.get("brand_tone"):
-        tone_candidates = tuple(dict.fromkeys([*deterministic.tone_candidates, llm_updates["brand_tone"]]))
-    target_candidates = deterministic.target_candidates
-    if llm_output.target_persona:
-        target_candidates = tuple(dict.fromkeys([*deterministic.target_candidates, llm_output.target_persona]))
-        confidence_map["target_candidates"] = llm_output.confidence
-    ambiguity_flags = tuple(
-        dict.fromkeys(
-            [
-                *deterministic.ambiguity_flags,
-                *_ambiguity_flags(business_candidate, source_text),
-            ]
-        )
-    )
-
+    ambiguity_flags = tuple(dict.fromkeys([*deterministic.ambiguity_flags, *_ambiguity_flags(business_candidate, source_text)]))
     return IntakeUnderstandingResult(
         business_candidate=business_candidate,
         venue_type_candidate=deterministic.venue_type_candidate,
@@ -296,30 +340,11 @@ def _merge_structured_intake(
     )
 
 
-def _field_sources_for(result: IntakeUnderstandingResult, *, source: str) -> dict[str, str]:
+def _field_sources_for(result: IntakeUnderstandingResult) -> dict[str, str]:
     fields: dict[str, str] = {}
-    for field in (
-        "business_candidate",
-        "venue_type_candidate",
-        "advertised_subject",
-        "advertised_subject_type",
-        "product_or_service_candidate",
-        "campaign_intent_candidate",
-        "ad_format_candidate",
-    ):
-        if getattr(result, field):
-            fields[field] = source
-    for field in (
-        "tone_candidates",
-        "mood_candidates",
-        "target_candidates",
-        "time_context",
-        "location_context",
-        "contact_context",
-        "price_context",
-    ):
-        if getattr(result, field):
-            fields[field] = source
+    for item in result.evidence_items:
+        if item.key not in fields:
+            fields[item.key] = item.source
     return fields
 
 
@@ -335,82 +360,34 @@ def _candidate_counts_for(result: IntakeUnderstandingResult) -> dict[str, int]:
     }
 
 
-def _product_or_service_candidate(bundle: dict[str, Any], hints: dict[str, str | None], text: str) -> str | None:
+def _first_explicit_product_mention(bundle: dict[str, Any]) -> str | None:
     mentions = bundle.get("explicit_product_mentions") or []
-    if mentions:
-        candidate = _normalize_phrase(str(mentions[0]))
-        if candidate:
-            return candidate
-    candidate = hints.get("item_or_service")
-    if candidate:
-        return _normalize_phrase(candidate)
-    sentence = text.split(".")[0].strip()
-    for pattern in (
-        r"([가-힣A-Za-z0-9 ]+?(?:회화반|수업|강의|레슨|클래스|상담|서비스))",
-        r"([가-힣A-Za-z0-9 ]+?(?:라떼|메뉴|음료|제품|상품|케이크))",
-    ):
-        match = re.search(pattern, sentence, re.IGNORECASE)
-        if match:
-            return _normalize_phrase(match.group(1))
-    cleaned = clean_product_identity(sentence)
-    if cleaned and (_looks_like_service_phrase(cleaned) or _looks_like_product_phrase(cleaned)):
-        return _normalize_phrase(cleaned)
-    return None
-
-
-def _business_candidate(hints: dict[str, str | None], text: str, product_candidate: str | None) -> str | None:
-    candidate = hints.get("business_type")
-    if candidate:
-        return candidate
-    if any(re.search(pattern, text, re.IGNORECASE) for pattern in _GENERIC_BEAUTY_PATTERNS):
-        return "beauty"
-    if _looks_like_education_service(text) or (_looks_like_service_phrase(product_candidate or "") and "영어" in text):
-        return "education"
-    return None
+    if not mentions:
+        return None
+    return _normalize_phrase(str(mentions[0]))
 
 
 def _advertised_subject(text: str, product_candidate: str | None) -> tuple[str | None, str | None]:
     if product_candidate:
         return product_candidate, "service" if _looks_like_service_phrase(product_candidate) else "product"
-    descriptive_business_subject = _descriptive_business_subject_phrase(text)
-    if descriptive_business_subject:
-        return descriptive_business_subject, "business"
     business_subject = _business_subject_phrase(text)
     if business_subject:
         return business_subject, "business"
     return None, None
 
 
-def _descriptive_business_subject_phrase(text: str) -> str | None:
+def _business_subject_phrase(text: str) -> str | None:
     sentence = strip_generic_request_language(text.split(".")[0]) or text.split(".")[0]
-    sentence = re.sub(r"(?:이번에|이번|새로)\s+", " ", sentence)
-    sentence = re.sub(r"(?:오픈하는|문을\s+여는|오픈)\s+", " ", sentence)
-    sentence = re.sub(r"(?:홍보\s*)?(?:포스터|배너|전단지|광고문|광고)\s*(?:만들어줘|만들어\s*줘)?", " ", sentence)
+    sentence = re.sub(r"(이번에|이번|새로)\s+", " ", sentence)
+    sentence = re.sub(r"(오픈하는|문을\s+여는|오픈|홍보)\s+", " ", sentence)
+    sentence = re.sub(r"(포스터|배너|전단지|광고문|광고)\s*(만들어줘|만들어\s*줘)?", " ", sentence)
     sentence = re.sub(r"\s+", " ", sentence).strip(" .,!?:;")
-    if not re.search(r"[가-힣]", sentence):
+    if not re.search(r"[가-힣A-Za-z0-9]", sentence):
         return None
     return _normalize_phrase(sentence)
 
 
-def _business_subject_phrase(text: str) -> str | None:
-    cleaned = strip_generic_request_language(text.split(".")[0]) or text.split(".")[0]
-    cleaned = re.sub(r"(이번에|새로|신규로|곧)\s+", " ", cleaned)
-    cleaned = re.sub(r"(오픈하는|문을\s+여는|오픈)\s+", " ", cleaned)
-    for pattern in _FORMAT_TERMS:
-        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
-    for markers in _TONE_MARKERS.values():
-        for marker in markers:
-            cleaned = re.sub(marker, " ", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"(만들어줘|만들어\s*줘|홍보\s*물|광고|포스터|배너|전단지)", " ", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .,!?:;")
-    if not re.search(r"[가-힣]", cleaned):
-        return None
-    if not cleaned:
-        return None
-    return _normalize_phrase(cleaned.split("의")[0].strip())
-
-
-def _campaign_intent_candidate(text: str, hints: dict[str, str | None]) -> str | None:
+def _campaign_intent_candidate(text: str, confirmed_or_hint: str | None) -> str | None:
     status = detect_campaign_status(text)
     if status:
         return status
@@ -418,9 +395,7 @@ def _campaign_intent_candidate(text: str, hints: dict[str, str | None]) -> str |
         return "store_opening"
     if any(re.search(pattern, text, re.IGNORECASE) for pattern in _RECRUIT_PATTERNS):
         return "student_recruitment"
-    if hints.get("promotion_goal"):
-        return hints["promotion_goal"]
-    return None
+    return _normalize_phrase(confirmed_or_hint)
 
 
 def _promotion_goal_from_candidate(candidate: str | None) -> str | None:
@@ -440,65 +415,78 @@ def _promotion_goal_from_candidate(candidate: str | None) -> str | None:
     return mapping.get(str(candidate or "").strip())
 
 
-def _keyword_candidates(text: str, mapping: dict[str, tuple[str, ...]]) -> tuple[str, ...]:
-    values: list[str] = []
-    for normalized, patterns in mapping.items():
-        if any(re.search(pattern, text, re.IGNORECASE) for pattern in patterns):
-            values.append(normalized)
-    return tuple(dict.fromkeys(values))
+def _explicit_format_candidate(text: str, confirmed_ad_format: str | None, hinted_ad_format: str | None) -> str | None:
+    explicit_match = _FORMAT_TOKEN_RE.search(text)
+    if explicit_match:
+        lowered = explicit_match.group(1).lower().replace(" ", "")
+        if "스토리" in lowered:
+            return "instagram_story"
+        if "피드" in lowered:
+            return "instagram_feed"
+        if "포스터" in lowered:
+            return "poster"
+        if "배너" in lowered:
+            return "banner"
+        if "전단지" in lowered:
+            return "flyer"
+        if "상세" in lowered:
+            return "product_detail"
+    return _normalize_phrase(confirmed_ad_format) or _normalize_phrase(hinted_ad_format)
 
 
-def _mood_candidates(text: str) -> tuple[str, ...]:
-    candidates: list[str] = []
-    if re.search(r"뷰티\s*감성", text, re.IGNORECASE):
-        candidates.append("beauty_inspired")
-    if re.search(r"우아", text, re.IGNORECASE):
-        candidates.append("elegant")
-    return tuple(dict.fromkeys(candidates))
+def _time_context(text: str) -> tuple[str, ...]:
+    matches = [match.group(1).replace(" ", "_") for match in _TIME_TOKEN_RE.finditer(text)]
+    return tuple(dict.fromkeys(matches))
 
 
-def _location_candidates(text: str) -> tuple[str, ...]:
-    values = [match.group(1).strip() for match in _DISTRICT_RE.finditer(text)]
-    leading_location_match = re.match(r"\s*([가-힣]{2,4})\s+[가-힣A-Za-z0-9]+(?:반|샵|카페|학원|수업|상담|서점)", text)
-    if leading_location_match:
-        leading_token = leading_location_match.group(1).strip()
-        if leading_token not in {"프리미엄", "동네", "이번에", "새로"}:
-            values.append(leading_token)
+def _location_context(text: str) -> tuple[str, ...]:
+    values = [match.group(1).strip() for match in _LOCATION_TOKEN_RE.finditer(text)]
     return tuple(dict.fromkeys(value for value in values if value))
 
 
-def _contact_candidates(text: str) -> tuple[str, ...]:
+def _contact_context(text: str) -> tuple[str, ...]:
     values: list[str] = []
     values.extend(match.group(0).strip() for match in _PHONE_RE.finditer(text))
     values.extend(match.group(0).strip() for match in _EMAIL_RE.finditer(text))
     return tuple(dict.fromkeys(values))
 
 
-def _price_candidates(text: str) -> tuple[str, ...]:
+def _price_context(text: str) -> tuple[str, ...]:
     values = [match.group(0).strip() for match in _PRICE_RE.finditer(text)]
     return tuple(dict.fromkeys(values))
 
 
 def _ambiguity_flags(business_candidate: str | None, text: str) -> list[str]:
     flags: list[str] = []
-    if business_candidate == "beauty":
+    lowered = text.lower()
+    if business_candidate in {"beauty", "beauty_salon"} or "뷰티" in text or "beauty" in lowered:
         flags.append("beauty_subtype_ambiguous")
-    if not business_candidate and re.search(r"홍보물|광고", text):
+    if not business_candidate and ("홍보물" in text or "advertisement" in lowered):
         flags.append("business_subject_ambiguous")
     return flags
 
 
 def _looks_like_service_phrase(value: str) -> bool:
-    return any(re.search(pattern, value or "", re.IGNORECASE) for pattern in _SERVICE_PATTERNS)
+    normalized = _normalize_phrase(value) or ""
+    return bool(_PRODUCT_SERVICE_SUFFIX_RE.search(normalized)) and normalized.endswith(
+        ("회화반", "수업", "강의", "레슨", "클래스", "상담", "서비스")
+    )
 
 
-def _looks_like_product_phrase(value: str) -> bool:
-    return any(re.search(pattern, value or "", re.IGNORECASE) for pattern in _PRODUCT_PATTERNS)
-
-
-def _looks_like_education_service(text: str) -> bool:
-    lowered = text.lower()
-    return "영어회화" in text or "academy" in lowered or "class" in lowered or _looks_like_service_phrase(text)
+def _projectable_item_or_service(value: str | None) -> str | None:
+    candidate = _normalize_phrase(value)
+    if not candidate:
+        return None
+    candidate = re.sub(r"^(우리|저희|이번|새로|신규)\s+", "", candidate)
+    candidate = re.sub(r"^(카페|식당|음식점|레스토랑|매장|샵|서점)\s+", "", candidate)
+    candidate = _normalize_phrase(candidate)
+    if not candidate:
+        return None
+    if _PRODUCT_SERVICE_SUFFIX_RE.search(candidate):
+        return candidate
+    if re.fullmatch(r"[A-Za-z0-9 _-]+", candidate):
+        return None
+    return candidate
 
 
 def _normalize_phrase(value: str | None) -> str | None:
@@ -508,30 +496,74 @@ def _normalize_phrase(value: str | None) -> str | None:
     return normalized or None
 
 
-def _projectable_item_or_service(value: str | None) -> str | None:
-    candidate = _normalize_phrase(value)
-    if not candidate:
-        return None
-    candidate = re.sub(r"^(?:우리|저희|이번|새로|신규)\s+", "", candidate)
-    candidate = re.sub(r"^(?:카페|식당|음식점|레스토랑|매장|샵|서점)\s+", "", candidate)
-    candidate = _normalize_phrase(candidate)
-    if not candidate:
-        return None
-    if re.search(r"(회화반|수업|강의|레슨|클래스|상담|서비스|라떼|메뉴|음료|제품|상품|케이크)$", candidate):
-        return candidate
-    if re.fullmatch(r"[A-Za-z0-9 _-]+", candidate):
-        return None
-    return candidate
-
-
-def _evidence_item(key: str, value: str, *, source: str, confidence: float) -> EvidenceItem:
+def _evidence_item(
+    key: str,
+    value: str,
+    *,
+    user_text: str,
+    source: str,
+    confidence: float,
+    exact_span: str | None,
+) -> EvidenceItem:
+    source_ref = exact_span if exact_span and exact_span in user_text else (user_text[:120] or value[:120])
+    exact = bool(exact_span and exact_span in user_text)
+    evidence_class = "verified_fact" if exact else "creative_inference"
     return EvidenceItem(
         key=key,
         value=value,
         normalized_value=value,
         source=source,  # type: ignore[arg-type]
-        evidence_class="verified_fact",
+        evidence_class=evidence_class,
         confidence=max(0.0, min(1.0, confidence)),
-        usable_for_copy=True,
-        source_ref=value[:120],
+        usable_for_copy=exact,
+        source_ref=source_ref,
+        rationale=None if exact else "derived_from_prompt_context",
     )
+
+
+def _span_if_present(text: str, value: str | None) -> str | None:
+    candidate = _normalize_phrase(value)
+    if not candidate:
+        return None
+    return candidate if candidate in text else None
+
+
+def _campaign_span(text: str, candidate: str | None) -> str | None:
+    if not candidate:
+        return None
+    if candidate == "store_opening":
+        for token in ("오픈", "개업", "새로 문"):
+            if token in text:
+                return token
+    if candidate == "student_recruitment":
+        for token in ("모집", "수강생", "등록"):
+            if token in text:
+                return token
+    return _span_if_present(text, candidate)
+
+
+def _format_span(text: str, candidate: str | None) -> str | None:
+    if not candidate:
+        return None
+    mapping = {
+        "poster": "포스터",
+        "banner": "배너",
+        "flyer": "전단지",
+        "instagram_story": "스토리",
+        "instagram_feed": "피드",
+        "product_detail": "상세 페이지",
+    }
+    token = mapping.get(candidate)
+    return token if token and token in text else _span_if_present(text, candidate)
+
+
+def _first_non_empty(*values: Any) -> str | None:
+    for value in values:
+        normalized = _normalize_phrase(str(value)) if isinstance(value, str) else None
+        if normalized:
+            return normalized
+    return None
+
+
+def _source_text_hash(text: str) -> str:
+    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()

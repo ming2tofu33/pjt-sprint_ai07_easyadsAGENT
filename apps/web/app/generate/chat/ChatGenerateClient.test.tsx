@@ -4829,4 +4829,65 @@ describe("ChatGenerateClient", () => {
     expect(screen.queryByText("대화로 찰떡 이미지 만들기")).toBeNull();
     expect(window.sessionStorage.getItem("easyads_chat_turn_snapshot_v1")).toBeNull();
   });
+
+  it("renders restored backend businessType in the context summary without a business placeholder", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
+      success: true,
+      snapshot: {
+        snapshot_id: "snapshot_beauty_waiting",
+        thread_id: "thread_beauty_waiting",
+        job_id: "job_beauty_waiting",
+        snapshot_version: 1,
+        schema_version: 1,
+        snapshot_kind: "waiting_user_input",
+        state_payload: {
+          user_input: "뷰티 광고 만들어줘",
+          context: {
+            business_type: "뷰티",
+            item_or_service: "속눈썹 펌",
+            promotion_goal: null
+          },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "promotion_goal",
+              question: "어떤 목적의 광고를 만들까요?",
+              options: [{ id: 1, label: "예약 유도", value: "reservation_cta" }]
+            }
+          }
+        },
+        changed_fields: [],
+        reference_template_snapshot: {},
+        brand_kit_snapshot: {},
+        metadata: {},
+        created_at: "2026-06-17T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({
+      success: true,
+      total: 1,
+      messages: [
+        {
+          message_id: "msg_beauty_waiting",
+          thread_id: "thread_beauty_waiting",
+          sequence_no: 1,
+          role: "user",
+          content: "뷰티 광고 만들어줘",
+          payload: {},
+          created_at: "2026-06-17T00:00:00+00:00"
+        }
+      ]
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    searchParamsMock.value = new URLSearchParams("threadId=thread_beauty_waiting");
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(screen.getAllByText("어떤 목적의 광고를 만들까요?").length).toBeGreaterThan(0));
+    expect(screen.getByText("뷰티")).toBeTruthy();
+    expect(screen.getByText("속눈썹 펌")).toBeTruthy();
+    expect(screen.getAllByText("확인 필요")).toHaveLength(1);
+  });
 });
