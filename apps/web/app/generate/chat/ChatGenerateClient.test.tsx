@@ -1296,6 +1296,35 @@ describe("ChatGenerateClient", () => {
     );
   });
 
+  it("opens a fresh studio chat without reusing a stale query thread id", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.createGenerationJob).mockClear();
+    searchParamsMock.value = new URLSearchParams("threadId=thread_stale_query");
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="studio" />);
+
+    fireEvent.click(screen.getByText("대화로 시작하기"));
+    expect(screen.getByText("대화로 찰떡 이미지 만들기")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "새로운 프리미엄 뷰티살롱 홍보 포스터 만들어줘" }
+    });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() =>
+      expect(api.createGenerationJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: "새로운 프리미엄 뷰티살롱 홍보 포스터 만들어줘",
+          continuationMode: "new_thread"
+        })
+      )
+    );
+    const [payload] = vi.mocked(api.createGenerationJob).mock.calls[0];
+    expect(payload.threadId).toBeUndefined();
+  });
+
   it("keeps inferred context visible when a reference request needs one more answer", async () => {
     const api = await import("@/lib/api-client");
     const { saveGenerationRequestContext } = await import("@/lib/generation-request-context");

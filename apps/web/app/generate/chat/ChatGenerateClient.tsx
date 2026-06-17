@@ -836,6 +836,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [currentThreadDeleteError, setCurrentThreadDeleteError] = useState<string | null>(null);
   const [currentThreadIsArchived, setCurrentThreadIsArchived] = useState(false);
   const activeThreadRef = useRef({ threadId: "", conversationMessageCount: 0 });
+  const freshChatSessionRef = useRef(0);
+  const forceNextPromptNewThreadRef = useRef(false);
   const finalGenerationJobIdsRef = useRef<Set<string>>(new Set());
   const inlinePollingJobIdsRef = useRef<Set<string>>(new Set());
   const appSurface = optimisticSurface ?? initialSurface;
@@ -1260,14 +1262,16 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         return;
       }
 
+      const restoreSession = freshChatSessionRef.current;
       let isActive = true;
+      const restoreIsStale = () => !isActive || restoreSession !== freshChatSessionRef.current;
       Promise.all([
         getChatThread(threadIdParam).catch(() => null),
         getChatThreadResumeState(threadIdParam).catch(() => null),
         getChatThreadState(threadIdParam),
         getChatThreadMessages(threadIdParam, { limit: 120 }).catch(() => ({ success: true as const, messages: [], total: 0 }))
       ]).then(async ([threadResponse, resumeStateResponse, stateResponse, messagesResponse]) => {
-        if (!isActive) {
+        if (restoreIsStale()) {
           return;
         }
         if (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId) {
@@ -1283,7 +1287,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           const finalJobResponse = resumeState.resume_job_id
             ? await getGenerationJob(resumeState.resume_job_id).catch(() => null)
             : null;
-          if (!isActive || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
+          if (restoreIsStale() || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
             return;
           }
           const finalJob = finalJobResponse?.job ?? null;
@@ -1321,7 +1325,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           const waitingJobResponse = resumeState.resume_job_id
             ? await getGenerationJob(resumeState.resume_job_id).catch(() => null)
             : null;
-          if (!isActive || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
+          if (restoreIsStale() || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
             return;
           }
           const waitingJob = waitingJobResponse?.job ?? null;
@@ -1363,7 +1367,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
         if (resumeState?.action === "locked_running" && resumeState.resume_job_id) {
           const runningJobResponse = await getGenerationJob(resumeState.resume_job_id).catch(() => null);
-          if (!isActive || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
+          if (restoreIsStale() || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
             return;
           }
           const runningJob = runningJobResponse?.job ?? null;
@@ -1419,7 +1423,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         setGenerationStage(restoreState.currentQuestion ? "jobQuestion" : "brief");
         lastPrimedStageRef.current = restoreState.currentQuestion ? "generating" : "brief";
       }).catch(() => {
-        if (isActive) {
+        if (!restoreIsStale()) {
           showToast("대화 기록을 불러오는데 실패했습니다.");
         }
       });
@@ -1577,10 +1581,11 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           transcriptMode: "update_current_turn"
         });
       }
-      const activeThreadId = toGenerationJobThreadId(threadIdParam || state.threadId);
+      const forceNewThread = forceNextPromptNewThreadRef.current;
+      const activeThreadId = forceNewThread ? null : toGenerationJobThreadId(threadIdParam || state.threadId);
       const response = await createGenerationJob({
         userInput: appendSavedBrandKitContext(prompt),
-        threadId: activeThreadId,
+        threadId: activeThreadId ?? undefined,
         continuationMode: activeThreadId ? "new_turn" : "new_thread",
         ...(options.adFormat ? { adFormat: options.adFormat } : {}),
         runMode: "graph_job",
@@ -1601,6 +1606,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           copy_generation_mode: options.copyGenerationMode ?? null
         }
       });
+      forceNextPromptNewThreadRef.current = false;
 
       if (shouldPollInitialGenerationJob(response.job)) {
         writeChatTurnSnapshot({
@@ -2346,12 +2352,18 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }
 
   function handleOpenFreshChat() {
+    freshChatSessionRef.current += 1;
+    forceNextPromptNewThreadRef.current = true;
+    activeThreadRef.current = { threadId: "", conversationMessageCount: 0 };
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
     clearGenerationFailureSnapshot();
     clearGenerationDraftPrompt();
     dispatch({ type: "reset" });
+    setCurrentThreadIsArchived(false);
+    setShowHistory(false);
     setGenerationStage("brief");
+    lastPrimedStageRef.current = "start";
     navigateTo("chat", "start");
   }
 
