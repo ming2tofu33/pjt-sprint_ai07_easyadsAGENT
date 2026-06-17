@@ -51,8 +51,8 @@ describe("GenerationCompleteStep", () => {
 
     expect(screen.getByText("이미지를 만들고 있어요")).toBeTruthy();
     expect(screen.getByText("완성되면 보관함에 자동으로 저장돼요. 잠시만 기다려주세요.")).toBeTruthy();
-    expect(screen.getByText("미리보기는 완성 후 표시돼요")).toBeTruthy();
-    expect(screen.getByText("이미지가 준비되면 이 영역이 결과 카드로 바뀝니다.")).toBeTruthy();
+    expect(screen.getByText("보관함 연결을 확인하고 있어요")).toBeTruthy();
+    expect(screen.getByText("완성된 이미지를 보관함에서 열 수 있도록 저장 정보를 확인하고 있어요.")).toBeTruthy();
     expect(screen.queryByText("완료 전에는 깨진 이미지나 임시 카드를 보여주지 않아요.")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /보관함에서 기다리기/ }));
     expect(onOpenArchive).toHaveBeenCalledTimes(1);

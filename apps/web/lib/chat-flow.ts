@@ -8,7 +8,7 @@ import type {
 } from "@/types/marketing";
 import { campaignIntentLabel, contextItemSummary, contextPurposeSummary } from "./context-presentation";
 import { channelOptions } from "./ad-formats";
-import { DEFAULT_IMAGE_GENERATION_ENGINE } from "./generation-engine";
+import { DEFAULT_IMAGE_GENERATION_ENGINE, getGenerationEngineOption, type ImageGenerationEngine } from "./generation-engine";
 
 export { channelOptions } from "./ad-formats";
 
@@ -199,6 +199,10 @@ function isGenerationJobTerminalStatus(status: string): boolean {
   return status === "done" || status === "failed" || status === "cancelled";
 }
 
+function normalizeImageGenerationEngine(engine: ImageGenerationEngine | null | undefined): ImageGenerationEngine {
+  return getGenerationEngineOption(engine).id;
+}
+
 export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): ChatFlowState {
   switch (action.type) {
     case "reset":
@@ -215,7 +219,9 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         userCustomHeadline: action.userCustomHeadline ?? "",
         userCustomSubcopy: action.userCustomSubcopy ?? "",
         copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
-        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(
+          action.imageGenerationEngine ?? state.selectedImageGenerationEngine
+        ),
         inferredContext: {
           businessType: null,
           itemOrService: null,
@@ -292,7 +298,9 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         copyCandidateSource: action.copyCandidateSource ?? (hasBackendCopyCandidates ? "backend" : "empty"),
         copyCandidateOrigin: hasBackendCopyCandidates ? action.copyCandidateOrigin ?? "unknown" : "unknown",
         copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
-        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(
+          action.imageGenerationEngine ?? state.selectedImageGenerationEngine
+        ),
         sourceAssetId: action.sourceAssetId ?? state.sourceAssetId ?? null,
         sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
         referenceImagePath: action.referenceImagePath ?? state.referenceImagePath ?? null,
@@ -359,7 +367,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
     case "setImageGenerationEngine":
       return {
         ...state,
-        selectedImageGenerationEngine: action.imageGenerationEngine
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(action.imageGenerationEngine)
       };
     case "continueToCopy":
       return {
@@ -467,7 +475,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         selectedCopyId: action.selectedCopyId,
         selectedChannelId: action.selectedChannelId ?? state.selectedChannelId,
         selectedTone: action.selectedTone,
-        selectedImageGenerationEngine: action.selectedImageGenerationEngine,
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(action.selectedImageGenerationEngine),
         customDirection: action.customDirection,
         userCustomHeadline: action.userCustomHeadline,
         userCustomSubcopy: action.userCustomSubcopy,
@@ -507,7 +515,9 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         progress: { current: 4, total: 4, label: "\uc0dd\uc131 \uc2e4\ud328" },
         threadId: action.threadId ?? state.threadId,
         userInput: action.userInput ?? state.userInput,
-        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(
+          action.imageGenerationEngine ?? state.selectedImageGenerationEngine
+        ),
         generationJob: null,
         isLoading: false,
         currentQuestion: null,

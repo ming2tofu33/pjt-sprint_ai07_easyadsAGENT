@@ -5,8 +5,10 @@ import type { ChatFlowState } from "@/types/marketing";
 import { buildBrief } from "@/lib/chat-flow";
 import { generationStageViewFromJob, generationStatusSteps } from "@/lib/generation-job-stage";
 import { getGenerationEngineOption } from "@/lib/generation-engine";
+import { resolveWaitingStatusCopy } from "@/lib/generation-waiting-copy";
 import { MascotImage } from "./MascotImage";
 import { StepHeader } from "./StepHeader";
+import { WaitingStatusCard } from "./WaitingStatusCard";
 import styles from "./generate.module.css";
 
 type GenerationInProgressStepProps = {
@@ -18,6 +20,7 @@ export function GenerationInProgressStep({ state, onBrowse }: GenerationInProgre
   const brief = buildBrief(state);
   const engine = getGenerationEngineOption(state.selectedImageGenerationEngine);
   const generationStage = generationStageViewFromJob(state.generationJob);
+  const waitingCopy = resolveWaitingStatusCopy({ state, context: "generation" });
 
   return (
     <>
@@ -48,25 +51,7 @@ export function GenerationInProgressStep({ state, onBrowse }: GenerationInProgre
         </div>
       </section>
 
-      <div className={styles.generationProgress}>
-        <div className={styles.progressMeta}>
-          <strong>현재 상태</strong>
-          <span>
-            {generationStage.label}
-            {generationStage.progressPercent !== null ? <strong>{generationStage.progressPercent}%</strong> : null}
-          </span>
-        </div>
-        <span
-          className={`${styles.progressTrack} ${generationStage.progressPercent === null ? styles.indeterminateProgressTrack : ""}`}
-          aria-hidden="true"
-        >
-          <span
-            className={styles.progressBar}
-            style={generationStage.progressPercent === null ? undefined : { width: `${generationStage.progressPercent}%` }}
-          />
-        </span>
-        <p>{generationStage.detail}</p>
-      </div>
+      <WaitingStatusCard copy={waitingCopy} />
 
       <section className={styles.generationPreviewSection}>
         <h2 className={styles.sectionTitle}>실제 생성 결과 준비</h2>

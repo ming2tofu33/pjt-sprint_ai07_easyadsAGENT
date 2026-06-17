@@ -228,6 +228,7 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     expect(restore).toMatchObject({
       jobId: "job_done",
       threadId: "thread_done",
+      selectedImageGenerationEngine: "gpt_image_2",
       copyCandidates: [{ id: "copy_1", headline: "오늘 저녁 원육 한 판", subcopy: "방문 전 예약" }],
       copyCandidateOrigin: "llm",
       selectedCopyId: "copy_1",
