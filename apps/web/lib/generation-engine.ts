@@ -13,16 +13,16 @@ export type GenerationEngineOption = {
   directRunMode: DirectGenerationRunMode;
 };
 
-export const DEFAULT_IMAGE_GENERATION_ENGINE: ImageGenerationEngine = "gpt_image_1";
+export const DEFAULT_IMAGE_GENERATION_ENGINE: ImageGenerationEngine = "gpt_image_2";
 
-const stableGenerationEngineOptions: GenerationEngineOption[] = [
+export const generationEngineOptions: GenerationEngineOption[] = [
   {
-    id: "gpt_image_1",
-    label: "표준 OpenAI",
-    modelName: "GPT-image-1",
-    description: "예산을 지키면서 실제 광고 시안을 만들 때 적합해요.",
-    backendEngine: "gpt_image_1",
-    directRunMode: "gpt_image_1_actual"
+    id: "gpt_image_2",
+    label: "기본 OpenAI",
+    modelName: "GPT-image-2",
+    description: "기본으로 사용하는 OpenAI 이미지 모델이에요.",
+    backendEngine: "gpt_image_2",
+    directRunMode: "gpt_image_2_actual"
   },
   {
     id: "flux2_klein_4b",
@@ -42,24 +42,7 @@ const stableGenerationEngineOptions: GenerationEngineOption[] = [
   }
 ];
 
-const experimentalGenerationEngineOptions: GenerationEngineOption[] = [
-  {
-    id: "gpt_image_2",
-    label: "실험 고품질",
-    modelName: "GPT-image-2",
-    description: "제한된 예산으로 품질 비교가 필요할 때만 사용해요.",
-    backendEngine: "gpt_image_2",
-    directRunMode: "gpt_image_2_actual"
-  }
-];
-
-export const allGenerationEngineOptions: GenerationEngineOption[] = [
-  stableGenerationEngineOptions[0],
-  ...experimentalGenerationEngineOptions,
-  ...stableGenerationEngineOptions.slice(1)
-];
-
-export const generationEngineOptions: GenerationEngineOption[] = allGenerationEngineOptions;
+export const allGenerationEngineOptions: GenerationEngineOption[] = generationEngineOptions;
 
 export function getGenerationEngineOption(engine: ImageGenerationEngine | null | undefined): GenerationEngineOption {
   return allGenerationEngineOptions.find((option) => option.id === engine) ?? generationEngineOptions[0];

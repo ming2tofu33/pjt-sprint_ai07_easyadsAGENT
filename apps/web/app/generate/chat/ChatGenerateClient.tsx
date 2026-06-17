@@ -80,7 +80,6 @@ import {
   DEFAULT_IMAGE_GENERATION_ENGINE,
   getGenerationEngineOption,
   isTerminalGenerationJobStatus,
-  resolveGenerationEnginePreference,
   resolveGenerationRunMode,
   type ImageGenerationEngine
 } from "@/lib/generation-engine";
@@ -1407,9 +1406,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     clearGenerationFailureSnapshot();
     const selectedReferenceTemplateId = (options.selectedReferenceTemplateId ?? readGenerationDraftReferenceTemplateId()) || undefined;
     const requestContext = readGenerationRequestContext();
-    const imageGenerationEngine = options.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
-    const engineOption = getGenerationEngineOption(imageGenerationEngine);
-    const backendEngine = resolveGenerationEnginePreference(imageGenerationEngine);
+    const engineOption = getGenerationEngineOption(options.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE);
+    const imageGenerationEngine = engineOption.id;
+    const backendEngine = engineOption.backendEngine;
     clearGenerationDraftPrompt();
     dispatch({
       type: "submitPrompt",
@@ -1636,9 +1635,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       if (!upload.sourceAssetId) {
         throw new Error("사진 업로드 정보가 이미지 생성용 asset으로 저장되지 않았어요. 사진을 다시 업로드해 주세요.");
       }
-      const imageGenerationEngine = input.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
-      const backendEngine = resolveGenerationEnginePreference(imageGenerationEngine);
-      const engineOption = getGenerationEngineOption(imageGenerationEngine);
+      const engineOption = getGenerationEngineOption(input.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE);
+      const imageGenerationEngine = engineOption.id;
+      const backendEngine = engineOption.backendEngine;
       const response = await createGenerationJob({
         userInput: appendSavedBrandKitContext(input.prompt),
         entryMode: "photo_start",
@@ -2111,9 +2110,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }
 
   async function handleOpenGeneratedResult() {
-    const engine = state.selectedImageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
-    const engineOption = getGenerationEngineOption(engine);
-    const backendEngine = resolveGenerationEnginePreference(engine);
+    const engineOption = getGenerationEngineOption(state.selectedImageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE);
+    const engine = engineOption.id;
+    const backendEngine = engineOption.backendEngine;
     const isDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
     const selectedCopy = state.copyCandidates.find((copy) => copy.id === state.selectedCopyId) ?? null;
     const finalCopyGenerationMode = state.copyGenerationMode;

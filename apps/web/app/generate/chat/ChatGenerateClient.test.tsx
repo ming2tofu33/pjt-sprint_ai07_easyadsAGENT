@@ -473,13 +473,13 @@ vi.mock("@/lib/api-client", () => ({
 	        engine:
 	          "requested_engine" in metadata
 	            ? String(metadata.requested_engine)
-	            : "gpt_image_1"
+	            : "gpt_image_2"
 	      },
 	      metadata: {
 	        selected_engine_label:
 	          "selected_engine_label" in metadata
 	            ? metadata.selected_engine_label
-	            : "GPT-image-1"
+	            : "GPT-image-2"
 	      },
 	      created_at: "2026-06-05T00:00:00.000Z",
 	      updated_at: "2026-06-05T00:00:00.000Z"
@@ -502,10 +502,10 @@ vi.mock("@/lib/api-client", () => ({
 	        preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_1%2Ffinal_0.png",
 	        download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_1%2Ffinal_0.png",
 	        final_image_path: "data/outputs/generation_job_1/final_0.png",
-	        engine: "gpt_image_1"
+	        engine: "gpt_image_2"
 	      },
 	      metadata: {
-	        selected_engine_label: "GPT-image-1"
+	        selected_engine_label: "GPT-image-2"
 	      },
 	      created_at: "2026-06-05T00:00:00.000Z",
 	      updated_at: "2026-06-05T00:00:00.000Z"
@@ -527,10 +527,10 @@ vi.mock("@/lib/api-client", () => ({
 	        preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_1%2Ffinal_0.png",
 	        download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_1%2Ffinal_0.png",
 	        final_image_path: "data/outputs/generation_job_1/final_0.png",
-	        engine: "gpt_image_1"
+	        engine: "gpt_image_2"
 	      },
 	      metadata: {
-	        selected_engine_label: "GPT-image-1"
+	        selected_engine_label: "GPT-image-2"
 	      },
 	      created_at: "2026-06-05T00:00:00.000Z",
 	      updated_at: "2026-06-05T00:00:00.000Z"
@@ -1158,7 +1158,7 @@ describe("ChatGenerateClient", () => {
           imageDirection: "이전 작업방 이미지 방향",
           finalImagePath: "data/outputs/old_job/final_composite.png"
         },
-        imageGenerationEngine: "gpt_image_1",
+        imageGenerationEngine: "gpt_image_2",
         sourceImagePath: null,
         referenceImagePath: null
       })
@@ -1291,10 +1291,10 @@ describe("ChatGenerateClient", () => {
           userCustomHeadline: undefined,
           userCustomSubcopy: undefined,
           metadata: expect.objectContaining({
-            selected_engine: "gpt_image_1",
-            requested_engine: "gpt_image_1",
-            t2i_engine: "gpt_image_1",
-            selected_engine_label: "GPT-image-1",
+            selected_engine: "gpt_image_2",
+            requested_engine: "gpt_image_2",
+            t2i_engine: "gpt_image_2",
+            selected_engine_label: "GPT-image-2",
             selected_copy_id: null,
             legacy_preview_copy_id: "copy_1",
             selected_channel_id: "instagram-story",
@@ -1319,7 +1319,7 @@ describe("ChatGenerateClient", () => {
       })
     );
     await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
-    expect(screen.getByText("GPT-image-1")).toBeTruthy();
+    expect(screen.getByText("GPT-image-2")).toBeTruthy();
     expect(screen.getByText("완성된 이미지는 보관함에서 확인할 수 있어요.")).toBeTruthy();
     expect(screen.queryByText("실제 이미지 파일을 받지 못했어요")).toBeNull();
 
@@ -2041,10 +2041,10 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_waiting%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_waiting%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_waiting/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         metadata: {
-          selected_engine_label: "GPT-image-1"
+          selected_engine_label: "GPT-image-2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2097,10 +2097,10 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_final%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_final%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_final/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         metadata: {
-          selected_engine_label: "GPT-image-1"
+          selected_engine_label: "GPT-image-2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2275,7 +2275,7 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_waiting%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_waiting%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_copy_waiting/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2359,7 +2359,7 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_manual_waiting%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_manual_waiting%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_copy_manual_waiting/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2469,7 +2469,7 @@ describe("ChatGenerateClient", () => {
             preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_restored_copy_waiting%2Ffinal_0.png",
             download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_restored_copy_waiting%2Ffinal_0.png",
             final_image_path: "data/outputs/generation_job_restored_copy_waiting/final_0.png",
-            engine: "gpt_image_1"
+            engine: "gpt_image_2"
           },
           created_at: "2026-06-05T00:00:00.000Z",
           updated_at: "2026-06-05T00:00:00.000Z"
@@ -2570,7 +2570,7 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_custom_waiting%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_custom_waiting%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_custom_waiting/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2712,7 +2712,7 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_validation%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_validation%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_validation/final_0.png",
-          engine: "gpt_image_1",
+          engine: "gpt_image_2",
           validation_summary: {
             background: { overall_pass: true },
             safe_area: { overall_pass: true, warnings: ["near_edge"] },
@@ -2721,7 +2721,7 @@ describe("ChatGenerateClient", () => {
           }
         },
         metadata: {
-          selected_engine_label: "GPT-image-1"
+          selected_engine_label: "GPT-image-2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -3628,9 +3628,9 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_route%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_route%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_route/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
-        metadata: { selected_engine_label: "GPT-image-1" },
+        metadata: { selected_engine_label: "GPT-image-2" },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
       }
@@ -3646,7 +3646,7 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("generation_job_route"));
     await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
     expect(screen.queryByText("생성 요청 내역이 없어요")).toBeNull();
-    expect(screen.getByText("GPT-image-1")).toBeTruthy();
+    expect(screen.getByText("GPT-image-2")).toBeTruthy();
   });
 
   it("shows the failed generation reason instead of an empty result shell", async () => {
@@ -3659,8 +3659,8 @@ describe("ChatGenerateClient", () => {
         status: "failed",
         progress: { progress_percent: 100, current_stage: "failed" },
         result_payload: null,
-        error: { message: "GPT-image-1 generation is disabled." },
-        metadata: { selected_engine_label: "GPT-image-1" },
+        error: { message: "GPT-image-2 generation is disabled." },
+        metadata: { selected_engine_label: "GPT-image-2" },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
       }
@@ -3674,7 +3674,7 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="chat" initialStage="complete" />);
 
     await waitFor(() => expect(screen.getByText("이미지 생성에 실패했어요")).toBeTruthy());
-    expect(screen.getAllByText("GPT-image-1 generation is disabled.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("GPT-image-2 generation is disabled.").length).toBeGreaterThan(0);
     expect(screen.queryByText("생성 요청 내역이 없어요")).toBeNull();
   });
 
@@ -4402,7 +4402,7 @@ describe("ChatGenerateClient", () => {
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
             source_image_path: null,
-            selected_engine: "gpt_image_1"
+            selected_engine: "gpt_image_2"
           })
         })
       )
@@ -4590,7 +4590,7 @@ describe("ChatGenerateClient", () => {
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
             source_image_path: null,
-            selected_engine: "gpt_image_1",
+            selected_engine: "gpt_image_2",
             copy_generation_mode: "no_copy"
           })
         })
@@ -4635,7 +4635,7 @@ describe("ChatGenerateClient", () => {
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
             source_image_path: null,
-            selected_engine: "gpt_image_1",
+            selected_engine: "gpt_image_2",
             copy_generation_mode: "auto_pilot"
           })
         })
@@ -4686,7 +4686,7 @@ describe("ChatGenerateClient", () => {
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
             source_image_path: null,
-            selected_engine: "gpt_image_1",
+            selected_engine: "gpt_image_2",
             copy_generation_mode: "custom_input"
           })
         })
