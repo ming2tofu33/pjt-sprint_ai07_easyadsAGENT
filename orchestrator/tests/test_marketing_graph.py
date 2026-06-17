@@ -989,6 +989,7 @@ def test_native_copy_brief_node_fails_closed_on_non_approved_bundle():
 # ===== Task 9 production graph native typography wiring =====
 import pytest as _pytest
 from orchestrator.app.graph import builder as _production_graph_builder
+from orchestrator.app.graph.routers import route_after_native_copy_brief as _route_after_native_copy_brief
 from orchestrator.app.graph.routers import should_use_native_typography_lane as _should_use_native_lane
 from orchestrator.app.graph.state import create_initial_marketing_state as _create_initial_state
 from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest as _InitialRequest, MarketingContext as _MarketingContext
@@ -1005,6 +1006,7 @@ def test_production_graph_registers_native_typography_nodes_and_edges():
     assert {
         ("creative_execution_planner", "native_copy_brief"),
         ("native_copy_brief", "native_creative_preflight"),
+        ("native_copy_brief", "copy_spec_parser"),
         ("native_creative_preflight", "gpt_image_2_native_single_shot"),
         ("gpt_image_2_native_single_shot", "native_generation_review"),
         ("native_generation_review", "native_result_adapter"),
@@ -1023,6 +1025,15 @@ def test_native_route_condition_supports_only_gpt_image_2_native_formats(ad_form
 @_pytest.mark.parametrize("unsupported", ["restaurant_poster", ""])
 def test_native_route_condition_preserves_overlay_path_for_unsupported_formats(unsupported):
     assert _should_use_native_lane({"engine": "gpt_image_2", "selected_ad_format": unsupported}) is False
+
+
+def test_native_copy_brief_manual_review_falls_back_to_overlay_pipeline():
+    assert _route_after_native_copy_brief({
+        "native_generation_status": "manual_review",
+        "format_approved_plan_bundle": {"decision": "manual_review"},
+    }) == "copy_spec_parser"
+    assert _route_after_native_copy_brief({"native_generation_status": "manual_review"}) == "native_result_adapter"
+    assert _route_after_native_copy_brief({"native_generation_status": "rejected"}) == "native_result_adapter"
 
 
 @_pytest.mark.parametrize("ad_format", ["banner", "poster", "flyer", "product_detail", "instagram_feed", "instagram_story"])

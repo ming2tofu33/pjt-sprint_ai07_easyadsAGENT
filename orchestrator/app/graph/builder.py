@@ -374,7 +374,11 @@ def build_marketing_graph(checkpointer=None):
     graph.add_conditional_edges(
         "native_copy_brief",
         route_after_native_copy_brief,
-        {"native_creative_preflight": "native_creative_preflight", "native_result_adapter": "native_result_adapter"},
+        {
+            "native_creative_preflight": "native_creative_preflight",
+            "copy_spec_parser": "copy_spec_parser",
+            "native_result_adapter": "native_result_adapter",
+        },
     )
     graph.add_conditional_edges(
         "native_creative_preflight",
