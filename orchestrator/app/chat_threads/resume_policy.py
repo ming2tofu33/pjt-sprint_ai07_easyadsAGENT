@@ -17,13 +17,19 @@ def _get_value(source: Any, key: str, default: Any = None) -> Any:
     return getattr(source, key, default)
 
 
+def _public_id(value: Any, prefix: str) -> str | None:
+    text = str(value) if value else None
+    return text if text and text.startswith(prefix) else None
+
+
 def _public_thread_id(thread: Any) -> str:
-    return str(_get_value(thread, "public_thread_id") or _get_value(thread, "thread_id") or "")
+    return _public_id(_get_value(thread, "public_thread_id"), "thread_") or _public_id(
+        _get_value(thread, "thread_id"), "thread_"
+    ) or ""
 
 
 def _snapshot_id(snapshot: Any) -> str | None:
-    value = _get_value(snapshot, "snapshot_id")
-    return str(value) if value else None
+    return _public_id(_get_value(snapshot, "snapshot_id"), "snapshot_")
 
 
 def _snapshot_kind(snapshot: Any) -> str | None:
@@ -61,14 +67,16 @@ def compute_thread_resume_state(
     """Return the single server-owned action for opening a generated thread."""
 
     thread_id = _public_thread_id(thread)
-    active_job_id = _get_value(thread, "active_public_job_id") or _get_value(thread, "active_job_id")
-    active_job_id = str(active_job_id) if active_job_id else None
-    final_job_id = _get_value(thread, "final_public_job_id")
-    final_job_id = str(final_job_id) if final_job_id and str(final_job_id).startswith("job_") else None
-    final_output_id = _get_value(thread, "final_public_output_id") or _get_value(thread, "final_output_id")
-    final_output_id = str(final_output_id) if final_output_id and str(final_output_id).startswith("output_") else None
-    waiting_job_id = _get_value(waiting_job, "public_job_id") or _get_value(waiting_job, "job_id")
-    waiting_job_id = str(waiting_job_id) if waiting_job_id else None
+    active_job_id = _public_id(_get_value(thread, "active_public_job_id"), "job_") or _public_id(
+        _get_value(thread, "active_job_id"), "job_"
+    )
+    final_job_id = _public_id(_get_value(thread, "final_public_job_id"), "job_")
+    final_output_id = _public_id(_get_value(thread, "final_public_output_id"), "output_") or _public_id(
+        _get_value(thread, "final_output_id"), "output_"
+    )
+    waiting_job_id = _public_id(_get_value(waiting_job, "public_job_id"), "job_") or _public_id(
+        _get_value(waiting_job, "job_id"), "job_"
+    )
     snapshot_id = _snapshot_id(latest_snapshot)
     snapshot_kind = _snapshot_kind(latest_snapshot)
     status = str(_get_value(thread, "status") or "draft")
