@@ -12,11 +12,15 @@ from orchestrator.app.api.schemas.chat_threads import (
     ChatMessageResponse,
     ChatThreadCreateRequest,
     ChatThreadResponse,
+    ChatThreadResumeStateResponse,
     ChatThreadUpdateRequest,
 )
+from orchestrator.app.chat_threads import state_service
 from orchestrator.app.db import settings as db_settings
+from orchestrator.app.db.errors import DatabaseConfigurationError, DatabaseDependencyError
 from orchestrator.app.db.repositories import chat_messages as chat_message_repo
 from orchestrator.app.db.repositories import chat_threads as chat_thread_repo
+from orchestrator.app.db.repositories import generation_jobs as generation_job_repo
 from orchestrator.app.db.repositories import workspaces as workspace_repo
 from orchestrator.app.db.session import db_transaction
 from orchestrator.app.chat_threads.errors import (
@@ -24,6 +28,7 @@ from orchestrator.app.chat_threads.errors import (
     ChatThreadHasActiveJobError,
     ChatThreadLimitReachedError,
 )
+from orchestrator.app.chat_threads.resume_policy import compute_thread_resume_state
 from orchestrator.app.chat_threads.sanitization import sanitize_chat_payload
 
 # ---------------------------------------------------------------------------
@@ -91,6 +96,9 @@ def _db_uuid_or_none(value: str | None) -> str | None:
         return None
 
 
+def _public_prefixed_id(value: object, prefix: str) -> str | None:
+    text = str(value) if value else None
+    return text if text and text.startswith(prefix) else None
 
 
 def _sanitize_brief(value) -> dict | list | str | object:
@@ -128,12 +136,20 @@ def _owner_matches(data: dict, user_id: str | None) -> bool:
     return data.get("_owner_user_id") == effective
 
 
-def _thread_row_to_response(row: dict) -> ChatThreadResponse:
-    """DB row → ChatThreadResponse. active_job_id는 public job id로 변환."""
-    active_job_id = row.get("active_public_job_id") or None
-    # active_public_job_id join 컬럼이 없는 경우 fallback (내부 UUID 미노출 처리)
-    if active_job_id and not str(active_job_id).startswith("job_"):
-        active_job_id = None
+def _thread_row_to_response(
+    row: dict,
+    *,
+    latest_snapshot: object | None = None,
+    waiting_job: dict | None = None,
+) -> ChatThreadResponse:
+    """DB row → ChatThreadResponse. 내부 UUID는 public id로만 노출한다."""
+    active_job_id = _public_prefixed_id(row.get("active_public_job_id"), "job_")
+    final_output_id = _public_prefixed_id(row.get("final_public_output_id"), "output_")
+    resume_state = _thread_resume_state_from_row(
+        row,
+        latest_snapshot=latest_snapshot,
+        waiting_job=waiting_job,
+    )
 
     return ChatThreadResponse(
         thread_id=str(row["public_thread_id"]),
@@ -143,11 +159,31 @@ def _thread_row_to_response(row: dict) -> ChatThreadResponse:
         project_id=str(row["project_id"]) if row.get("project_id") else None,
         final_brief=sanitize_chat_payload(row.get("final_brief") or {}),
         active_job_id=str(active_job_id) if active_job_id else None,
-        has_final_output=row.get("final_output_id") is not None,
+        final_output_id=final_output_id,
+        has_final_output=final_output_id is not None,
+        resume_state=resume_state,
         last_message_at=_iso(row.get("last_message_at")),
         archived_at=_iso(row["archived_at"]) if row.get("archived_at") else None,
         created_at=_iso(row.get("created_at")),
         updated_at=_iso(row.get("updated_at")),
+    )
+
+
+def _thread_resume_state_from_row(
+    row: dict,
+    *,
+    latest_snapshot: object | None = None,
+    waiting_job: dict | None = None,
+) -> ChatThreadResumeStateResponse:
+    policy_thread = {
+        **row,
+        "active_job_id": _public_prefixed_id(row.get("active_public_job_id"), "job_"),
+        "final_output_id": _public_prefixed_id(row.get("final_public_output_id"), "output_"),
+    }
+    return compute_thread_resume_state(
+        thread=policy_thread,
+        latest_snapshot=latest_snapshot,
+        waiting_job=waiting_job,
     )
 
 
@@ -629,8 +665,7 @@ def _create_chat_thread_db(request: ChatThreadCreateRequest) -> ChatThreadRespon
 
 
 def _get_demo_workspace(user_id: str | None = None, account_type: str | None = None) -> dict:
-    with db_transaction() as conn:
-        return _ensure_workspace_for_user(user_id, connection=conn, account_type=account_type)
+    return _ensure_workspace_for_user(user_id, account_type=account_type)
 
 
 def _get_demo_workspace_id(user_id: str | None = None, account_type: str | None = None) -> str:
@@ -645,10 +680,45 @@ def _get_workspace_id_for_user(user_id: str | None = None, account_type: str | N
     return _get_demo_workspace_id(user_id)
 
 
+def _thread_resume_inputs(
+    *,
+    public_thread_id: str,
+    workspace_id: str,
+    user_id: str | None = None,
+    connection: object | None = None,
+) -> tuple[object | None, dict | None]:
+    try:
+        latest_snapshot = state_service.get_latest_thread_state_snapshot(
+            public_thread_id=public_thread_id,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            connection=connection,
+        )
+    except (DatabaseConfigurationError, DatabaseDependencyError):
+        latest_snapshot = None
+
+    try:
+        waiting_job = generation_job_repo.get_latest_waiting_generation_job_for_thread(
+            public_thread_id=public_thread_id,
+            workspace_id=workspace_id,
+            connection=connection,
+        )
+    except (DatabaseConfigurationError, DatabaseDependencyError):
+        waiting_job = None
+    return latest_snapshot, waiting_job
+
+
 def _get_chat_thread_db(thread_id: str, user_id: str | None = None, account_type: str | None = None) -> ChatThreadResponse | None:
     workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
     row = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
-    return _thread_row_to_response(row) if row else None
+    if not row:
+        return None
+    latest_snapshot, waiting_job = _thread_resume_inputs(
+        public_thread_id=thread_id,
+        workspace_id=workspace_id,
+        user_id=user_id,
+    )
+    return _thread_row_to_response(row, latest_snapshot=latest_snapshot, waiting_job=waiting_job)
 
 
 def get_chat_thread_with_workspace(
@@ -669,7 +739,42 @@ def get_chat_thread_with_workspace(
     if not row:
         return None
 
-    return _thread_row_to_response(row), str(row["workspace_id"])
+    resolved_workspace_id = str(row.get("workspace_id") or workspace_id)
+    latest_snapshot, waiting_job = _thread_resume_inputs(
+        public_thread_id=str(row["public_thread_id"]),
+        workspace_id=resolved_workspace_id,
+        user_id=user_id,
+    )
+    return _thread_row_to_response(row, latest_snapshot=latest_snapshot, waiting_job=waiting_job), resolved_workspace_id
+
+
+def get_chat_thread_resume_state(
+    thread_id: str,
+    user_id: str | None = None,
+    account_type: str | None = None,
+) -> ChatThreadResumeStateResponse | None:
+    if not _use_postgres():
+        thread = _get_chat_thread_memory(thread_id, user_id=user_id)
+        if not thread:
+            return None
+        return thread.resume_state
+
+    workspace_id = _get_workspace_id_for_user(user_id, account_type=account_type)
+    row = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=workspace_id)
+
+    if not row and user_id is None:
+        row = chat_thread_repo.get_chat_thread_by_public_id(thread_id, workspace_id=None)
+
+    if not row:
+        return None
+
+    resolved_workspace_id = str(row.get("workspace_id") or workspace_id)
+    latest_snapshot, waiting_job = _thread_resume_inputs(
+        public_thread_id=str(row["public_thread_id"]),
+        workspace_id=resolved_workspace_id,
+        user_id=user_id,
+    )
+    return _thread_resume_state_from_row(row, latest_snapshot=latest_snapshot, waiting_job=waiting_job)
 
 
 def _list_chat_threads_db(
@@ -692,7 +797,15 @@ def _list_chat_threads_db(
         if include_total
         else offset + len(rows)
     )
-    return [_thread_row_to_response(r) for r in rows], total
+    threads: list[ChatThreadResponse] = []
+    for row in rows:
+        latest_snapshot, waiting_job = _thread_resume_inputs(
+            public_thread_id=str(row["public_thread_id"]),
+            workspace_id=workspace_id,
+            user_id=user_id,
+        )
+        threads.append(_thread_row_to_response(row, latest_snapshot=latest_snapshot, waiting_job=waiting_job))
+    return threads, total
 
 
 def _update_chat_thread_db(
