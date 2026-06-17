@@ -273,6 +273,61 @@ describe("proxyOrchestratorJson", () => {
     );
   });
 
+  it("logs safe auth diagnostics when orchestrator returns a workspace scope error", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://supabase.example.com");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon_key");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1", is_anonymous: false });
+      }
+      return jsonResponse(
+        {
+          detail: {
+            success: false,
+            error_code: "workspace_required",
+            message: "workspaceId is required."
+          }
+        },
+        { status: 400 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new NextRequest("http://localhost/api/generation-jobs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer access_token_1",
+        "content-type": "application/json",
+        "x-request-id": "req_workspace_1"
+      },
+      body: JSON.stringify({ userInput: "로그인 카페 광고", runMode: "graph_job" })
+    });
+
+    const response = await proxyOrchestratorJson(request, "POST", "/api/v1/generation-jobs", undefined, {
+      injectVerifiedUserId: true,
+      injectVerifiedUserIdHeader: true
+    });
+
+    expect(response.status).toBe(400);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Next BFF upstream response failed",
+      expect.objectContaining({
+        request_id: "req_workspace_1",
+        path: "/api/v1/generation-jobs",
+        status: 400,
+        error_code: "workspace_required",
+        auth: {
+          header_present: true,
+          principal_resolved: true,
+          account_type: "user"
+        }
+      })
+    );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("access_token_1");
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("user_uuid_1");
+  });
+
   it("generation job collection GET returns an explicit contract error", async () => {
     const route = await import("../generation-jobs/route");
     const response = await route.GET();
