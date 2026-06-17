@@ -21,6 +21,14 @@ ChatThreadStatus = Literal[
     "archived",
 ]
 
+ThreadResumeAction = Literal[
+    "view_result",
+    "answer_pending_job",
+    "retry_failed_job",
+    "continue_draft",
+    "locked_running",
+]
+
 ChatMessageRole = Literal[
     "user",
     "assistant",
@@ -97,6 +105,17 @@ class ChatMessageCreateRequest(BaseModel):
         return self
 
 
+class ChatThreadResumeStateResponse(BaseModel):
+    action: ThreadResumeAction
+    thread_id: str
+    resume_job_id: str | None = None
+    final_output_id: str | None = None
+    latest_snapshot_id: str | None = None
+    snapshot_kind: str | None = None
+    reason: str
+    current_question: dict[str, Any] | None = None
+
+
 # ---------------------------------------------------------------------------
 # Response schemas
 # ---------------------------------------------------------------------------
@@ -110,7 +129,9 @@ class ChatThreadResponse(BaseModel):
     project_id: str | None = None
     final_brief: dict[str, Any] = Field(default_factory=dict)
     active_job_id: str | None = None
+    final_output_id: str | None = None
     has_final_output: bool = False
+    resume_state: ChatThreadResumeStateResponse | None = None
     last_message_at: str
     archived_at: str | None = None
     created_at: str
@@ -151,6 +172,12 @@ class ChatThreadCreateResponse(BaseModel):
 class ChatThreadGetResponse(BaseModel):
     success: Literal[True] = True
     thread: ChatThreadResponse
+    meta: ApiMeta = Field(default_factory=ApiMeta)
+
+
+class ChatThreadResumeStateGetResponse(BaseModel):
+    success: Literal[True] = True
+    resume_state: ChatThreadResumeStateResponse
     meta: ApiMeta = Field(default_factory=ApiMeta)
 
 

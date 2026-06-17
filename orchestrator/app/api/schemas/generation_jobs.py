@@ -42,6 +42,12 @@ GenerationRunMode = Literal[
     "flux_smoke",
     "flux2_klein_4b",
 ]
+GenerationContinuationMode = Literal[
+    "new_thread",
+    "new_turn",
+    "retry_failed",
+    "regenerate_from_output",
+]
 ResultArtifactPayloadDict = dict[str, Any]
 
 
@@ -52,6 +58,7 @@ class GenerationJobCreateRequest(BaseModel):
     account_type: Literal["user", "guest"] | None = Field(default=None, alias="accountType")
     workspace_id: str | None = Field(default=None, alias="workspaceId")
     thread_id: str | None = Field(default=None, alias="threadId")
+    continuation_mode: GenerationContinuationMode | None = Field(default=None, alias="continuationMode")
     brand_kit_id: str | None = Field(default=None, alias="brandKitId")
     entry_mode: str = Field(default="chat_start", alias="entryMode")
     user_input: str = Field(alias="userInput")
@@ -85,7 +92,12 @@ class GenerationJobCreateRequest(BaseModel):
             
         if self.source_image_path or self.reference_image_path:
             raise ValueError("source_image_path and reference_image_path are not accepted by the public API")
-            
+
+        if self.thread_id is None and self.continuation_mode not in {None, "new_thread"}:
+            raise ValueError("continuation_mode requires thread_id unless it is 'new_thread'")
+        if self.thread_id is not None and self.continuation_mode == "new_thread":
+            raise ValueError("continuation_mode 'new_thread' cannot be used with thread_id")
+
         return self
 
     @field_validator("source_asset_id", "reference_asset_id")

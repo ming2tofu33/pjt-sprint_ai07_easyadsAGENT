@@ -12,9 +12,13 @@ from orchestrator.app.db.session import db_transaction
 _SELECT_THREAD_WITH_ACTIVE_JOB = """
     select
         ct.*,
-        aj.public_job_id as active_public_job_id
+        aj.public_job_id as active_public_job_id,
+        fo.public_output_id as final_public_output_id,
+        fj.public_job_id as final_public_job_id
     from chat_threads ct
     left join generation_jobs aj on aj.id = ct.active_job_id
+    left join generation_outputs fo on fo.id = ct.final_output_id
+    left join generation_jobs fj on fj.id = fo.job_id
 """
 
 _ALLOWED_UPDATE_FIELDS = {"title", "brand_kit_id", "project_id", "final_brief"}
