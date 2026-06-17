@@ -31,7 +31,7 @@ def test_chat_start_returns_inferred_context_and_copy_candidates():
 
     response = client.post(
         "/v1/marketing/chat/start",
-        json={"userInput": "우리 카페 딸기라떼 신메뉴 광고 만들어줘", "adFormat": "instagram_feed"},
+        json={"userInput": "\uc6b0\ub9ac \uce74\ud398 \ub538\uae30\ub77c\ub5bc \uc2e0\uba54\ub274 \uad11\uace0 \ub9cc\ub4e4\uc5b4\uc918", "adFormat": "instagram_feed"},
     )
 
     assert response.status_code == 200
@@ -39,12 +39,12 @@ def test_chat_start_returns_inferred_context_and_copy_candidates():
     assert payload["jobId"].startswith("chat_")
     assert payload["threadId"].endswith("_thread")
     assert payload["context"] == {
-        "businessType": "카페",
-        "itemOrService": "딸기라떼",
-        "promotionGoal": "신메뉴 출시",
-        "advertisedSubject": "우리 카페 딸기라떼",
+        "businessType": "cafe",
+        "itemOrService": "\ub538\uae30\ub77c\ub5bc",
+        "promotionGoal": None,
+        "advertisedSubject": "\uc6b0\ub9ac \uce74\ud398 \ub538\uae30\ub77c\ub5bc",
         "advertisedSubjectType": "product",
-        "campaignIntent": "new_menu",
+        "campaignIntent": "new_menu_launch",
     }
     assert [candidate["id"] for candidate in payload["copyCandidates"]] == ["copy_1", "copy_2"]
     assert payload["recommendedCopyId"] in {"copy_1", "copy_2"}
@@ -385,7 +385,7 @@ def test_photo_start_option_question_can_resume_via_chat_answer(tmp_path):
     assert response.status_code == 200
     payload = response.json()
     assert payload["type"] in {"option_question", "copy_candidates"}
-    assert payload["context"]["businessType"] == "카페"
+    assert payload["context"]["businessType"] == "cafe"
     if payload["type"] == "option_question":
         assert payload["question"]["field"] == "item_or_service"
 

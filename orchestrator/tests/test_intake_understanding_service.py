@@ -45,6 +45,21 @@ def test_deterministic_intake_uses_explicit_product_evidence_without_extra_vocab
     assert result.confidence_by_field["product_or_service_candidate"] > 0
 
 
+def test_deterministic_intake_separates_product_launch_from_store_opening():
+    prompt = "\uc6b0\ub9ac \uce74\ud398 \ub538\uae30\ub77c\ub5bc \uc2e0\uba54\ub274 \uad11\uace0 \ub9cc\ub4e4\uc5b4\uc918"
+    result = build_deterministic_intake_understanding(
+        _state(
+            prompt,
+            bundle={"user_text": prompt, "explicit_product_mentions": ["\ub538\uae30\ub77c\ub5bc"]},
+        ),
+        prompt,
+        hints={"business_type": "cafe", "item_or_service": None, "promotion_goal": None, "ad_format": "instagram_feed"},
+    )
+
+    assert result.advertised_subject_type == "product"
+    assert result.campaign_intent_candidate == "new_menu_launch"
+
+
 def test_understand_intake_skips_interpreter_when_deterministic_result_is_sufficient():
     prompt = "Create a banner for Harbor Cafe and highlight our strawberry latte."
     calls = {"count": 0}
@@ -109,7 +124,7 @@ def test_understand_intake_calls_interpreter_once_when_deterministic_context_is_
     assert result.extraction_mode == "hybrid_structured_llm"
     assert result.business_candidate is None
     assert result.product_or_service_candidate == "skin care package"
-    assert result.campaign_intent_candidate == "reservation"
+    assert result.campaign_intent_candidate == "reservation_cta"
     assert updates["item_or_service"] == "skin care package"
     assert updates["promotion_goal"] == "reservation_cta"
     assert trace["brief_interpreter"]["used"] is True
@@ -143,3 +158,21 @@ def test_understand_intake_records_structured_fallback_without_retry():
     assert result.fallback_reason == "invalid_structured_output"
     assert trace["fallback_used"] is True
     assert trace["fallback_reason"] == "invalid_structured_output"
+
+
+def test_project_intake_to_context_keeps_launch_intent_out_of_legacy_promotion_goal():
+    prompt = "\uc6b0\ub9ac \uce74\ud398 \ub538\uae30\ub77c\ub5bc \uc2e0\uba54\ub274 \uad11\uace0 \ub9cc\ub4e4\uc5b4\uc918"
+    result = build_deterministic_intake_understanding(
+        _state(
+            prompt,
+            bundle={"user_text": prompt, "explicit_product_mentions": ["\ub538\uae30\ub77c\ub5bc"]},
+        ),
+        prompt,
+        hints={"business_type": "cafe", "item_or_service": None, "promotion_goal": None, "ad_format": "instagram_feed"},
+    )
+
+    updates, metadata = project_intake_to_context(result)
+
+    assert updates["item_or_service"] == "\ub538\uae30\ub77c\ub5bc"
+    assert "promotion_goal" not in updates
+    assert metadata["unprojected_campaign_intent_candidate"] == "new_menu_launch"
