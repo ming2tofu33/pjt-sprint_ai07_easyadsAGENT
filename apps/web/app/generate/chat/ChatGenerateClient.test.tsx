@@ -3714,7 +3714,8 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("이미지를 만들고 있어요")).toBeTruthy());
     expect(screen.getByText("딸기라떼")).toBeTruthy();
     expect(screen.getByText("완성되면 보관함에 자동으로 저장돼요. 잠시만 기다려주세요.")).toBeTruthy();
-    expect(screen.getByText("미리보기는 완성 후 표시돼요")).toBeTruthy();
+    expect(screen.getByText("보관함 연결을 확인하고 있어요")).toBeTruthy();
+    expect(screen.getByText("완성된 이미지 주소를 확인하고 있어요")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "딸기라떼 더 크게" })).toBeNull();
     expect(screen.queryByRole("button", { name: "핑크톤 줄이기" })).toBeNull();
     expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeNull();
