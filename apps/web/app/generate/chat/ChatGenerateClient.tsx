@@ -545,8 +545,8 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
         copyCandidates: interrupt.candidates as never[],
         recommendedCopyId: interrupt.recommendedCandidateId ?? null,
         copyCandidateOrigin: interrupt.copyCandidateOrigin,
-        copyFallbackUsed: interrupt.copyCandidateOrigin === "fallback" || interrupt.copyCandidateOrigin === "mock",
-        copyFallbackReason: null,
+        copyFallbackUsed: interrupt.copyFallbackUsed,
+        copyFallbackReason: interrupt.copyFallbackReason,
         copyGenerationMode: fallbackCopyGenerationMode ?? "suggest_candidates",
         selectedChannelId: getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
       };

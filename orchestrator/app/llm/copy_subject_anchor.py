@@ -27,7 +27,7 @@ def resolve_copy_subject_anchor(state: Mapping[str, Any] | Any) -> CopySubjectAn
     source_text = _text(payload.get("user_input") or intake_projection.get("source_text") or extra.get("source_text"))
     rejected_item = _text(intake_projection.get("rejected_item_candidate") or extra.get("rejected_item_candidate"))
     rejection_reason = _text(intake_projection.get("rejection_reason") or extra.get("rejection_reason"))
-    evidence_refs = _evidence_refs(intake_projection.get("evidence_refs") or extra.get("intake_evidence_refs"))
+    evidence_by_source = _evidence_by_source(intake_projection, extra)
     campaign_intent = _text(current_brief.get("campaign_intent") or payload.get("campaign_intent") or extra.get("campaign_intent"))
 
     item = _text(context.get("item_or_service"))
@@ -40,18 +40,18 @@ def resolve_copy_subject_anchor(state: Mapping[str, Any] | Any) -> CopySubjectAn
         and not _business_subject_conflict(item, campaign_intent, advertised_subject, venue_or_business)
         and not _unsafe_anchor(item, source_text=source_text)
     ):
-        return CopySubjectAnchor(item, "item_or_service", evidence_refs, True)
+        return CopySubjectAnchor(item, "item_or_service", evidence_by_source("item_or_service"), True)
 
     if advertised_subject and advertised_subject != rejected_item and not _unsafe_anchor(advertised_subject, source_text=source_text):
-        return CopySubjectAnchor(advertised_subject, "advertised_subject", evidence_refs, True, rejection_reason)
+        return CopySubjectAnchor(advertised_subject, "advertised_subject", evidence_by_source("advertised_subject"), True, rejection_reason)
 
     if venue_or_business and venue_or_business != rejected_item and not _unsafe_anchor(venue_or_business, source_text=source_text):
-        return CopySubjectAnchor(venue_or_business, "venue_or_business", evidence_refs, True, rejection_reason)
+        return CopySubjectAnchor(venue_or_business, "venue_or_business", evidence_by_source("venue_or_business"), True, rejection_reason)
 
     return CopySubjectAnchor(
         None,
         "generic_safe_fallback",
-        evidence_refs,
+        evidence_by_source("generic_safe_fallback"),
         False,
         rejection_reason or "missing_safe_anchor",
         "rejected",
@@ -83,7 +83,22 @@ def _business_subject_conflict(
         "student_recruitment",
     }:
         return False
-    return item in {advertised_subject, venue_or_business}
+    item_norm = _normalize_subject(item)
+    for subject in (advertised_subject, venue_or_business):
+        subject_norm = _normalize_subject(subject)
+        if not subject_norm:
+            continue
+        if item_norm == subject_norm or subject_norm in item_norm or item_norm in subject_norm:
+            return True
+        item_tokens = set(item_norm.split())
+        subject_tokens = set(subject_norm.split())
+        if len(item_tokens & subject_tokens) >= 2:
+            return True
+    return False
+
+
+def _normalize_subject(value: str | None) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^\w\s]", " ", str(value or "").casefold())).strip()
 
 
 def _unsafe_anchor(value: str, *, source_text: str | None = None) -> bool:
@@ -121,6 +136,27 @@ def _evidence_refs(value: Any) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple, set)):
         return ()
     return tuple(str(item) for item in value if item)
+
+
+def _evidence_by_source(intake_projection: dict[str, Any], extra: dict[str, Any]):
+    source_maps = (
+        intake_projection.get("field_evidence_refs"),
+        intake_projection.get("evidence_refs_by_field"),
+        extra.get("field_evidence_refs"),
+        extra.get("copy_subject_evidence_refs"),
+    )
+    fallback = _evidence_refs(intake_projection.get("evidence_refs") or extra.get("intake_evidence_refs"))
+
+    def resolve(source: str) -> tuple[str, ...]:
+        for source_map in source_maps:
+            if not isinstance(source_map, dict):
+                continue
+            refs = _evidence_refs(source_map.get(source))
+            if refs:
+                return refs
+        return fallback
+
+    return resolve
 
 
 def _dict(value: Any) -> dict[str, Any]:

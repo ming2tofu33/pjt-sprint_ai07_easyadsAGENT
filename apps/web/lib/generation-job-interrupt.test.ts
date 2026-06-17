@@ -58,6 +58,8 @@ describe("generation job interrupt helpers", () => {
       type: "copy_candidate_selection",
       recommendedCandidateId: "copy_1",
       copyCandidateOrigin: "rule_based",
+      copyFallbackUsed: false,
+      copyFallbackReason: null,
       candidates: [
         {
           id: "copy_1",
@@ -76,7 +78,27 @@ describe("generation job interrupt helpers", () => {
       })
     ).toMatchObject({
       type: "copy_candidate_selection",
-      copyCandidateOrigin: "fallback"
+      copyCandidateOrigin: "fallback",
+      copyFallbackUsed: true
+    });
+  });
+
+  it("parses copy fallback provenance from interrupt metadata", () => {
+    expect(
+      parseGenerationJobInterrupt({
+        type: "copy_candidate_selection",
+        candidates: [{ id: "copy_1", headline: "Fallback copy" }],
+        metadata: {
+          copyCandidateOrigin: "fallback",
+          copyFallbackUsed: true,
+          copyFallbackReason: "api_call_disabled"
+        }
+      })
+    ).toMatchObject({
+      type: "copy_candidate_selection",
+      copyCandidateOrigin: "fallback",
+      copyFallbackUsed: true,
+      copyFallbackReason: "api_call_disabled"
     });
   });
 

@@ -72,6 +72,15 @@ def test_business_level_subject_conflict_uses_advertised_subject():
     assert anchor.source == "advertised_subject"
 
 
+def test_business_level_subject_conflict_uses_normalized_containment():
+    anchor = resolve_copy_subject_anchor(
+        _state(item_or_service="Premium Beauty Salon", advertised_subject="beauty salon")
+    )
+
+    assert anchor.value == "beauty salon"
+    assert anchor.source == "advertised_subject"
+
+
 def test_direct_marketing_context_input_uses_resolver():
     context = MarketingContext(
         business_type="retail",
@@ -146,3 +155,28 @@ def test_lineage_reports_anchor_source_evidence_and_reason():
     assert projection["copy_subject_evidence_refs"] == ["user_input"]
     assert projection["copy_subject_validation_status"] == "accepted"
     assert projection["copy_subject_rejection_reason"] == "request_residue"
+
+
+def test_anchor_uses_source_specific_evidence_when_available():
+    anchor = resolve_copy_subject_anchor(
+        {
+            "context": {
+                "business_type": "beauty",
+                "item_or_service": "signature facial care",
+                "extra": {
+                    "intake_evidence_refs": ["all_context"],
+                    "copy_subject_evidence_refs": {
+                        "item_or_service": ["item_ref"],
+                        "advertised_subject": ["subject_ref"],
+                    },
+                },
+            },
+            "current_brief": {
+                "advertised_subject": "Beauty Salon",
+                "campaign_intent": "new_service_launch",
+            },
+        }
+    )
+
+    assert anchor.source == "item_or_service"
+    assert anchor.evidence_refs == ("item_ref",)

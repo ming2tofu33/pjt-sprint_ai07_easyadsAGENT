@@ -52,6 +52,8 @@ export type ParsedGenerationJobInterrupt =
       candidates: CopyOption[];
       recommendedCandidateId?: string | null;
       copyCandidateOrigin: CopyCandidateOrigin;
+      copyFallbackUsed: boolean;
+      copyFallbackReason: string | null;
       raw: GenerationJobPendingInterrupt;
     }
   | {
@@ -194,11 +196,19 @@ export function parseGenerationJobInterrupt(raw: unknown): ParsedGenerationJobIn
       ? interrupt.candidates.map(normalizeCandidate).filter((candidate): candidate is CopyOption => Boolean(candidate))
       : [];
     const metadata = isRecord(interrupt.metadata) ? interrupt.metadata : {};
+    const copyCandidateOrigin = asCopyCandidateOrigin(
+      interrupt.copy_candidate_origin ?? interrupt.copyCandidateOrigin ?? metadata.copy_candidate_origin ?? metadata.copyCandidateOrigin
+    );
+    const explicitFallbackUsed = interrupt.copy_fallback_used ?? interrupt.copyFallbackUsed ?? metadata.copy_fallback_used ?? metadata.copyFallbackUsed;
     return {
       type: "copy_candidate_selection",
       candidates,
       recommendedCandidateId: asString(interrupt.recommended_candidate_id) ?? candidates[0]?.id ?? null,
-      copyCandidateOrigin: asCopyCandidateOrigin(interrupt.copy_candidate_origin ?? interrupt.copyCandidateOrigin ?? metadata.copy_candidate_origin ?? metadata.copyCandidateOrigin),
+      copyCandidateOrigin,
+      copyFallbackUsed: asBoolean(explicitFallbackUsed, copyCandidateOrigin === "fallback" || copyCandidateOrigin === "mock"),
+      copyFallbackReason: asString(
+        interrupt.copy_fallback_reason ?? interrupt.copyFallbackReason ?? metadata.copy_fallback_reason ?? metadata.copyFallbackReason
+      ) ?? null,
       raw: interrupt
     };
   }

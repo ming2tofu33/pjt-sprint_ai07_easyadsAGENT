@@ -197,6 +197,8 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
 
   const currentQuestion = extractQuestion(payload, metadata);
   const resultPayload = asRecord(payload.result_payload);
+  const pendingInterrupt = asRecord(payload.pending_interrupt);
+  const pendingInterruptMetadata = asRecord(pendingInterrupt.metadata);
   const progressState = asRecord(payload.progress_state);
   const copyCandidates = copyCandidatesFrom(payload.copy_candidates ?? payload.copyCandidates);
   const status = snapshotStatus(snapshot.snapshot_kind, payload, currentQuestion);
@@ -296,8 +298,31 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     copyGenerationMode: copyMode(payload.copy_generation_mode ?? payload.copyGenerationMode),
     copyCandidates,
     copyCandidateOrigin: copyCandidateOrigin(payload.copy_candidate_origin ?? payload.copyCandidateOrigin),
-    copyFallbackUsed: booleanValue(payload.copy_fallback_used ?? payload.copyFallbackUsed),
-    copyFallbackReason: firstString(payload.copy_fallback_reason, payload.copyFallbackReason) || null,
+    copyFallbackUsed: booleanValue(
+      payload.copy_fallback_used ??
+        payload.copyFallbackUsed ??
+        resultPayload.copy_fallback_used ??
+        resultPayload.copyFallbackUsed ??
+        pendingInterrupt.copy_fallback_used ??
+        pendingInterrupt.copyFallbackUsed ??
+        pendingInterruptMetadata.copy_fallback_used ??
+        pendingInterruptMetadata.copyFallbackUsed ??
+        metadata.copy_fallback_used ??
+        metadata.copyFallbackUsed
+    ),
+    copyFallbackReason:
+      firstString(
+        payload.copy_fallback_reason,
+        payload.copyFallbackReason,
+        resultPayload.copy_fallback_reason,
+        resultPayload.copyFallbackReason,
+        pendingInterrupt.copy_fallback_reason,
+        pendingInterrupt.copyFallbackReason,
+        pendingInterruptMetadata.copy_fallback_reason,
+        pendingInterruptMetadata.copyFallbackReason,
+        metadata.copy_fallback_reason,
+        metadata.copyFallbackReason
+      ) || null,
     selectedCopyId: firstString(payload.selected_copy_id, payload.selectedCopyId, copyCandidates[0]?.id),
     selectedChannelId: selectedChannelIdValue(
       payload.selected_channel_id,

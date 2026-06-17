@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { copyCandidateOriginLabel, copyCandidateOriginNote } from "./CopyChannelStep";
+import { copyCandidateOriginLabel, copyCandidateOriginNote } from "@/lib/copy-candidate-provenance";
 
 describe("CopyChannelStep copy source labels", () => {
   it.each([
@@ -8,6 +8,7 @@ describe("CopyChannelStep copy source labels", () => {
     ["rule_based", false, "기본 추천 문구"],
     ["fallback", false, "임시 추천 문구"],
     ["mock", false, "테스트 추천 문구"],
+    ["mock", true, "테스트 추천 문구"],
     ["unknown", false, "추천 문구"],
     ["llm", true, "임시 추천 문구"],
   ] as const)("maps origin=%s fallback=%s to %s", (origin, fallbackUsed, expected) => {
