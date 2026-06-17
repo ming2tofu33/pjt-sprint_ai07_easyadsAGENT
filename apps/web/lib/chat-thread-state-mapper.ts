@@ -8,6 +8,7 @@ import type {
 } from "@/types/marketing";
 import type { ChatMessageResponse, ChatStateSnapshotResponse, GenerationJob } from "./api-client";
 import { normalizeSelectedChannelId, type ChannelId } from "./ad-formats";
+import { displayContextValue } from "./context-presentation";
 import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "./generation-engine";
 
 export type ThreadSnapshotRestoreState = {
@@ -74,7 +75,10 @@ function copyMode(value: unknown): CopyGenerationMode {
 
 function imageEngine(value: unknown): ImageGenerationEngine {
   const engine = stringValue(value);
-  if (engine === "gpt_image_1" || engine === "gpt_image_2" || engine === "flux2_klein_4b" || engine === "sd35_large") {
+  if (engine === "gpt_image_1") {
+    return DEFAULT_IMAGE_GENERATION_ENGINE;
+  }
+  if (engine === "gpt_image_2" || engine === "flux2_klein_4b" || engine === "sd35_large") {
     return engine;
   }
   if (engine === "flux" || engine === "flux_schnell" || engine === "flux_1_schnell" || engine === "flux2_klein") {
@@ -122,24 +126,9 @@ function copyCandidateOrigin(value: unknown): CopyCandidateOrigin {
   return origin === "llm" || origin === "rule_based" || origin === "fallback" || origin === "unknown" ? origin : "unknown";
 }
 
-const contextDisplayLabels: Record<string, string> = {
-  beauty_nail: "네일샵",
-  beauty_salon: "뷰티/미용실",
-  cafe: "카페",
-  restaurant: "음식점/식당",
-  store: "일반 매장/소매",
-  seasonal_limited: "시즌 한정 홍보",
-  discount_event: "할인 이벤트",
-  new_launch: "신메뉴/신상품 출시",
-  reservation_cta: "예약/방문 유도",
-  brand_awareness: "브랜드 인지도",
-  review_event: "리뷰 이벤트",
-  retention: "재방문 유도"
-};
-
 function contextValue(...values: unknown[]): string {
   const value = firstString(...values);
-  return contextDisplayLabels[value] ?? value;
+  return displayContextValue(value) ?? value;
 }
 
 function optionQuestionFrom(value: unknown): OptionQuestion | null {
@@ -150,12 +139,17 @@ function optionQuestionFrom(value: unknown): OptionQuestion | null {
   if (!field || !text) {
     return null;
   }
+  const progress = asRecord(question.progress_state ?? question.progressState);
+  const current = Number(progress.current_step ?? progress.currentStep ?? progress.current);
+  const total = Number(progress.total_steps ?? progress.totalSteps ?? progress.total);
+  const label = firstString(progress.current_label, progress.currentLabel, progress.label);
   return {
     field,
     question: text,
     options: options as OptionQuestion["options"],
     required: typeof question.required === "boolean" ? question.required : undefined,
-    multi_select: typeof question.multi_select === "boolean" ? question.multi_select : undefined
+    multi_select: typeof question.multi_select === "boolean" ? question.multi_select : undefined,
+    progressState: Number.isFinite(current) && Number.isFinite(total) && label ? { current, total, label } : null
   };
 }
 
@@ -236,6 +230,36 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       payload.promotionGoal,
       currentBrief.promotion_goal,
       currentBrief.promotionGoal
+    ),
+    advertisedSubject: contextValue(
+      payloadContext.advertised_subject,
+      payloadContext.advertisedSubject,
+      metadataContext.advertised_subject,
+      metadataContext.advertisedSubject,
+      payload.advertised_subject,
+      payload.advertisedSubject,
+      currentBrief.advertised_subject,
+      currentBrief.advertisedSubject
+    ),
+    advertisedSubjectType: firstString(
+      payloadContext.advertised_subject_type,
+      payloadContext.advertisedSubjectType,
+      metadataContext.advertised_subject_type,
+      metadataContext.advertisedSubjectType,
+      payload.advertised_subject_type,
+      payload.advertisedSubjectType,
+      currentBrief.advertised_subject_type,
+      currentBrief.advertisedSubjectType
+    ),
+    campaignIntent: contextValue(
+      payloadContext.campaign_intent,
+      payloadContext.campaignIntent,
+      metadataContext.campaign_intent,
+      metadataContext.campaignIntent,
+      payload.campaign_intent,
+      payload.campaignIntent,
+      currentBrief.campaign_intent,
+      currentBrief.campaignIntent
     )
   };
 

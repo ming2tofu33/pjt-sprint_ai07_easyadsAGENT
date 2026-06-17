@@ -13,9 +13,12 @@ export type ProgressState = {
 };
 
 export type InferredContext = {
-  businessType: string;
-  itemOrService: string;
-  promotionGoal: string;
+  businessType?: string | null;
+  itemOrService?: string | null;
+  promotionGoal?: string | null;
+  advertisedSubject?: string | null;
+  advertisedSubjectType?: string | null;
+  campaignIntent?: string | null;
 };
 
 export type PartialInferredContext = Partial<InferredContext>;
@@ -35,6 +38,7 @@ export type OptionQuestion = {
   options: OptionItem[];
   required?: boolean;
   multi_select?: boolean;
+  progressState?: ProgressState | null;
 };
 
 export type ChatTranscriptMessage = {
@@ -181,6 +185,7 @@ export type ChatFlowAction =
       threadId: string;
       context: PartialInferredContext;
       question: OptionQuestion;
+      progress?: ProgressState | null;
       selectedChannelId?: ChannelId | null;
       generationJob?: GenerationJob;
       sourceAssetId?: string | null;
@@ -253,6 +258,7 @@ export type ChatFlowAction =
       type: "generationJobQuestionReceived";
       generationJob: GenerationJob;
       question: OptionQuestion;
+      progress?: ProgressState | null;
       context?: PartialInferredContext;
       sourceAssetId?: string | null;
       sourceImagePath?: string | null;

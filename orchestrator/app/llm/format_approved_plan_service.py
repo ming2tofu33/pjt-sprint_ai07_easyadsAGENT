@@ -341,7 +341,16 @@ def _build_editorial_flyer(
     if _has_ungrounded_flyer_values(proposed_values, input_evidence):
         return FormatApprovedPlanBundle(decision="rejected", reason_codes=[*reason_codes, "invented_flyer_text"], provider_metadata=provider_metadata)
 
-    # Visible structured fields in display order.
+    # Provider output stays grounded but may over-populate optional editorial
+    # fields. Normalize deterministically into the 4-6 visible-text contract
+    # instead of rejecting an otherwise valid evidence-backed plan.
+    optional_values = [body_copy, *info_cards, bottom_notice]
+    visible_tail = _ordered_unique([value for value in optional_values if value])
+    max_optional = max(0, 6 - len(_ordered_unique([headline, subtitle])))
+    visible_tail = visible_tail[:max_optional]
+    body_copy = next((value for value in visible_tail if value == body_copy), None)
+    info_cards = [value for value in visible_tail if value != body_copy and value != bottom_notice][:3]
+    bottom_notice = bottom_notice if bottom_notice in visible_tail and bottom_notice not in info_cards else None
     allowed_texts = _ordered_unique([headline, subtitle, body_copy, *info_cards, bottom_notice])
     try:
         plan = FlyerApprovedCopyPlan(

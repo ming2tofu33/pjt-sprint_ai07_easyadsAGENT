@@ -1,0 +1,48 @@
+[
+  {
+    "case_id": "banner_16_9",
+    "ad_format": "banner",
+    "selected_channel_id": "banner",
+    "user_input": "카페 라떼 배너 광고를 만들어줘",
+    "copy_generation_mode": "custom_input",
+    "user_custom_headline": "카페 라떼",
+    "user_custom_subcopy": "부드럽고 균형 잡힌 한 잔",
+    "expected_width": 1600,
+    "expected_height": 900,
+    "expected_aspect_ratio": "16:9",
+    "expected_cta_visibility": "hidden",
+    "expected_text_block_range": [2, 2],
+    "expected_visible_text_range": [2, 2]
+  },
+  {
+    "case_id": "flyer_a4_vertical",
+    "ad_format": "flyer",
+    "selected_channel_id": "flyer",
+    "user_input": "라떼 카페 라떼 전단지를 만들어줘. 다음 표현만 사용해줘: 에스프레소와 우유로 만든 메뉴. 부드러운 맛. 은은한 단맛. 따뜻하게 또는 아이스로 제공. 매장에서 편하게 즐길 수 있음.",
+    "copy_generation_mode": "custom_input",
+    "user_custom_headline": "라떼 카페 라떼",
+    "user_custom_subcopy": "부드럽고 은은한 단맛의 라떼",
+    "expected_width": 1240,
+    "expected_height": 1754,
+    "expected_aspect_ratio": "A4_vertical",
+    "expected_cta_visibility": "hidden",
+    "flyer_plan_type": "editorial",
+    "expected_text_block_range": [2, 2],
+    "expected_visible_text_range": [4, 6]
+  },
+  {
+    "case_id": "product_detail_4_5",
+    "ad_format": "product_detail",
+    "selected_channel_id": "product_detail",
+    "user_input": "라떼 카페 라떼 상세페이지를 만들어줘. 에스프레소와 우유로 만들고 부드러운 맛과 은은한 단맛이 특징이야. 따뜻하게 또는 아이스로 제공된다는 점도 보여줘.",
+    "copy_generation_mode": "custom_input",
+    "user_custom_headline": "라떼 카페 라떼",
+    "user_custom_subcopy": "부드러운 맛과 은은한 단맛",
+    "expected_width": 1200,
+    "expected_height": 1500,
+    "expected_aspect_ratio": "4:5",
+    "expected_cta_visibility": "hidden",
+    "expected_text_block_range": [2, 2],
+    "expected_visible_text_range": [4, 6]
+  }
+]

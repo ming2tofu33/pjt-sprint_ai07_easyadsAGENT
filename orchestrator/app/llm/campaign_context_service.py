@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from orchestrator.app.schemas.campaign_context import CampaignContext, normalize_string_list
+from orchestrator.app.schemas.campaign_context import CampaignContext, normalize_optional_text, normalize_string_list
 from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
 
 
@@ -27,12 +27,19 @@ def build_campaign_context(
     evidence_refs: Iterable[str] = (),
     confidence: float,
 ) -> CampaignContext:
+    normalized_campaign_intent = normalize_optional_text(campaign_intent)
+    normalized_campaign_status = normalize_optional_text(campaign_status)
+    normalized_promotion_goal = normalize_optional_text(promotion_goal)
+    normalized_desired_positioning = normalize_string_list(desired_positioning)
+    normalized_evidence_refs = normalize_string_list(evidence_refs)
+    if not any((normalized_campaign_intent, normalized_campaign_status, normalized_promotion_goal, normalized_desired_positioning)):
+        return CampaignContext(confidence=confidence)
     return CampaignContext(
-        campaign_intent=campaign_intent,
-        campaign_status=campaign_status,
-        promotion_goal=promotion_goal,
-        desired_positioning=desired_positioning,
-        evidence_refs=evidence_refs,
+        campaign_intent=normalized_campaign_intent,
+        campaign_status=normalized_campaign_status,
+        promotion_goal=normalized_promotion_goal,
+        desired_positioning=normalized_desired_positioning,
+        evidence_refs=normalized_evidence_refs,
         confidence=confidence,
     )
 
