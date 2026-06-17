@@ -46,8 +46,8 @@ def build_copy_prompt_projection(metadata_contract: dict[str, Any], state: dict[
             for phrase in (
                 "Return exactly three distinct candidates",
                 "different message angle",
-                "Avoid generic placeholder language",
-                "headline and subcopy must contain ONLY the final ad text",
+                "different persuasion angle",
+                "avoid repeating the same sentence structure",
             )
         ),
         "forbidden_claim_count": len(list(constraints.get("forbidden_claims") or [])),
@@ -102,21 +102,22 @@ def build_copy_llm_call_lineage(
     selection = _dict(llm_metadata.get("model_selection"))
     result = _dict(llm_metadata.get("llm_call_result"))
     usage = _dict(result.get("token_usage"))
+    llm_attempted = bool(llm_metadata.get("llm_attempted"))
     selected_provider = _string_or_none(selection.get("provider"))
-    executed_provider = _string_or_none(result.get("provider"))
+    executed_provider = _string_or_none(result.get("provider")) if llm_attempted else None
     provider = executed_provider or selected_provider or "unknown"
-    model = (
-        _string_or_none(result.get("model_name"))
-        or _string_or_none(selection.get("model_name"))
+    selected_model = (
+        _string_or_none(selection.get("model_name"))
         or _string_or_none(selection.get("provider_profile"))
         or _string_or_none(selection.get("selected_model_class"))
-        or "unknown"
     )
+    executed_model = _string_or_none(result.get("model_name")) if llm_attempted else None
+    model = executed_model or selected_model or "unknown"
     call_id = _string_or_none(_dict(result.get("metadata")).get("provider_request_id")) or (
         f"{_string_or_none(state.get('thread_id')) or 'thread'}:{_string_or_none(state.get('job_id')) or 'job'}:"
         f"{_string_or_none(selection.get('node_name')) or 'copy_candidate_generation'}"
     )
-    metadata_available = bool(_dict(result.get("metadata"))) or bool(usage)
+    metadata_available = llm_attempted and (bool(_dict(result.get("metadata"))) or bool(usage))
     fallback_used = bool(llm_metadata.get("fallback_used"))
     fallback_reason = _string_or_none(llm_metadata.get("fallback_reason"))
     copy_source_mode = "llm"
@@ -138,6 +139,10 @@ def build_copy_llm_call_lineage(
         "executed_provider": executed_provider,
         "model": model,
         "adapter": adapter_name_for_provider(provider),
+        "selected_model": selected_model,
+        "executed_model": executed_model,
+        "selected_adapter": adapter_name_for_provider(selected_provider),
+        "executed_adapter": adapter_name_for_provider(executed_provider),
         "provider_request_id": _string_or_none(_dict(result.get("metadata")).get("provider_request_id")),
         "call_id": call_id,
         "input_tokens": _int_or_none(usage.get("input_tokens")),
@@ -145,7 +150,7 @@ def build_copy_llm_call_lineage(
         "cached_input_tokens": _int_or_none(usage.get("cached_input_tokens") or usage.get("cached_tokens")),
         "latency_ms": result.get("latency_ms"),
         "copy_source_mode": copy_source_mode,
-        "call_attempted": bool(llm_metadata.get("llm_attempted") or result),
+        "call_attempted": llm_attempted,
         "call_succeeded": bool(result.get("success")) and not fallback_used,
         "fallback_used": fallback_used,
         "fallback_reason": fallback_reason,
@@ -220,7 +225,8 @@ def build_candidate_quality_metrics(
         seen_texts.add(text)
         metadata = _dict(candidate.get("metadata"))
         score = _dict(metadata.get("copy_quality_v2_score"))
-        if _is_generic_only_candidate(text):
+        grounded_refs = candidate_grounded_fact_refs(candidate, input_projection=input_projection)
+        if _is_generic_only_candidate(text) and not grounded_refs:
             generic_only_candidate_count += 1
         angle = _string_or_none(candidate.get("angle"))
         if angle:
@@ -240,6 +246,7 @@ def build_candidate_quality_metrics(
         "candidate_count": len(candidates),
         "explicit_fact_count": explicit_fact_count,
         "fact_hits_by_field": fact_hits,
+        "lexical_fact_coverage": round(covered_fact_count / explicit_fact_count, 3) if explicit_fact_count else 0.0,
         "grounded_fact_coverage": round(covered_fact_count / explicit_fact_count, 3) if explicit_fact_count else 0.0,
         "grounded_candidate_count": grounded_candidates,
         "generic_only_candidate_count": generic_only_candidate_count,

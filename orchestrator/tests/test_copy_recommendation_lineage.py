@@ -87,7 +87,12 @@ def _mock_update(state: dict, *, fallback_used: bool, call_succeeded: bool) -> d
         "provider": "openai",
         "selected_provider": "openai",
         "executed_provider": None if fallback_used else "openai",
+        "selected_model": "gpt-5.4-mini",
+        "executed_model": None if fallback_used else "gpt-5.4-mini",
+        "selected_adapter": "OpenAIAdapter",
+        "executed_adapter": None if fallback_used else "OpenAIAdapter",
         "model": "gpt-5.4-mini",
+        "adapter": "OpenAIAdapter",
         "call_attempted": True,
         "call_succeeded": call_succeeded,
         "fallback_used": fallback_used,
@@ -149,9 +154,10 @@ def test_copy_candidate_generation_emits_stage_split_and_provider_lineage(monkey
         "orchestrator.app.llm.nodes.copy_candidates.run_structured_node",
         lambda *args, **kwargs: (
             llm_output,
-            {
-                "fallback_used": False,
-                "model_selection": {
+                {
+                    "llm_attempted": True,
+                    "fallback_used": False,
+                    "model_selection": {
                     "node_name": "copy_candidate_generation",
                     "provider": "openai",
                     "selected_model_class": "api_mini",
@@ -175,6 +181,10 @@ def test_copy_candidate_generation_emits_stage_split_and_provider_lineage(monkey
     assert trace["lineage"]["provider"] == "openai"
     assert trace["lineage"]["selected_provider"] == "openai"
     assert trace["lineage"]["executed_provider"] == "openai"
+    assert trace["lineage"]["selected_model"] == "gpt-5.4-mini"
+    assert trace["lineage"]["executed_model"] == "gpt-5.4-mini"
+    assert trace["lineage"]["selected_adapter"] == "OpenAIAdapter"
+    assert trace["lineage"]["executed_adapter"] == "OpenAIAdapter"
     assert trace["lineage"]["call_succeeded"] is True
     assert trace["lineage"]["fallback_used"] is False
     assert len(trace["llm_raw_candidates"]) == 3
@@ -196,9 +206,15 @@ def test_prompt_projection_measures_diversity_instruction_from_prompt_text():
         {"context": {}, "current_brief": {"requested_ad_format": "banner"}},
         prompt="Return exactly three distinct candidates with a different message angle.",
     )
+    projection_output_format_only = build_copy_prompt_projection(
+        {"available_state": {"context": {}, "plan_policy": {"max_candidates": 3}}, "constraints": {}},
+        {"context": {}, "current_brief": {"requested_ad_format": "banner"}},
+        prompt="headline and subcopy must contain ONLY the final ad text",
+    )
 
     assert projection_without_diversity["diversity_instruction_present"] is False
     assert projection_with_diversity["diversity_instruction_present"] is True
+    assert projection_output_format_only["diversity_instruction_present"] is False
 
 
 def test_candidate_quality_metrics_are_computed_from_candidates(monkeypatch):
@@ -249,6 +265,7 @@ def test_candidate_quality_metrics_are_computed_from_candidates(monkeypatch):
     assert metrics["fact_hits_by_field"]["time_context"] == 2
     assert metrics["fact_hits_by_field"]["contact_or_order_method"] == 2
     assert metrics["fact_hits_by_field"]["location_text"] == 2
+    assert metrics["lexical_fact_coverage"] == 1.0
     assert metrics["grounded_fact_coverage"] == 1.0
     assert metrics["generic_only_candidate_count"] == 1
     assert metrics["unsupported_claim_count"] == 1
@@ -272,6 +289,7 @@ def test_mock_lineage_runner_writes_expected_artifacts(tmp_path):
     assert summary["status"] == "mock_completed"
     assert summary["run_manifest"]["primary_runs"] == 1
     assert summary["run_manifest"]["control_runs"] == 1
+    assert summary["run_manifest"]["planned_actual_calls"] == 0
     assert summary["run_manifest"]["attempted_actual_calls"] == 0
     assert summary["serialization_projection_comparison"][0]["comparison_type"] == "serialization_projection_comparison"
     assert (run_dir / "input_projection.json").exists()
@@ -302,6 +320,35 @@ def test_actual_lineage_runner_blocks_without_required_env(monkeypatch, tmp_path
     assert "OPENAI_API_KEY" in summary["missing_requirements"]
     assert "EASYADS_ENABLE_LLM_CALLS=true" in summary["missing_requirements"]
     assert "EASYADS_LLM_PROVIDER=openai" in summary["missing_requirements"]
+    assert summary["runner_preflight"]["planned_actual_calls"] == 3
+
+
+def test_actual_lineage_completed_requires_executed_provider():
+    assert lineage_runner.actual_lineage_completed(
+        {
+            "call_attempted": True,
+            "call_succeeded": True,
+            "fallback_used": False,
+            "copy_source_mode": "llm",
+            "selected_provider": "openai",
+            "executed_provider": None,
+            "latency_ms": 100,
+        }
+    ) is False
+
+
+def test_actual_lineage_completed_rejects_executed_mock_provider():
+    assert lineage_runner.actual_lineage_completed(
+        {
+            "call_attempted": True,
+            "call_succeeded": True,
+            "fallback_used": False,
+            "copy_source_mode": "llm",
+            "selected_provider": "openai",
+            "executed_provider": "mock",
+            "latency_ms": 100,
+        }
+    ) is False
 
 
 def test_actual_fallback_is_not_marked_completed_and_preserves_stage_split(monkeypatch, tmp_path):
@@ -328,7 +375,12 @@ def test_actual_fallback_is_not_marked_completed_and_preserves_stage_split(monke
     summary = lineage_runner.build_summary(args, env_report={"env_file_found": False}, output_dir=tmp_path)
 
     assert summary["status"] == "failed"
+    assert summary["run_manifest"]["planned_actual_calls"] == 3
     assert all(run["status"] == "completed_with_fallback" for run in summary["run_manifest"]["runs"])
+    assert summary["run_manifest"]["attempted_actual_calls"] == 3
+    assert summary["run_manifest"]["succeeded_actual_calls"] == 0
+    assert summary["run_manifest"]["failed_actual_calls"] == 3
+    assert summary["run_manifest"]["fallback_actual_calls"] == 3
     assert all(item["llm_raw_candidate_count"] == 0 for item in summary["stage_comparison"])
     assert all(item["fallback_candidate_count"] == 3 for item in summary["stage_comparison"])
 
@@ -357,6 +409,33 @@ def test_actual_runner_uses_split_budget_and_marks_real_success(monkeypatch, tmp
     summary = lineage_runner.build_summary(args, env_report={"env_file_found": False}, output_dir=tmp_path)
 
     assert summary["status"] == "completed"
+    assert summary["run_manifest"]["planned_actual_calls"] == 5
     assert summary["run_manifest"]["attempted_actual_calls"] == 5
+    assert summary["run_manifest"]["succeeded_actual_calls"] == 5
+    assert summary["run_manifest"]["failed_actual_calls"] == 0
+    assert summary["run_manifest"]["fallback_actual_calls"] == 0
     assert len(summary["run_manifest"]["runs"]) == 5
     assert all(run["status"] == "completed" for run in summary["run_manifest"]["runs"])
+
+
+def test_actual_runner_blocks_when_planned_calls_exceed_budget(monkeypatch, tmp_path):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(
+        lineage_runner,
+        "get_llm_settings",
+        lambda: LLMSettings(enable_api_call=True, default_provider="openai", llm_model="gpt-5.4-mini"),
+    )
+    args = argparse.Namespace(
+        mode="actual",
+        primary_runs=3,
+        control_runs=1,
+        max_actual_calls=4,
+        confirm_paid_calls=True,
+        env_file=None,
+    )
+
+    summary = lineage_runner.build_summary(args, env_report={"env_file_found": False}, output_dir=tmp_path)
+
+    assert summary["status"] == "blocked"
+    assert summary["runner_preflight"]["planned_actual_calls"] == 5
+    assert "actual_plan_exceeds_call_budget" in summary["missing_requirements"]

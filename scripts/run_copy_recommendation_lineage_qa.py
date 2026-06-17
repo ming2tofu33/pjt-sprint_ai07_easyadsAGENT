@@ -115,6 +115,11 @@ def build_summary(args: argparse.Namespace, *, env_report: dict[str, Any], outpu
     serialization_projection_comparison: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
 
+    planned_actual_calls = count_planned_actual_calls(args)
+    succeeded_actual_calls = 0
+    failed_actual_calls = 0
+    fallback_actual_calls = 0
+
     preflight = build_runner_preflight(args)
     missing = list(preflight["missing_requirements"])
     for case_id, case, run_index, is_control in iter_case_runs(args):
@@ -147,6 +152,14 @@ def build_summary(args: argparse.Namespace, *, env_report: dict[str, Any], outpu
             lineage=lineage,
             serialization_matched=comparison["matched"],
         )
+        if args.mode == "actual" and actual_allowed:
+            if actual_lineage_completed(lineage):
+                succeeded_actual_calls += 1
+            elif lineage.get("fallback_used"):
+                fallback_actual_calls += 1
+                failed_actual_calls += 1
+            else:
+                failed_actual_calls += 1
 
         write_json(case_dir / "input_projection.json", input_projection)
         write_json(case_dir / "prompt_projection.json", trace.get("prompt_projection") or {})
@@ -218,8 +231,12 @@ def build_summary(args: argparse.Namespace, *, env_report: dict[str, Any], outpu
             "runs": run_items,
             "primary_runs": args.primary_runs,
             "control_runs": args.control_runs,
+            "planned_actual_calls": planned_actual_calls,
             "max_actual_calls": args.max_actual_calls,
             "attempted_actual_calls": budget.attempted,
+            "succeeded_actual_calls": succeeded_actual_calls,
+            "failed_actual_calls": failed_actual_calls,
+            "fallback_actual_calls": fallback_actual_calls,
         },
         "llm_calls": llm_calls,
         "stage_comparison": stage_comparison,
@@ -240,7 +257,8 @@ def iter_case_runs(args: argparse.Namespace):
 
 def build_runner_preflight(args: argparse.Namespace) -> dict[str, Any]:
     settings = get_llm_settings()
-    missing = missing_actual_requirements(args, settings=settings)
+    planned_actual_calls = count_planned_actual_calls(args)
+    missing = missing_actual_requirements(args, settings=settings, planned_actual_calls=planned_actual_calls)
     return {
         "canonical_settings": {
             "enable_api_call": settings.enable_api_call,
@@ -248,6 +266,7 @@ def build_runner_preflight(args: argparse.Namespace) -> dict[str, Any]:
             "llm_model": settings.llm_model,
             "provider_strict_mode": settings.provider_strict_mode,
         },
+        "planned_actual_calls": planned_actual_calls,
         "missing_requirements": missing,
     }
 
@@ -344,14 +363,14 @@ def derive_run_status(*, mode: str, actual_allowed: bool, lineage: dict[str, Any
 
 
 def actual_lineage_completed(lineage: dict[str, Any]) -> bool:
-    provider = str(lineage.get("provider") or "").strip().lower()
+    executed_provider = str(lineage.get("executed_provider") or "").strip().lower()
     return bool(
         lineage.get("call_attempted")
         and lineage.get("call_succeeded")
         and not lineage.get("fallback_used")
         and lineage.get("copy_source_mode") == "llm"
-        and provider
-        and provider != "mock"
+        and executed_provider
+        and executed_provider != "mock"
         and (lineage.get("latency_ms") or 0) > 0
     )
 
@@ -368,10 +387,17 @@ def build_report(summary: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def missing_actual_requirements(args: argparse.Namespace, *, settings=None) -> list[str]:
+def count_planned_actual_calls(args: argparse.Namespace) -> int:
+    if args.mode != "actual":
+        return 0
+    return len(list(iter_case_runs(args)))
+
+
+def missing_actual_requirements(args: argparse.Namespace, *, settings=None, planned_actual_calls: int | None = None) -> list[str]:
     if args.mode != "actual":
         return []
     settings = settings or get_llm_settings()
+    planned_actual_calls = planned_actual_calls if planned_actual_calls is not None else count_planned_actual_calls(args)
     missing: list[str] = []
     if not settings.enable_api_call:
         missing.append("EASYADS_ENABLE_LLM_CALLS=true")
@@ -381,6 +407,8 @@ def missing_actual_requirements(args: argparse.Namespace, *, settings=None) -> l
         missing.append("OPENAI_API_KEY")
     if args.max_actual_calls < 1:
         missing.append("max_actual_calls_positive")
+    if planned_actual_calls > args.max_actual_calls:
+        missing.append("actual_plan_exceeds_call_budget")
     return missing
 
 
