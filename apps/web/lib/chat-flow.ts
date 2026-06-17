@@ -129,6 +129,8 @@ export function createInitialChatFlowState(): ChatFlowState {
     copyCandidates: [],
     copyCandidateSource: "empty",
     copyCandidateOrigin: "unknown",
+    copyFallbackUsed: false,
+    copyFallbackReason: null,
     copyGenerationMode: "suggest_candidates",
     selectedTone: "\uac10\uc131\uc801\uc778",
     selectedCopyId: "",
@@ -297,6 +299,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         copyCandidates: nextCopyCandidates,
         copyCandidateSource: action.copyCandidateSource ?? (hasBackendCopyCandidates ? "backend" : "empty"),
         copyCandidateOrigin: hasBackendCopyCandidates ? action.copyCandidateOrigin ?? "unknown" : "unknown",
+        copyFallbackUsed: hasBackendCopyCandidates ? action.copyFallbackUsed ?? false : false,
+        copyFallbackReason: hasBackendCopyCandidates ? action.copyFallbackReason ?? null : null,
         copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
         selectedImageGenerationEngine: normalizeImageGenerationEngine(
           action.imageGenerationEngine ?? state.selectedImageGenerationEngine
@@ -472,6 +476,8 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         copyCandidates: action.copyCandidates,
         copyCandidateSource: action.copyCandidates.length > 0 ? "backend" : "empty",
         copyCandidateOrigin: action.copyCandidateOrigin,
+        copyFallbackUsed: action.copyFallbackUsed ?? false,
+        copyFallbackReason: action.copyFallbackReason ?? null,
         selectedCopyId: action.selectedCopyId,
         selectedChannelId: action.selectedChannelId ?? state.selectedChannelId,
         selectedTone: action.selectedTone,

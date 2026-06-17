@@ -71,7 +71,7 @@ export type CopyOption = {
 };
 
 export type CopyCandidateSource = "empty" | "sample" | "backend";
-export type CopyCandidateOrigin = "unknown" | "llm" | "rule_based" | "fallback";
+export type CopyCandidateOrigin = "unknown" | "llm" | "rule_based" | "fallback" | "mock";
 export type CopyGenerationMode = "suggest_candidates" | "auto_pilot" | "custom_input" | "no_copy";
 
 export type CustomCopyFields = {
@@ -124,6 +124,8 @@ export type ChatFlowState = {
   copyCandidates: CopyOption[];
   copyCandidateSource: CopyCandidateSource;
   copyCandidateOrigin: CopyCandidateOrigin;
+  copyFallbackUsed: boolean;
+  copyFallbackReason: string | null;
   copyGenerationMode: CopyGenerationMode;
   selectedTone: string;
   selectedCopyId: string;
@@ -171,6 +173,8 @@ export type ChatFlowAction =
       recommendedCopyId?: string | null;
       copyCandidateSource?: CopyCandidateSource;
       copyCandidateOrigin?: CopyCandidateOrigin;
+      copyFallbackUsed?: boolean;
+      copyFallbackReason?: string | null;
       selectedChannelId?: ChannelId | null;
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
@@ -228,6 +232,8 @@ export type ChatFlowAction =
       copyGenerationMode: CopyGenerationMode;
       copyCandidates: CopyOption[];
       copyCandidateOrigin: CopyCandidateOrigin;
+      copyFallbackUsed?: boolean;
+      copyFallbackReason?: string | null;
       selectedCopyId: string;
       selectedChannelId: ChannelId | null;
       selectedTone: string;

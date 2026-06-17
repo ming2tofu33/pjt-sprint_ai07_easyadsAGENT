@@ -73,6 +73,8 @@ export type ChatStartResponse = {
   copyCandidates: CopyOption[];
   recommendedCopyId?: string | null;
   copyCandidateOrigin?: CopyCandidateOrigin;
+  copyFallbackUsed?: boolean;
+  copyFallbackReason?: string | null;
   copyGenerationMode?: CopyGenerationMode;
   selectedChannelId?: string | null;
 };

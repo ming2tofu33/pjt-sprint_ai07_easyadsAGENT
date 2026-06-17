@@ -11,6 +11,8 @@ export type GeneratedCreativeSnapshot = {
   copyCandidates: CopyOption[];
   copyCandidateSource?: CopyCandidateSource;
   copyCandidateOrigin?: CopyCandidateOrigin;
+  copyFallbackUsed?: boolean;
+  copyFallbackReason?: string | null;
   selectedCopyId: string;
   selectedChannelId: string;
   selectedTone: string;

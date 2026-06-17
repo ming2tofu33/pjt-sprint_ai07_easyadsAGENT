@@ -103,7 +103,7 @@ function asNumber(value: unknown): number | null {
 }
 
 function asCopyCandidateOrigin(value: unknown): CopyCandidateOrigin {
-  return value === "llm" || value === "rule_based" || value === "fallback" || value === "unknown" ? value : "unknown";
+  return value === "llm" || value === "rule_based" || value === "fallback" || value === "mock" || value === "unknown" ? value : "unknown";
 }
 
 function normalizeCandidateMetadata(raw: unknown): CopyOption["metadata"] | undefined {

@@ -43,25 +43,31 @@ export function CopyChannelStep({
 
 type CopyChannelCardProps = Omit<CopyChannelStepProps, "onBack" | "onDelete">;
 
-function copyCandidateOriginLabel(origin: CopyCandidateOrigin): string {
-  if (origin === "llm") {
-    return "AI 생성";
+export function copyCandidateOriginLabel(origin: CopyCandidateOrigin, fallbackUsed = false): string {
+  if (fallbackUsed || origin === "fallback") {
+    return "임시 추천 문구";
   }
-  if (origin === "fallback") {
-    return "안전 추천";
+  if (origin === "llm") {
+    return "AI 추천 문구";
+  }
+  if (origin === "mock") {
+    return "테스트 추천 문구";
   }
   if (origin === "rule_based") {
-    return "자동 추천";
+    return "기본 추천 문구";
   }
-  return "요청 기반";
+  return "추천 문구";
 }
 
-function copyCandidateOriginNote(origin: CopyCandidateOrigin): string {
+export function copyCandidateOriginNote(origin: CopyCandidateOrigin, fallbackUsed = false): string {
+  if (fallbackUsed || origin === "fallback") {
+    return "AI 문구 생성이 완료되지 않아 기본 추천 문구를 표시했습니다.";
+  }
   if (origin === "llm") {
     return "AI가 이번 요청을 바탕으로 만든 문구 후보예요. 선택한 문구가 이미지에 반영됩니다.";
   }
-  if (origin === "fallback") {
-    return "AI 응답 대신 요청 정보를 바탕으로 안전한 추천 문구를 준비했어요. 선택한 문구가 이미지에 반영됩니다.";
+  if (origin === "mock") {
+    return "테스트 환경에서 준비된 추천 문구입니다.";
   }
   if (origin === "rule_based") {
     return "요청 정보를 바탕으로 어울리는 추천 문구를 준비했어요. 선택한 문구가 이미지에 반영됩니다.";
@@ -79,8 +85,8 @@ export function CopyChannelCard({
   const hasBackendSession = Boolean(state.jobId && state.threadId);
   const usesDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
   const hasBackendCopyCandidates = state.copyCandidateSource === "backend" && state.copyCandidates.length > 0;
-  const originLabel = copyCandidateOriginLabel(state.copyCandidateOrigin);
-  const originNote = copyCandidateOriginNote(state.copyCandidateOrigin);
+  const originLabel = copyCandidateOriginLabel(state.copyCandidateOrigin, state.copyFallbackUsed);
+  const originNote = copyCandidateOriginNote(state.copyCandidateOrigin, state.copyFallbackUsed);
   const cannotContinue = state.isLoading || !hasBackendSession || (!usesDeferredCopySelection && !hasBackendCopyCandidates);
   const progressPercent = state.progress.total > 0 ? `${Math.max(0, Math.min(100, (state.progress.current / state.progress.total) * 100))}%` : "0%";
 

@@ -18,6 +18,8 @@ export type ThreadSnapshotRestoreState = {
   copyGenerationMode: CopyGenerationMode;
   copyCandidates: CopyOption[];
   copyCandidateOrigin: CopyCandidateOrigin;
+  copyFallbackUsed: boolean;
+  copyFallbackReason: string | null;
   selectedCopyId: string;
   selectedChannelId: ChannelId | null;
   selectedTone: string;
@@ -122,7 +124,11 @@ function copyCandidatesFrom(value: unknown): CopyOption[] {
 
 function copyCandidateOrigin(value: unknown): CopyCandidateOrigin {
   const origin = stringValue(value);
-  return origin === "llm" || origin === "rule_based" || origin === "fallback" || origin === "unknown" ? origin : "unknown";
+  return origin === "llm" || origin === "rule_based" || origin === "fallback" || origin === "mock" || origin === "unknown" ? origin : "unknown";
+}
+
+function booleanValue(value: unknown): boolean {
+  return typeof value === "boolean" ? value : false;
 }
 
 function optionQuestionFrom(value: unknown): OptionQuestion | null {
@@ -290,6 +296,8 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     copyGenerationMode: copyMode(payload.copy_generation_mode ?? payload.copyGenerationMode),
     copyCandidates,
     copyCandidateOrigin: copyCandidateOrigin(payload.copy_candidate_origin ?? payload.copyCandidateOrigin),
+    copyFallbackUsed: booleanValue(payload.copy_fallback_used ?? payload.copyFallbackUsed),
+    copyFallbackReason: firstString(payload.copy_fallback_reason, payload.copyFallbackReason) || null,
     selectedCopyId: firstString(payload.selected_copy_id, payload.selectedCopyId, copyCandidates[0]?.id),
     selectedChannelId: selectedChannelIdValue(
       payload.selected_channel_id,

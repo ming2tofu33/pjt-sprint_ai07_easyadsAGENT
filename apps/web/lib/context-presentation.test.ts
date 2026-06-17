@@ -32,6 +32,9 @@ describe("context-presentation", () => {
 
   it("maps raw business semantics to display labels only at presentation time", () => {
     expect(contextBusinessSummary({ businessType: "beauty_salon" })).toBe("\ubdf0\ud2f0/\ubbf8\uc6a9");
+    expect(contextBusinessSummary({ businessType: "beauty" })).toBe("\ubdf0\ud2f0/\ubbf8\uc6a9");
+    expect(contextBusinessSummary({ businessType: "food_and_beverage" })).toBe("\uc74c\uc2dd\uc810/\uc2dd\ub2f9");
+    expect(contextBusinessSummary({ businessType: "retail" })).toBe("\ub9e4\uc7a5/\uc18c\ub9e4");
     expect(contextBusinessSummary({ businessType: "restaurant" })).toBe("\uc74c\uc2dd\uc810/\uc2dd\ub2f9");
   });
 
