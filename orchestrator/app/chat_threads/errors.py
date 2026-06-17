@@ -30,6 +30,11 @@ class ChatThreadHasPendingJobError(ChatThreadServiceError):
         super().__init__("chat_thread_has_pending_job", message)
 
 
+class ChatThreadRequiresContinuationModeError(ChatThreadServiceError):
+    def __init__(self, message: str = "Chat thread requires continuationMode.") -> None:
+        super().__init__("chat_thread_requires_continuation_mode", message)
+
+
 class InvalidChatThreadRequestError(ChatThreadServiceError):
     def __init__(self, message: str = "Invalid chat thread request.") -> None:
         super().__init__("invalid_chat_thread_request", message)

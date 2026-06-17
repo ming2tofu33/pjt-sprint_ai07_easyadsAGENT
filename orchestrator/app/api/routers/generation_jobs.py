@@ -137,6 +137,7 @@ def _chat_thread_error(exc: ChatThreadServiceError) -> None:
         "chat_thread_archived",
         "chat_thread_has_active_job",
         "chat_thread_has_pending_job",
+        "chat_thread_requires_continuation_mode",
         "thread_limit_reached",
     }:
         status_code = 409

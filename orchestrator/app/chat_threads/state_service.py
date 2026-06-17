@@ -225,7 +225,6 @@ def restore_thread_state(
 _NEW_GENERATION_TRANSIENT_KEYS = {
     "job_id",
     "missing_fields",
-    "context",
     "current_brief",
     "marketing_copy",
     "copy_candidates",
@@ -265,6 +264,33 @@ _NEW_GENERATION_TRANSIENT_KEYS = {
     "user_custom_subcopy",
 }
 
+_NEW_GENERATION_TRANSIENT_CONTEXT_KEYS = {
+    "__interrupt__",
+    "current_question",
+    "interrupt",
+    "interrupts",
+    "pending_field",
+    "pending_fields",
+    "pending_interrupt",
+    "pending_option",
+    "pending_options",
+    "pending_question",
+    "question",
+    "resume_payload",
+    "waiting_for",
+}
+
+
+def _strip_transient_context(context: Any) -> dict[str, Any] | None:
+    if not isinstance(context, dict):
+        return None
+    stripped = {
+        key: value
+        for key, value in context.items()
+        if str(key) not in _NEW_GENERATION_TRANSIENT_CONTEXT_KEYS
+    }
+    return stripped or None
+
 
 def restore_thread_state_for_generation(
     latest_snapshot: ChatStateSnapshotResponse | None,
@@ -279,6 +305,11 @@ def restore_thread_state_for_generation(
     if continuation_mode in {"new_turn", "retry_failed", "regenerate_from_output"}:
         for key in _NEW_GENERATION_TRANSIENT_KEYS:
             restored.pop(key, None)
+        stripped_context = _strip_transient_context(restored.get("context"))
+        if stripped_context:
+            restored["context"] = stripped_context
+        else:
+            restored.pop("context", None)
 
     for k, v in current_request_fields.items():
         restored[k] = v
