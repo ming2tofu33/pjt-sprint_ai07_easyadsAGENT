@@ -221,6 +221,74 @@ def restore_thread_state(
     
     return restored
 
+
+_NEW_GENERATION_TRANSIENT_KEYS = {
+    "job_id",
+    "missing_fields",
+    "context",
+    "current_brief",
+    "marketing_copy",
+    "copy_candidates",
+    "copy_candidate_origin",
+    "progress_state",
+    "quality_gate_decision",
+    "quality_gate_status",
+    "quality_gate_retry_feedback",
+    "ocr_gate_decision",
+    "ocr_gate_status",
+    "ocr_gate_retry_feedback",
+    "image_prompt_spec",
+    "copy_spec",
+    "copy_required",
+    "text_layout_spec",
+    "text_style_spec",
+    "text_overlay_pending",
+    "t2i_request",
+    "t2i_result",
+    "candidates",
+    "artifact_refs",
+    "background_validation_report",
+    "safe_area_report",
+    "readability_report",
+    "render_result",
+    "final_validation_report",
+    "result_payload",
+    "final_image_path",
+    "error_message",
+    "error_info",
+    "selected_copy",
+    "selected_copy_id",
+    "selected_channel_id",
+    "selected_tone",
+    "custom_direction",
+    "user_custom_headline",
+    "user_custom_subcopy",
+}
+
+
+def restore_thread_state_for_generation(
+    latest_snapshot: ChatStateSnapshotResponse | None,
+    current_request_fields: dict[str, Any],
+    user_input: str,
+    continuation_mode: str | None,
+) -> dict[str, Any]:
+    from orchestrator.app.chat_threads.state_snapshot import restore_persistent_state
+
+    restored = restore_persistent_state(latest_snapshot.state_payload if latest_snapshot else None)
+
+    if continuation_mode in {"new_turn", "retry_failed", "regenerate_from_output"}:
+        for key in _NEW_GENERATION_TRANSIENT_KEYS:
+            restored.pop(key, None)
+
+    for k, v in current_request_fields.items():
+        restored[k] = v
+
+    restored["user_input"] = user_input
+    restored["continuation_mode"] = continuation_mode
+
+    return restored
+
+
 def get_latest_thread_state_for_user(
     public_thread_id: str,
     user_id: str | None = None,

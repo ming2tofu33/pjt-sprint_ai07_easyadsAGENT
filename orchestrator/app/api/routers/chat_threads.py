@@ -66,6 +66,14 @@ def _handle_service_error(exc: ChatThreadServiceError, thread_id: str) -> None:
     if exc.error_code == "chat_thread_has_active_job":
         _has_active_job(thread_id)
         return
+    if exc.error_code == "chat_thread_has_pending_job":
+        raise_api_error(
+            status_code=409,
+            error_code=exc.error_code,
+            message=exc.message,
+            detail=f"thread_id={thread_id}",
+        )
+        return
     if exc.error_code == "chat_thread_not_found":
         _not_found(thread_id)
         return

@@ -25,6 +25,11 @@ class ChatThreadHasActiveJobError(ChatThreadServiceError):
         super().__init__("chat_thread_has_active_job", message)
 
 
+class ChatThreadHasPendingJobError(ChatThreadServiceError):
+    def __init__(self, message: str = "Chat thread has a generation job waiting for user input.") -> None:
+        super().__init__("chat_thread_has_pending_job", message)
+
+
 class InvalidChatThreadRequestError(ChatThreadServiceError):
     def __init__(self, message: str = "Invalid chat thread request.") -> None:
         super().__init__("invalid_chat_thread_request", message)
