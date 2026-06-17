@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-RUN python -c "import langgraph.checkpoint.postgres"
+RUN python -c "import langgraph.checkpoint.postgres; import numpy"
 
 COPY orchestrator ./orchestrator
 COPY assets/fonts ./assets/fonts
