@@ -13,6 +13,7 @@ import {
   Sparkles,
   User
 } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { brandKitMeta, brandKitTone, readSavedBrandKit, type StoredBrandKit } from "@/lib/brand-kit-storage";
 import { MascotImage } from "./MascotImage";
@@ -46,7 +47,9 @@ export function HomeStartStep({
   return (
     <>
       <header className={styles.dashboardHeader}>
-        <h1>개떡찰떡</h1>
+        <h1 className={styles.dashboardBrand}>
+          <Image alt="개떡찰떡" height={72} src="/brand/gaetteok-wordmark.png" width={72} priority />
+        </h1>
         <div>
           <button aria-label="알림" type="button" onClick={onOpenNotifications}>
             <Bell size={19} aria-hidden="true" />
