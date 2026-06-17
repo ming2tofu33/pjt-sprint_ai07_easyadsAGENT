@@ -203,11 +203,15 @@ def project_intake_to_context(result: IntakeUnderstandingResult) -> tuple[dict[s
 
     normalized = normalize_business_type(result.business_candidate)
     metadata["domain_routing_result"] = normalized.model_dump()
-    if normalized.business_type:
+    if normalized.business_type and _should_project_business_type(result):
         updates["business_type"] = normalized.business_type
-    projected_item = _projectable_item_or_service(result.product_or_service_candidate)
-    if projected_item is None and result.extraction_mode == "hybrid_structured_llm":
-        projected_item = _normalize_phrase(result.product_or_service_candidate)
+    projected_item, rejection_reason = _project_item_candidate(
+        result.product_or_service_candidate,
+        source_text=_source_text_proxy(result),
+    )
+    if rejection_reason:
+        metadata["rejected_item_candidate"] = _normalize_phrase(result.product_or_service_candidate)
+        metadata["rejection_reason"] = rejection_reason
     if projected_item and result.advertised_subject_type in {"product", "service"}:
         updates["item_or_service"] = projected_item
     promotion_goal = _promotion_goal_from_candidate(result.campaign_intent_candidate)
@@ -247,6 +251,7 @@ def _brief_output_to_structured_intake(
     llm_updates: dict[str, Any],
     source_text: str,
 ) -> StructuredIntakeOutput:
+    business_phrase = _normalize_phrase(llm_output.business_type) or _business_subject_phrase(source_text)
     product_phrase = _normalize_phrase(llm_updates.get("item_or_service") or llm_output.item_or_service)
     advertised_subject = product_phrase or _business_subject_phrase(source_text)
     if product_phrase:
@@ -263,12 +268,12 @@ def _brief_output_to_structured_intake(
     )
     target_phrases = tuple(value for value in (_normalize_phrase(llm_output.target_persona),) if value)
     return StructuredIntakeOutput(
-        business_candidate_phrase=None,
+        business_candidate_phrase=business_phrase,
         venue_candidate_phrase=_normalize_phrase(_business_subject_phrase(source_text)),
         advertised_subject=advertised_subject,
         advertised_subject_type=advertised_subject_type,
         product_or_service_phrase=product_phrase,
-        campaign_intent_phrase=_normalize_phrase(llm_output.promotion_goal),
+        campaign_intent_phrase=_normalize_phrase(llm_updates.get("promotion_goal") or llm_output.promotion_goal),
         tone_phrases=tone_phrases,
         target_phrases=target_phrases,
     )
@@ -280,10 +285,16 @@ def _merge_structured_intake(
     source_text: str,
     llm_confidence: float,
 ) -> IntakeUnderstandingResult:
-    business_candidate = deterministic.business_candidate
-    product_candidate = structured.product_or_service_phrase or deterministic.product_or_service_candidate
+    business_candidate = structured.business_candidate_phrase or deterministic.business_candidate
+    product_candidate, _ = _project_item_candidate(
+        structured.product_or_service_phrase or deterministic.product_or_service_candidate,
+        source_text=source_text,
+    )
     advertised_subject = structured.advertised_subject or deterministic.advertised_subject
     advertised_subject_type = structured.advertised_subject_type or deterministic.advertised_subject_type
+    if product_candidate is None and advertised_subject_type in {"product", "service"}:
+        advertised_subject = structured.business_candidate_phrase or structured.venue_candidate_phrase or deterministic.advertised_subject
+        advertised_subject_type = "business" if advertised_subject else None
     campaign_candidate = normalize_campaign_intent(
         structured.campaign_intent_phrase or deterministic.campaign_intent_candidate,
         advertised_subject_type=advertised_subject_type,
@@ -306,6 +317,7 @@ def _merge_structured_intake(
             )
         )
 
+    add_if_present("business_candidate", business_candidate)
     add_if_present("advertised_subject", advertised_subject)
     add_if_present("advertised_subject_type", advertised_subject_type)
     add_if_present("product_or_service_candidate", product_candidate)
@@ -320,6 +332,8 @@ def _merge_structured_intake(
     confidence_map = dict(deterministic.confidence_by_field)
     if product_candidate:
         confidence_map["product_or_service_candidate"] = llm_confidence
+    if business_candidate:
+        confidence_map["business_candidate"] = llm_confidence
     if campaign_candidate:
         confidence_map["campaign_intent_candidate"] = llm_confidence
     if tone_candidates:
@@ -491,6 +505,69 @@ def _projectable_item_or_service(value: str | None) -> str | None:
     if re.fullmatch(r"[A-Za-z0-9 _-]+", candidate):
         return None
     return candidate
+
+
+def _project_item_candidate(
+    value: str | None,
+    *,
+    source_text: str | None = None,
+) -> tuple[str | None, str | None]:
+    candidate = _normalize_phrase(value)
+    if not candidate:
+        return None, None
+    source = _normalize_phrase(source_text)
+    if source:
+        if candidate == source:
+            return None, "whole_prompt_candidate"
+        if len(candidate) >= 40 and len(candidate) / max(len(source), 1) >= 0.55:
+            return None, "whole_prompt_candidate"
+        if candidate in source and len(candidate) >= 40:
+            return None, "instruction_residue_or_whole_prompt"
+    if _contains_request_or_brief_residue(candidate):
+        return None, "instruction_residue_or_whole_prompt"
+    projected = _projectable_item_or_service(candidate)
+    if projected is None and re.fullmatch(r"[A-Za-z0-9 _-]+", candidate):
+        if len(candidate.split()) >= 2:
+            return candidate, None
+        return None, "non_specific_ascii_phrase"
+    return projected, None
+
+
+def _contains_request_or_brief_residue(value: str) -> bool:
+    lowered = value.lower()
+    if any(token in lowered for token in ("create", "make", "poster", "banner", "flyer", "advertisement", "ad")):
+        return True
+    return any(
+        token in value
+        for token in (
+            "만들어",
+            "제작",
+            "광고",
+            "포스터",
+            "배너",
+            "전단지",
+            "상세페이지",
+            "분위기",
+            "느낌",
+            "타깃",
+            "대상",
+            "2030",
+        )
+    )
+
+
+def _source_text_proxy(result: IntakeUnderstandingResult) -> str | None:
+    source_refs = [item.source_ref for item in result.evidence_items if isinstance(item.source_ref, str) and item.source_ref.strip()]
+    if not source_refs:
+        return None
+    return max(source_refs, key=len)
+
+
+def _should_project_business_type(result: IntakeUnderstandingResult) -> bool:
+    for item in result.evidence_items:
+        if item.key == "business_candidate" and item.source != "structured_llm":
+            return True
+    return False
 
 
 def _normalize_phrase(value: str | None) -> str | None:

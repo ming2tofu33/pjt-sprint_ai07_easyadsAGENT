@@ -122,7 +122,7 @@ def test_understand_intake_calls_interpreter_once_when_deterministic_context_is_
 
     assert calls["count"] == 1
     assert result.extraction_mode == "hybrid_structured_llm"
-    assert result.business_candidate is None
+    assert result.business_candidate == "beauty"
     assert result.product_or_service_candidate == "skin care package"
     assert result.campaign_intent_candidate == "reservation_cta"
     assert updates["item_or_service"] == "skin care package"
@@ -130,6 +130,47 @@ def test_understand_intake_calls_interpreter_once_when_deterministic_context_is_
     assert trace["brief_interpreter"]["used"] is True
     assert trace["field_sources"]["product_or_service_candidate"] == "structured_llm"
     assert metadata["domain_routing_result"].get("business_type") is None
+
+
+def test_hybrid_intake_rejects_whole_prompt_item_and_routes_business_candidate_through_ssot():
+    prompt = "Create a poster for our premium beauty salon opening and keep the tone elegant for working women in their 20s and 30s."
+
+    def fake_interpreter(state: dict, text: str):
+        return (
+            BriefInterpreterOutput(
+                business_type="beauty",
+                item_or_service=prompt,
+                promotion_goal="new_launch",
+                tone="premium",
+                confidence=0.93,
+            ),
+            {"llm_attempted": True, "confidence": 0.93},
+        )
+
+    result, _ = understand_intake(
+        _state(prompt, bundle={"user_text": prompt}),
+        prompt,
+        deterministic_hints={"business_type": None, "item_or_service": None, "promotion_goal": None, "ad_format": "poster"},
+        brief_interpreter=fake_interpreter,
+        brief_projector=lambda output, source_text: (
+            {
+                "item_or_service": prompt,
+                "promotion_goal": "store_opening",
+                "brand_tone": "premium",
+            },
+            [],
+        ),
+    )
+    updates, metadata = project_intake_to_context(result)
+
+    assert result.business_candidate == "beauty"
+    assert result.advertised_subject_type == "business"
+    assert result.product_or_service_candidate is None
+    assert result.campaign_intent_candidate == "store_opening"
+    assert "item_or_service" not in updates
+    assert "business_type" not in updates
+    assert metadata["domain_routing_result"]["canonical_domain"] == "beauty"
+    assert metadata["domain_routing_result"]["support_status"] == "needs_evidence"
 
 
 def test_understand_intake_records_structured_fallback_without_retry():
