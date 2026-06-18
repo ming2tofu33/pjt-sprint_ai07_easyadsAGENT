@@ -9,6 +9,14 @@
   *{box-sizing:border-box;margin:0;padding:0}
   body{margin:0;padding:0;overflow:hidden;font-family:'Pretendard',sans-serif;color:#1A1A1A;-webkit-font-smoothing:antialiased}
   .mono{font-family:'SF Mono', Menlo, Consolas, monospace}
+  .role-name{font-size:23px;font-weight:900;color:#1A1A1A;letter-spacing:-.2px}
+  .role-main{font-size:19.5px;font-weight:900;color:#1A1A1A;line-height:1.2;letter-spacing:-.35px}
+  .role-tag{margin-top:6px;font-size:14px;font-weight:900;line-height:1;color:var(--c)}
+  .role-support{font-size:19px;font-weight:850;color:#364459;line-height:1.22;letter-spacing:-.25px}
+  .role-support-tag{margin-top:6px;font-size:14px;font-weight:750;color:#728197;line-height:1}
+  .qa-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:14px;background:#1A1A1A;color:#C8E66B;font-size:12px;font-weight:900;letter-spacing:.8px}
+  .qa-topic{display:flex;align-items:center;gap:10px;min-height:58px;padding:13px 15px;border-radius:15px;background:#FFFFFF;border:1px solid #E8ECEF;font-size:16px;font-weight:850;color:#1A1A1A;line-height:1.25}
+  .qa-topic span{width:9px;height:9px;border-radius:50%;background:var(--c);flex:0 0 auto}
 </style>
 </head>
 <body style="user-select:none">
@@ -36,110 +44,117 @@
   </div>
 
   <!-- Title -->
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:132px;width:1500px;z-index:10">
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:132px;width:1560px;z-index:10">
     <div style="font-size:24px;font-weight:600;color:#5A5A5A;letter-spacing:0.5px;margin-bottom:12px">SLIDE 18 · TEAM RESPONSIBILITIES</div>
     <div style="font-size:66px;font-weight:800;line-height:1.18;letter-spacing:-2px;color:#1A1A1A">
-      각자 담당을 <span style="background:linear-gradient(180deg,transparent 60%,#C8E66B 60%,#C8E66B 92%,transparent 92%)">Lead/Sub Role</span>로 나눴습니다
+      각자 담당을 <span style="background:linear-gradient(180deg,transparent 60%,#C8E66B 60%,#C8E66B 92%,transparent 92%)">Primary / Support</span> 역할로 나눴습니다
     </div>
     <div style="margin-top:20px;font-size:25px;font-weight:500;color:#5A5A5A;line-height:1.5">
-      Lead는 해당 영역의 방향과 완성도를 책임지고, Sub는 인접 영역을 연결합니다
+      Primary는 해당 영역의 설계와 완성도를 책임지고, Support는 연관 기능의 연결과 검증을 보조했습니다
     </div>
   </div>
 
   <!-- Role table -->
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:346px;width:1728px;height:534px;background:#FFFFFF;border:1px solid #E8ECEF;border-radius:18px;box-shadow:0 18px 44px rgba(26,26,26,0.08);z-index:3"></div>
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:346px;width:1728px;height:78px;background:#F7FAFC;border-radius:18px 18px 0 0;border-bottom:1px solid #E2E8F0;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:346px;width:1160px;height:534px;background:#FFFFFF;border:1px solid #E8ECEF;border-radius:18px;box-shadow:0 18px 44px rgba(26,26,26,0.08);z-index:3"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:346px;width:1160px;height:78px;background:#F7FAFC;border-radius:18px 18px 0 0;border-bottom:1px solid #E2E8F0;z-index:4"></div>
 
   <!-- Header -->
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:371px;width:220px;z-index:11">
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:371px;width:150px;z-index:11">
     <div style="font-size:18px;font-weight:900;color:#516174;letter-spacing:0.2px">Member</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:414px;top:371px;width:580px;z-index:11">
-    <div style="font-size:18px;font-weight:900;color:#516174;letter-spacing:0.2px">Lead Role</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:330px;top:371px;width:410px;z-index:11">
+    <div style="font-size:18px;font-weight:900;color:#516174;letter-spacing:0.2px">Primary Role</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1074px;top:371px;width:620px;z-index:11">
-    <div style="font-size:18px;font-weight:900;color:#516174;letter-spacing:0.2px">Sub Role</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:800px;top:371px;width:400px;z-index:11">
+    <div style="font-size:18px;font-weight:900;color:#516174;letter-spacing:0.2px">Support Role</div>
   </div>
 
   <!-- Guides -->
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:374px;top:346px;width:1px;height:534px;background:#EEF2F5;z-index:4"></div>
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:1034px;top:346px;width:1px;height:534px;background:#EEF2F5;z-index:4"></div>
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:515px;width:1728px;height:1px;background:#EDF1F4;z-index:4"></div>
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:606px;width:1728px;height:1px;background:#EDF1F4;z-index:4"></div>
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:697px;width:1728px;height:1px;background:#EDF1F4;z-index:4"></div>
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:788px;width:1728px;height:1px;background:#EDF1F4;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:300px;top:346px;width:1px;height:534px;background:#EEF2F5;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:770px;top:346px;width:1px;height:534px;background:#EEF2F5;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:515px;width:1160px;height:1px;background:#EDF1F4;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:606px;width:1160px;height:1px;background:#EDF1F4;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:697px;width:1160px;height:1px;background:#EDF1F4;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:788px;width:1160px;height:1px;background:#EDF1F4;z-index:4"></div>
 
   <!-- Row 1 -->
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:456px;width:220px;z-index:11">
-    <div style="font-size:24px;font-weight:900;color:#1A1A1A">김도민</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:456px;width:150px;z-index:11">
+    <div class="role-name">김도민</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:414px;top:442px;width:580px;z-index:11">
-    <div style="font-size:22px;font-weight:900;color:#1A1A1A">Product-minded AI Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#4A9A7C;font-weight:900">PM</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:330px;top:442px;width:410px;z-index:11">
+    <div class="role-main">Product-minded AI Engineer</div>
+    <div class="role-tag" style="--c:#4A9A7C">PM</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1074px;top:442px;width:620px;z-index:11">
-    <div style="font-size:21px;font-weight:800;color:#364459">Vision Pipeline Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#728197">제품 이미지 담당</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:800px;top:442px;width:400px;z-index:11">
+    <div class="role-support">Vision Pipeline Engineer</div>
+    <div class="role-support-tag">제품 이미지 담당</div>
   </div>
 
   <!-- Row 2 -->
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:547px;width:220px;z-index:11">
-    <div style="font-size:24px;font-weight:900;color:#1A1A1A">박수성</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:547px;width:150px;z-index:11">
+    <div class="role-name">박수성</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:414px;top:533px;width:580px;z-index:11">
-    <div style="font-size:22px;font-weight:900;color:#1A1A1A">LLM Application Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#E08A60;font-weight:900">텍스트 담당</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:330px;top:533px;width:410px;z-index:11">
+    <div class="role-main">LLM Application Engineer</div>
+    <div class="role-tag" style="--c:#E08A60">텍스트 담당</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1074px;top:533px;width:620px;z-index:11">
-    <div style="font-size:21px;font-weight:800;color:#364459">AI Serving Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#728197">백엔드 담당</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:800px;top:533px;width:400px;z-index:11">
+    <div class="role-support">AI Serving Engineer</div>
+    <div class="role-support-tag">백엔드 담당</div>
   </div>
 
   <!-- Row 3 -->
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:638px;width:220px;z-index:11">
-    <div style="font-size:24px;font-weight:900;color:#1A1A1A">양수빈</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:638px;width:150px;z-index:11">
+    <div class="role-name">양수빈</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:414px;top:624px;width:580px;z-index:11">
-    <div style="font-size:22px;font-weight:900;color:#1A1A1A">Vision Pipeline Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#8A6FB8;font-weight:900">제품 이미지 담당</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:330px;top:624px;width:410px;z-index:11">
+    <div class="role-main">Vision Pipeline Engineer</div>
+    <div class="role-tag" style="--c:#8A6FB8">제품 이미지 담당</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1074px;top:624px;width:620px;z-index:11">
-    <div style="font-size:21px;font-weight:800;color:#364459">AI Evaluation Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#728197">평가 담당</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:800px;top:624px;width:400px;z-index:11">
+    <div class="role-support">AI Evaluation Engineer</div>
+    <div class="role-support-tag">평가 담당</div>
   </div>
 
   <!-- Row 4 -->
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:729px;width:220px;z-index:11">
-    <div style="font-size:24px;font-weight:900;color:#1A1A1A">임운하</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:729px;width:150px;z-index:11">
+    <div class="role-name">임운하</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:414px;top:715px;width:580px;z-index:11">
-    <div style="font-size:22px;font-weight:900;color:#1A1A1A">AI Evaluation Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#4A9A7C;font-weight:900">평가 담당</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:330px;top:715px;width:410px;z-index:11">
+    <div class="role-main">AI Evaluation Engineer</div>
+    <div class="role-tag" style="--c:#4A9A7C">평가 담당</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1074px;top:715px;width:620px;z-index:11">
-    <div style="font-size:21px;font-weight:800;color:#364459">Product-minded AI Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#728197">PM</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:800px;top:715px;width:400px;z-index:11">
+    <div class="role-support">Product-minded AI Engineer</div>
+    <div class="role-support-tag">PM</div>
   </div>
 
   <!-- Row 5 -->
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:820px;width:220px;z-index:11">
-    <div style="font-size:24px;font-weight:900;color:#1A1A1A">조찬영</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:820px;width:150px;z-index:11">
+    <div class="role-name">조찬영</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:414px;top:806px;width:580px;z-index:11">
-    <div style="font-size:22px;font-weight:900;color:#1A1A1A">Generative Image Model Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#E08A60;font-weight:900">이미지 담당</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:330px;top:806px;width:410px;z-index:11">
+    <div class="role-main">Generative Image Model Engineer</div>
+    <div class="role-tag" style="--c:#E08A60">이미지 담당</div>
   </div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1074px;top:806px;width:620px;z-index:11">
-    <div style="font-size:21px;font-weight:800;color:#364459">AI Serving Engineer</div>
-    <div style="margin-top:5px;font-size:15px;color:#728197">백엔드 담당</div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:800px;top:806px;width:400px;z-index:11">
+    <div class="role-support">AI Serving Engineer</div>
+    <div class="role-support-tag">백엔드 담당</div>
   </div>
 
-  <!-- Closing bar -->
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:918px;width:1728px;height:72px;background:#1A1A1A;border-radius:18px;z-index:5"></div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:938px;width:1656px;z-index:11">
-    <div style="display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:20px;font-weight:900;color:#FFFFFF;letter-spacing:-0.2px">각 파트별 Lead / Sub 이중 책임 구조</div>
-      <div style="font-size:18px;font-weight:900;color:#C8E66B">질문 받겠습니다</div>
+  <!-- Question card -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1292px;top:346px;width:532px;height:534px;background:linear-gradient(180deg,#FAFAF7 0%,#F7FBE9 100%);border:1px solid #DCEFB4;border-radius:24px;box-shadow:0 18px 44px rgba(122,154,42,0.12);z-index:3"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1328px;top:382px;width:460px;z-index:11">
+    <div class="qa-chip"><span class="icon icon-chat" style="--c:#C8E66B;--s:16px"></span>Q&A SESSION</div>
+    <div style="margin-top:38px;font-size:66px;font-weight:900;letter-spacing:-2px;line-height:1.02;color:#1A1A1A">질문<br>받겠습니다</div>
+    <div style="margin-top:22px;font-size:20px;font-weight:650;color:#5A5A5A;line-height:1.48;word-break:keep-all">
+      Primary / Support로 나눈 책임 구조와 구현 흐름에 대해 편하게 질문해주세요.
+    </div>
+    <div style="margin-top:32px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="qa-topic"><span style="--c:#C8E66B"></span>역할 분담</div>
+      <div class="qa-topic"><span style="--c:#FFC4A3"></span>생성 Lane</div>
+      <div class="qa-topic"><span style="--c:#C9B8E8"></span>검증 구조</div>
+      <div class="qa-topic"><span style="--c:#A8E6D0"></span>서비스 흐름</div>
     </div>
   </div>
 
