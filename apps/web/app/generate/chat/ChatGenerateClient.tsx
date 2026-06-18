@@ -2077,6 +2077,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       recordRenderMark(`poll_iteration_${attempt + 1}`);
       currentJob = response.job;
       dispatch({ type: "generationJobUpdated", generationJob: currentJob });
+      recordRenderMark("reducer_applied");
 
       if (stopForGenerationJobWaitingState(currentJob, initialChatIntake)) {
         return currentJob;
@@ -2107,6 +2108,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       );
       setGenerationStage("brief");
       recordRenderMark("first_data_rendered");
+      window.requestAnimationFrame(() => recordRenderMark("context_summary_visible"));
       lastPrimedStageRef.current = "start";
       setOptimisticSurface("chat");
       router.replace(buildChatStageHrefWithJob("start", { threadId: currentJob.thread_id }));
@@ -2115,6 +2117,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     setGenerationStage("complete");
     recordRenderMark("final_result_visible");
+    window.requestAnimationFrame(() => recordRenderMark("terminal_result_visible"));
     lastPrimedStageRef.current = "complete";
     clearGenerationFailureSnapshot();
     setOptimisticSurface("chat");

@@ -55,7 +55,7 @@ def _process_events_path() -> Path:
 
 
 def new_trace_id() -> str:
-    return f"trace_{uuid4().hex}"
+    return str(uuid4())
 
 
 def new_request_id() -> str:
@@ -206,10 +206,17 @@ def build_event(
         "run_id": context["run_id"],
         "cold_or_warm": context["cold_or_warm"],
         "component": component,
+        "layer": component,
         "operation": operation,
+        "phase": event_type,
         "started_at": started_at or now_iso(),
+        "wall_time_utc": started_at or now_iso(),
         "duration_ms": round(max(duration_ms, 0.0), 3),
         "status": status,
+        "measurement_source": "actual",
+        "deployment_id": os.getenv("RAILWAY_DEPLOYMENT_ID") or os.getenv("VERCEL_DEPLOYMENT_ID"),
+        "replica_id": os.getenv("RAILWAY_REPLICA_ID"),
+        "git_commit_sha": os.getenv("RAILWAY_GIT_COMMIT_SHA") or os.getenv("VERCEL_GIT_COMMIT_SHA"),
         "metadata": metadata or {},
     }
 
@@ -225,6 +232,7 @@ def record_perf_event(event: dict[str, Any]) -> None:
         path = _process_events_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event, ensure_ascii=False, default=str) + "\n"
+        logger.info("easyads_latency_event %s", line.rstrip())
         with _WRITE_LOCK:
             _EVENT_BUFFER.append(line)
             if len(_EVENT_BUFFER) >= _BUFFER_LIMIT:

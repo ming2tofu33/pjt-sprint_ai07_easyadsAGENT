@@ -14,7 +14,7 @@ import type {
 } from "@/types/marketing";
 import { getGenerationEngineOption, resolveGenerationEnginePreference } from "@/lib/generation-engine";
 import { getSupabaseAuthorizationHeader, type RequestHeaders } from "@/lib/supabase/session";
-import { estimateJsonSizeBytes, measureWebPerf, perfTraceEnabled, recordWebPerfEvent } from "@/lib/performance";
+import { estimateJsonSizeBytes, measureWebPerf, perfTraceEnabled, recordWebPerfEvent, traceHeaders } from "@/lib/performance";
 
 const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "");
 
@@ -970,13 +970,13 @@ export function updateBrandKit(brandKitId: string, payload: BrandKitPayload): Pr
 export async function createGenerationJob(payload: GenerationJobCreateInput): Promise<GenerationJobResponse> {
   const requestPayload = compactPayload(payload);
   return withRefreshedSupabaseAuthRetry((authHeaders) =>
-    postJson<GenerationJobResponse>("/api/generation-jobs", requestPayload, authHeaders)
+    postJson<GenerationJobResponse>("/api/generation-jobs", requestPayload, { ...authHeaders, ...traceHeaders() })
   );
 }
 
 export async function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
-  return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`, undefined, authHeaders);
+  return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`, undefined, { ...authHeaders, ...traceHeaders() });
 }
 
 export async function answerGenerationJob(jobId: string, payload: GenerationJobAnswerPayload): Promise<GenerationJobResponse> {
