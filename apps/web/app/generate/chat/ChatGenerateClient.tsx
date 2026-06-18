@@ -39,12 +39,22 @@ import {
   uploadPhotoAsset,
   uploadReferenceAsset,
   recordRenderMark,
+  resolveAuthContext,
   ApiError,
   type ChatTurnResponse,
   type GenerationJob,
   type GenerationStartOptions,
   type ReferenceTemplateCard
 } from "@/lib/api-client";
+import {
+  getGenerationJobPollingDecision,
+  isAbortError,
+  isFailedGenerationJob,
+  isTerminalGenerationJob,
+  isWaitingGenerationJob,
+  MAX_CONSECUTIVE_POLL_ERRORS,
+  withPollingJitter
+} from "@/lib/generation-job-polling";
 import { buildAdHref } from "@/lib/ad-navigation";
 import { archiveItemToCreative } from "@/lib/archive-creative";
 import {
@@ -84,7 +94,6 @@ import { getPendingGenerationJobParsedInterrupt } from "@/lib/generation-job-int
 import {
   DEFAULT_IMAGE_GENERATION_ENGINE,
   getGenerationEngineOption,
-  isTerminalGenerationJobStatus,
   resolveGenerationRunMode,
   type ImageGenerationEngine
 } from "@/lib/generation-engine";
@@ -123,7 +132,6 @@ type ChatGenerateClientProps = {
 
 const ARCHIVE_CREATIVES_CACHE_STORAGE_KEY = "easyads_archive_creatives_cache_v1";
 const ARCHIVE_CREATIVES_CACHE_LIMIT = 20;
-const GENERATION_JOB_POLL_INTERVAL_MS = 1800;
 const GENERATION_JOB_MAX_POLLS = 80;
 const ignoreRouteJobRestore = (_jobId: string) => {};
 const ignoreRouteThreadRestore = (_threadId: string) => {};
@@ -255,6 +263,24 @@ function isBriefReadyResponse(response: ChatTurnResponse): response is Extract<C
 
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Polling aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Polling aborted", "AbortError"));
+    };
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function buildGenerationJobUserInput(state: ChatFlowState) {
@@ -538,7 +564,7 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
   const context = extractGenerationJobContext(payload, metadata);
   const threadId = job.thread_id ?? `thread_${job.job_id}`;
 
-  if (job.status === "waiting_user_input") {
+  if (isWaitingGenerationJob(job)) {
     const interrupt = getPendingGenerationJobParsedInterrupt(job);
     if (interrupt?.type === "copy_candidate_selection") {
       return {
@@ -634,7 +660,7 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
 }
 
 function shouldPollInitialGenerationJob(job: GenerationJob): boolean {
-  return job.status !== "waiting_user_input" && !isTerminalGenerationJobStatus(job.status);
+  return !isWaitingGenerationJob(job) && !isTerminalGenerationJob(job);
 }
 
 function mergeContextFromTurnResponse(
@@ -858,7 +884,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const forceNextPromptNewThreadRef = useRef(false);
   const finalGenerationJobIdsRef = useRef<Set<string>>(new Set());
   const inlinePollingJobIdsRef = useRef<Set<string>>(new Set());
+  const pollingControllerRef = useRef<AbortController | null>(null);
   const appSurface = optimisticSurface ?? initialSurface;
+  useEffect(() => () => pollingControllerRef.current?.abort(), []);
   const prepareMissingGeneratingRoute = useCallback(() => {
     dispatch({ type: "reset" });
     dispatch({ type: "showResultShell" });
@@ -1228,7 +1256,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           clearGenerationFailureSnapshot();
           setShowHistory(false);
 
-          if (job.status === "waiting_user_input") {
+          if (isWaitingGenerationJob(job)) {
             const restoreIntake: InitialChatIntakeContext | undefined = restoreState
               ? {
                   prompt: restoreState.prompt,
@@ -1251,7 +1279,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
             }
           }
 
-          if (isTerminalGenerationJobStatus(job.status)) {
+          if (isTerminalGenerationJob(job)) {
             setGenerationStage("complete");
             lastPrimedStageRef.current = "complete";
             return;
@@ -1290,12 +1318,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const restoreSession = freshChatSessionRef.current;
       let isActive = true;
       const restoreIsStale = () => !isActive || restoreSession !== freshChatSessionRef.current;
-      Promise.all([
-        getChatThread(threadIdParam).catch(() => null),
-        getChatThreadResumeState(threadIdParam).catch(() => null),
-        getChatThreadState(threadIdParam),
-        getChatThreadMessages(threadIdParam, { limit: 120 }).catch(() => ({ success: true as const, messages: [], total: 0 }))
-      ]).then(async ([threadResponse, resumeStateResponse, stateResponse, messagesResponse]) => {
+      resolveAuthContext().then((authContext) => Promise.all([
+        getChatThread(threadIdParam, authContext).catch(() => null),
+        getChatThreadResumeState(threadIdParam, authContext).catch(() => null),
+        getChatThreadState(threadIdParam, authContext),
+        getChatThreadMessages(threadIdParam, { limit: 120, authContext }).catch(() => ({ success: true as const, messages: [], total: 0 }))
+      ])).then(async ([threadResponse, resumeStateResponse, stateResponse, messagesResponse]) => {
         if (restoreIsStale()) {
           return;
         }
@@ -1378,7 +1406,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
             if (stopForGenerationJobWaitingState(waitingJob, restoreIntake)) {
               return;
             }
-            if (isTerminalGenerationJobStatus(waitingJob.status)) {
+            if (isTerminalGenerationJob(waitingJob)) {
               setGenerationStage("complete");
               lastPrimedStageRef.current = "complete";
               return;
@@ -1440,7 +1468,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         ) {
           return;
         }
-        if (isTerminalGenerationJobStatus(restoreState.generationJob.status)) {
+        if (isTerminalGenerationJob(restoreState.generationJob)) {
           setGenerationStage("complete");
           lastPrimedStageRef.current = "complete";
           return;
@@ -1520,30 +1548,47 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
   useEffect(() => {
     const job = state.generationJob;
-    if (appSurface !== "chat" || generationStage !== "complete" || !job || isTerminalGenerationJobStatus(job.status)) {
+    if (appSurface !== "chat" || generationStage !== "complete" || !job || isTerminalGenerationJob(job)) {
       return;
     }
 
     let isActive = true;
     const initialJob = job;
+    const controller = new AbortController();
 
     async function pollNonTerminalCompleteJob() {
       let currentJob = initialJob;
-      while (isActive && !isTerminalGenerationJobStatus(currentJob.status)) {
-        await delay(GENERATION_JOB_POLL_INTERVAL_MS);
+      let attempt = 0;
+      let consecutiveErrors = 0;
+      while (isActive && !isTerminalGenerationJob(currentJob)) {
+        const decision = getGenerationJobPollingDecision({
+          job: currentJob,
+          attempt,
+          consecutiveErrors,
+          documentHidden: document.visibilityState === "hidden"
+        });
+        if (!decision.shouldContinue) {
+          return;
+        }
+        await abortableDelay(withPollingJitter(decision.delayMs), controller.signal).catch(() => undefined);
         if (!isActive) {
           return;
         }
 
         try {
-          const response = await getGenerationJob(currentJob.job_id);
+          const response = await getGenerationJob(currentJob.job_id, { signal: controller.signal });
           currentJob = response.job;
+          consecutiveErrors = 0;
+          attempt += 1;
           if (!isActive) {
             return;
           }
           dispatch({ type: "generationJobUpdated", generationJob: currentJob });
-        } catch {
-          return;
+        } catch (error) {
+          if (isAbortError(error)) {
+            return;
+          }
+          consecutiveErrors += 1;
         }
       }
     }
@@ -1552,6 +1597,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     return () => {
       isActive = false;
+      controller.abort();
     };
   }, [appSurface, generationStage, state.generationJob?.job_id, state.generationJob?.status]);
 
@@ -1656,7 +1702,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       const pendingInterrupt = getPendingGenerationJobParsedInterrupt(response.job);
       if (
-        response.job.status === "waiting_user_input" &&
+        isWaitingGenerationJob(response.job) &&
         pendingInterrupt &&
         pendingInterrupt.type !== "option_question"
       ) {
@@ -2034,7 +2080,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     if (stopForGenerationJobInterrupt(job, initialChatIntake)) {
       return true;
     }
-    if (job.status !== "waiting_user_input") {
+    if (!isWaitingGenerationJob(job)) {
       return false;
     }
 
@@ -2060,34 +2106,90 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }
 
   async function pollGenerationJobUntilDoneOrQuestion(initialJob: GenerationJob, initialChatIntake?: InitialChatIntakeContext): Promise<GenerationJob> {
+    pollingControllerRef.current?.abort();
+    const controller = new AbortController();
+    pollingControllerRef.current = controller;
     let currentJob = initialJob;
+    let consecutiveErrors = 0;
     recordRenderMark("polling_started");
     dispatch({ type: "generationJobUpdated", generationJob: currentJob });
 
     if (stopForGenerationJobWaitingState(currentJob, initialChatIntake)) {
+      recordRenderMark("poll_waiting_user_input");
       return currentJob;
     }
 
-    for (let attempt = 0; attempt < GENERATION_JOB_MAX_POLLS && !isTerminalGenerationJobStatus(currentJob.status); attempt += 1) {
-      if (attempt > 0) {
-        await delay(GENERATION_JOB_POLL_INTERVAL_MS);
-      }
-      const response = await getGenerationJob(currentJob.job_id);
-      recordRenderMark(`poll_iteration_${attempt + 1}`);
-      currentJob = response.job;
-      dispatch({ type: "generationJobUpdated", generationJob: currentJob });
-      recordRenderMark("reducer_applied");
+    try {
+      for (let attempt = 0; attempt < GENERATION_JOB_MAX_POLLS; attempt += 1) {
+        const decision = getGenerationJobPollingDecision({
+          job: currentJob,
+          attempt,
+          consecutiveErrors,
+          documentHidden: document.visibilityState === "hidden"
+        });
+        if (!decision.shouldContinue) {
+          if (decision.reason === "network_error_limit") {
+            throw new Error("네트워크 연결이 불안정해요. 잠시 후 다시 시도해 주세요.");
+          }
+          break;
+        }
 
-      if (stopForGenerationJobWaitingState(currentJob, initialChatIntake)) {
+        if (attempt > 0) {
+          const delayMs = withPollingJitter(decision.delayMs);
+          recordRenderMark(decision.reason === "document_hidden" ? "poll_hidden_tab_delay" : decision.reason === "network_backoff" ? "poll_backoff_applied" : "poll_delay_scheduled");
+          await abortableDelay(delayMs, controller.signal);
+        }
+
+        try {
+          const response = await getGenerationJob(currentJob.job_id, { signal: controller.signal });
+          consecutiveErrors = 0;
+          recordRenderMark(`poll_iteration_${attempt + 1}`);
+          currentJob = response.job;
+          dispatch({ type: "generationJobUpdated", generationJob: currentJob });
+          recordRenderMark("reducer_applied");
+
+          if (stopForGenerationJobWaitingState(currentJob, initialChatIntake)) {
+            recordRenderMark("poll_waiting_user_input");
+            return currentJob;
+          }
+          if (isTerminalGenerationJob(currentJob)) {
+            recordRenderMark("poll_terminal_detected");
+            recordRenderMark("terminal_payload_reused");
+            break;
+          }
+        } catch (error) {
+          if (isAbortError(error)) {
+            recordRenderMark("poll_aborted");
+            return currentJob;
+          }
+          consecutiveErrors += 1;
+          recordRenderMark("poll_network_error");
+          if (consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {
+            throw new Error("네트워크 연결이 불안정해요. 잠시 후 다시 시도해 주세요.");
+          }
+        }
+      }
+    } catch (error) {
+      if (isAbortError(error)) {
+        recordRenderMark("poll_aborted");
         return currentJob;
+      }
+      throw error;
+    } finally {
+      if (pollingControllerRef.current === controller) {
+        pollingControllerRef.current = null;
       }
     }
 
-    if (currentJob.status === "waiting_user_input") {
+    if (isWaitingGenerationJob(currentJob)) {
       throw new Error("추가 질문 정보를 받지 못했어요. 잠시 후 다시 시도해주세요.");
     }
 
-    if (initialChatIntake && currentJob.status !== "failed" && currentJob.status !== "cancelled") {
+    if (!isTerminalGenerationJob(currentJob)) {
+      throw new Error("작업이 예상보다 오래 걸리고 있어요. 잠시 후 다시 확인해 주세요.");
+    }
+
+    if (initialChatIntake && !isFailedGenerationJob(currentJob)) {
       const turnResponse = generationJobToChatTurnResponse(currentJob, initialChatIntake.copyGenerationMode);
       writeChatTurnSnapshot({
         ...initialChatIntake,
@@ -2115,6 +2217,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
 
     setGenerationStage("complete");
+    recordRenderMark("first_result_rendered");
     recordRenderMark("final_result_visible");
     window.requestAnimationFrame(() => recordRenderMark("terminal_result_visible"));
     lastPrimedStageRef.current = "complete";
