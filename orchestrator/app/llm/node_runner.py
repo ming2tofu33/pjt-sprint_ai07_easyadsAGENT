@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any, Callable
 
 from pydantic import BaseModel
@@ -17,6 +19,16 @@ from orchestrator.app.usage import service as usage_service
 
 
 FallbackFn = Callable[[], Any]
+LLM_ADAPTER_OVERRIDE_CTX: ContextVar[Any | None] = ContextVar("easyads_llm_adapter_override", default=None)
+
+
+@contextmanager
+def override_llm_adapter(adapter):
+    token = LLM_ADAPTER_OVERRIDE_CTX.set(adapter)
+    try:
+        yield
+    finally:
+        LLM_ADAPTER_OVERRIDE_CTX.reset(token)
 
 
 def run_structured_node(
@@ -68,7 +80,7 @@ def run_structured_node(
     if selection.provider == "mock":
         return fallback_with_result(state, selection, fallback_fn, "provider_mock_fallback", metadata, selection_payload=selection_payload)
 
-    adapter = get_llm_adapter_safe(selection.provider, settings, allow_mock_fallback=True)
+    adapter = LLM_ADAPTER_OVERRIDE_CTX.get() or get_llm_adapter_safe(selection.provider, settings, allow_mock_fallback=True)
     result = adapter.invoke_structured(output_schema, prompt, selection, metadata=safe_metadata(metadata))
     record_llm_usage_from_result(state, result)
     result_payload = safe_llm_call_result(result)
