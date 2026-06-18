@@ -13,9 +13,9 @@
   .panel{position:absolute;border-radius:22px;border:1px solid #F0EFE9;background:#FAFAF7;z-index:2}
   .badge{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:13px;font-size:12px;font-weight:850;letter-spacing:.8px;white-space:nowrap}
   .badge.orange{background:#FFFFFF;color:#E08A60;border:1px solid #FFE2CF}
-  .badge.black{background:#1A1A1A;color:#C8E66B}
+  .badge.black{background:#F7FBE9;color:#5F7D24;border:1px solid #DCEFB4}
   .flow-grid{display:grid;grid-template-columns:1fr 1.16fr 1fr;gap:22px}
-  .phase{height:492px;border-radius:18px;background:#FFFFFF;border:1px solid #ECEAE4;padding:20px 20px 18px;position:relative}
+  .phase{height:548px;border-radius:18px;background:#FFFFFF;border:1px solid #ECEAE4;padding:20px 20px 18px;position:relative}
   .phase.orange{border-color:#FFDCCA;background:#FFF8F4}
   .phase.green{border-color:#DCEFB4;background:#F7FBE9}
   .phase-title{display:flex;align-items:center;gap:10px;font-size:23px;font-weight:900;letter-spacing:-.4px}
@@ -42,7 +42,7 @@
   .result-pills b.pass{border-color:#DCEFB4;background:#F7FBE9}
   .result-pills b.review{border-color:#E5DBF5;background:#F8F4FD}
   .result-pills b.reject{border-color:#FFD4D4;background:#FFF7F7}
-  .to-next{position:absolute;top:276px;width:40px;height:40px;border-radius:50%;background:#FFFFFF;border:1px solid #FFE2CF;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#E08A60;z-index:6;box-shadow:0 8px 22px rgba(224,138,96,.10)}
+  .to-next{position:absolute;top:612px;width:40px;height:40px;border-radius:50%;background:#FFFFFF;border:1px solid #FFE2CF;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;color:#E08A60;z-index:6;box-shadow:0 8px 22px rgba(224,138,96,.10)}
   .scope-row{display:grid;grid-template-columns:1.12fr .74fr 1.18fr;gap:9px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.07)}
   .scope-row:last-child{border-bottom:0}
   .scope-feature{font-size:13px;font-weight:850;color:#1A1A1A;line-height:1.26;letter-spacing:-.15px;word-break:keep-all}
@@ -146,9 +146,9 @@
           <span>렌더링 방식과 엔진 준비 상태를 함께 확인</span>
         </div>
         <div class="lane-chips">
-          <div class="lane-chip">GPT Image 2 Native <small>실제 생성 검증</small></div>
-          <div class="lane-chip">Local / PIL Lane <small>실험 · 보조</small></div>
-          <div class="lane-chip">Mock / fallback <small>개발 · 테스트</small></div>
+          <div class="lane-chip">GPT Image 2 Native <small>actual artifact 검증</small></div>
+          <div class="lane-chip">FLUX / SD Local <small>guarded actual + 보조</small></div>
+          <div class="lane-chip">Mock / fallback <small>CI · 개발 검증</small></div>
         </div>
         <div class="node">
           <strong>OCR / 가독성 / 품질 검증</strong>
@@ -168,7 +168,7 @@
   </div>
 
   <div data-object="true" data-object-type="shape" class="to-next" style="left:462px">→</div>
-  <div data-object="true" data-object-type="shape" class="to-next" style="left:862px">→</div>
+  <div data-object="true" data-object-type="shape" class="to-next" style="left:887px">→</div>
 
   <!-- Scope table -->
   <div data-object="true" data-object-type="shape" class="panel" style="left:1320px;top:294px;width:504px;height:650px;background:linear-gradient(180deg,#FFF8F4 0%,#FFF0E8 100%);border-color:#FFE2CF"></div>
@@ -200,37 +200,36 @@
       </div>
       <div class="scope-row">
         <div class="scope-feature">GPT Image 2 Native Lane</div>
-        <div><span class="pill verified">실제 검증</span></div>
-        <div class="scope-evidence">캡처 기반 시연</div>
+        <div><span class="pill verified">actual artifact</span></div>
+        <div class="scope-evidence">검증 완료 사례 있음</div>
       </div>
       <div class="scope-row">
         <div class="scope-feature">FLUX / SD Local Lane</div>
-        <div><span class="pill helper">실험 · 보조</span></div>
-        <div class="scope-evidence">보조 경로로 설명</div>
+        <div><span class="pill helper">guarded actual</span></div>
+        <div class="scope-evidence">보조 lane</div>
       </div>
       <div class="scope-row">
         <div class="scope-feature">Mock / fallback Lane</div>
-        <div><span class="pill test">테스트용</span></div>
-        <div class="scope-evidence">실제 결과와 구분</div>
+        <div><span class="pill test">CI · 개발</span></div>
+        <div class="scope-evidence">결정론적 검증</div>
       </div>
       <div class="scope-row">
         <div class="scope-feature">Eval Layer</div>
-        <div><span class="pill test">검증용</span></div>
-        <div class="scope-evidence">최종 판정 구조 요약</div>
+        <div><span class="pill test">판단 구조</span></div>
+        <div class="scope-evidence">최종 판정 구조</div>
       </div>
     </div>
 
-    <div style="margin-top:12px;padding:13px 16px;border-radius:16px;background:#1A1A1A;color:#FFFFFF">
-      <div style="font-size:11px;font-weight:900;color:#C8E66B;letter-spacing:1px">PRESENTATION POINT</div>
+    <div style="margin-top:12px;padding:13px 16px;border-radius:16px;background:#F7FBE9;border:1px solid #DCEFB4;color:#1A1A1A">
+      <div style="font-size:11px;font-weight:900;color:#7A9A2A;letter-spacing:1px">PRESENTATION POINT</div>
       <div style="margin-top:7px;font-size:14px;font-weight:850;line-height:1.32">노드 이름을 외우게 하는 대신,<br>상태가 어디서 멈추고 어디로 돌아가는지 보여줍니다.</div>
     </div>
   </div>
 
   <!-- Bottom message -->
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:970px;width:1728px;height:50px;background:#1A1A1A;border-radius:14px;z-index:2"></div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:126px;top:984px;width:1668px;z-index:11;text-align:center">
-    <div style="font-size:17px;font-weight:800;color:#FFFFFF;line-height:1.3">
-      <span style="color:#C8E66B;letter-spacing:1px">핵심</span> · LangGraph는 단발성 생성이 아니라, 정보 부족 · 문구 위험 · OCR 실패 · 수동 검토를 상태로 관리하는 실행 그래프입니다
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:1018px;width:1728px;z-index:10;text-align:center">
+    <div style="font-size:18px;font-weight:750;color:#5A5A5A;line-height:1.3">
+      LangGraph는 단발성 생성이 아니라, 정보 부족 · 문구 위험 · OCR 실패 · 수동 검토를 상태로 관리하는 실행 그래프입니다
     </div>
   </div>
 
