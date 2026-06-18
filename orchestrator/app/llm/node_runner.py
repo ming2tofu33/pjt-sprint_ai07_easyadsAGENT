@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+from time import perf_counter_ns
+from uuid import uuid4
 from typing import Any, Callable
 
 from pydantic import BaseModel
@@ -20,6 +22,7 @@ from orchestrator.app.usage import service as usage_service
 
 FallbackFn = Callable[[], Any]
 LLM_ADAPTER_OVERRIDE_CTX: ContextVar[Any | None] = ContextVar("easyads_llm_adapter_override", default=None)
+LLM_CALL_EVENT_SINK_CTX: ContextVar[Any | None] = ContextVar("easyads_llm_call_event_sink", default=None)
 
 
 @contextmanager
@@ -29,6 +32,15 @@ def override_llm_adapter(adapter):
         yield
     finally:
         LLM_ADAPTER_OVERRIDE_CTX.reset(token)
+
+
+@contextmanager
+def capture_llm_call_events(sink):
+    token = LLM_CALL_EVENT_SINK_CTX.set(sink)
+    try:
+        yield
+    finally:
+        LLM_CALL_EVENT_SINK_CTX.reset(token)
 
 
 def run_structured_node(
@@ -81,7 +93,14 @@ def run_structured_node(
         return fallback_with_result(state, selection, fallback_fn, "provider_mock_fallback", metadata, selection_payload=selection_payload)
 
     adapter = LLM_ADAPTER_OVERRIDE_CTX.get() or get_llm_adapter_safe(selection.provider, settings, allow_mock_fallback=True)
-    result = adapter.invoke_structured(output_schema, prompt, selection, metadata=safe_metadata(metadata))
+    call_id = f"llm_{uuid4().hex}"
+    started_ns = perf_counter_ns()
+    try:
+        result = adapter.invoke_structured(output_schema, prompt, selection, metadata=safe_metadata(metadata))
+    except Exception as exc:
+        _emit_llm_call_event(call_id, selection, output_schema, started_ns, None, exc)
+        raise
+    _emit_llm_call_event(call_id, selection, output_schema, started_ns, result, None)
     record_llm_usage_from_result(state, result)
     result_payload = safe_llm_call_result(result)
     append_llm_call_result_safe(state, result_payload)
@@ -97,6 +116,33 @@ def run_structured_node(
         except Exception:
             return fallback_with_result(state, selection, fallback_fn, "structured_output_validation_failed", metadata, attempted_result=result, selection_payload=selection_payload)
     return fallback_with_metadata(selection, selection_payload, fallback_fn, result.error or "llm_call_failed", result_payload)
+
+
+def _emit_llm_call_event(call_id, selection, output_schema, started_ns, result, exc) -> None:
+    sink = LLM_CALL_EVENT_SINK_CTX.get()
+    if sink is None:
+        return
+    ended_ns = perf_counter_ns()
+    result_metadata = getattr(result, "metadata", None) or {}
+    raw_text = getattr(result, "raw_text", None)
+    token_usage = getattr(result, "token_usage", None)
+    error = getattr(result, "error", None) or (f"{type(exc).__name__}" if exc else None)
+    sink({
+        "event_type": "llm_call_finished", "llm_call_id": call_id,
+        "node_name": selection.node_name, "started_at_ns": started_ns, "ended_at_ns": ended_ns,
+        "call_attempted": True, "call_succeeded": bool(getattr(result, "success", False)) if result is not None else False,
+        "error_code": error, "selected_provider": selection.provider,
+        "executed_provider": result_metadata.get("provider") or selection.provider,
+        "selected_model_class": selection.selected_model_class, "selected_model": selection.model_name,
+        "executed_model": result_metadata.get("model") or selection.model_name,
+        "token_usage": token_usage, "retry_count": int(result_metadata.get("retry_count") or 0),
+        "fallback_used": bool(result_metadata.get("fallback_used")), "fallback_reason": result_metadata.get("fallback_reason"),
+        "structured_output_used": True, "structured_parse_succeeded": error != "structured_output_parse_failed",
+        "structured_schema_succeeded": error != "structured_output_schema_invalid",
+        "output_schema_name": getattr(output_schema, "__name__", type(output_schema).__name__),
+        "raw_output_present": bool(raw_text), "raw_output_length": len(raw_text) if isinstance(raw_text, str) else 0,
+        "validation_error_paths": result_metadata.get("validation_error_paths") or [],
+    })
 
 
 def fallback_with_result(
