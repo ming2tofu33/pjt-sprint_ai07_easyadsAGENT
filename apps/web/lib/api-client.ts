@@ -16,6 +16,16 @@ import { getGenerationEngineOption, resolveGenerationEnginePreference } from "@/
 import { getSupabaseAuthorizationHeader, type RequestHeaders } from "@/lib/supabase/session";
 import { estimateJsonSizeBytes, measureWebPerf, perfTraceEnabled, recordWebPerfEvent, traceHeaders } from "@/lib/performance";
 
+export type AuthContext = { authorizationHeaders: RequestHeaders };
+
+export async function resolveAuthContext(): Promise<AuthContext> {
+  return { authorizationHeaders: await getSupabaseAuthorizationHeader() };
+}
+
+async function authHeadersFrom(context?: AuthContext): Promise<RequestHeaders> {
+  return context?.authorizationHeaders ?? getSupabaseAuthorizationHeader();
+}
+
 const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "");
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -951,8 +961,12 @@ export async function unpublishAdminReferenceTemplate(templateId: string): Promi
   return postJson<RawAdminReferenceItemResponse>(`/api/admin/references/${encodeURIComponent(templateId)}/unpublish`, {}, authHeaders).then((payload) => mapAdminReferenceTemplate(payload.template));
 }
 
-export function getCurrentBrandKit(params?: { userId?: string }): Promise<unknown> {
-  return getJson("/api/brand-kits/current", params?.userId ? { user_id: params.userId } : undefined);
+export async function getCurrentBrandKit(params?: { userId?: string; authContext?: AuthContext }): Promise<unknown> {
+  return getJson(
+    "/api/brand-kits/current",
+    params?.userId ? { user_id: params.userId } : undefined,
+    await authHeadersFrom(params?.authContext)
+  );
 }
 
 export function createBrandKit(payload: BrandKitPayload): Promise<unknown> {
@@ -1010,8 +1024,9 @@ export async function listArchiveItems(params: {
   limit?: number;
   offset?: number;
   includeTotal?: boolean;
+  authContext?: AuthContext;
 } = {}): Promise<ArchiveListResponse> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+  const authHeaders = await authHeadersFrom(params.authContext);
   return getJson<RawArchiveListResponse>("/api/archive/items", {
     workspace_id: params.workspaceId,
     limit: params.limit,
@@ -1173,9 +1188,9 @@ export interface ChatThreadResumeStateGetResponse {
 }
 
 export async function listChatThreads(
-  params: { limit?: number; offset?: number; includeTotal?: boolean; includeArchived?: boolean } = {}
+  params: { limit?: number; offset?: number; includeTotal?: boolean; includeArchived?: boolean; authContext?: AuthContext } = {}
 ): Promise<ChatThreadListResponse> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+  const authHeaders = await authHeadersFrom(params.authContext);
   return getJson<ChatThreadListResponse>("/api/chat-threads", {
     limit: params.limit,
     offset: params.offset,
@@ -1184,26 +1199,26 @@ export async function listChatThreads(
   }, authHeaders);
 }
 
-export async function getChatThread(threadId: string): Promise<ChatThreadGetResponse> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+export async function getChatThread(threadId: string, authContext?: AuthContext): Promise<ChatThreadGetResponse> {
+  const authHeaders = await authHeadersFrom(authContext);
   return getJson<ChatThreadGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}`, undefined, authHeaders);
 }
 
-export async function getChatThreadMessages(threadId: string, params: { limit?: number; offset?: number } = {}): Promise<ChatMessageListResponse> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+export async function getChatThreadMessages(threadId: string, params: { limit?: number; offset?: number; authContext?: AuthContext } = {}): Promise<ChatMessageListResponse> {
+  const authHeaders = await authHeadersFrom(params.authContext);
   return getJson<ChatMessageListResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/messages`, {
     limit: params.limit,
     offset: params.offset
   }, authHeaders);
 }
 
-export async function getChatThreadState(threadId: string): Promise<ChatThreadStateGetResponse> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+export async function getChatThreadState(threadId: string, authContext?: AuthContext): Promise<ChatThreadStateGetResponse> {
+  const authHeaders = await authHeadersFrom(authContext);
   return getJson<ChatThreadStateGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/state`, undefined, authHeaders);
 }
 
-export async function getChatThreadResumeState(threadId: string): Promise<ChatThreadResumeStateGetResponse> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
+export async function getChatThreadResumeState(threadId: string, authContext?: AuthContext): Promise<ChatThreadResumeStateGetResponse> {
+  const authHeaders = await authHeadersFrom(authContext);
   return getJson<ChatThreadResumeStateGetResponse>(
     `/api/chat-threads/${encodeURIComponent(threadId)}/resume-state`,
     undefined,

@@ -15,6 +15,7 @@ const searchParamsMock = vi.hoisted(() => ({
 
 vi.mock("@/lib/api-client", () => ({
   recordRenderMark: vi.fn(),
+  resolveAuthContext: vi.fn(async () => ({ authorizationHeaders: { authorization: "Bearer test" } })),
   ApiError: class ApiError extends Error {
     errorCode?: string;
     status: number;
@@ -1038,7 +1039,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="chat" />);
 
-    await waitFor(() => expect(api.getChatThreadResumeState).toHaveBeenCalledWith("thread_pending_resume"));
+    await waitFor(() => expect(api.getChatThreadResumeState).toHaveBeenCalledWith("thread_pending_resume", expect.any(Object)));
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_pending_resume"));
     await waitFor(() => expect(screen.getAllByText("홍보할 상품이나 서비스는 무엇인가요?").length).toBeGreaterThan(0));
     expect(api.createGenerationJob).not.toHaveBeenCalled();

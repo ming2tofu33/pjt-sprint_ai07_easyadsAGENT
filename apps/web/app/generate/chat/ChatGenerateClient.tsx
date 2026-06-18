@@ -39,6 +39,7 @@ import {
   uploadPhotoAsset,
   uploadReferenceAsset,
   recordRenderMark,
+  resolveAuthContext,
   ApiError,
   type ChatTurnResponse,
   type GenerationJob,
@@ -1290,12 +1291,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const restoreSession = freshChatSessionRef.current;
       let isActive = true;
       const restoreIsStale = () => !isActive || restoreSession !== freshChatSessionRef.current;
-      Promise.all([
-        getChatThread(threadIdParam).catch(() => null),
-        getChatThreadResumeState(threadIdParam).catch(() => null),
-        getChatThreadState(threadIdParam),
-        getChatThreadMessages(threadIdParam, { limit: 120 }).catch(() => ({ success: true as const, messages: [], total: 0 }))
-      ]).then(async ([threadResponse, resumeStateResponse, stateResponse, messagesResponse]) => {
+      resolveAuthContext().then((authContext) => Promise.all([
+        getChatThread(threadIdParam, authContext).catch(() => null),
+        getChatThreadResumeState(threadIdParam, authContext).catch(() => null),
+        getChatThreadState(threadIdParam, authContext),
+        getChatThreadMessages(threadIdParam, { limit: 120, authContext }).catch(() => ({ success: true as const, messages: [], total: 0 }))
+      ])).then(async ([threadResponse, resumeStateResponse, stateResponse, messagesResponse]) => {
         if (restoreIsStale()) {
           return;
         }

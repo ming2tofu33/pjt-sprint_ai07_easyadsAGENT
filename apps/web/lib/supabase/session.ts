@@ -22,6 +22,40 @@ function sessionToken(session: Session | null | undefined): string | null {
 }
 
 let anonymousSignInPromise: Promise<string> | null = null;
+let sessionLookupPromise: Promise<Session | null> | null = null;
+const accessTokenLookupPromises = new Map<string, Promise<string | null>>();
+let authListenerRegistered = false;
+
+function invalidateAuthLookups() {
+  sessionLookupPromise = null;
+  accessTokenLookupPromises.clear();
+  anonymousSignInPromise = null;
+}
+
+function registerAuthInvalidation(
+  supabase: ReturnType<typeof import("./browser").createSupabaseBrowserClient>
+) {
+  if (authListenerRegistered || !supabase || typeof supabase.auth.onAuthStateChange !== "function") {
+    return;
+  }
+  authListenerRegistered = true;
+  supabase.auth.onAuthStateChange(() => invalidateAuthLookups());
+}
+
+async function getSessionOnce(
+  supabase: NonNullable<ReturnType<typeof import("./browser").createSupabaseBrowserClient>>
+): Promise<Session | null> {
+  const lookup = sessionLookupPromise ?? (sessionLookupPromise = supabase.auth.getSession().then(({ data }) => data.session));
+  try {
+    return await lookup;
+  } finally {
+    setTimeout(() => {
+      if (sessionLookupPromise === lookup) {
+        sessionLookupPromise = null;
+      }
+    }, 0);
+  }
+}
 
 function clearAnonymousSignInPromiseAfterCurrentTick(promise: Promise<string>) {
   setTimeout(() => {
@@ -75,7 +109,7 @@ async function refreshAccessToken(
   return sessionToken(result.data.session);
 }
 
-export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptions = {}): Promise<string | null> {
+async function resolveSupabaseAccessToken(options: SupabaseAuthorizationOptions): Promise<string | null> {
   if (typeof window === "undefined") {
     return null;
   }
@@ -85,6 +119,7 @@ export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptio
   if (!supabase) {
     return null;
   }
+  registerAuthInvalidation(supabase);
 
   if (options.forceRefresh) {
     const refreshedToken = await refreshAccessToken(supabase);
@@ -96,9 +131,7 @@ export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptio
     }
   }
 
-  const {
-    data: { session }
-  } = await supabase.auth.getSession();
+  const session = await getSessionOnce(supabase);
   const currentToken = sessionToken(session);
   if (currentToken) {
     return currentToken;
@@ -115,6 +148,22 @@ export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptio
     return await signInPromise;
   } finally {
     clearAnonymousSignInPromiseAfterCurrentTick(signInPromise);
+  }
+}
+
+export async function getSupabaseAccessToken(options: SupabaseAuthorizationOptions = {}): Promise<string | null> {
+  if (options.forceRefresh) {
+    return resolveSupabaseAccessToken(options);
+  }
+  const key = options.allowAnonymous === false ? "authenticated" : "default";
+  const lookup = accessTokenLookupPromises.get(key) ?? resolveSupabaseAccessToken(options);
+  accessTokenLookupPromises.set(key, lookup);
+  try {
+    return await lookup;
+  } finally {
+    if (accessTokenLookupPromises.get(key) === lookup) {
+      accessTokenLookupPromises.delete(key);
+    }
   }
 }
 
