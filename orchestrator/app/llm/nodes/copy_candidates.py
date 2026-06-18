@@ -10,8 +10,16 @@ from langgraph.types import interrupt
 
 from orchestrator.app.graph.state import MarketingState, context_to_model, set_requested_ad_format
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
+from orchestrator.app.llm.copy_fallbacks import build_message_strategy
+from orchestrator.app.llm.copy_prompts import build_copy_generation_v2_prompt
 from orchestrator.app.llm.copy_quality import apply_candidate_quality_policy, apply_copy_quality_policy
 from orchestrator.app.llm.copy_quality_v2 import annotate_and_rank_candidate_output, generate_copy_candidates_v2
+from orchestrator.app.llm.copy_recommendation_lineage import (
+    build_copy_input_projection,
+    build_copy_llm_call_lineage,
+    build_copy_prompt_projection,
+    build_copy_stage_snapshots,
+)
 from orchestrator.app.llm.copy_tone_policy import normalize_copy_for_business
 from orchestrator.app.llm.metadata_builders import build_copy_generation_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -25,6 +33,8 @@ CHANNEL_TO_AD_FORMAT = {
     "instagram-story": "instagram_story",
     "poster": "poster",
     "flyer": "flyer",
+    "banner": "banner",
+    "product_detail": "product_detail",
 }
 
 
@@ -34,23 +44,43 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
         node_name="copy_candidate_generation",
         output_schema=CopyCandidateListOutput,
     )
+    candidate_prompt = build_candidate_prompt(state, metadata_contract)
     output, llm_metadata = run_structured_node(
         dict(state),
         node_name="copy_candidate_generation",
         output_schema=CopyCandidateListOutput,
-        prompt=build_candidate_prompt(state, metadata_contract),
+        prompt=candidate_prompt,
         fallback_fn=lambda: build_rule_based_candidate_output(state),
         risk_level="medium",
         confidence=0.5,
         latency_budget="interactive",
         metadata=metadata_contract,
     )
+    llm_raw_candidates = (
+        [candidate.model_dump() for candidate in output.candidates]
+        if isinstance(output, CopyCandidateListOutput) and not llm_metadata.get("fallback_used")
+        else []
+    )
+    fallback_candidates: list[dict[str, Any]] = []
     if not isinstance(output, CopyCandidateListOutput) or not output.candidates:
         output = build_rule_based_candidate_output(state)
         llm_metadata = {**llm_metadata, "fallback_used": True, "fallback_reason": "invalid_candidate_output"}
+    if llm_metadata.get("fallback_used"):
+        fallback_candidates = [candidate.model_dump() for candidate in output.candidates]
     max_candidates = int((state.get("plan_policy") or {}).get("max_candidates") or 3)
-    output, llm_metadata = validate_or_fallback_candidate_output(state, output, llm_metadata)
+    schema_parsed_candidates = [candidate.model_dump() for candidate in output.candidates]
+    validated_output, llm_metadata = validate_candidate_output_against_claims(state, output, llm_metadata)
+    validated_candidates = [candidate.model_dump() for candidate in validated_output.candidates]
+    normalized_output = normalize_candidate_output_for_business(state, validated_output)
+    tone_normalized_candidates = [candidate.model_dump() for candidate in normalized_output.candidates]
+    output = normalized_output
     output = annotate_and_rank_candidate_output(output, state=state, max_candidates=max_candidates)
+    
+    ad_format = state.get("ad_format") or state.get("current_brief", {}).get("requested_ad_format") or ""
+    if ad_format in ("poster", "flyer", "banner", "product_detail"):
+        for c in output.candidates:
+            c.cta = None
+
     candidates = [apply_candidate_quality_policy(candidate) for candidate in normalize_candidate_ids(output.candidates[: max(1, max_candidates)])]
     recommended_candidate_id = output.recommended_candidate_id or candidates[0].id
     output = CopyCandidateListOutput(
@@ -63,12 +93,84 @@ def copy_candidate_generation_node(state: MarketingState) -> dict[str, Any]:
     serialized, compliance_records, compliance_status, compliance_ready = _attach_compliance_badges(
         serialized, state
     )
+    input_projection = build_copy_input_projection(dict(state))
+    ranked_ids = [
+        str(card.get("candidate_id") or "")
+        for card in ((output.metadata or {}).get("copy_quality_v2_ranking") or {}).get("scorecards", [])
+        if card.get("candidate_id")
+    ]
+    copy_generation_trace = {
+        "schema_version": "copy_recommendation_lineage_v1",
+        "input_projection": build_copy_input_projection(dict(state)),
+        "prompt_projection": build_copy_prompt_projection(metadata_contract, dict(state), prompt=candidate_prompt),
+        "lineage": build_copy_llm_call_lineage(
+            dict(state),
+            llm_metadata,
+            raw_candidate_count=len(llm_raw_candidates),
+            parsed_candidate_count=len(schema_parsed_candidates),
+            final_candidate_count=len(serialized),
+        ),
+        "llm_raw_candidates": build_copy_stage_snapshots(
+            llm_raw_candidates,
+            stage="S3_llm_raw_candidates",
+            source="llm",
+            input_projection=input_projection,
+        ),
+        "fallback_candidates": build_copy_stage_snapshots(
+            fallback_candidates,
+            stage="S3_fallback_candidates",
+            source="rule_based_fallback",
+            input_projection=input_projection,
+        ),
+        "schema_parsed_candidates": build_copy_stage_snapshots(
+            schema_parsed_candidates,
+            stage="S4_schema_parsed_candidates",
+            source="effective",
+            input_projection=input_projection,
+        ),
+        "validated_candidates": build_copy_stage_snapshots(
+            validated_candidates,
+            stage="S5_validated_candidates",
+            source="effective",
+            input_projection=input_projection,
+        ),
+        "tone_normalized_candidates": build_copy_stage_snapshots(
+            tone_normalized_candidates,
+            stage="S6_tone_normalized_candidates",
+            source="effective",
+            input_projection=input_projection,
+        ),
+        "ranked_candidates": build_copy_stage_snapshots(
+            [candidate.model_dump() for candidate in candidates],
+            stage="S7_ranked_candidates",
+            source=candidate_origin,
+            input_projection=input_projection,
+            ranked_ids=ranked_ids,
+        ),
+        "compliance_annotated_candidates": build_copy_stage_snapshots(
+            serialized,
+            stage="S8_compliance_annotated_candidates",
+            source=candidate_origin,
+            input_projection=input_projection,
+            compliance_records=compliance_records,
+            ranked_ids=ranked_ids,
+        ),
+        "api_candidates": build_copy_stage_snapshots(
+            serialized,
+            stage="S9_api_candidates",
+            source=candidate_origin,
+            input_projection=input_projection,
+            compliance_records=compliance_records,
+            ranked_ids=ranked_ids,
+        ),
+    }
     return {
         "copy_candidates": serialized,
         "copy_compliance": compliance_records,
         "copy_compliance_status": compliance_status,
         "copy_compliance_publication_ready": compliance_ready,
         "copy_candidate_origin": candidate_origin,
+        "copy_generation_trace": copy_generation_trace,
         "copywriting_output": output.model_dump(),
         "copy_generation_mode": "suggest_candidates",
         "copy_required": True,
@@ -106,19 +208,32 @@ def classify_copy_candidate_origin(metadata: dict[str, Any], llm_metadata: dict[
     return "fallback"
 
 
-def validate_or_fallback_candidate_output(
+def validate_candidate_output_against_claims(
     state: MarketingState,
     output: CopyCandidateListOutput,
     llm_metadata: dict[str, Any],
 ) -> tuple[CopyCandidateListOutput, dict[str, Any]]:
     blocked: list[str] = []
-    normalized: list[CopyCandidate] = []
-    context = context_to_model(state.get("context"))
+    kept: list[CopyCandidate] = []
     for candidate in output.candidates:
         reason = hallucinated_fact_reason(candidate, state)
         if reason:
             blocked.append(reason)
             continue
+        kept.append(candidate)
+    if blocked and len(blocked) == len(output.candidates):
+        fallback = build_rule_based_candidate_output(state)
+        return fallback, {**llm_metadata, "fallback_used": True, "fallback_reason": "llm_candidate_validation_failed", "blocked_claims": sorted(set(blocked))}
+    return output.model_copy(update={"candidates": kept}), {**llm_metadata, "blocked_claims": sorted(set(blocked))}
+
+
+def normalize_candidate_output_for_business(
+    state: MarketingState,
+    output: CopyCandidateListOutput,
+) -> CopyCandidateListOutput:
+    normalized: list[CopyCandidate] = []
+    context = context_to_model(state.get("context"))
+    for candidate in output.candidates:
         policy = normalize_copy_for_business(
             {"headline": candidate.headline, "subcopy": candidate.subcopy, "cta": candidate.cta},
             context.business_type,
@@ -135,10 +250,7 @@ def validate_or_fallback_candidate_output(
                 }
             )
         )
-    if not normalized:
-        fallback = build_rule_based_candidate_output(state)
-        return fallback, {**llm_metadata, "fallback_used": True, "fallback_reason": "llm_candidate_validation_failed", "blocked_claims": sorted(set(blocked))}
-    return output.model_copy(update={"candidates": normalized}), {**llm_metadata, "blocked_claims": sorted(set(blocked))}
+    return output.model_copy(update={"candidates": normalized})
 
 
 def hallucinated_fact_reason(candidate: CopyCandidate, state: MarketingState) -> str | None:
@@ -401,18 +513,23 @@ def build_candidate_prompt(state: MarketingState, metadata_contract: dict[str, A
         node_name="copy_candidate_generation",
         output_schema=CopyCandidateListOutput,
     )
-    return (
-        "Generate structured Korean ad copy candidates. "
-        f"business_type={context.business_type}, item_or_service={context.item_or_service}, "
-        f"promotion_goal={context.promotion_goal}, brand_tone={context.brand_tone}, "
-        f"forbidden_claims={tone.get('forbidden_claims', [])}. "
-        "Do not invent phone numbers, addresses, prices, discounts, or event periods. "
-        "headline and subcopy must contain ONLY the final ad text. Never include labels, "
-        "prefixes, or meta such as 'AI추천=', 'Sub:', 'Headline:'. Put any reasoning in the "
-        "rationale field only. "
-        "Bad: headline='AI추천=여름 샌들 할인 / Sub: 시원한 여름 보내세요'. "
-        "Good: headline='올여름을 더 시원하게, 썸머 샌들 특가', subcopy='발끝까지 편안한 여름 준비', rationale='시즌 상품 강조 + 편안함 어필'. "
-        f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}."
+    grounded_prompt = build_copy_generation_v2_prompt(
+        context=context,
+        strategy=build_message_strategy(context),
+        visual_intent=None,
+    )
+    return "\n".join(
+        [
+            grounded_prompt,
+            "Return strict JSON only for CopyCandidateListOutput.",
+            "Each candidate must keep angle as one of: product_first, emotion_first, benefit_action_first.",
+            "Each candidate must use at least one explicit business fact from the provided context.",
+            "Use a different message angle for each candidate and avoid repeating the same sentence structure.",
+            f"forbidden_claims={tone.get('forbidden_claims', [])}.",
+            "Do not invent phone numbers, addresses, prices, discounts, event periods, guarantees, or qualifications.",
+            "headline and subcopy must contain ONLY the final ad text. Never include labels, prefixes, or meta text.",
+            f"metadata_contract={metadata_contract_to_prompt_json(metadata_contract)}.",
+        ]
     )
 
 

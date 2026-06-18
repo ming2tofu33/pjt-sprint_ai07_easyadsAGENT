@@ -473,13 +473,13 @@ vi.mock("@/lib/api-client", () => ({
 	        engine:
 	          "requested_engine" in metadata
 	            ? String(metadata.requested_engine)
-	            : "gpt_image_1"
+	            : "gpt_image_2"
 	      },
 	      metadata: {
 	        selected_engine_label:
 	          "selected_engine_label" in metadata
 	            ? metadata.selected_engine_label
-	            : "GPT-image-1"
+	            : "GPT-image-2"
 	      },
 	      created_at: "2026-06-05T00:00:00.000Z",
 	      updated_at: "2026-06-05T00:00:00.000Z"
@@ -502,10 +502,10 @@ vi.mock("@/lib/api-client", () => ({
 	        preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_1%2Ffinal_0.png",
 	        download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_1%2Ffinal_0.png",
 	        final_image_path: "data/outputs/generation_job_1/final_0.png",
-	        engine: "gpt_image_1"
+	        engine: "gpt_image_2"
 	      },
 	      metadata: {
-	        selected_engine_label: "GPT-image-1"
+	        selected_engine_label: "GPT-image-2"
 	      },
 	      created_at: "2026-06-05T00:00:00.000Z",
 	      updated_at: "2026-06-05T00:00:00.000Z"
@@ -527,10 +527,10 @@ vi.mock("@/lib/api-client", () => ({
 	        preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_1%2Ffinal_0.png",
 	        download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_1%2Ffinal_0.png",
 	        final_image_path: "data/outputs/generation_job_1/final_0.png",
-	        engine: "gpt_image_1"
+	        engine: "gpt_image_2"
 	      },
 	      metadata: {
-	        selected_engine_label: "GPT-image-1"
+	        selected_engine_label: "GPT-image-2"
 	      },
 	      created_at: "2026-06-05T00:00:00.000Z",
 	      updated_at: "2026-06-05T00:00:00.000Z"
@@ -632,6 +632,19 @@ vi.mock("@/lib/api-client", () => ({
       archived_at: null,
       created_at: "2026-06-07T00:00:00+00:00",
       updated_at: "2026-06-07T00:00:00+00:00"
+    }
+  })),
+  getChatThreadResumeState: vi.fn(async (threadId: string) => ({
+    success: true,
+    resume_state: {
+      action: "continue_draft",
+      thread_id: threadId,
+      resume_job_id: null,
+      final_output_id: null,
+      latest_snapshot_id: null,
+      snapshot_kind: null,
+      reason: "thread_is_draft",
+      current_question: null
     }
   })),
   getChatThreadState: vi.fn(async () => ({
@@ -938,6 +951,99 @@ describe("ChatGenerateClient", () => {
     expect(screen.getAllByText("카페").length).toBeGreaterThan(0);
   });
 
+  it("opens a pending thread from the authoritative resume job without creating a new job", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.createGenerationJob).mockClear();
+    vi.mocked(api.getGenerationJob).mockClear();
+    vi.mocked(api.getChatThreadResumeState).mockResolvedValueOnce({
+      success: true,
+      resume_state: {
+        action: "answer_pending_job",
+        thread_id: "thread_pending_resume",
+        resume_job_id: "job_pending_resume",
+        final_output_id: null,
+        latest_snapshot_id: "snapshot_pending_resume",
+        snapshot_kind: "waiting_user_input",
+        reason: "job_waiting_user_input",
+        current_question: {
+          field: "item_or_service",
+          question: "홍보할 상품이나 서비스는 무엇인가요?",
+          options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+        }
+      }
+    });
+    vi.mocked(api.getGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_pending_resume",
+        thread_id: "thread_pending_resume",
+        status: "waiting_user_input",
+        progress: { progress_percent: 50, current_stage: "waiting_user_input" },
+        result_payload: null,
+        metadata: {
+          context: {
+            business_type: "beauty_salon",
+            item_or_service: null,
+            promotion_goal: "new_launch"
+          },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "item_or_service",
+              question: "홍보할 상품이나 서비스는 무엇인가요?",
+              options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+            }
+          }
+        },
+        created_at: "2026-06-06T00:00:00+00:00",
+        updated_at: "2026-06-06T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
+      success: true,
+      snapshot: {
+        snapshot_id: "snapshot_pending_resume",
+        thread_id: "thread_pending_resume",
+        job_id: "job_pending_resume",
+        snapshot_version: 1,
+        schema_version: 1,
+        snapshot_kind: "waiting_user_input",
+        state_payload: {
+          user_input: "프리미엄 뷰티살롱 홍보 포스터 만들어줘",
+          context: {
+            business_type: "beauty_salon",
+            item_or_service: null,
+            promotion_goal: "new_launch"
+          },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "item_or_service",
+              question: "홍보할 상품이나 서비스는 무엇인가요?",
+              options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+            }
+          }
+        },
+        changed_fields: [],
+        reference_template_snapshot: {},
+        brand_kit_snapshot: {},
+        metadata: {},
+        created_at: "2026-06-06T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({ success: true, messages: [], total: 0 });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    searchParamsMock.value = new URLSearchParams("threadId=thread_pending_resume");
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(api.getChatThreadResumeState).toHaveBeenCalledWith("thread_pending_resume"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_pending_resume"));
+    await waitFor(() => expect(screen.getAllByText("홍보할 상품이나 서비스는 무엇인가요?").length).toBeGreaterThan(0));
+    expect(api.createGenerationJob).not.toHaveBeenCalled();
+  });
+
   it("restores nested graph context while showing a waiting job question", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
@@ -1158,7 +1264,7 @@ describe("ChatGenerateClient", () => {
           imageDirection: "이전 작업방 이미지 방향",
           finalImagePath: "data/outputs/old_job/final_composite.png"
         },
-        imageGenerationEngine: "gpt_image_1",
+        imageGenerationEngine: "gpt_image_2",
         sourceImagePath: null,
         referenceImagePath: null
       })
@@ -1188,6 +1294,35 @@ describe("ChatGenerateClient", () => {
         })
       )
     );
+  });
+
+  it("opens a fresh studio chat without reusing a stale query thread id", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.createGenerationJob).mockClear();
+    searchParamsMock.value = new URLSearchParams("threadId=thread_stale_query");
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="studio" />);
+
+    fireEvent.click(screen.getByText("대화로 시작하기"));
+    expect(screen.getByText("대화로 찰떡 이미지 만들기")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("광고 요청 입력"), {
+      target: { value: "새로운 프리미엄 뷰티살롱 홍보 포스터 만들어줘" }
+    });
+    fireEvent.click(screen.getByLabelText("요청 보내기"));
+
+    await waitFor(() =>
+      expect(api.createGenerationJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userInput: "새로운 프리미엄 뷰티살롱 홍보 포스터 만들어줘",
+          continuationMode: "new_thread"
+        })
+      )
+    );
+    const [payload] = vi.mocked(api.createGenerationJob).mock.calls[0];
+    expect(payload.threadId).toBeUndefined();
   });
 
   it("keeps inferred context visible when a reference request needs one more answer", async () => {
@@ -1291,10 +1426,10 @@ describe("ChatGenerateClient", () => {
           userCustomHeadline: undefined,
           userCustomSubcopy: undefined,
           metadata: expect.objectContaining({
-            selected_engine: "gpt_image_1",
-            requested_engine: "gpt_image_1",
-            t2i_engine: "gpt_image_1",
-            selected_engine_label: "GPT-image-1",
+            selected_engine: "gpt_image_2",
+            requested_engine: "gpt_image_2",
+            t2i_engine: "gpt_image_2",
+            selected_engine_label: "GPT-image-2",
             selected_copy_id: null,
             legacy_preview_copy_id: "copy_1",
             selected_channel_id: "instagram-story",
@@ -1319,7 +1454,7 @@ describe("ChatGenerateClient", () => {
       })
     );
     await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
-    expect(screen.getByText("GPT-image-1")).toBeTruthy();
+    expect(screen.getByText("GPT-image-2")).toBeTruthy();
     expect(screen.getByText("완성된 이미지는 보관함에서 확인할 수 있어요.")).toBeTruthy();
     expect(screen.queryByText("실제 이미지 파일을 받지 못했어요")).toBeNull();
 
@@ -1429,7 +1564,7 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
-    expect(screen.getByText(/요청을 읽고 있어요/)).toBeTruthy();
+    expect(screen.getByText(/요청 내용을 분석하고 있어요/)).toBeTruthy();
     expect(screen.queryByText("요청을 살펴보고 있어요")).toBeNull();
     expect(screen.queryByText("진행 중")).toBeNull();
     expect(screen.queryByText(/업종, 상품, 광고 목적을 안전하게 정리/)).toBeNull();
@@ -1469,7 +1604,7 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_analyzing"));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
-    expect(screen.getByText(/요청을 읽고 있어요/)).toBeTruthy();
+    expect(screen.getByText(/요청 내용을 분석하고 있어요/)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "광고 생성 중" })).toBeNull();
     expect(screen.queryByText("생성 결과를 준비하고 있어요")).toBeNull();
   });
@@ -1509,7 +1644,7 @@ describe("ChatGenerateClient", () => {
 
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_reference_analyzing"));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
-    expect(screen.getByText(/요청을 읽고 있어요/)).toBeTruthy();
+    expect(screen.getByText(/참고 스타일을 읽고 있어요/)).toBeTruthy();
 
     view.unmount();
     render(<ChatGenerateClient initialSurface="chat" />);
@@ -1517,7 +1652,7 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledTimes(2));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
     expect(screen.getByText("미니멀 카페 피드 스타일로 카페24의 카페 광고를 만들어줘")).toBeTruthy();
-    expect(screen.getByText(/요청을 읽고 있어요/)).toBeTruthy();
+    expect(screen.getByText(/참고 스타일을 읽고 있어요/)).toBeTruthy();
     expect(screen.queryByText("대화로 찰떡 이미지 만들기")).toBeNull();
     expect(screen.queryByRole("heading", { name: "광고 생성 중" })).toBeNull();
   });
@@ -2041,10 +2176,10 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_waiting%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_waiting%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_waiting/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         metadata: {
-          selected_engine_label: "GPT-image-1"
+          selected_engine_label: "GPT-image-2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2097,10 +2232,10 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_final%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_final%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_final/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         metadata: {
-          selected_engine_label: "GPT-image-1"
+          selected_engine_label: "GPT-image-2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2275,7 +2410,7 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_waiting%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_waiting%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_copy_waiting/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2359,7 +2494,7 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_manual_waiting%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_copy_manual_waiting%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_copy_manual_waiting/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2469,7 +2604,7 @@ describe("ChatGenerateClient", () => {
             preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_restored_copy_waiting%2Ffinal_0.png",
             download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_restored_copy_waiting%2Ffinal_0.png",
             final_image_path: "data/outputs/generation_job_restored_copy_waiting/final_0.png",
-            engine: "gpt_image_1"
+            engine: "gpt_image_2"
           },
           created_at: "2026-06-05T00:00:00.000Z",
           updated_at: "2026-06-05T00:00:00.000Z"
@@ -2570,7 +2705,7 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_custom_waiting%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_custom_waiting%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_custom_waiting/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -2712,7 +2847,7 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_validation%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_validation%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_validation/final_0.png",
-          engine: "gpt_image_1",
+          engine: "gpt_image_2",
           validation_summary: {
             background: { overall_pass: true },
             safe_area: { overall_pass: true, warnings: ["near_edge"] },
@@ -2721,7 +2856,7 @@ describe("ChatGenerateClient", () => {
           }
         },
         metadata: {
-          selected_engine_label: "GPT-image-1"
+          selected_engine_label: "GPT-image-2"
         },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
@@ -3157,6 +3292,49 @@ describe("ChatGenerateClient", () => {
     fireEvent.click(screen.getByRole("button", { name: "이어하기" }));
 
     expect(navigationMock.push).toHaveBeenCalledWith("/generate/chat?threadId=thread_strawberry");
+  });
+
+  it("shows a view action for draft studio workspaces with a completed result", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.listChatThreads).mockResolvedValueOnce({
+      success: true,
+      threads: [
+        {
+          thread_id: "thread_beauty_done",
+          title: "프리미엄 뷰티살롱 포스터",
+          status: "draft",
+          brand_kit_id: null,
+          project_id: null,
+          final_brief: {},
+          active_job_id: null,
+          has_final_output: true,
+          final_output_id: "output_beauty_done",
+          resume_state: {
+            action: "view_result",
+            thread_id: "thread_beauty_done",
+            resume_job_id: "job_beauty_done",
+            final_output_id: "output_beauty_done",
+            latest_snapshot_id: "snapshot_beauty_done",
+            snapshot_kind: "job_completed",
+            reason: "thread_has_final_output",
+            current_question: null
+          },
+          last_message_at: "2026-06-07T00:00:00+00:00",
+          archived_at: null,
+          created_at: "2026-06-07T00:00:00+00:00",
+          updated_at: "2026-06-07T00:00:00+00:00"
+        }
+      ],
+      total: 1
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="studio" />);
+
+    await waitFor(() => expect(screen.getByText("프리미엄 뷰티살롱 포스터")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "보기" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "이어하기" })).toBeNull();
   });
 
   it("separates active and archived studio workspaces", async () => {
@@ -3628,9 +3806,9 @@ describe("ChatGenerateClient", () => {
           preview_image_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_route%2Ffinal_0.png",
           download_url: "/api/generated-assets?path=data%2Foutputs%2Fgeneration_job_route%2Ffinal_0.png",
           final_image_path: "data/outputs/generation_job_route/final_0.png",
-          engine: "gpt_image_1"
+          engine: "gpt_image_2"
         },
-        metadata: { selected_engine_label: "GPT-image-1" },
+        metadata: { selected_engine_label: "GPT-image-2" },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
       }
@@ -3646,7 +3824,7 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("generation_job_route"));
     await waitFor(() => expect(screen.getByText("광고 이미지 생성이 완료됐어요")).toBeTruthy());
     expect(screen.queryByText("생성 요청 내역이 없어요")).toBeNull();
-    expect(screen.getByText("GPT-image-1")).toBeTruthy();
+    expect(screen.getByText("GPT-image-2")).toBeTruthy();
   });
 
   it("shows the failed generation reason instead of an empty result shell", async () => {
@@ -3659,8 +3837,8 @@ describe("ChatGenerateClient", () => {
         status: "failed",
         progress: { progress_percent: 100, current_stage: "failed" },
         result_payload: null,
-        error: { message: "GPT-image-1 generation is disabled." },
-        metadata: { selected_engine_label: "GPT-image-1" },
+        error: { message: "GPT-image-2 generation is disabled." },
+        metadata: { selected_engine_label: "GPT-image-2" },
         created_at: "2026-06-05T00:00:00.000Z",
         updated_at: "2026-06-05T00:00:00.000Z"
       }
@@ -3674,7 +3852,7 @@ describe("ChatGenerateClient", () => {
     render(<ChatGenerateClient initialSurface="chat" initialStage="complete" />);
 
     await waitFor(() => expect(screen.getByText("이미지 생성에 실패했어요")).toBeTruthy());
-    expect(screen.getAllByText("GPT-image-1 generation is disabled.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("GPT-image-2 generation is disabled.").length).toBeGreaterThan(0);
     expect(screen.queryByText("생성 요청 내역이 없어요")).toBeNull();
   });
 
@@ -3714,7 +3892,8 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("이미지를 만들고 있어요")).toBeTruthy());
     expect(screen.getByText("딸기라떼")).toBeTruthy();
     expect(screen.getByText("완성되면 보관함에 자동으로 저장돼요. 잠시만 기다려주세요.")).toBeTruthy();
-    expect(screen.getByText("미리보기는 완성 후 표시돼요")).toBeTruthy();
+    expect(screen.getByText("보관함 연결을 확인하고 있어요")).toBeTruthy();
+    expect(screen.getByText("완성된 이미지 주소를 확인하고 있어요")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "딸기라떼 더 크게" })).toBeNull();
     expect(screen.queryByRole("button", { name: "핑크톤 줄이기" })).toBeNull();
     expect(document.querySelector('img[src*="generated-assets"][src*="final_composite.png"]')).toBeNull();
@@ -4401,7 +4580,7 @@ describe("ChatGenerateClient", () => {
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
             source_image_path: null,
-            selected_engine: "gpt_image_1"
+            selected_engine: "gpt_image_2"
           })
         })
       )
@@ -4589,7 +4768,7 @@ describe("ChatGenerateClient", () => {
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
             source_image_path: null,
-            selected_engine: "gpt_image_1",
+            selected_engine: "gpt_image_2",
             copy_generation_mode: "no_copy"
           })
         })
@@ -4634,7 +4813,7 @@ describe("ChatGenerateClient", () => {
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
             source_image_path: null,
-            selected_engine: "gpt_image_1",
+            selected_engine: "gpt_image_2",
             copy_generation_mode: "auto_pilot"
           })
         })
@@ -4685,7 +4864,7 @@ describe("ChatGenerateClient", () => {
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
             source_image_path: null,
-            selected_engine: "gpt_image_1",
+            selected_engine: "gpt_image_2",
             copy_generation_mode: "custom_input"
           })
         })
@@ -4828,5 +5007,209 @@ describe("ChatGenerateClient", () => {
     expect(screen.queryByText("사진 속 메뉴를 오늘의 신메뉴로")).toBeNull();
     expect(screen.queryByText("대화로 찰떡 이미지 만들기")).toBeNull();
     expect(window.sessionStorage.getItem("easyads_chat_turn_snapshot_v1")).toBeNull();
+  });
+
+  it("renders restored backend businessType in the context summary without a business placeholder", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
+      success: true,
+      snapshot: {
+        snapshot_id: "snapshot_beauty_waiting",
+        thread_id: "thread_beauty_waiting",
+        job_id: "job_beauty_waiting",
+        snapshot_version: 1,
+        schema_version: 1,
+        snapshot_kind: "waiting_user_input",
+        state_payload: {
+          user_input: "뷰티 광고 만들어줘",
+          context: {
+            business_type: "뷰티",
+            item_or_service: "속눈썹 펌",
+            promotion_goal: null
+          },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "promotion_goal",
+              question: "어떤 목적의 광고를 만들까요?",
+              options: [{ id: 1, label: "예약 유도", value: "reservation_cta" }]
+            }
+          }
+        },
+        changed_fields: [],
+        reference_template_snapshot: {},
+        brand_kit_snapshot: {},
+        metadata: {},
+        created_at: "2026-06-17T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({
+      success: true,
+      total: 1,
+      messages: [
+        {
+          message_id: "msg_beauty_waiting",
+          thread_id: "thread_beauty_waiting",
+          sequence_no: 1,
+          role: "user",
+          content: "뷰티 광고 만들어줘",
+          payload: {},
+          created_at: "2026-06-17T00:00:00+00:00"
+        }
+      ]
+    });
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    searchParamsMock.value = new URLSearchParams("threadId=thread_beauty_waiting");
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(screen.getAllByText("어떤 목적의 광고를 만들까요?").length).toBeGreaterThan(0));
+    expect(screen.getByText("뷰티")).toBeTruthy();
+    expect(screen.getByText("속눈썹 펌")).toBeTruthy();
+    expect(screen.getAllByText("확인 필요")).toHaveLength(1);
+  });
+
+  it("prioritizes explicit answer over delayed backend context and persists across reload restore", async () => {
+    const api = await import("@/lib/api-client");
+    vi.mocked(api.getChatThreadState).mockClear();
+    vi.mocked(api.getChatThreadMessages).mockClear();
+    vi.mocked(api.getGenerationJob).mockClear();
+    vi.mocked(api.answerChatQuestion).mockClear();
+    
+    vi.mocked(api.getGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_priority_test",
+        thread_id: "thread_priority_test",
+        status: "waiting_user_input",
+        created_at: "2026-06-17T00:00:00+00:00",
+        updated_at: "2026-06-17T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
+      success: true,
+      snapshot: {
+        snapshot_id: "snapshot_priority_test_waiting",
+        job_id: "job_priority_test",
+        thread_id: "thread_priority_test",
+        snapshot_version: 1,
+        schema_version: 1,
+        snapshot_kind: "waiting_user_input",
+        state_payload: {
+          user_input: "test",
+          context: { business_type: null, item_or_service: "프리미엄 뷰티샵", promotion_goal: null },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "business_type",
+              question: "어떤 업종인가요?",
+              options: [{ id: 1, label: "뷰티/미용", value: "beauty_salon" }]
+            }
+          }
+        },
+        changed_fields: [],
+        reference_template_snapshot: {},
+        brand_kit_snapshot: {},
+        metadata: {},
+        created_at: "2026-06-17T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({
+      success: true,
+      total: 1,
+      messages: [{ message_id: "msg1", thread_id: "thread_priority_test", sequence_no: 1, role: "assistant", content: "어떤 업종인가요?", payload: {}, created_at: "2026-06-17T00:00:00+00:00" }]
+    });
+
+    (globalThis as typeof globalThis & { React: typeof React }).React = React;
+    searchParamsMock.value = new URLSearchParams("threadId=thread_priority_test");
+    const { ChatGenerateClient } = await import("./ChatGenerateClient");
+
+    const { unmount } = render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(screen.getAllByText("어떤 업종인가요?").length).toBeGreaterThan(0));
+    
+    // User submits explicit answer 'beauty_salon' (뷰티/미용)
+    const button = screen.getByRole("button", { name: "뷰티/미용" });
+    fireEvent.click(button);
+    const submitButton = screen.getByRole("button", { name: "선택 완료" });
+
+    vi.mocked(api.answerGenerationJob).mockResolvedValueOnce({
+      success: true,
+      job: {
+        job_id: "job_priority_test",
+        thread_id: "thread_priority_test",
+        status: "waiting_user_input",
+        metadata: {
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "promotion_goal",
+              question: "목적은?",
+              options: [{ id: 1, label: "개업", value: "store_opening" }]
+            }
+          }
+        },
+        result_payload: {
+          context: { business_type: "store", item_or_service: "프리미엄 뷰티샵", promotion_goal: "store_opening" }
+        }
+      } as any
+    });
+
+    fireEvent.click(submitButton);
+
+    // Wait for the next turn
+    await waitFor(() => expect(screen.getAllByText("목적은?").length).toBeGreaterThan(0));
+
+    // Check immediate DOM matches explicit + backend context
+    expect(screen.getAllByText("뷰티/미용").length).toBeGreaterThan(0); // explicit answer preserved over backend's 'store'
+    expect(screen.getByText("프리미엄 뷰티샵")).toBeTruthy(); // backend item
+    expect(screen.getByText("신규 오픈 홍보")).toBeTruthy(); // backend goal
+
+    unmount();
+
+    // Now reload (remount) and check snapshot restore keeps the same explicit answer
+    vi.mocked(api.getChatThreadState).mockResolvedValueOnce({
+      success: true,
+      snapshot: {
+        snapshot_id: "snapshot_priority_test_waiting_after_answer",
+        job_id: "job_priority_test",
+        snapshot_version: 2,
+        thread_id: "thread_priority_test",
+        schema_version: 1,
+        snapshot_kind: "waiting_user_input",
+        state_payload: {
+          user_input: "test",
+          context: { business_type: "store", item_or_service: "프리미엄 뷰티샵", promotion_goal: "store_opening" },
+          pending_interrupt: {
+            type: "option_question",
+            option_question: {
+              field: "promotion_goal",
+              question: "목적은?",
+              options: []
+            }
+          }
+        },
+        changed_fields: [],
+        reference_template_snapshot: {},
+        brand_kit_snapshot: {},
+        metadata: {},
+        created_at: "2026-06-17T00:00:00+00:00"
+      }
+    });
+    vi.mocked(api.getChatThreadMessages).mockResolvedValueOnce({
+      success: true,
+      total: 2,
+      messages: [{ message_id: "msg2", thread_id: "thread_priority_test", sequence_no: 2, role: "user", content: "뷰티/미용", payload: {}, created_at: "2026-06-17T00:00:00+00:00" }]
+    });
+    
+    // We mock localStorage so that pendingExplicitContextPatch is restored from session storage
+    // Actually the explicit patch is handled by local chatTurnSnapshot (localStorage)
+    render(<ChatGenerateClient initialSurface="chat" />);
+
+    await waitFor(() => expect(screen.getAllByText("목적은?").length).toBeGreaterThan(0));
+    expect(screen.getAllByText("뷰티/미용").length).toBeGreaterThan(0);
+    expect(screen.getByText("프리미엄 뷰티샵")).toBeTruthy();
+    expect(screen.getByText("신규 오픈 홍보")).toBeTruthy();
   });
 });

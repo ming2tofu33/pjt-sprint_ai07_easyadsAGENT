@@ -18,33 +18,29 @@ describe("generation engine helpers", () => {
   });
 
   it("maps UI engine choices to backend graph engine preferences", () => {
-    expect(resolveGenerationEnginePreference("gpt_image_1")).toBe("gpt_image_1");
+    expect(resolveGenerationEnginePreference("gpt_image_1")).toBe("gpt_image_2");
     expect(resolveGenerationEnginePreference("gpt_image_2")).toBe("gpt_image_2");
     expect(resolveGenerationEnginePreference("flux2_klein_4b")).toBe("flux2_klein_4b");
     expect(resolveGenerationEnginePreference("sd35_large")).toBe("sd35_large");
   });
 
   it("keeps direct T2I run modes available for smoke and debug paths", () => {
-    expect(resolveDirectGenerationRunMode("gpt_image_1")).toBe("gpt_image_1_actual");
+    expect(resolveDirectGenerationRunMode("gpt_image_1")).toBe("gpt_image_2_actual");
     expect(resolveDirectGenerationRunMode("gpt_image_2")).toBe("gpt_image_2_actual");
     expect(resolveDirectGenerationRunMode("flux2_klein_4b")).toBe("flux2_klein_4b");
     expect(resolveDirectGenerationRunMode("sd35_large")).toBe("sd35_large_real");
   });
 
-  it("falls back to GPT-image-1 when no engine is selected", () => {
-    expect(DEFAULT_IMAGE_GENERATION_ENGINE).toBe("gpt_image_1");
-    expect(getGenerationEngineOption(null).id).toBe("gpt_image_1");
+  it("falls back to GPT-image-2 when no engine is selected", () => {
+    expect(DEFAULT_IMAGE_GENERATION_ENGINE).toBe("gpt_image_2");
+    expect(getGenerationEngineOption(null).id).toBe("gpt_image_2");
     expect(resolveGenerationRunMode(undefined)).toBe("graph_job");
-    expect(resolveGenerationEnginePreference(undefined)).toBe("gpt_image_1");
+    expect(resolveGenerationEnginePreference(undefined)).toBe("gpt_image_2");
   });
 
-  it("shows every supported engine as a selectable UI option", () => {
-    expect(generationEngineOptions.map((option) => option.id)).toEqual([
-      "gpt_image_1",
-      "gpt_image_2",
-      "flux2_klein_4b",
-      "sd35_large"
-    ]);
+  it("shows GPT-image-2, FLUX, and SD as selectable UI options", () => {
+    expect(generationEngineOptions.map((option) => option.id)).toEqual(["gpt_image_2", "flux2_klein_4b", "sd35_large"]);
+    expect(generationEngineOptions.map((option) => option.id)).not.toContain("gpt_image_1");
   });
 
   it("identifies terminal generation job statuses", () => {

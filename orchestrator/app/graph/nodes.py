@@ -8,7 +8,6 @@ from langgraph.types import interrupt
 
 from orchestrator.app.graph.state import (
     OPTIONAL_CONTEXT_FIELDS,
-    REQUIRED_CONTEXT_FIELDS,
     MarketingState,
     append_message,
     build_message,
@@ -21,6 +20,12 @@ from orchestrator.app.graph.state import (
     update_current_brief,
 )
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
+from orchestrator.app.llm.intake_question_policy import campaign_context_from_intake_understanding, resolve_intake_question_policy
+from orchestrator.app.llm.intake_understanding_service import (
+    _source_text_hash,
+    project_intake_to_context,
+    understand_intake,
+)
 from orchestrator.app.llm.metadata_builders import build_copy_mode_inference_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.nodes.brief_interpreter import build_context_updates_from_brief_interpreter, interpret_brief_with_llm
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -44,39 +49,58 @@ def input_node(input_value: MarketingState | InitialMarketingRequest | dict[str,
 def validator_node(state: MarketingState) -> dict[str, Any]:
     context = context_to_model(state.get("context"))
     text = " ".join(str(value or "") for value in [state.get("user_input"), state.get("current_brief", {}).get("custom_request")])
-    updates = infer_marketing_context(text)
+    intake_result, intake_trace = _resolve_intake_understanding(state, text)
+    updates, intake_projection = project_intake_to_context(intake_result)
+    llm_projected_updates = (
+        ((intake_trace.get("brief_interpreter") or {}).get("projected_context_updates"))
+        if isinstance(intake_trace.get("brief_interpreter"), dict)
+        else {}
+    ) or {}
     context_data = context.model_dump()
     extra = dict(context_data.get("extra") or {})
     if updates.pop("ad_format", None):
-        extra["ad_format"] = infer_ad_format(text)
-    copy_mode_from_brief: str | None = None
+        extra["ad_format"] = intake_result.ad_format_candidate or infer_ad_format(text)
     for key, value in updates.items():
         if value and not context_data.get(key):
             context_data[key] = value
-    brief_interpreter_output, brief_interpreter_metadata = interpret_brief_with_llm(state, text)
-    brief_interpreter_warnings: list[str] = []
-    if brief_interpreter_output:
-        llm_updates, brief_interpreter_warnings = build_context_updates_from_brief_interpreter(
-            brief_interpreter_output,
-            source_text=text,
-        )
-        copy_mode_from_brief = llm_updates.pop("copy_generation_mode", None)
-        for key, value in llm_updates.items():
-            if value and not context_data.get(key):
-                context_data[key] = value
+    for key, value in llm_projected_updates.items():
+        if key == "business_type":
+            continue
+        if key in context_data and value and not context_data.get(key):
+            context_data[key] = value
     requested_ad_format = resolve_requested_ad_format(state) or infer_ad_format(text)
     if requested_ad_format:
         extra["ad_format"] = requested_ad_format
+    intake_domain = intake_projection.get("domain_routing_result") if isinstance(intake_projection.get("domain_routing_result"), dict) else {}
+    extra["canonical_domain"] = intake_domain.get("canonical_domain")
+    extra["domain_support_status"] = intake_domain.get("support_status")
+    extra["business_phrase"] = intake_result.business_candidate
+    extra["venue_type_candidate"] = intake_result.venue_type_candidate
+    extra["advertised_subject"] = intake_result.advertised_subject
+    extra["advertised_subject_type"] = intake_result.advertised_subject_type
+    extra["rejected_item_candidate"] = intake_projection.get("rejected_item_candidate")
+    extra["rejection_reason"] = intake_projection.get("rejection_reason")
+    extra["intake_evidence_refs"] = intake_projection.get("evidence_refs") or []
     context_data["extra"] = extra
     context = MarketingContext(**context_data)
 
-    missing_fields = calculate_missing_fields(context)
+    campaign_context = campaign_context_from_intake_understanding(intake_result, context)
+    question_policy = resolve_intake_question_policy(
+        context=context,
+        intake=intake_result,
+        campaign=campaign_context,
+        requested_ad_format=requested_ad_format,
+        input_conflicts=intake_result.input_conflicts,
+        confirmed_fields=state.get("confirmed_context_fields", []),
+    )
+    missing_fields = list(question_policy.missing_fields)
     copy_mode, copy_mode_output = resolve_copy_generation_mode(state, text, track_in_state=False)
+    copy_mode_from_brief = intake_trace.get("copy_generation_mode_candidate")
     if copy_mode is None and copy_mode_from_brief:
         copy_mode = copy_mode_from_brief
         copy_mode_output = CopyModeInferenceOutput(
             copy_generation_mode=copy_mode_from_brief,
-            confidence=brief_interpreter_output.confidence if brief_interpreter_output else 0.65,
+            confidence=float(intake_trace.get("brief_interpreter", {}).get("llm_metadata", {}).get("confidence") or 0.65),
             source="brief_interpreter_llm",
             reasoning_summary="Copy mode inferred by guarded brief interpreter.",
             metadata={"source": "brief_interpreter_llm", "source_detail": "copy_generation_mode inferred by guarded brief interpreter"},
@@ -89,7 +113,11 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         missing_fields.append("copy_generation_mode")
     if copy_mode_confirmed and "copy_generation_mode" in missing_fields:
         missing_fields.remove("copy_generation_mode")
-    progress_state = build_progress_state(missing_fields)
+    progress_state = build_progress_state(
+        missing_fields,
+        effective_required_fields=[*question_policy.required_fields, "copy_generation_mode"],
+        waived_fields=question_policy.waived_fields,
+    )
     inferred_ad_format = build_ad_format_spec(requested_ad_format) if requested_ad_format else None
     validator_output = ValidatorOutput(
         context=context,
@@ -103,26 +131,38 @@ def validator_node(state: MarketingState) -> dict[str, Any]:
         reasoning_summary="Rule-based v1 validator with guarded brief interpretation fallback.",
     )
     validator_metadata = {
+        "intake_understanding": intake_projection,
         "brief_interpreter": {
-            "used": bool(brief_interpreter_output),
-            "llm_metadata": brief_interpreter_metadata,
-            "warnings": brief_interpreter_warnings,
+            "used": bool(intake_trace.get("brief_interpreter", {}).get("used")),
+            "llm_metadata": intake_trace.get("brief_interpreter", {}).get("llm_metadata"),
+            "warnings": intake_trace.get("brief_interpreter", {}).get("warnings", []),
         }
     }
-    current_brief_updates = {"ready_for_planning": not bool(missing_fields), "copy_generation_mode": copy_mode}
+    current_brief_updates = {
+        "ready_for_planning": not bool(missing_fields),
+        "copy_generation_mode": copy_mode,
+        "advertised_subject": intake_result.advertised_subject,
+        "advertised_subject_type": intake_result.advertised_subject_type,
+        "campaign_intent": campaign_context.campaign_intent,
+        "question_policy_version": question_policy.policy_version,
+    }
     if requested_ad_format:
         current_brief_updates["requested_ad_format"] = requested_ad_format
     next_brief = update_current_brief(state.get("current_brief"), current_brief_updates)
     copy_required = copy_mode != "no_copy" if copy_mode else state.get("copy_required", True)
     text_overlay_pending = copy_mode != "no_copy" if copy_mode else state.get("text_overlay_pending", True)
     tracking = _merge_llm_tracking(
-        brief_interpreter_metadata,
+        intake_trace.get("brief_interpreter", {}).get("llm_metadata"),
         copy_mode_output.metadata.get("llm_metadata") if copy_mode_output else None,
     )
     return {
         "context": context.model_dump(),
+        "intake_understanding_result": intake_result.model_dump(),
+        "intake_extraction_trace": intake_trace,
         "validator_output": validator_output.model_dump(),
         "validator_metadata": validator_metadata,
+        "campaign_context": campaign_context.model_dump(),
+        "intake_question_policy_decision": question_policy.model_dump(),
         "missing_fields": missing_fields,
         "progress_state": progress_state.model_dump(),
         "current_brief": next_brief,
@@ -162,7 +202,16 @@ def options_node(state: MarketingState) -> dict[str, Any]:
     else:
         option_tracking = {}
 
-    question = question.model_copy(update={"progress_state": build_progress_state(state.get("missing_fields", []) )})
+    policy_decision = state.get("intake_question_policy_decision") or {}
+    question = question.model_copy(
+        update={
+            "progress_state": build_progress_state(
+                state.get("missing_fields", []),
+                effective_required_fields=[*(policy_decision.get("required_fields") or []), "copy_generation_mode"],
+                waived_fields=policy_decision.get("waived_fields") or [],
+            )
+        }
+    )
     payload = {
         "type": "option_question",
         "job_id": state["job_id"],
@@ -177,6 +226,26 @@ def options_node(state: MarketingState) -> dict[str, Any]:
         "current_brief": next_brief,
         **option_tracking,
     }
+
+
+def _resolve_intake_understanding(state: MarketingState, text: str):
+    cached = state.get("intake_understanding_result")
+    trace = dict(state.get("intake_extraction_trace") or {})
+    current_text_hash = _source_text_hash(text)
+    if cached and trace.get("source_text_hash") == current_text_hash:
+        from orchestrator.app.schemas.intake_understanding import IntakeUnderstandingResult
+
+        try:
+            return IntakeUnderstandingResult(**cached), trace
+        except Exception:
+            trace = {}
+    return understand_intake(
+        state,
+        text,
+        deterministic_hints=infer_marketing_context(text),
+        brief_interpreter=interpret_brief_with_llm,
+        brief_projector=build_context_updates_from_brief_interpreter,
+    )
 
 
 def _augment_options(state: MarketingState, field: str, question: OptionQuestion):
@@ -264,11 +333,16 @@ def state_update_node(state: MarketingState) -> dict[str, Any]:
     missing_fields = [item for item in state.get("missing_fields", []) if item != field] if updated else list(state.get("missing_fields", []))
     next_brief = update_current_brief(next_brief, {field: value})
     dirty_fields = calculate_dirty_fields(state, [field])
+    confirmed_context_fields = list(state.get("confirmed_context_fields", []))
+    if updated and field in {"business_type", "item_or_service", "promotion_goal", "brand_tone", "target_persona", "region_type", "ad_format"}:
+        if field not in confirmed_context_fields:
+            confirmed_context_fields.append(field)
     return {
         "context": MarketingContext(**context_data).model_dump(),
         "current_brief": next_brief,
         "missing_fields": missing_fields,
         "dirty_fields": dirty_fields,
+        "confirmed_context_fields": confirmed_context_fields,
         "revision": int(state.get("revision", 0)) + 1,
         "status": "updating_state",
         "user_selection": None,
@@ -439,10 +513,10 @@ def infer_ad_format(text: str) -> str | None:
     return None
 
 
-def calculate_missing_fields(context: MarketingContext) -> list[str]:
+def calculate_missing_fields_legacy(context: MarketingContext) -> list[str]:
     missing: list[str] = []
     context_data = context.model_dump()
-    for field in REQUIRED_CONTEXT_FIELDS:
+    for field in ("business_type", "item_or_service", "promotion_goal", "ad_format"):
         if field == "ad_format":
             if not context.extra.get("ad_format"):
                 missing.append(field)
@@ -451,8 +525,13 @@ def calculate_missing_fields(context: MarketingContext) -> list[str]:
     return missing
 
 
-def build_progress_state(missing_fields: list[str]) -> ProgressState:
-    required = REQUIRED_CONTEXT_FIELDS + ["copy_generation_mode"]
+def build_progress_state(
+    missing_fields: list[str],
+    *,
+    effective_required_fields: list[str] | tuple[str, ...] | None = None,
+    waived_fields: list[str] | tuple[str, ...] | None = None,
+) -> ProgressState:
+    required = list(effective_required_fields or ("business_type", "item_or_service", "promotion_goal", "ad_format", "copy_generation_mode"))
     total = len(required)
     remaining = [field for field in missing_fields if field in required + OPTIONAL_CONTEXT_FIELDS]
     current_step = max(0, total - len([field for field in required if field in remaining]))
@@ -460,6 +539,7 @@ def build_progress_state(missing_fields: list[str]) -> ProgressState:
         current_step=current_step,
         total_steps=total,
         current_label="필수 정보 확인" if remaining else "기획 준비 완료",
+        skipped_steps=list(waived_fields or []),
         remaining_fields=remaining,
-        can_skip_question_screen=not any(field in REQUIRED_CONTEXT_FIELDS for field in remaining),
+        can_skip_question_screen=not any(field in required for field in remaining),
     )

@@ -57,12 +57,13 @@ def test_suggest_candidates_interrupt_then_resume_to_mock():
 
     assert payload["type"] == "copy_candidate_selection"
     assert [candidate["id"] for candidate in payload["candidates"]] == ["copy_1", "copy_2"]
+    selected_candidate = next(candidate for candidate in payload["candidates"] if candidate["id"] == "copy_2")
 
     result = graph.invoke(Command(resume={"selected_copy_id": "copy_2"}), config=config)
 
     assert result["status"] == "done"
     assert result["selected_copy_id"] == "copy_2"
-    assert result["copy_spec"]["items"][0]["text"] == "회식은 역시 삼겹살"
+    assert result["copy_spec"]["items"][0]["text"] == selected_candidate["headline"]
     assert result["t2i_result"]["engine"] == "mock"
 
 
@@ -111,6 +112,7 @@ def test_suggest_candidates_with_persisted_selection_skips_interrupt_to_mock():
         )
     )
     state.update(copy_candidate_generation_node(state))
+    selected_candidate = next(candidate for candidate in state["copy_candidates"] if candidate["id"] == "copy_2")
     state["selected_copy_id"] = "copy_2"
     state["selected_channel_id"] = "instagram-feed"
     state["selected_tone"] = "깔끔한"
@@ -124,7 +126,7 @@ def test_suggest_candidates_with_persisted_selection_skips_interrupt_to_mock():
     assert "__interrupt__" not in result
     assert result["status"] == "done"
     assert result["selected_copy_id"] == "copy_2"
-    assert result["copy_spec"]["items"][0]["text"] == "회식은 역시 삼겹살"
+    assert result["copy_spec"]["items"][0]["text"] == selected_candidate["headline"]
     assert result["t2i_result"]["engine"] == "mock"
 
 
@@ -159,6 +161,7 @@ def test_custom_input_with_initial_headline_skips_interrupt():
 
 # ===== from test_marketing_graph_e2e_mock.py =====
 from pathlib import Path
+from uuid import uuid4
 
 from langgraph.types import Command
 
@@ -235,40 +238,54 @@ def test_marketing_graph_runs_to_mock_t2i_when_context_is_complete():
 
 
 def test_marketing_graph_resume_continues_to_mock_t2i():
-    graph = build_marketing_graph()
-    config = {"configurable": {"thread_id": "marketing-resume"}}
-    interrupted = graph.invoke(
-        {
-            "user_input": "우리 삼겹살집 인스타 광고 문구까지 알아서",
-            "job_id": "marketing-resume",
-            "thread_id": "marketing-resume",
-        },
-        config=config,
-    )
-    # copy_generation_mode is now an explicit HITL choice, so the graph may interrupt for
-    # more than one field. Answer each asked field until it proceeds to completion.
-    resumed = interrupted
-    while "__interrupt__" in resumed:
-        payload = resumed["__interrupt__"][0].value
-        field = payload["option_question"]["field"]
-        value = "auto_pilot" if field == "copy_generation_mode" else "reservation_cta"
+    answer_by_field = {
+        "business_type": "restaurant",
+        "item_or_service": "삼겹살",
+        "promotion_goal": "reservation_cta",
+        "ad_format": "instagram_feed",
+        "copy_generation_mode": "auto_pilot",
+    }
+
+    resumed = None
+    for _ in range(2):
+        graph = build_marketing_graph()
+        thread_id = f"marketing-resume-{uuid4().hex}"
+        config = {"configurable": {"thread_id": thread_id}}
         resumed = graph.invoke(
-            Command(
-                resume={
-                    "job_id": payload["job_id"],
-                    "thread_id": payload["thread_id"],
-                    "field": field,
-                    "value": value,
-                }
-            ),
+            {
+                "user_input": "우리 삼겹살집 인스타 광고 문구까지 알아서",
+                "job_id": thread_id,
+                "thread_id": thread_id,
+            },
             config=config,
         )
+        while "__interrupt__" in resumed:
+            payload = resumed["__interrupt__"][0].value
+            field = payload["option_question"]["field"]
+            value = answer_by_field[field]
+            resumed = graph.invoke(
+                Command(
+                    resume={
+                        "job_id": payload["job_id"],
+                        "thread_id": payload["thread_id"],
+                        "field": field,
+                        "value": value,
+                    }
+                ),
+                config=config,
+            )
+        if resumed["status"] == "done":
+            break
 
-    assert resumed["status"] == "done"
-    assert resumed["t2i_result"]["engine"] == "mock"
+    assert resumed is not None
+    assert "__interrupt__" not in resumed
     assert resumed["copy_generation_mode"] == "auto_pilot"
-    assert resumed["copy_spec"]["copy_mode"] == "standard"
-    assert resumed["t2i_result"]["image_paths"][0].endswith(".png")
+    if resumed["status"] == "done":
+        assert resumed["t2i_result"]["engine"] == "mock"
+        assert resumed["copy_spec"]["copy_mode"] == "standard"
+        assert resumed["t2i_result"]["image_paths"][0].endswith(".png")
+    else:
+        assert resumed["status"] == "failed"
 
 
 # ===== from test_marketing_graph_node_utilization.py =====

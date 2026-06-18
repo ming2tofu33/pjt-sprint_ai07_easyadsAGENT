@@ -131,12 +131,9 @@ def get_visual_presets() -> dict[str, dict[str, Any]]:
     return VISUAL_PRESETS
 
 
-# Exact canonical business_type -> preset_id mapping. Tried before any substring
-# heuristic so that canonical values route deterministically and unambiguously.
-# Notably `beauty_salon` is an ambiguous beauty value: it resolves to skincare
-# (the same neutral default as scene_planner.resolve_beauty_subtype), NOT hair —
-# the previous elif chain matched `"salon" in bt` and silently sent it to the
-# hair preset. See docs/PRESET_ROUTING_AUDIT.md P6.
+# Exact legacy visual route key -> preset_id mapping.
+# Ambiguous domain labels such as `beauty` and `beauty_salon` are intentionally
+# not route keys in A-4; they must pass through domain_routing evidence first.
 PRESET_ID_BY_BUSINESS_TYPE: dict[str, str] = {
     "cafe": "cafe_dessert_soft_premium",
     "restaurant_bbq": "restaurant_bbq_warm_grill",
@@ -145,25 +142,8 @@ PRESET_ID_BY_BUSINESS_TYPE: dict[str, str] = {
     "beauty_hair": "beauty_hair_salon_clean",
     "beauty_nail": "beauty_nail_clean_detail",
     "beauty_spa": "beauty_spa_soft_wellness",
-    "beauty_salon": "beauty_skincare_clean_premium",
-    "beauty": "beauty_skincare_clean_premium",
     "generic": "generic_clean_ad_background",
 }
-
-# Ordered substring fallbacks for raw / non-canonical inputs (e.g. user-typed
-# Korean keywords) that did not exactly match a canonical business_type above.
-# Order matters: more specific cuisine/subtype keywords come before the generic
-# restaurant/beauty buckets.
-_PRESET_KEYWORD_FALLBACKS: tuple[tuple[tuple[str, ...], str], ...] = (
-    (("cafe", "dessert", "bakery"), "cafe_dessert_soft_premium"),
-    (("bbq", "korean_food", "meat", "고기", "갈비", "삼겹살", "숯불"), "restaurant_bbq_warm_grill"),
-    (("restaurant", "dining", "food"), "restaurant_generic_clean"),
-    (("skincare", "skin"), "beauty_skincare_clean_premium"),
-    (("hair",), "beauty_hair_salon_clean"),
-    (("nail",), "beauty_nail_clean_detail"),
-    (("spa", "massage"), "beauty_spa_soft_wellness"),
-    (("beauty",), "beauty_skincare_clean_premium"),
-)
 
 
 def select_visual_preset(
@@ -172,21 +152,10 @@ def select_visual_preset(
     selected_reference_template: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Select appropriate visual preset based on business type and templates."""
-    bt = (business_type or "").lower()
+    bt = (business_type or "").strip().lower()
 
-    # Check selected reference template first for hints if present
-    ref_preset_id = (selected_reference_template or {}).get("preset_id") or (selected_reference_template or {}).get("visual_template_id")
-    if ref_preset_id and ref_preset_id in VISUAL_PRESETS:
-        return VISUAL_PRESETS[ref_preset_id]
-
-    # 1. Exact canonical match (deterministic, no ordering hazard).
     exact = PRESET_ID_BY_BUSINESS_TYPE.get(bt)
     if exact:
         return VISUAL_PRESETS[exact]
-
-    # 2. Constrained substring fallback for raw / non-canonical inputs.
-    for keywords, preset_id in _PRESET_KEYWORD_FALLBACKS:
-        if any(keyword in bt for keyword in keywords):
-            return VISUAL_PRESETS[preset_id]
 
     return VISUAL_PRESETS["generic_clean_ad_background"]

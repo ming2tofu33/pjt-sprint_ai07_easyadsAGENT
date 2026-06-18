@@ -131,6 +131,26 @@ def get_generation_job_internal_by_public_id(job_id: str, connection: object | N
             return cur.fetchone()
 
 
+def get_generation_job_scope_row_by_public_id(
+    job_id: str,
+    connection: object | None = None,
+) -> dict | None:
+    with db_transaction(connection) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                select
+                    gj.workspace_id,
+                    gj.requested_by,
+                    gj.metadata ->> 'user_id' as metadata_user_id
+                from generation_jobs gj
+                where gj.public_job_id = %s
+                """,
+                (job_id,),
+            )
+            return cur.fetchone()
+
+
 def get_generation_job_row(job_id: str, connection: object | None = None) -> dict | None:
     return get_generation_job_internal_by_public_id(job_id, connection=connection)
 
@@ -205,7 +225,7 @@ def get_generation_job_db_by_id(job_id: str, *, workspace_id: str, connection: o
         with conn.cursor() as cur:
             cur.execute(
                 """
-                select gj.*, ct.public_thread_id as public_thread_id
+                select gj.*, ct.public_thread_id as public_thread_id, ct.title as thread_title
                 from generation_jobs gj
                 left join chat_threads ct on ct.id = gj.thread_id
                 where gj.id = %s and gj.workspace_id = %s

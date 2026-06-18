@@ -2,8 +2,10 @@
 
 import clsx from "clsx";
 import { Check, Instagram, PenLine } from "lucide-react";
-import type { ChatFlowState, CopyCandidateOrigin } from "@/types/marketing";
+import type { ChatFlowState } from "@/types/marketing";
+import type { ChannelId } from "@/lib/ad-formats";
 import { channelOptions } from "@/lib/chat-flow";
+import { copyCandidateOriginLabel, copyCandidateOriginNote } from "@/lib/copy-candidate-provenance";
 import { ChatTimelineStep } from "./ChatTimelineStep";
 import { MascotImage } from "./MascotImage";
 import styles from "./generate.module.css";
@@ -11,7 +13,7 @@ import styles from "./generate.module.css";
 type CopyChannelStepProps = {
   state: ChatFlowState;
   onSelectCopy: (copyId: string) => void;
-  onSelectChannel: (channelId: string) => void;
+  onSelectChannel: (channelId: ChannelId) => void;
   onCustomDirection: (value: string) => void;
   onContinue: () => void;
   onBack: () => void;
@@ -42,32 +44,6 @@ export function CopyChannelStep({
 
 type CopyChannelCardProps = Omit<CopyChannelStepProps, "onBack" | "onDelete">;
 
-function copyCandidateOriginLabel(origin: CopyCandidateOrigin): string {
-  if (origin === "llm") {
-    return "AI 생성";
-  }
-  if (origin === "fallback") {
-    return "안전 추천";
-  }
-  if (origin === "rule_based") {
-    return "자동 추천";
-  }
-  return "요청 기반";
-}
-
-function copyCandidateOriginNote(origin: CopyCandidateOrigin): string {
-  if (origin === "llm") {
-    return "AI가 이번 요청을 바탕으로 만든 문구 후보예요. 선택한 문구가 이미지에 반영됩니다.";
-  }
-  if (origin === "fallback") {
-    return "AI 응답 대신 요청 정보를 바탕으로 안전한 추천 문구를 준비했어요. 선택한 문구가 이미지에 반영됩니다.";
-  }
-  if (origin === "rule_based") {
-    return "요청 정보를 바탕으로 어울리는 추천 문구를 준비했어요. 선택한 문구가 이미지에 반영됩니다.";
-  }
-  return "이번 요청을 바탕으로 준비된 문구 후보예요. 선택한 문구가 이미지에 반영됩니다.";
-}
-
 export function CopyChannelCard({
   state,
   onSelectCopy,
@@ -78,9 +54,10 @@ export function CopyChannelCard({
   const hasBackendSession = Boolean(state.jobId && state.threadId);
   const usesDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
   const hasBackendCopyCandidates = state.copyCandidateSource === "backend" && state.copyCandidates.length > 0;
-  const originLabel = copyCandidateOriginLabel(state.copyCandidateOrigin);
-  const originNote = copyCandidateOriginNote(state.copyCandidateOrigin);
+  const originLabel = copyCandidateOriginLabel(state.copyCandidateOrigin, state.copyFallbackUsed);
+  const originNote = copyCandidateOriginNote(state.copyCandidateOrigin, state.copyFallbackUsed);
   const cannotContinue = state.isLoading || !hasBackendSession || (!usesDeferredCopySelection && !hasBackendCopyCandidates);
+  const progressPercent = state.progress.total > 0 ? `${Math.max(0, Math.min(100, (state.progress.current / state.progress.total) * 100))}%` : "0%";
 
   return (
     <>
@@ -182,7 +159,7 @@ export function CopyChannelCard({
             정보 입력 {state.progress.current}/{state.progress.total}
           </span>
           <span className={styles.progressTrack}>
-            <span className={styles.progressBar} style={{ width: "75%" }} />
+            <span className={styles.progressBar} style={{ width: progressPercent }} />
           </span>
         </div>
 

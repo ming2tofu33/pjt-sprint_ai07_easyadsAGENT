@@ -1,5 +1,4 @@
 import type {
-  ChannelOption,
   ChatBrief,
   ChatFlowAction,
   ChatFlowState,
@@ -7,7 +6,11 @@ import type {
   InferredContext,
   ToneOption
 } from "@/types/marketing";
-import { DEFAULT_IMAGE_GENERATION_ENGINE } from "./generation-engine";
+import { campaignIntentLabel, contextItemSummary, contextPurposeSummary } from "./context-presentation";
+import { channelOptions } from "./ad-formats";
+import { DEFAULT_IMAGE_GENERATION_ENGINE, getGenerationEngineOption, type ImageGenerationEngine } from "./generation-engine";
+
+export { channelOptions } from "./ad-formats";
 
 export const toneOptions: ToneOption[] = [
   { id: "emotional", label: "감성적인", icon: "heart" },
@@ -18,24 +21,18 @@ export const toneOptions: ToneOption[] = [
   { id: "bold", label: "강렬한", icon: "star" }
 ];
 
-export const channelOptions: ChannelOption[] = [
-  { id: "instagram-feed", label: "인스타 피드", ratio: "1:1" },
-  { id: "instagram-story", label: "인스타 스토리", ratio: "9:16" },
-  { id: "poster", label: "포스터", ratio: "4:5" },
-  { id: "flyer", label: "전단지", ratio: "A4" }
-];
-
 const CHAT_ERROR_MESSAGE_BY_CODE: Partial<Record<string, string>> = {
   thread_limit_reached:
-    "비로그인 상태에서는 작업방을 3개까지 만들 수 있어요. 기존 작업방을 삭제하거나 로그인하면 계속 만들 수 있어요.",
-  workspace_required: "작업방을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
-  archive_workspace_required: "보관함을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
-  usage_workspace_required: "사용량 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
-  invalid_or_expired_session: "로그인이 만료됐어요. 다시 로그인한 뒤 이어서 진행해 주세요.",
-  supabase_auth_configuration_missing: "로그인 설정을 확인해야 해요. 관리자에게 문의해 주세요."
+    "\ube44\ub85c\uadf8\uc778 \uc0c1\ud0dc\uc5d0\uc11c\ub294 \uc791\uc5c5\ubc29\uc744 3\uac1c\uae4c\uc9c0 \ub9cc\ub4e4 \uc218 \uc788\uc5b4\uc694. \uae30\uc874 \uc791\uc5c5\ubc29\uc744 \uc0ad\uc81c\ud558\uac70\ub098 \ub85c\uadf8\uc778\ud558\uba74 \uacc4\uc18d \ub9cc\ub4e4 \uc218 \uc788\uc5b4\uc694.",
+  workspace_required: "\uc791\uc5c5\ubc29\uc744 \uc900\ube44\ud558\uc9c0 \ubabb\ud588\uc5b4\uc694. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.",
+  archive_workspace_required: "\ubcf4\uad00\ud568\uc744 \uc900\ube44\ud558\uc9c0 \ubabb\ud588\uc5b4\uc694. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.",
+  usage_workspace_required: "\uc0ac\uc6a9\ub7c9 \uc815\ubcf4\ub97c \ubd88\ub7ec\uc624\uc9c0 \ubabb\ud588\uc5b4\uc694. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.",
+  invalid_or_expired_session: "\ub85c\uadf8\uc778\uc774 \ub9cc\ub8cc\ub410\uc5b4\uc694. \ub2e4\uc2dc \ub85c\uadf8\uc778\ud55c \ub4a4 \uc774\uc5b4\uc11c \uc9c4\ud589\ud574 \uc8fc\uc138\uc694.",
+  supabase_auth_configuration_missing: "\ub85c\uadf8\uc778 \uc124\uc815\uc744 \ud655\uc778\ud574\uc57c \ud574\uc694. \uad00\ub9ac\uc790\uc5d0\uac8c \ubb38\uc758\ud574 \uc8fc\uc138\uc694.",
+  upstream_orchestrator_unavailable: "\uc0dd\uc131 \uc11c\ubc84\uc5d0 \uc5f0\uacb0\ud558\uc9c0 \ubabb\ud588\uc5b4\uc694. \uc785\ub825 \ub0b4\uc6a9\uc740 \uc720\uc9c0\ud588\uc73c\ub2c8 \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694."
 };
 
-const CHAT_FALLBACK_ERROR_MESSAGE = "요청 처리 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.";
+const CHAT_FALLBACK_ERROR_MESSAGE = "\uc694\uccad \ucc98\ub9ac \uc911 \ubb38\uc81c\uac00 \uc0dd\uacbc\uc5b4\uc694. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.";
 
 export type ChatFailureLike = {
   errorCode?: string | null;
@@ -54,15 +51,61 @@ export function chatFailureFromError(error: ChatFailureLike): { message: string;
 }
 
 export function inferContextFromPrompt(prompt: string): InferredContext {
-  const normalized = prompt.replace(/\s+/g, "");
-  const businessType = normalized.includes("카페") ? "카페" : "카페";
-  const itemOrService = normalized.includes("딸기라떼") ? "딸기라떼" : "대표 메뉴";
-  const promotionGoal = normalized.includes("신메뉴") ? "신메뉴 출시" : "광고 홍보";
-
+  void prompt;
   return {
-    businessType,
-    itemOrService,
-    promotionGoal
+    businessType: null,
+    itemOrService: null,
+    promotionGoal: null,
+    advertisedSubject: null,
+    advertisedSubjectType: null,
+    campaignIntent: null
+  };
+}
+
+const QUESTION_FIELD_TO_CONTEXT_KEY: Partial<Record<string, keyof InferredContext>> = {
+  business_type: "businessType",
+  item_or_service: "itemOrService",
+  promotion_goal: "promotionGoal",
+  campaign_intent: "campaignIntent",
+  advertised_subject: "advertisedSubject",
+  advertised_subject_type: "advertisedSubjectType"
+};
+
+export function contextPatchFromQuestionAnswer(input: {
+  field: string;
+  value: string;
+}): Partial<InferredContext> {
+  const key = QUESTION_FIELD_TO_CONTEXT_KEY[input.field];
+  if (!key || !input.value || input.value === "custom") {
+    return {};
+  }
+  return { [key]: input.value };
+}
+
+export function hasMeaningfulContext(
+  context: Partial<InferredContext> | null | undefined
+): boolean {
+  if (!context) return false;
+  return Boolean(
+    context.businessType ||
+    context.itemOrService ||
+    context.promotionGoal ||
+    context.campaignIntent ||
+    context.advertisedSubject
+  );
+}
+
+export function mergeInferredContext(
+  current: InferredContext,
+  incoming: Partial<InferredContext> | null | undefined
+): InferredContext {
+  return {
+    businessType: incoming?.businessType ?? current.businessType ?? null,
+    itemOrService: incoming?.itemOrService ?? current.itemOrService ?? null,
+    promotionGoal: incoming?.promotionGoal ?? current.promotionGoal ?? null,
+    advertisedSubject: incoming?.advertisedSubject ?? current.advertisedSubject ?? null,
+    advertisedSubjectType: incoming?.advertisedSubjectType ?? current.advertisedSubjectType ?? null,
+    campaignIntent: incoming?.campaignIntent ?? current.campaignIntent ?? null
   };
 }
 
@@ -70,21 +113,26 @@ export function createInitialChatFlowState(): ChatFlowState {
   return {
     entryMode: "chat_start",
     step: 1,
-    progress: { current: 0, total: 4, label: "대화 시작" },
+    progress: { current: 0, total: 4, label: "\ub300\ud654 \uc2dc\uc791" },
     jobId: "",
     threadId: "",
     userInput: "",
     inferredContext: {
-      businessType: "",
-      itemOrService: "",
-      promotionGoal: ""
+      businessType: null,
+      itemOrService: null,
+      promotionGoal: null,
+      advertisedSubject: null,
+      advertisedSubjectType: null,
+      campaignIntent: null
     },
     contextSource: "empty",
     copyCandidates: [],
     copyCandidateSource: "empty",
     copyCandidateOrigin: "unknown",
+    copyFallbackUsed: false,
+    copyFallbackReason: null,
     copyGenerationMode: "suggest_candidates",
-    selectedTone: "감성적인",
+    selectedTone: "\uac10\uc131\uc801\uc778",
     selectedCopyId: "",
     selectedChannelId: "instagram-feed",
     customDirection: "",
@@ -98,12 +146,24 @@ export function createInitialChatFlowState(): ChatFlowState {
     sourceAssetId: null,
     sourceImagePath: null,
     referenceImagePath: null,
+    pendingExplicitContextPatch: null,
     currentQuestion: null,
     conversationMessages: [],
     isLoading: false,
     errorMessage: null,
     errorCode: null
   };
+}
+
+function progressFromQuestion(
+  question: { progressState?: ChatFlowState["progress"] | null } | null | undefined,
+  fallback: ChatFlowState["progress"]
+): ChatFlowState["progress"] {
+  const progress = question?.progressState;
+  if (!progress) {
+    return fallback;
+  }
+  return { current: progress.current, total: progress.total, label: progress.label };
 }
 
 function applyUserPromptToTranscript(
@@ -141,6 +201,10 @@ function isGenerationJobTerminalStatus(status: string): boolean {
   return status === "done" || status === "failed" || status === "cancelled";
 }
 
+function normalizeImageGenerationEngine(engine: ImageGenerationEngine | null | undefined): ImageGenerationEngine {
+  return getGenerationEngineOption(engine).id;
+}
+
 export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): ChatFlowState {
   switch (action.type) {
     case "reset":
@@ -149,7 +213,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         step: 2,
-        progress: { current: 1, total: 4, label: "정보 입력" },
+        progress: { current: 1, total: 4, label: "\uc815\ubcf4 \uc785\ub825" },
         userInput: action.prompt,
         sourceAssetId: action.sourceAssetId ?? null,
         sourceImagePath: action.sourceImagePath ?? null,
@@ -157,76 +221,101 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         userCustomHeadline: action.userCustomHeadline ?? "",
         userCustomSubcopy: action.userCustomSubcopy ?? "",
         copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
-        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(
+          action.imageGenerationEngine ?? state.selectedImageGenerationEngine
+        ),
         inferredContext: {
-          businessType: "",
-          itemOrService: "",
-          promotionGoal: ""
+          businessType: null,
+          itemOrService: null,
+          promotionGoal: null,
+          advertisedSubject: null,
+          advertisedSubjectType: null,
+          campaignIntent: null
         },
         contextSource: "empty",
+        pendingExplicitContextPatch: null,
         conversationMessages: applyUserPromptToTranscript(state.conversationMessages, action.prompt, action.transcriptMode),
         isLoading: true,
         errorMessage: null,
         errorCode: null
       };
-    case "backendQuestionReceived":
+    case "backendQuestionReceived": {
+      const backendMerged = mergeInferredContext(state.inferredContext, action.context);
+      const finalContext = mergeInferredContext(backendMerged, state.pendingExplicitContextPatch);
       return {
         ...state,
         step: 2,
-        progress: { current: 1, total: 4, label: "정보 입력" },
+        progress: action.progress ?? progressFromQuestion(action.question, { current: 1, total: 4, label: "\uc815\ubcf4 \uc785\ub825" }),
         jobId: action.jobId,
         threadId: action.threadId,
         generationJob: action.generationJob ?? state.generationJob,
         sourceAssetId: action.sourceAssetId ?? state.sourceAssetId ?? null,
         sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
         referenceImagePath: action.referenceImagePath ?? state.referenceImagePath ?? null,
-        inferredContext: {
-          businessType: action.context.businessType ?? state.inferredContext.businessType,
-          itemOrService: action.context.itemOrService ?? state.inferredContext.itemOrService,
-          promotionGoal: action.context.promotionGoal ?? state.inferredContext.promotionGoal
-        },
+        selectedChannelId: action.selectedChannelId ?? state.selectedChannelId,
+        inferredContext: finalContext,
         contextSource: "backend",
+        pendingExplicitContextPatch: null,
         currentQuestion: action.question,
         conversationMessages: appendAssistantMessageOnce(state.conversationMessages, action.question.question),
         isLoading: false,
         errorMessage: null,
         errorCode: null
       };
-    case "submitQuestionAnswer":
+    }
+    case "submitQuestionAnswer": {
+      const explicitPatch =
+        action.field && action.value
+          ? contextPatchFromQuestionAnswer({ field: action.field, value: action.value })
+          : {};
+      const hasExplicit = Object.keys(explicitPatch).length > 0;
       return {
         ...state,
+        inferredContext: hasExplicit
+          ? mergeInferredContext(state.inferredContext, explicitPatch)
+          : state.inferredContext,
+        pendingExplicitContextPatch: hasExplicit ? explicitPatch : state.pendingExplicitContextPatch,
         conversationMessages: [...state.conversationMessages, { role: "user", text: action.label }],
         isLoading: true,
         errorMessage: null,
         errorCode: null
       };
+    }
     case "backendStartSucceeded": {
       const hasBackendCopyCandidates = action.copyCandidates.length > 0;
       const nextCopyCandidates = hasBackendCopyCandidates ? action.copyCandidates : [];
+      const backendMergedStart = mergeInferredContext(state.inferredContext, action.context);
+      const finalContextStart = mergeInferredContext(backendMergedStart, state.pendingExplicitContextPatch);
       return {
         ...state,
         step: 2,
-        progress: { current: 1, total: 4, label: "정보 입력" },
+        progress: { current: 1, total: 4, label: "\uc815\ubcf4 \uc785\ub825" },
         userInput: action.prompt,
         jobId: action.jobId,
         threadId: action.threadId,
-        inferredContext: action.context,
+        inferredContext: finalContextStart,
         contextSource: "backend",
+        pendingExplicitContextPatch: null,
         copyCandidates: nextCopyCandidates,
         copyCandidateSource: action.copyCandidateSource ?? (hasBackendCopyCandidates ? "backend" : "empty"),
         copyCandidateOrigin: hasBackendCopyCandidates ? action.copyCandidateOrigin ?? "unknown" : "unknown",
+        copyFallbackUsed: hasBackendCopyCandidates ? action.copyFallbackUsed ?? false : false,
+        copyFallbackReason: hasBackendCopyCandidates ? action.copyFallbackReason ?? null : null,
         copyGenerationMode: action.copyGenerationMode ?? state.copyGenerationMode,
-        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(
+          action.imageGenerationEngine ?? state.selectedImageGenerationEngine
+        ),
         sourceAssetId: action.sourceAssetId ?? state.sourceAssetId ?? null,
         sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
         referenceImagePath: action.referenceImagePath ?? state.referenceImagePath ?? null,
         userCustomHeadline: action.userCustomHeadline ?? state.userCustomHeadline,
         userCustomSubcopy: action.userCustomSubcopy ?? state.userCustomSubcopy,
+        selectedChannelId: action.selectedChannelId ?? state.selectedChannelId,
         selectedCopyId: action.recommendedCopyId || nextCopyCandidates[0]?.id || "",
         currentQuestion: null,
         conversationMessages: [
           ...state.conversationMessages,
-          { role: "assistant", text: "좋아요. 필요한 정보를 모았어요. 이제 광고 문구와 분위기를 정리해볼게요." }
+          { role: "assistant", text: "\uc88b\uc544\uc694. \ud544\uc694\ud55c \uc815\ubcf4\ub97c \ubaa8\uc558\uc5b4\uc694. \uc774\uc81c \uad11\uace0 \ubb38\uad6c\uc640 \ubd84\uc704\uae30\ub97c \uc815\ub9ac\ud574\ubcfc\uac8c\uc694." }
         ],
         isLoading: false,
         errorMessage: null,
@@ -235,11 +324,21 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
     }
     case "backendRequestFailed":
       const backendFailure = chatFailureFromError(action);
-      if (action.recoverToStart) {
+      if (action.recoverToStart && backendFailure.errorCode === "thread_limit_reached") {
         return {
           ...state,
           step: 1,
-          progress: { current: 0, total: 4, label: "대화 시작" },
+          progress: { current: 0, total: 4, label: "\ub300\ud654 \uc2dc\uc791" },
+          currentQuestion: null,
+          isLoading: false,
+          errorMessage: backendFailure.message,
+          errorCode: backendFailure.errorCode
+        };
+      }
+      if (action.recoverToStart) {
+        return {
+          ...state,
+          progress: { ...state.progress, label: "\uc791\uc5c5 \uc2dc\uc791 \uc2e4\ud328" },
           currentQuestion: null,
           isLoading: false,
           errorMessage: backendFailure.message,
@@ -272,13 +371,13 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
     case "setImageGenerationEngine":
       return {
         ...state,
-        selectedImageGenerationEngine: action.imageGenerationEngine
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(action.imageGenerationEngine)
       };
     case "continueToCopy":
       return {
         ...state,
         step: 3,
-        progress: { current: 3, total: 4, label: "정보 입력" }
+        progress: { current: 3, total: 4, label: "\uc815\ubcf4 \uc785\ub825" }
       };
     case "selectCopy":
       return {
@@ -318,7 +417,7 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         brief: action.brief,
         conversationMessages: [
           ...state.conversationMessages,
-          { role: "assistant", text: "좋아요. 요청을 반영해서 브리프를 다시 정리했어요." }
+          { role: "assistant", text: "\uc88b\uc544\uc694. \uc694\uccad\uc744 \ubc18\uc601\ud574\uc11c \ube0c\ub9ac\ud504\ub97c \ub2e4\uc2dc \uc815\ub9ac\ud588\uc5b4\uc694." }
         ],
         isLoading: false,
         errorMessage: null,
@@ -347,31 +446,42 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         step: 4,
-        progress: { current: 4, total: 4, label: "정보 입력" },
+        progress: { current: 4, total: 4, label: "\uc815\ubcf4 \uc785\ub825" },
         isLoading: false
       };
-    case "restoreThreadSnapshot":
+    case "restoreThreadSnapshot": {
+      const snapshotMerged = mergeInferredContext(state.inferredContext, action.context);
+      const finalRestoreContext = mergeInferredContext(snapshotMerged, state.pendingExplicitContextPatch);
       return {
         ...state,
         step: 4,
-        progress: {
-          current: 4,
-          total: 4,
-          label: action.currentQuestion ? "추가 정보" : "정보 입력"
-        },
+        progress: action.currentQuestion
+          ? progressFromQuestion(action.currentQuestion, {
+              current: 4,
+              total: 4,
+              label: "\ucd94\uac00 \uc815\ubcf4"
+            })
+          : {
+              current: 4,
+              total: 4,
+              label: "\uc815\ubcf4 \uc785\ub825"
+            },
         userInput: action.prompt,
         jobId: action.jobId,
         threadId: action.threadId,
-        inferredContext: action.context,
-        contextSource: "backend",
+        inferredContext: finalRestoreContext,
+        contextSource: hasMeaningfulContext(action.context) ? "backend" : state.contextSource,
+        pendingExplicitContextPatch: state.pendingExplicitContextPatch,
         copyGenerationMode: action.copyGenerationMode,
         copyCandidates: action.copyCandidates,
         copyCandidateSource: action.copyCandidates.length > 0 ? "backend" : "empty",
         copyCandidateOrigin: action.copyCandidateOrigin,
+        copyFallbackUsed: action.copyFallbackUsed ?? false,
+        copyFallbackReason: action.copyFallbackReason ?? null,
         selectedCopyId: action.selectedCopyId,
-        selectedChannelId: action.selectedChannelId,
+        selectedChannelId: action.selectedChannelId ?? state.selectedChannelId,
         selectedTone: action.selectedTone,
-        selectedImageGenerationEngine: action.selectedImageGenerationEngine,
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(action.selectedImageGenerationEngine),
         customDirection: action.customDirection,
         userCustomHeadline: action.userCustomHeadline,
         userCustomSubcopy: action.userCustomSubcopy,
@@ -392,11 +502,12 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         errorMessage: null,
         errorCode: null
       };
+    }
     case "showResultShell":
       return {
         ...state,
         step: 4,
-        progress: { current: 4, total: 4, label: "결과 확인" },
+        progress: { current: 4, total: 4, label: "\uacb0\uacfc \ud655\uc778" },
         isLoading: false,
         currentQuestion: null,
         errorMessage: null,
@@ -407,10 +518,12 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
       return {
         ...state,
         step: 4,
-        progress: { current: 4, total: 4, label: "생성 실패" },
+        progress: { current: 4, total: 4, label: "\uc0dd\uc131 \uc2e4\ud328" },
         threadId: action.threadId ?? state.threadId,
         userInput: action.userInput ?? state.userInput,
-        selectedImageGenerationEngine: action.imageGenerationEngine ?? state.selectedImageGenerationEngine,
+        selectedImageGenerationEngine: normalizeImageGenerationEngine(
+          action.imageGenerationEngine ?? state.selectedImageGenerationEngine
+        ),
         generationJob: null,
         isLoading: false,
         currentQuestion: null,
@@ -455,33 +568,33 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         errorCode: null
       };
 
-    case "generationJobQuestionReceived":
+    case "generationJobQuestionReceived": {
+      const backendMergedJob = mergeInferredContext(state.inferredContext, action.context);
+      const finalContextJob = mergeInferredContext(backendMergedJob, state.pendingExplicitContextPatch);
       return {
         ...state,
         step: 4,
-        progress: { current: 4, total: 4, label: "추가 정보" },
+        progress: action.progress ?? progressFromQuestion(action.question, { current: 4, total: 4, label: "\ucd94\uac00 \uc815\ubcf4" }),
         generationJob: action.generationJob,
         sourceAssetId: action.sourceAssetId ?? state.sourceAssetId ?? null,
         sourceImagePath: action.sourceImagePath ?? state.sourceImagePath ?? null,
         referenceImagePath: action.referenceImagePath ?? state.referenceImagePath ?? null,
-        inferredContext: {
-          businessType: action.context?.businessType ?? state.inferredContext.businessType,
-          itemOrService: action.context?.itemOrService ?? state.inferredContext.itemOrService,
-          promotionGoal: action.context?.promotionGoal ?? state.inferredContext.promotionGoal
-        },
-        contextSource: action.context ? "backend" : state.contextSource,
+        inferredContext: finalContextJob,
+        contextSource: hasMeaningfulContext(action.context) ? "backend" : state.contextSource,
+        pendingExplicitContextPatch: hasMeaningfulContext(action.context) ? null : state.pendingExplicitContextPatch,
         currentQuestion: action.question,
         conversationMessages: appendAssistantMessageOnce(state.conversationMessages, action.question.question),
         isLoading: false,
         errorMessage: null,
         errorCode: null
       };
+    }
 
     case "generationJobInterruptReceived":
       return {
         ...state,
         step: 4,
-        progress: { current: 4, total: 4, label: "추가 선택" },
+        progress: { current: 4, total: 4, label: "\ucd94\uac00 \uc120\ud0dd" },
         generationJob: action.generationJob,
         currentQuestion: null,
         isLoading: false,
@@ -489,14 +602,24 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         errorCode: null
       };
 
-    case "submitGenerationJobAnswer":
+    case "submitGenerationJobAnswer": {
+      const jobExplicitPatch =
+        action.field && action.value
+          ? contextPatchFromQuestionAnswer({ field: action.field, value: action.value })
+          : {};
+      const hasJobExplicit = Object.keys(jobExplicitPatch).length > 0;
       return {
         ...state,
+        inferredContext: hasJobExplicit
+          ? mergeInferredContext(state.inferredContext, jobExplicitPatch)
+          : state.inferredContext,
+        pendingExplicitContextPatch: hasJobExplicit ? jobExplicitPatch : state.pendingExplicitContextPatch,
         conversationMessages: [...state.conversationMessages, { role: "user", text: action.label }],
         isLoading: true,
         errorMessage: null,
         errorCode: null
       };
+    }
 
     case "generationJobFailed":
       const generationJobFailure = chatFailureFromError(action);
@@ -519,19 +642,30 @@ export function selectedChannelLabel(state: ChatFlowState): string {
 }
 
 export function selectedToneSummary(state: ChatFlowState): string {
-  return state.selectedTone ? `${state.selectedTone} 분위기` : "브랜드에 맞춘 분위기";
+  return state.selectedTone ? `${state.selectedTone} \ubd84\uc704\uae30` : "\ube0c\ub79c\ub4dc\uc5d0 \ub9de\ub294 \ubd84\uc704\uae30";
+}
+
+function contextItemLabel(context: InferredContext): string {
+  return contextItemSummary(context) || "상품/서비스";
+}
+
+function contextPurposeLabel(context: InferredContext): string {
+  if (context.promotionGoal) {
+    return context.promotionGoal;
+  }
+  return campaignIntentLabel(context.campaignIntent) || "";
 }
 
 export function fallbackImageDirection(state: ChatFlowState): string {
   if (state.customDirection) {
     return state.customDirection;
   }
-  const item = state.inferredContext.itemOrService || "상품/서비스";
+  const item = contextItemLabel(state.inferredContext);
   const tonePrefix = state.selectedTone ? `${state.selectedTone} 분위기를 살려 ` : "";
   if (item.includes("예약") || item.endsWith("서비스")) {
-    return `${tonePrefix}${item} 안내가 잘 보이도록 깔끔한 배경과 읽기 쉬운 여백을 구성해요.`;
+    return `${tonePrefix}${item} 안내가 잘 보이도록 깔끔한 배경과 구도로 구성해요.`;
   }
-  return `${tonePrefix}${item} 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.`;
+  return `${tonePrefix}${item} 중심의 깔끔한 광고 구도로 구성해요.`;
 }
 
 export function buildBrief(state: ChatFlowState): ChatBrief {
@@ -539,11 +673,12 @@ export function buildBrief(state: ChatFlowState): ChatBrief {
     return state.brief;
   }
   return {
-    purpose: state.inferredContext.promotionGoal,
-    item: state.inferredContext.itemOrService,
+    purpose: contextPurposeLabel(state.inferredContext),
+    item: contextItemLabel(state.inferredContext),
     copy: selectedCopyLabel(state),
     tone: selectedToneSummary(state),
     channel: selectedChannelLabel(state),
+    selectedChannelId: state.selectedChannelId,
     imageDirection: fallbackImageDirection(state)
   };
 }

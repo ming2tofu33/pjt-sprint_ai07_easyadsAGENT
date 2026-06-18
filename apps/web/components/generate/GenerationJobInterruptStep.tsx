@@ -3,6 +3,7 @@
 import { Check, PenLine, Send } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ComplianceAction, ComplianceFindingFE, ParsedGenerationJobInterrupt } from "@/lib/generation-job-interrupt";
+import { copyCandidateOriginLabel, copyCandidateOriginNote } from "@/lib/copy-candidate-provenance";
 import type { ChatFlowState } from "@/types/marketing";
 import { AutosizeTextarea } from "./AutosizeTextarea";
 import { ChatTimelineStep } from "./ChatTimelineStep";
@@ -37,19 +38,6 @@ const fallbackCustomFields = [
     required: false
   }
 ];
-
-function copyOriginLabel(origin: string): string {
-  if (origin === "llm") {
-    return "AI 생성";
-  }
-  if (origin === "rule_based") {
-    return "자동 추천";
-  }
-  if (origin === "fallback") {
-    return "안전 추천";
-  }
-  return "요청 기반";
-}
 
 function severityLabel(severity: string | null | undefined): string {
   if (severity === "block") return "게시 차단";
@@ -191,7 +179,10 @@ export function GenerationJobInterruptStep({
         <>
           <h2 className={styles.sectionTitle}>사용할 문구를 골라주세요</h2>
           <p className={styles.helperText}>
-            {copyOriginLabel(interrupt.copyCandidateOrigin)} 문구 후보예요. 선택하면 같은 생성 요청이 이어집니다.
+            {copyCandidateOriginLabel(interrupt.copyCandidateOrigin, interrupt.copyFallbackUsed)} 문구 후보예요. 선택하면 같은 생성 요청이 이어집니다.
+          </p>
+          <p className={styles.helperText}>
+            {copyCandidateOriginNote(interrupt.copyCandidateOrigin, interrupt.copyFallbackUsed)}
           </p>
           <div className={styles.selectList}>
             {interrupt.candidates.map((candidate, index) => {

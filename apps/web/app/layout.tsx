@@ -3,7 +3,12 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "개떡찰떡",
-  description: "대충 말해도 AI가 광고 브리프를 완성하는 이미지 광고 앱"
+  description: "대충 말해도 AI가 광고 브리프를 완성하는 이미지 광고 앱",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/icon.png", sizes: "32x32", type: "image/png" }],
+    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }]
+  }
 };
 
 export const viewport: Viewport = {

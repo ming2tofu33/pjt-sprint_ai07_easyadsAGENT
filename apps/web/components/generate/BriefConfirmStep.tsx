@@ -33,6 +33,7 @@ export function BriefConfirmCard({ state, onGenerate, onRefineBrief, readOnly = 
   const [refinementText, setRefinementText] = useState("");
   const brief = buildBrief(state);
   const usesDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
+  const progressPercent = state.progress.total > 0 ? `${Math.max(0, Math.min(100, (state.progress.current / state.progress.total) * 100))}%` : "0%";
 
   async function submitRefinement() {
     if (state.isLoading) {
@@ -122,7 +123,7 @@ export function BriefConfirmCard({ state, onGenerate, onRefineBrief, readOnly = 
               정보 입력 {state.progress.current}/{state.progress.total}
             </span>
             <span className={styles.progressTrack}>
-              <span className={styles.progressBar} style={{ width: "100%" }} />
+              <span className={styles.progressBar} style={{ width: progressPercent }} />
             </span>
           </div>
 

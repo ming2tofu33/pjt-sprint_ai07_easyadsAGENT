@@ -201,67 +201,119 @@ function internalSecretHeaders() {
   return secret ? { "X-EasyAds-Internal-Secret": secret } : {};
 }
 
+function sanitizedUpstream(url) {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.host,
+      path: parsed.pathname
+    };
+  } catch {
+    return {
+      host: null,
+      path: null
+    };
+  }
+}
+
+function requestIdFrom(request) {
+  const raw = request?.headers?.["x-request-id"] || request?.headers?.["x-easyads-trace-id"];
+  return typeof raw === "string" && raw.trim() ? raw.trim() : `req_${crypto.randomUUID().replace(/-/g, "")}`;
+}
+
+function createUpstreamUnavailableError(url, cause) {
+  const error = new Error(cause instanceof Error && cause.message ? cause.message : "orchestrator request failed");
+  error.statusCode = 502;
+  error.errorCode = "upstream_orchestrator_unavailable";
+  error.upstream = sanitizedUpstream(url);
+  return error;
+}
+
 async function proxyJson({ fetchImpl, url, body, headers = {} }) {
-  const response = await fetchImpl(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...internalSecretHeaders(), ...headers },
-    body: JSON.stringify(body)
-  });
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...internalSecretHeaders(), ...headers },
+      body: JSON.stringify(body)
+    });
+  } catch (error) {
+    throw createUpstreamUnavailableError(url, error);
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
     error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
+    error.upstream = sanitizedUpstream(url);
     throw error;
   }
   return payload;
 }
 
 async function proxyPatchJson({ fetchImpl, url, body, headers = {} }) {
-  const response = await fetchImpl(url, {
-    method: "PATCH",
-    headers: { "content-type": "application/json", ...internalSecretHeaders(), ...headers },
-    body: JSON.stringify(body)
-  });
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", ...internalSecretHeaders(), ...headers },
+      body: JSON.stringify(body)
+    });
+  } catch (error) {
+    throw createUpstreamUnavailableError(url, error);
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
     error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
+    error.upstream = sanitizedUpstream(url);
     throw error;
   }
   return payload;
 }
 
 async function proxyDeleteJson({ fetchImpl, url, headers = {} }) {
-  const response = await fetchImpl(url, {
-    method: "DELETE",
-    headers: { accept: "application/json", ...internalSecretHeaders(), ...headers }
-  });
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "DELETE",
+      headers: { accept: "application/json", ...internalSecretHeaders(), ...headers }
+    });
+  } catch (error) {
+    throw createUpstreamUnavailableError(url, error);
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
     error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
+    error.upstream = sanitizedUpstream(url);
     throw error;
   }
   return payload;
 }
 
 async function proxyGetJson({ fetchImpl, url, headers = {} }) {
-  const response = await fetchImpl(url, {
-    method: "GET",
-    headers: { accept: "application/json", ...internalSecretHeaders(), ...headers }
-  });
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method: "GET",
+      headers: { accept: "application/json", ...internalSecretHeaders(), ...headers }
+    });
+  } catch (error) {
+    throw createUpstreamUnavailableError(url, error);
+  }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = payload?.detail?.message || payload?.detail || "orchestrator request failed";
     const error = new Error(typeof message === "string" ? message : JSON.stringify(message));
     error.statusCode = response.status;
     error.errorCode = payload?.error_code || payload?.detail?.error_code || "upstream_error";
+    error.upstream = sanitizedUpstream(url);
     throw error;
   }
   return payload;
@@ -703,6 +755,17 @@ export function buildApp(options = {}) {
     });
   });
 
+  app.get("/api/generation-jobs", async (_request, reply) =>
+    reply
+      .header("allow", "POST, GET /api/generation-jobs/:jobId")
+      .code(405)
+      .send({
+        error: "generation_job_id_required",
+        error_code: "generation_job_id_required",
+        message: "GET /api/generation-jobs requires a job id."
+      })
+  );
+
   app.post("/api/generation-jobs", async (request, reply) => {
     const parsed = generationJobSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -850,11 +913,21 @@ export function buildApp(options = {}) {
     });
   });
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
+    const requestId = requestIdFrom(request);
+    if (error.statusCode >= 500) {
+      request.log.error({
+        request_id: requestId,
+        error_code: error.errorCode ?? "upstream_error",
+        upstream: error.upstream,
+        message: error.message
+      }, "BFF upstream request failed");
+    }
     reply.code(error.statusCode || 502).send({
       error: error.errorCode ?? "upstream_error",
       error_code: error.errorCode ?? "upstream_error",
-      message: error.message
+      message: error.message,
+      request_id: requestId
     });
   });
 

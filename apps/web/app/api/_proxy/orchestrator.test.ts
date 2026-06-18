@@ -231,6 +231,113 @@ describe("proxyOrchestratorJson", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("returns structured upstream diagnostics without exposing upstream internals", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "https://orchestrator.example.com");
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new NextRequest("http://localhost/api/generation-jobs", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": "req_web_1"
+      },
+      body: JSON.stringify({ userInput: "카페 아포가토 스토리 광고", runMode: "graph_job" })
+    });
+
+    const response = await proxyOrchestratorJson(request, "POST", "/api/v1/generation-jobs", undefined, {
+      injectVerifiedUserId: true
+    });
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body).toEqual(
+      expect.objectContaining({
+        error_code: "upstream_orchestrator_unavailable",
+        request_id: "req_web_1"
+      })
+    );
+    expect(body).not.toHaveProperty("upstream");
+    expect(logSpy).toHaveBeenCalledWith(
+      "Next BFF upstream request failed",
+      expect.objectContaining({
+        request_id: "req_web_1",
+        error_code: "upstream_orchestrator_unavailable",
+        upstream: {
+          host: "orchestrator.example.com",
+          path: "/api/v1/generation-jobs"
+        }
+      })
+    );
+  });
+
+  it("logs safe auth diagnostics when orchestrator returns a workspace scope error", async () => {
+    vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://supabase.example.com");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "anon_key");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url).includes("/auth/v1/user")) {
+        return jsonResponse({ id: "user_uuid_1", is_anonymous: false });
+      }
+      return jsonResponse(
+        {
+          detail: {
+            success: false,
+            error_code: "workspace_required",
+            message: "workspaceId is required."
+          }
+        },
+        { status: 400 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const request = new NextRequest("http://localhost/api/generation-jobs", {
+      method: "POST",
+      headers: {
+        authorization: "Bearer access_token_1",
+        "content-type": "application/json",
+        "x-request-id": "req_workspace_1"
+      },
+      body: JSON.stringify({ userInput: "로그인 카페 광고", runMode: "graph_job" })
+    });
+
+    const response = await proxyOrchestratorJson(request, "POST", "/api/v1/generation-jobs", undefined, {
+      injectVerifiedUserId: true,
+      injectVerifiedUserIdHeader: true
+    });
+
+    expect(response.status).toBe(400);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Next BFF upstream response failed",
+      expect.objectContaining({
+        request_id: "req_workspace_1",
+        path: "/api/v1/generation-jobs",
+        status: 400,
+        error_code: "workspace_required",
+        auth: {
+          header_present: true,
+          principal_resolved: true,
+          account_type: "user"
+        }
+      })
+    );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("access_token_1");
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("user_uuid_1");
+  });
+
+  it("generation job collection GET returns an explicit contract error", async () => {
+    const route = await import("../generation-jobs/route");
+    const response = await route.GET();
+    const body = await response.json();
+
+    expect(response.status).toBe(405);
+    expect(body.error_code).toBe("generation_job_id_required");
+    expect(body.message).toBe("GET /api/generation-jobs requires a job id.");
+  });
+
   it("attaches the internal secret header to orchestrator requests when configured", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
     vi.stubEnv("EASYADS_INTERNAL_API_SECRET", "internal_secret_1");
@@ -538,6 +645,7 @@ describe("proxyOrchestratorBinary", () => {
 
   it("returns 502 JSON when binary proxy fetch fails", async () => {
     vi.stubEnv("ORCHESTRATOR_BASE_URL", "http://orchestrator");
+    const logSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const fetchMock = vi.fn(async () => {
       throw new Error("connection refused");
     });
@@ -548,6 +656,18 @@ describe("proxyOrchestratorBinary", () => {
     const body = await response.json();
 
     expect(response.status).toBe(502);
-    expect(body.error_code).toBe("orchestrator_unavailable");
+    expect(body.error_code).toBe("upstream_orchestrator_unavailable");
+    expect(body).not.toHaveProperty("upstream");
+    expect(logSpy).toHaveBeenCalledWith(
+      "Next BFF upstream request failed",
+      expect.objectContaining({
+        request_id: null,
+        error_code: "upstream_orchestrator_unavailable",
+        upstream: {
+          host: "orchestrator",
+          path: "/api/v1/assets/a1.png"
+        }
+      })
+    );
   });
 });

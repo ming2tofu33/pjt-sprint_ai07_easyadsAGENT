@@ -185,7 +185,7 @@ def validate_approved_native_copy_brief(brief: ApprovedNativeCopyBrief) -> list[
             failures.append("copy_transformation_missing")
         if source_request and brief.headline and _contains_request_intent(source_request) and _similarity(source_request, brief.headline) >= 0.90:
             failures.append("user_request_copied_as_headline")
-    if not set(brief.product_evidence_ids or brief.verified_evidence_ids):
+    if not set(brief.product_evidence_ids or brief.verified_evidence_ids) and brief.copy_source_mode != "user_exact":
         failures.append("copy_provenance_missing")
     score = score_native_copy_candidate(
         NativeCopyCandidate(
@@ -206,7 +206,7 @@ def validate_approved_native_copy_brief(brief: ApprovedNativeCopyBrief) -> list[
         requested_positioning=brief.desired_positioning,
         exact_user_copy=brief.copy_source_mode == "user_exact",
     )
-    if score.blocked:
+    if score.blocked and brief.copy_source_mode != "user_exact":
         failures.extend(score.blocking_reasons)
     return sorted(set(failures))
 
@@ -389,34 +389,41 @@ def score_native_copy_candidate(
 # format's grammar never leaks into another format's prompt.
 _FORMAT_PROFILE_GRAMMAR: dict[str, list[str]] = {
     "banner": [
-        "- Layout grammar: horizontal web promotion banner, headline-dominant split composition.",
+        "- Layout grammar: Horizontal web promotion banner.",
+        "- Visual composition: Split composition. Place the product on one side, and the text blocks clearly on the other side.",
         "- Two text blocks only: headline plus optional supporting copy.",
     ],
     "poster": [
-        "- Layout grammar: single centered poster hero, headline-dominant.",
+        "- Layout grammar: Single centered poster hero.",
+        "- Visual composition: Product is prominently centered. Text is placed cleanly above or below the product.",
         "- Two text blocks only: headline plus optional supporting copy.",
     ],
     "instagram_feed": [
-        "- Layout grammar: square Instagram feed advertisement with native typography integrated into the composition.",
+        "- Layout grammar: Square Instagram feed advertisement.",
+        "- Visual composition: Modern, clean text integrated smoothly into the scene.",
         "- Two approved text blocks only: headline plus optional supporting copy.",
         "- Do not invent hashtags, account names, CTA, prices, dates, badges, or social-media UI text.",
     ],
     "instagram_story": [
-        "- Layout grammar: vertical Instagram story advertisement with safe top and bottom breathing room.",
+        "- Layout grammar: Vertical Instagram story advertisement.",
+        "- Visual composition: Keep safe top and bottom breathing room. Text is centered and clean.",
         "- Two approved text blocks only: headline plus optional supporting copy.",
         "- Do not invent hashtags, account names, swipe prompts, CTA, prices, dates, badges, or social-media UI text.",
     ],
     "product_detail": [
-        "- Layout grammar: product detail commerce section, feature label cards under the hero copy.",
-        "- Render the approved feature labels as a 2-4 item card grid; no flyer blocks.",
+        "- Layout grammar: E-commerce product detail section (Infographic style).",
+        "- Visual composition: Show the product clearly, surrounded by clean, distinct feature label cards.",
+        "- Render the approved feature labels as a 2-4 item card grid; no messy flyer blocks.",
     ],
     "flyer_editorial": [
-        "- Layout grammar: editorial flyer, 4-6 structured information blocks.",
+        "- Layout grammar: Elegant editorial flyer with information layout.",
+        "- Visual composition: Product integrated with 4-6 distinct, clean information text blocks structured neatly.",
         "- Calm editorial hierarchy; no promotional badge, offer, or operational contact text.",
     ],
     "flyer_promotional": [
-        "- Layout grammar: promotional flyer, 7-10 structured blocks with badge, info, and approved operational lines.",
-        "- Render only approved operational text (contact/location/notice); never invent business facts.",
+        "- Layout grammar: Busy promotional flyer.",
+        "- Visual composition: Bold product display with 7-10 distinct text blocks including promotional badges and info.",
+        "- Text must be placed in clean, readable blocks around the product.",
     ],
 }
 
@@ -537,12 +544,12 @@ def build_native_prompt_package(
             "",
             "TYPOGRAPHY EXPRESSION",
             f"- expression role: {expression.get('expression_role') or 'editorial_display'}",
-            f"- cultural register: {expression.get('cultural_register') or 'neutral'}",
-            f"- letterform: {expression.get('letterform_character') or 'native Hangul letterforms integrated with the scene'}",
-            f"- stroke: {expression.get('stroke_character') or 'not a flat overlay font'}",
-            f"- texture: {expression.get('texture_direction') or 'subtle texture connected to lighting'}",
-            f"- integration: {expression.get('visual_integration') or 'integrated_with_scene'}",
-            "- Typography must feel natively integrated into the composition, not like a flat text layer pasted over the image.",
+            f"- cultural register: {expression.get('cultural_register') or 'elegant, beautiful, and natural'}",
+            f"- letterform: {expression.get('letterform_character') or 'natural Hangul typography perfectly integrated with the scene aesthetic (beautiful and highly legible, NO scary or distorted brush strokes)'}",
+            f"- stroke: {expression.get('stroke_character') or 'clean and natural strokes'}",
+            f"- texture: {expression.get('texture_direction') or 'texture seamlessly matches the lighting and environment'}",
+            f"- integration: {expression.get('visual_integration') or 'natively integrated into the composition as if it naturally belongs there'}",
+            "- Typography must feel natively integrated into the composition, not like a flat text layer pasted over the image. However, it must remain beautiful, friendly, and perfectly legible. Do NOT use horror-style or messy distorted handwriting.",
             "",
             "REFERENCE TYPOGRAPHY STYLE",
             *[f"- {item}" for item in (reference_style.get('style_summary') or expression.get('reference_style_summary') or [])[:8]],

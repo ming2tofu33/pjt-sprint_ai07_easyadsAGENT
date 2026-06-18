@@ -110,6 +110,41 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     ]);
   });
 
+  it("restores question progress state and campaign intent labels from waiting snapshots", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_progress",
+      thread_id: "thread_progress",
+      job_id: "job_progress",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "waiting_user_input",
+      state_payload: {
+        user_input: "뷰티 광고 만들어줘",
+        current_brief: {
+          advertised_subject: "프리미엄 뷰티샵",
+          campaign_intent: "store_opening"
+        },
+        pending_interrupt: {
+          type: "option_question",
+          option_question: {
+            field: "copy_generation_mode",
+            question: "문구는 어떻게 준비할까요?",
+            options: [{ id: 1, label: "AI 추천", value: "suggest_candidates" }],
+            progress_state: { current_step: 3, total_steps: 5, current_label: "정보 입력" }
+          }
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {},
+      created_at: "2026-06-17T00:00:00+00:00"
+    });
+
+    expect(restore?.context.campaignIntent).toBe("store_opening");
+    expect(restore?.currentQuestion?.progressState).toEqual({ current: 3, total: 5, label: "정보 입력" });
+  });
+
   it("restores nested graph context from a waiting snapshot", () => {
     const restore = mapChatThreadSnapshotToRestoreState({
       snapshot_id: "snapshot_nested_context",
@@ -143,8 +178,8 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
       created_at: "2026-06-06T00:00:00+00:00"
     });
 
-    expect(restore?.context).toEqual({
-      businessType: "음식점/식당",
+    expect(restore?.context).toMatchObject({
+      businessType: "restaurant",
       itemOrService: "원육",
       promotionGoal: ""
     });
@@ -193,6 +228,7 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     expect(restore).toMatchObject({
       jobId: "job_done",
       threadId: "thread_done",
+      selectedImageGenerationEngine: "gpt_image_2",
       copyCandidates: [{ id: "copy_1", headline: "오늘 저녁 원육 한 판", subcopy: "방문 전 예약" }],
       copyCandidateOrigin: "llm",
       selectedCopyId: "copy_1",
@@ -202,6 +238,69 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
         progress: { progress_percent: 100, current_stage: "completed", message: "보관함 연결 완료" }
       }
     });
+  });
+
+  it("restores copy fallback provenance from pending interrupt metadata", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_fallback_interrupt",
+      thread_id: "thread_fallback_interrupt",
+      job_id: "job_fallback_interrupt",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "waiting_user_input",
+      state_payload: {
+        user_input: "Fallback copy request",
+        copy_generation_mode: "suggest_candidates",
+        copy_candidates: [{ id: "copy_1", headline: "Fallback copy" }],
+        copy_candidate_origin: "fallback",
+        pending_interrupt: {
+          type: "copy_candidate_selection",
+          candidates: [{ id: "copy_1", headline: "Fallback copy" }],
+          metadata: {
+            copy_fallback_used: true,
+            copy_fallback_reason: "api_call_disabled",
+          },
+        },
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {},
+      created_at: "2026-06-18T00:00:00+00:00",
+    });
+
+    expect(restore).toMatchObject({
+      copyCandidateOrigin: "fallback",
+      copyFallbackUsed: true,
+      copyFallbackReason: "api_call_disabled",
+    });
+  });
+
+  it("normalizes ad_format fallback into the canonical selected channel id", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_banner",
+      thread_id: "thread_banner",
+      job_id: "job_banner",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "job_completed",
+      state_payload: {
+        user_input: "배너 광고 만들어줘",
+        ad_format: "banner",
+        context: {
+          business_type: "cafe",
+          item_or_service: "latte",
+          promotion_goal: "new_launch"
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {},
+      created_at: "2026-06-16T00:00:00+00:00"
+    });
+
+    expect(restore?.selectedChannelId).toBe("banner");
   });
 
   it("preserves failed generation error metadata for thread restore", () => {
@@ -242,6 +341,66 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
         detail: "No module named 'langgraph.checkpoint.postgres'"
       }
     });
+  });
+
+  it("preserves the latest backend businessType during restore without falling back to defaults", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_beauty_restore",
+      thread_id: "thread_beauty_restore",
+      job_id: "job_beauty_restore",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "waiting_user_input",
+      state_payload: {
+        user_input: "뷰티 광고 만들어줘",
+        current_brief: {
+          business_type: "cafe"
+        }
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {
+        context: {
+          businessType: "beauty_salon"
+        },
+        pending_interrupt: {
+          type: "option_question",
+          option_question: {
+            field: "business_type",
+            question: "어떤 뷰티 업종인가요?",
+            options: [{ id: 1, label: "헤어", value: "beauty_hair" }]
+          }
+        }
+      },
+      created_at: "2026-06-17T00:00:00+00:00"
+    });
+
+    expect(restore?.context.businessType).toBe("beauty_salon");
+    expect(restore?.selectedChannelId).toBeNull();
+    expect(restore?.currentQuestion?.field).toBe("business_type");
+  });
+
+  it("returns null selectedChannelId when snapshot has no channel information", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_no_channel",
+      thread_id: "thread_no_channel",
+      job_id: "job_no_channel",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "waiting_user_input",
+      state_payload: {
+        user_input: "\uc0c1\ud488 \uad11\uace0",
+        business_type: "\uce74\ud398"
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {},
+      created_at: "2026-06-17T00:00:00+00:00"
+    });
+
+    expect(restore?.selectedChannelId).toBeNull();
   });
 });
 

@@ -18,13 +18,44 @@ declare global {
   interface Window {
     __easyadsPerfEvents?: PerfEvent[];
     __easyadsPerfContext?: Partial<PerfEvent>;
+    __EASYADS_PERF_TRACE__?: {
+      snapshot: () => PerfEvent[];
+      exportJson: () => string;
+      clear: () => void;
+    };
   }
 }
 
 const MAX_EVENTS = 5000;
 
 export function perfTraceEnabled() {
-  return process.env.NEXT_PUBLIC_EASYADS_PERF_TRACE === "1";
+  if (process.env.NEXT_PUBLIC_EASYADS_PERF_TRACE === "1") return true;
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("perfTrace") === "1" || window.localStorage.getItem("easyads.perfTrace") === "1";
+}
+
+export function getOrCreateTraceId() {
+  if (typeof window === "undefined") return null;
+  const current = window.__easyadsPerfContext?.trace_id;
+  if (typeof current === "string" && /^[0-9a-f-]{36}$/i.test(current)) return current;
+  const traceId = crypto.randomUUID();
+  setWebPerfContext({ ...window.__easyadsPerfContext, trace_id: traceId });
+  installPerfTraceExport();
+  return traceId;
+}
+
+export function traceHeaders(): Record<string, string> {
+  const traceId = getOrCreateTraceId();
+  return traceId ? { "X-EasyAds-Trace-Id": traceId } : {};
+}
+
+function installPerfTraceExport() {
+  if (typeof window === "undefined" || !perfTraceEnabled() || window.__EASYADS_PERF_TRACE__) return;
+  window.__EASYADS_PERF_TRACE__ = {
+    snapshot: exportWebPerfEvents,
+    exportJson: () => JSON.stringify(exportWebPerfEvents(), null, 2),
+    clear: resetWebPerfEvents
+  };
 }
 
 export function nowIso() {
@@ -56,6 +87,7 @@ export function recordWebPerfEvent(event: PerfEvent) {
   if (window.__easyadsPerfEvents.length > MAX_EVENTS) {
     window.__easyadsPerfEvents.splice(0, window.__easyadsPerfEvents.length - MAX_EVENTS);
   }
+  installPerfTraceExport();
 }
 
 export function resetWebPerfEvents() {

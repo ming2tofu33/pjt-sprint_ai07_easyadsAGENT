@@ -805,6 +805,50 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
+  it("returns structured upstream diagnostics without exposing upstream internals", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    const app = buildApp({ orchestratorBaseUrl: "https://orchestrator.example.com", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs",
+      headers: { "x-request-id": "req_test_1" },
+      payload: { userInput: "카페 아포가토 스토리 광고", runMode: "graph_job" }
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        error_code: "upstream_orchestrator_unavailable",
+        request_id: "req_test_1"
+      })
+    );
+    expect(response.json()).not.toHaveProperty("upstream");
+    await app.close();
+  });
+
+  it("rejects bare generation job GET requests with an explicit contract error", async () => {
+    const fetchImpl = vi.fn();
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/generation-jobs"
+    });
+
+    expect(response.statusCode).toBe(405);
+    expect(response.json()).toEqual(
+      expect.objectContaining({
+        error_code: "generation_job_id_required",
+        message: "GET /api/generation-jobs requires a job id."
+      })
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+    await app.close();
+  });
+
   it("verifies Supabase sessions before forwarding generation job reads", async () => {
     const fetchImpl = vi.fn(async (url) => {
       if (String(url).includes("/auth/v1/user")) {

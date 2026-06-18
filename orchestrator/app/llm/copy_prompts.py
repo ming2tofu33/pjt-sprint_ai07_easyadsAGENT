@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from orchestrator.app.llm.copy_grounding import BUSINESS_DOMAIN, DOMAIN_TERMS, build_context_anchors, find_wrong_domain_terms
+from orchestrator.app.llm.copy_tone_policy import resolve_copy_route_key
 from orchestrator.app.schemas.llm_marketing import CopyMessageStrategy, MarketingContext
 from orchestrator.app.schemas.text_layout import CopyVisualIntent
 
@@ -70,8 +71,15 @@ def _promotion_goal_description(goal: str | None) -> str:
 
 
 def _business_description(business_type: str | None) -> str:
+    route_key = resolve_copy_route_key(business_type)
+    if route_key == "generic":
+        return "local business"
     return {
         "macaron": "마카롱 디저트",
-        "restaurant_bbq": "숯불구이 음식점",
+        "cafe": "카페",
+        "beauty_skincare": "스킨케어 뷰티",
+        "beauty_hair": "헤어 뷰티",
         "beauty_nail": "네일 뷰티",
-    }.get(str(business_type or ""), str(business_type or "local business"))
+        "beauty_spa": "스파 뷰티",
+        "retail": "리테일 스토어",
+    }.get(route_key, route_key)

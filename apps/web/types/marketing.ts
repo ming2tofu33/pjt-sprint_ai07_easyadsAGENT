@@ -1,4 +1,5 @@
 import type { GenerationJob } from "@/lib/api-client";
+import type { ChannelId } from "@/lib/ad-formats";
 import type { ImageGenerationEngine } from "@/lib/generation-engine";
 
 export type ChatFlowStep = 1 | 2 | 3 | 4;
@@ -12,9 +13,12 @@ export type ProgressState = {
 };
 
 export type InferredContext = {
-  businessType: string;
-  itemOrService: string;
-  promotionGoal: string;
+  businessType?: string | null;
+  itemOrService?: string | null;
+  promotionGoal?: string | null;
+  advertisedSubject?: string | null;
+  advertisedSubjectType?: string | null;
+  campaignIntent?: string | null;
 };
 
 export type PartialInferredContext = Partial<InferredContext>;
@@ -34,6 +38,7 @@ export type OptionQuestion = {
   options: OptionItem[];
   required?: boolean;
   multi_select?: boolean;
+  progressState?: ProgressState | null;
 };
 
 export type ChatTranscriptMessage = {
@@ -66,7 +71,7 @@ export type CopyOption = {
 };
 
 export type CopyCandidateSource = "empty" | "sample" | "backend";
-export type CopyCandidateOrigin = "unknown" | "llm" | "rule_based" | "fallback";
+export type CopyCandidateOrigin = "unknown" | "llm" | "rule_based" | "fallback" | "mock";
 export type CopyGenerationMode = "suggest_candidates" | "auto_pilot" | "custom_input" | "no_copy";
 
 export type CustomCopyFields = {
@@ -75,7 +80,7 @@ export type CustomCopyFields = {
 };
 
 export type ChannelOption = {
-  id: string;
+  id: ChannelId;
   label: string;
   ratio: string;
 };
@@ -86,6 +91,7 @@ export type ChatBrief = {
   copy: string;
   tone: string;
   channel: string;
+  selectedChannelId?: string | null;
   imageDirection: string;
   finalImagePath?: string | null;
   finalImageUrl?: string | null;
@@ -118,10 +124,12 @@ export type ChatFlowState = {
   copyCandidates: CopyOption[];
   copyCandidateSource: CopyCandidateSource;
   copyCandidateOrigin: CopyCandidateOrigin;
+  copyFallbackUsed: boolean;
+  copyFallbackReason: string | null;
   copyGenerationMode: CopyGenerationMode;
   selectedTone: string;
   selectedCopyId: string;
-  selectedChannelId: string;
+  selectedChannelId: ChannelId;
   customDirection: string;
   userCustomHeadline: string;
   userCustomSubcopy: string;
@@ -133,6 +141,7 @@ export type ChatFlowState = {
   sourceAssetId?: string | null;
   sourceImagePath?: string | null;
   referenceImagePath?: string | null;
+  pendingExplicitContextPatch: Partial<InferredContext> | null;
   currentQuestion: OptionQuestion | null;
   conversationMessages: ChatTranscriptMessage[];
   isLoading: boolean;
@@ -164,6 +173,9 @@ export type ChatFlowAction =
       recommendedCopyId?: string | null;
       copyCandidateSource?: CopyCandidateSource;
       copyCandidateOrigin?: CopyCandidateOrigin;
+      copyFallbackUsed?: boolean;
+      copyFallbackReason?: string | null;
+      selectedChannelId?: ChannelId | null;
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
       sourceAssetId?: string | null;
@@ -178,12 +190,14 @@ export type ChatFlowAction =
       threadId: string;
       context: PartialInferredContext;
       question: OptionQuestion;
+      progress?: ProgressState | null;
+      selectedChannelId?: ChannelId | null;
       generationJob?: GenerationJob;
       sourceAssetId?: string | null;
       sourceImagePath?: string | null;
       referenceImagePath?: string | null;
     }
-  | { type: "submitQuestionAnswer"; label: string }
+  | { type: "submitQuestionAnswer"; label: string; field?: string; value?: string }
   | { type: "backendRequestFailed"; message: string; errorCode?: string; recoverToStart?: boolean }
   | { type: "beginBriefRequest" }
   | { type: "selectTone"; tone: string }
@@ -191,7 +205,7 @@ export type ChatFlowAction =
   | { type: "setImageGenerationEngine"; imageGenerationEngine: ImageGenerationEngine }
   | { type: "continueToCopy" }
   | { type: "selectCopy"; copyId: string }
-  | { type: "selectChannel"; channelId: string }
+  | { type: "selectChannel"; channelId: ChannelId }
   | { type: "setCustomDirection"; value: string }
   | { type: "submitBriefRefinement"; message: string; customDirection: string }
   | { type: "backendBriefSucceeded"; brief: ChatBrief }
@@ -218,8 +232,10 @@ export type ChatFlowAction =
       copyGenerationMode: CopyGenerationMode;
       copyCandidates: CopyOption[];
       copyCandidateOrigin: CopyCandidateOrigin;
+      copyFallbackUsed?: boolean;
+      copyFallbackReason?: string | null;
       selectedCopyId: string;
-      selectedChannelId: string;
+      selectedChannelId: ChannelId | null;
       selectedTone: string;
       selectedImageGenerationEngine: ImageGenerationEngine;
       customDirection: string;
@@ -249,11 +265,12 @@ export type ChatFlowAction =
       type: "generationJobQuestionReceived";
       generationJob: GenerationJob;
       question: OptionQuestion;
+      progress?: ProgressState | null;
       context?: PartialInferredContext;
       sourceAssetId?: string | null;
       sourceImagePath?: string | null;
       referenceImagePath?: string | null;
     }
   | { type: "generationJobInterruptReceived"; generationJob: GenerationJob }
-  | { type: "submitGenerationJobAnswer"; label: string }
+  | { type: "submitGenerationJobAnswer"; label: string; field?: string; value?: string }
   | { type: "generationJobFailed"; message: string };

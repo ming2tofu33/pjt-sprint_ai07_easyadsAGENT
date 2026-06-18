@@ -3,7 +3,9 @@ import {
   buildBrief,
   chatFailureFromError,
   chatFlowReducer,
+  contextPatchFromQuestionAnswer,
   createInitialChatFlowState,
+  hasMeaningfulContext,
   inferContextFromPrompt
 } from "./chat-flow";
 
@@ -11,9 +13,9 @@ describe("chat flow state", () => {
   it("infers cafe strawberry latte launch context from a natural Korean prompt", () => {
     const context = inferContextFromPrompt("우리 카페 딸기라떼 신메뉴 광고 만들어줘");
 
-    expect(context.businessType).toBe("카페");
-    expect(context.itemOrService).toBe("딸기라떼");
-    expect(context.promotionGoal).toBe("신메뉴 출시");
+    expect(context.businessType).toBeNull();
+    expect(context.itemOrService).toBeNull();
+    expect(context.promotionGoal).toBeNull();
   });
 
   it("moves from start to intent review after prompt submit", () => {
@@ -28,13 +30,16 @@ describe("chat flow state", () => {
     expect(next.progress.current).toBe(1);
     expect(next.progress.total).toBe(4);
     expect(next.inferredContext).toEqual({
-      businessType: "",
-      itemOrService: "",
-      promotionGoal: ""
+      businessType: null,
+      itemOrService: null,
+      promotionGoal: null,
+      advertisedSubject: null,
+      advertisedSubjectType: null,
+      campaignIntent: null
     });
     expect(next.contextSource).toBe("empty");
     expect(next.copyCandidateSource).toBe("empty");
-    expect(next.selectedImageGenerationEngine).toBe("gpt_image_1");
+    expect(next.selectedImageGenerationEngine).toBe("gpt_image_2");
   });
 
   it("clears a thread-limit error code when retrying from the prompt flow", () => {
@@ -74,6 +79,16 @@ describe("chat flow state", () => {
     expect(failed.errorCode).toBe("invalid_or_expired_session");
   });
 
+  it("maps upstream orchestrator failures into a visible retry message", () => {
+    const failed = chatFailureFromError({
+      errorCode: "upstream_orchestrator_unavailable",
+      message: "fetch failed"
+    });
+
+    expect(failed.message).toBe("생성 서버에 연결하지 못했어요. 입력 내용은 유지했으니 잠시 후 다시 시도해 주세요.");
+    expect(failed.errorCode).toBe("upstream_orchestrator_unavailable");
+  });
+
   it("maps backend workspace failures to the friendly Korean message", () => {
     const failed = chatFlowReducer(createInitialChatFlowState(), {
       type: "backendRequestFailed",
@@ -86,7 +101,7 @@ describe("chat flow state", () => {
     expect(failed.errorCode).toBe("workspace_required");
   });
 
-  it("recovers initial prompt request failures back to the start step", () => {
+  it("keeps initial prompt request failures on the submitted step with retry context", () => {
     const submitting = chatFlowReducer(createInitialChatFlowState(), {
       type: "submitPrompt",
       prompt: "우리 카페 딸기라떼 신메뉴 광고 만들어줘"
@@ -98,8 +113,8 @@ describe("chat flow state", () => {
       recoverToStart: true
     });
 
-    expect(failed.step).toBe(1);
-    expect(failed.progress).toEqual({ current: 0, total: 4, label: "대화 시작" });
+    expect(failed.step).toBe(2);
+    expect(failed.progress).toEqual({ current: 1, total: 4, label: "작업 시작 실패" });
     expect(failed.currentQuestion).toBeNull();
     expect(failed.isLoading).toBe(false);
     expect(failed.userInput).toBe("우리 카페 딸기라떼 신메뉴 광고 만들어줘");
@@ -243,7 +258,10 @@ describe("chat flow state", () => {
     expect(state.inferredContext).toEqual({
       businessType: "음식점/식당",
       itemOrService: "원육",
-      promotionGoal: ""
+      promotionGoal: null,
+      advertisedSubject: null,
+      advertisedSubjectType: null,
+      campaignIntent: null
     });
     expect(state.contextSource).toBe("backend");
     expect(state.currentQuestion?.field).toBe("promotion_goal");
@@ -365,6 +383,98 @@ describe("chat flow state", () => {
     expect(state.selectedCopyId).toBe("");
   });
 
+  it("preserves the current selected channel when backend responses omit it", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, { type: "selectChannel", channelId: "banner" });
+    state = chatFlowReducer(state, {
+      type: "backendStartSucceeded",
+      prompt: "배너 광고 만들어줘",
+      jobId: "job_banner",
+      threadId: "thread_banner",
+      context: {
+        businessType: "카페",
+        itemOrService: "딸기라떼",
+        promotionGoal: "신메뉴 출시"
+      },
+      copyCandidates: [],
+      recommendedCopyId: null
+    });
+
+    expect(state.selectedChannelId).toBe("banner");
+  });
+
+  it("applies the backend selected channel when it is provided", () => {
+    const state = chatFlowReducer(createInitialChatFlowState(), {
+      type: "backendStartSucceeded",
+      prompt: "상세페이지 광고 만들어줘",
+      jobId: "job_detail",
+      threadId: "thread_detail",
+      context: {
+        businessType: "매장",
+        itemOrService: "세럼",
+        promotionGoal: "광고 홍보"
+      },
+      copyCandidates: [],
+      recommendedCopyId: null,
+      selectedChannelId: "product_detail"
+    });
+
+    expect(state.selectedChannelId).toBe("product_detail");
+  });
+
+  it("applies selectedChannelId from backend question responses", () => {
+    const state = chatFlowReducer(createInitialChatFlowState(), {
+      type: "backendQuestionReceived",
+      jobId: "job_banner_question",
+      threadId: "thread_banner_question",
+      context: {},
+      question: {
+        field: "business_type",
+        question: "어떤 업종인가요?",
+        options: [{ id: 1, label: "카페", value: "cafe" }]
+      },
+      selectedChannelId: "banner"
+    });
+
+    expect(state.selectedChannelId).toBe("banner");
+  });
+
+  it("uses backend question progress state when provided", () => {
+    const state = chatFlowReducer(createInitialChatFlowState(), {
+      type: "backendQuestionReceived",
+      jobId: "job_progress",
+      threadId: "thread_progress",
+      context: {},
+      question: {
+        field: "business_type",
+        question: "어떤 업종인가요?",
+        options: [{ id: 1, label: "카페", value: "cafe" }],
+        progressState: { current: 2, total: 5, label: "정보 입력" }
+      },
+      progress: { current: 2, total: 5, label: "정보 입력" }
+    });
+
+    expect(state.progress).toEqual({ current: 2, total: 5, label: "정보 입력" });
+  });
+
+  it("preserves the current selected channel when backend question responses omit it", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, { type: "selectChannel", channelId: "banner" });
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_banner_question",
+      threadId: "thread_banner_question",
+      context: {},
+      question: {
+        field: "item_or_service",
+        question: "무엇을 홍보하나요?",
+        options: [{ id: 1, label: "대표 메뉴", value: "signature_item" }]
+      }
+    });
+
+    expect(state.selectedChannelId).toBe("banner");
+  });
+
   it("builds a complete brief after tone copy and channel selections", () => {
     let state = createInitialChatFlowState();
     state = chatFlowReducer(state, {
@@ -407,8 +517,25 @@ describe("chat flow state", () => {
     expect(brief.copy).toBe("봄을 닮은 한 잔, 딸기라떼 출시");
     expect(brief.tone).toBe("감성적인 분위기");
     expect(brief.channel).toBe("인스타 피드 (1:1)");
-    expect(brief.imageDirection).toBe("감성적인 분위기를 살려 딸기라떼 중심의 깔끔한 광고 배경과 문구 여백을 구성해요.");
+    expect(brief.imageDirection).toBe("감성적인 분위기를 살려 딸기라떼 중심의 깔끔한 광고 구도로 구성해요.");
     expect(brief.imageDirection).not.toContain("크림톤 배경");
+  });
+
+  it("builds a brief with advertised subject and campaign intent label fallback", () => {
+    const brief = buildBrief({
+      ...createInitialChatFlowState(),
+      inferredContext: {
+        businessType: "뷰티/미용",
+        itemOrService: null,
+        promotionGoal: null,
+        advertisedSubject: "프리미엄 뷰티샵",
+        advertisedSubjectType: "business",
+        campaignIntent: "store_opening"
+      }
+    });
+
+    expect(brief.item).toBe("프리미엄 뷰티샵");
+    expect(brief.purpose).toBe("신규 오픈 홍보");
   });
 
   it("stores a generation job question while preserving the final step", () => {
@@ -528,6 +655,7 @@ describe("chat flow state", () => {
     expect(state.inferredContext.itemOrService).toBe("딸기라떼");
     expect(state.copyGenerationMode).toBe("custom_input");
     expect(state.currentQuestion?.field).toBe("item_or_service");
+    expect(state.selectedImageGenerationEngine).toBe("gpt_image_2");
     expect(state.conversationMessages.at(0)?.text).toBe("오늘 저녁 카페 딸기라떼 할인 광고");
   });
 
@@ -560,5 +688,364 @@ describe("chat flow state", () => {
     expect(state.copyCandidates).toEqual([{ id: "copy_1", headline: "오늘 저녁 원육 한 판" }]);
     expect(state.copyCandidateOrigin).toBe("llm");
     expect(state.selectedCopyId).toBe("copy_1");
+    expect(state.selectedImageGenerationEngine).toBe("gpt_image_2");
+  });
+  it("preserves backend businessType when a later partial question omits that field", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "뷰티 광고 만들어줘"
+    });
+
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_beauty",
+      threadId: "thread_beauty",
+      context: {
+        businessType: "뷰티",
+        itemOrService: "",
+        promotionGoal: ""
+      },
+      question: {
+        field: "business_type",
+        question: "어떤 뷰티 업종인가요?",
+        options: [{ id: 1, label: "헤어", value: "beauty_hair" }]
+      }
+    });
+
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_beauty",
+      threadId: "thread_beauty",
+      context: {
+        itemOrService: "속눈썹 펌",
+        promotionGoal: ""
+      },
+      question: {
+        field: "promotion_goal",
+        question: "무엇을 알리고 싶나요?",
+        options: [{ id: 1, label: "오픈", value: "store_opening" }]
+      }
+    });
+
+    expect(state.inferredContext.businessType).toBe("뷰티");
+    expect(state.inferredContext.itemOrService).toBe("속눈썹 펌");
+    expect(state.contextSource).toBe("backend");
+  });
+
+  it("preserves confirmed context when restore payload contains partial nulls", () => {
+    let state = chatFlowReducer(createInitialChatFlowState(), {
+      type: "backendStartSucceeded",
+      prompt: "뷰티샵 오픈 광고 만들어줘",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {
+        businessType: "beauty_salon",
+        itemOrService: "프리미엄 뷰티샵",
+        promotionGoal: null,
+        advertisedSubject: "프리미엄 뷰티샵",
+        advertisedSubjectType: "business",
+        campaignIntent: "store_opening"
+      },
+      copyCandidates: [],
+      recommendedCopyId: null
+    });
+
+    state = chatFlowReducer(state, {
+      type: "restoreThreadSnapshot",
+      prompt: "뷰티샵 오픈 광고 만들어줘",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {
+        businessType: "beauty_salon",
+        itemOrService: null,
+        promotionGoal: null,
+        advertisedSubject: null,
+        advertisedSubjectType: null,
+        campaignIntent: null
+      },
+      copyGenerationMode: "suggest_candidates",
+      copyCandidates: [],
+      copyCandidateOrigin: "unknown",
+      selectedCopyId: "",
+      selectedChannelId: "instagram-feed",
+      selectedTone: "감성적인",
+      selectedImageGenerationEngine: "gpt_image_1",
+      customDirection: "",
+      userCustomHeadline: "",
+      userCustomSubcopy: "",
+      sourceAssetId: null,
+      sourceImagePath: null,
+      referenceImagePath: null,
+      selectedReferenceTemplateId: null,
+      selectedReferenceTemplateTitle: null,
+      generationJob: { job_id: "job_1", thread_id: "thread_1", status: "waiting_user_input" },
+      currentQuestion: null,
+      conversationMessages: [{ role: "user", text: "뷰티샵 오픈 광고 만들어줘" }]
+    });
+
+    expect(state.inferredContext).toEqual({
+      businessType: "beauty_salon",
+      itemOrService: "프리미엄 뷰티샵",
+      promotionGoal: null,
+      advertisedSubject: "프리미엄 뷰티샵",
+      advertisedSubjectType: "business",
+      campaignIntent: "store_opening"
+    });
+    expect(state.selectedChannelId).toBe("instagram-feed");
+  });
+});
+
+describe("contextPatchFromQuestionAnswer", () => {
+  it("maps business_type field to businessType patch", () => {
+    expect(contextPatchFromQuestionAnswer({ field: "business_type", value: "beauty_salon" })).toEqual({ businessType: "beauty_salon" });
+  });
+
+  it("maps item_or_service field to itemOrService patch", () => {
+    expect(contextPatchFromQuestionAnswer({ field: "item_or_service", value: "signature_item" })).toEqual({ itemOrService: "signature_item" });
+  });
+
+  it("maps promotion_goal field to promotionGoal patch", () => {
+    expect(contextPatchFromQuestionAnswer({ field: "promotion_goal", value: "new_launch" })).toEqual({ promotionGoal: "new_launch" });
+  });
+
+  it("maps campaign_intent field to campaignIntent patch", () => {
+    expect(contextPatchFromQuestionAnswer({ field: "campaign_intent", value: "store_opening" })).toEqual({ campaignIntent: "store_opening" });
+  });
+
+  it("returns empty patch for non-context fields", () => {
+    expect(contextPatchFromQuestionAnswer({ field: "ad_format", value: "poster" })).toEqual({});
+    expect(contextPatchFromQuestionAnswer({ field: "copy_generation_mode", value: "suggest_candidates" })).toEqual({});
+    expect(contextPatchFromQuestionAnswer({ field: "brand_tone", value: "premium" })).toEqual({});
+    expect(contextPatchFromQuestionAnswer({ field: "custom_request", value: "include_custom_request" })).toEqual({});
+  });
+
+  it("returns empty patch for custom value", () => {
+    expect(contextPatchFromQuestionAnswer({ field: "business_type", value: "custom" })).toEqual({});
+  });
+});
+
+describe("hasMeaningfulContext", () => {
+  it("returns true when businessType is present", () => {
+    expect(hasMeaningfulContext({ businessType: "beauty_salon" })).toBe(true);
+  });
+
+  it("returns true when campaignIntent is present", () => {
+    expect(hasMeaningfulContext({ campaignIntent: "store_opening" })).toBe(true);
+  });
+
+  it("returns false when all fields are null/undefined", () => {
+    expect(hasMeaningfulContext({ businessType: null, itemOrService: null })).toBe(false);
+    expect(hasMeaningfulContext(null)).toBe(false);
+    expect(hasMeaningfulContext(undefined)).toBe(false);
+  });
+});
+
+describe("explicit answer context priority", () => {
+  it("applies explicit businessType=beauty_salon immediately via submitQuestionAnswer", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "화장품 광고 만들어줘"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: { advertisedSubject: "프리미엄 뷰티샵", campaignIntent: "store_opening" },
+      question: {
+        field: "business_type",
+        question: "어떤 업종인가요?",
+        options: [{ id: 1, label: "뷰티/미용", value: "beauty_salon" }]
+      }
+    });
+    state = chatFlowReducer(state, {
+      type: "submitQuestionAnswer",
+      label: "뷰티/미용",
+      field: "business_type",
+      value: "beauty_salon"
+    });
+
+    expect(state.inferredContext.businessType).toBe("beauty_salon");
+    expect(state.pendingExplicitContextPatch).toEqual({ businessType: "beauty_salon" });
+    expect(state.isLoading).toBe(true);
+  });
+
+  it("explicit businessType beats conflicting Backend non-null businessType on answer success", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitPrompt",
+      prompt: "화장품 광고"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {},
+      question: { field: "business_type", question: "업종?", options: [{ id: 1, label: "뷰티", value: "beauty_salon" }] }
+    });
+    state = chatFlowReducer(state, {
+      type: "submitQuestionAnswer",
+      label: "뷰티/미용",
+      field: "business_type",
+      value: "beauty_salon"
+    });
+    // Backend responds with conflicting businessType=cafe
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: { businessType: "cafe", campaignIntent: "store_opening" },
+      question: { field: "item_or_service", question: "상품?", options: [] }
+    });
+
+    expect(state.inferredContext.businessType).toBe("beauty_salon");
+    expect(state.inferredContext.campaignIntent).toBe("store_opening");
+    expect(state.pendingExplicitContextPatch).toBeNull();
+  });
+
+  it("explicit answer does not survive into next turn after patch cleared", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: {},
+      question: { field: "business_type", question: "업종?", options: [] }
+    });
+    state = chatFlowReducer(state, {
+      type: "submitQuestionAnswer",
+      label: "뷰티",
+      field: "business_type",
+      value: "beauty_salon"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendStartSucceeded",
+      prompt: "광고",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: { businessType: "cafe", campaignIntent: "store_opening" },
+      copyCandidates: [],
+      recommendedCopyId: null
+    });
+
+    // explicit patch should be applied before being cleared
+    expect(state.inferredContext.businessType).toBe("beauty_salon");
+    expect(state.inferredContext.campaignIntent).toBe("store_opening");
+    expect(state.pendingExplicitContextPatch).toBeNull();
+  });
+
+  it("explicit businessType beats conflicting snapshot businessType on restore", () => {
+    let state = createInitialChatFlowState();
+    // User answered beauty_salon but snapshot hasn't arrived yet
+    state = chatFlowReducer(state, {
+      type: "submitQuestionAnswer",
+      label: "뷰티",
+      field: "business_type",
+      value: "beauty_salon"
+    });
+    // Stale snapshot arrives with conflicting cafe
+    state = chatFlowReducer(state, {
+      type: "restoreThreadSnapshot",
+      prompt: "광고 만들어줘",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: { businessType: "cafe", campaignIntent: "store_opening" },
+      copyGenerationMode: "suggest_candidates",
+      copyCandidates: [],
+      copyCandidateOrigin: "unknown",
+      selectedCopyId: "",
+      selectedChannelId: null,
+      selectedTone: "감성적인",
+      selectedImageGenerationEngine: "gpt_image_1",
+      customDirection: "",
+      userCustomHeadline: "",
+      userCustomSubcopy: "",
+      sourceImagePath: null,
+      referenceImagePath: null,
+      selectedReferenceTemplateId: null,
+      selectedReferenceTemplateTitle: null,
+      generationJob: { job_id: "job_1", thread_id: "thread_1", status: "waiting_user_input" },
+      currentQuestion: null,
+      conversationMessages: []
+    });
+
+    expect(state.inferredContext.businessType).toBe("beauty_salon");
+    expect(state.inferredContext.campaignIntent).toBe("store_opening");
+    expect(state.pendingExplicitContextPatch).toEqual({ businessType: "beauty_salon" });
+  });
+
+  it("explicit beauty_salon + Backend campaignIntent=store_opening both preserved", () => {
+    let state = createInitialChatFlowState();
+    state = chatFlowReducer(state, {
+      type: "submitQuestionAnswer",
+      label: "뷰티",
+      field: "business_type",
+      value: "beauty_salon"
+    });
+    state = chatFlowReducer(state, {
+      type: "backendQuestionReceived",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: { campaignIntent: "store_opening" },
+      question: { field: "item_or_service", question: "상품?", options: [] }
+    });
+
+    expect(state.inferredContext.businessType).toBe("beauty_salon");
+    expect(state.inferredContext.campaignIntent).toBe("store_opening");
+  });
+
+  it("restoreThreadSnapshot sets contextSource=backend only when snapshot has meaningful context", () => {
+    const withContext = chatFlowReducer(createInitialChatFlowState(), {
+      type: "restoreThreadSnapshot",
+      prompt: "광고",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: { businessType: "cafe" },
+      copyGenerationMode: "suggest_candidates",
+      copyCandidates: [],
+      copyCandidateOrigin: "unknown",
+      selectedCopyId: "",
+      selectedChannelId: null,
+      selectedTone: "감성적인",
+      selectedImageGenerationEngine: "gpt_image_1",
+      customDirection: "",
+      userCustomHeadline: "",
+      userCustomSubcopy: "",
+      sourceImagePath: null,
+      referenceImagePath: null,
+      selectedReferenceTemplateId: null,
+      selectedReferenceTemplateTitle: null,
+      generationJob: { job_id: "job_1", thread_id: "thread_1", status: "done" },
+      currentQuestion: null,
+      conversationMessages: []
+    });
+    expect(withContext.contextSource).toBe("backend");
+
+    const withoutContext = chatFlowReducer(createInitialChatFlowState(), {
+      type: "restoreThreadSnapshot",
+      prompt: "광고",
+      jobId: "job_1",
+      threadId: "thread_1",
+      context: { businessType: null, itemOrService: null, promotionGoal: null, advertisedSubject: null, advertisedSubjectType: null, campaignIntent: null },
+      copyGenerationMode: "suggest_candidates",
+      copyCandidates: [],
+      copyCandidateOrigin: "unknown",
+      selectedCopyId: "",
+      selectedChannelId: null,
+      selectedTone: "감성적인",
+      selectedImageGenerationEngine: "gpt_image_1",
+      customDirection: "",
+      userCustomHeadline: "",
+      userCustomSubcopy: "",
+      sourceImagePath: null,
+      referenceImagePath: null,
+      selectedReferenceTemplateId: null,
+      selectedReferenceTemplateTitle: null,
+      generationJob: { job_id: "job_1", thread_id: "thread_1", status: "done" },
+      currentQuestion: null,
+      conversationMessages: []
+    });
+    expect(withoutContext.contextSource).toBe("empty");
   });
 });

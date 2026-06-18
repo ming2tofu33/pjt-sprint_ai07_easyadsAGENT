@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   answerGenerationJob,
+  ApiError,
   archiveChatThread,
   createBrandKit,
   createGenerationJob,
@@ -613,6 +614,26 @@ describe("api-client backend contract routes", () => {
     expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
   });
 
+  it("normalizes upstream orchestrator failures into retryable Korean copy", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          error_code: "upstream_orchestrator_unavailable",
+          message: "fetch failed"
+        },
+        { status: 502 }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(createGenerationJob({ userInput: "Create an ad" })).rejects.toMatchObject({
+      name: "ApiError",
+      message: "생성 서버에 연결하지 못했어요. 입력 내용은 유지했으니 잠시 후 다시 시도해 주세요.",
+      errorCode: "upstream_orchestrator_unavailable",
+      status: 502
+    } satisfies Partial<ApiError>);
+  });
+
   it("uses same-origin API routes when NEXT_PUBLIC_BFF_BASE_URL is unset", async () => {
     vi.stubEnv("NEXT_PUBLIC_BFF_BASE_URL", "");
     vi.resetModules();
@@ -795,6 +816,62 @@ describe("api-client backend contract routes", () => {
     });
     expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
       expect.objectContaining({ authorization: "Bearer anon_access_token_1" })
+    );
+  });
+
+  it("refreshes an expired authenticated session once before retrying generation job creation", async () => {
+    const getSession = vi.fn(async () => ({ data: { session: { access_token: "expired_access_token" } } }));
+    const refreshSession = vi.fn(async () => ({
+      data: { session: { access_token: "fresh_access_token" } },
+      error: null
+    }));
+    vi.doMock("./supabase/browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession,
+          refreshSession
+        }
+      })
+    }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(
+          {
+            success: false,
+            error_code: "invalid_or_expired_session",
+            message: "Invalid or expired session."
+          },
+          { status: 401 }
+        )
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          success: true,
+          job: {
+            job_id: "job_retry_1",
+            thread_id: "thread_retry_1",
+            status: "queued",
+            progress: { progress_percent: 0, current_stage: "queued", stage_order: [] },
+            metadata: {}
+          }
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await createGenerationJob({
+      userInput: "로그인 카페 아포가토 광고",
+      runMode: "graph_job"
+    });
+
+    expect(response.job.job_id).toBe("job_retry_1");
+    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer expired_access_token" })
+    );
+    expect(fetchMock.mock.calls[1][1]?.headers).toEqual(
+      expect.objectContaining({ authorization: "Bearer fresh_access_token" })
     );
   });
 

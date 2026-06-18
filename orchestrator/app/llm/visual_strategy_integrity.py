@@ -1,0 +1,620 @@
+"""Integrity validator for visual strategy registry snapshots."""
+
+from __future__ import annotations
+
+import json
+from collections import Counter
+from collections.abc import Iterable
+from typing import Protocol
+
+from orchestrator.app.llm.domain_routing import CanonicalBusinessDomain
+from orchestrator.app.llm.visual_strategy_registry import VisualStrategyRegistry, build_visual_strategy_resource_catalog
+from orchestrator.app.schemas.visual_strategy import (
+    VisualElementEvidenceRequirement,
+    VisualStrategyProfile,
+    VisualStrategyResourceCatalog,
+    VisualStrategyTagRequirement,
+)
+from orchestrator.app.schemas.visual_strategy_integrity import (
+    RegistryIntegrityPolicy,
+    RegistryValidationCode,
+    RegistryValidationIssue,
+    RegistryValidationReport,
+    RegistryValidationSeverity,
+)
+
+
+VISUAL_STRATEGY_REGISTRY_INTEGRITY_VALIDATOR_VERSION = "visual-strategy-registry-integrity-validator-v1"
+DEFAULT_VISUAL_STRATEGY_FALLBACK_ROLES = frozenset(
+    {
+        "product_editorial",
+        "service_lifestyle",
+        "local_business",
+        "information_poster",
+        "brand_awareness",
+    }
+)
+
+
+class ResourceIdCatalog(Protocol):
+    def list_ids(self) -> Iterable[str]:
+        ...
+
+
+PresetRegistryLike = ResourceIdCatalog | Iterable[str]
+TemplateRegistryLike = ResourceIdCatalog | Iterable[str]
+CopyToneRegistryLike = ResourceIdCatalog | Iterable[str]
+ProviderCapabilityRegistryLike = ResourceIdCatalog | Iterable[str]
+
+
+class VisualStrategyRegistryIntegrityError(ValueError):
+    def __init__(self, report: RegistryValidationReport) -> None:
+        self.report = report
+        super().__init__(f"visual strategy registry integrity failed with {report.error_count} error(s)")
+
+
+def assert_visual_strategy_registry_valid(report: RegistryValidationReport) -> None:
+    if not report.valid:
+        raise VisualStrategyRegistryIntegrityError(report)
+
+
+def build_default_visual_strategy_integrity_policy() -> RegistryIntegrityPolicy:
+    return RegistryIntegrityPolicy(required_fallback_roles=DEFAULT_VISUAL_STRATEGY_FALLBACK_ROLES)
+
+
+def validate_visual_strategy_registry(
+    registry: VisualStrategyRegistry,
+    *,
+    presets: PresetRegistryLike | None = None,
+    templates: TemplateRegistryLike | None = None,
+    copy_profiles: CopyToneRegistryLike | None = None,
+    provider_capabilities: ProviderCapabilityRegistryLike | None = None,
+    policy: RegistryIntegrityPolicy | None = None,
+) -> RegistryValidationReport:
+    validation_policy = policy or RegistryIntegrityPolicy()
+    resource_catalog = _resource_catalog_from_inputs(
+        presets=presets,
+        templates=templates,
+        copy_profiles=copy_profiles,
+        provider_capabilities=provider_capabilities,
+    )
+    report = validate_visual_strategy_profiles(
+        registry.list_profiles(include_disabled=True),
+        resources=resource_catalog,
+        policy=validation_policy,
+        registry_version=registry.version,
+        registry_snapshot_hash=registry.snapshot_hash,
+        exposed_enabled_profiles=registry.list_profiles(),
+    )
+    return _with_hash_check(report, registry)
+
+
+def validate_visual_strategy_profiles(
+    profiles: Iterable[VisualStrategyProfile],
+    *,
+    resources: VisualStrategyResourceCatalog,
+    policy: RegistryIntegrityPolicy | None = None,
+    registry_version: str | None = None,
+    registry_snapshot_hash: str | None = None,
+    exposed_enabled_profiles: Iterable[VisualStrategyProfile] | None = None,
+) -> RegistryValidationReport:
+    validation_policy = policy or RegistryIntegrityPolicy()
+    profile_list = tuple(profiles)
+    issues: list[RegistryValidationIssue] = []
+
+    issues.extend(_validate_duplicate_strategy_ids(profile_list))
+    issues.extend(_validate_resources(profile_list, resources, validation_policy))
+    issues.extend(_validate_archetypes(profile_list, validation_policy))
+    issues.extend(_validate_profile_structure(profile_list, validation_policy))
+    issues.extend(_validate_registry_shape(profile_list, validation_policy))
+    if exposed_enabled_profiles is not None:
+        issues.extend(_validate_exposed_profiles(exposed_enabled_profiles))
+
+    issues = _sort_issues(issues)
+    return _build_report(
+        registry_version=registry_version,
+        registry_snapshot_hash=registry_snapshot_hash,
+        profiles=profile_list,
+        resources=resources,
+        policy=validation_policy,
+        issues=issues,
+    )
+
+
+def _validate_duplicate_strategy_ids(profiles: tuple[VisualStrategyProfile, ...]) -> tuple[RegistryValidationIssue, ...]:
+    counts = Counter(profile.strategy_id for profile in profiles)
+    return tuple(
+        _issue(
+            code=RegistryValidationCode.DUPLICATE_STRATEGY_ID,
+            severity=RegistryValidationSeverity.ERROR,
+            strategy_id=strategy_id,
+            field_path="strategy_id",
+            message="strategy_id must be unique within a registry snapshot",
+        )
+        for strategy_id, count in counts.items()
+        if count > 1
+    )
+
+
+def _validate_resources(
+    profiles: tuple[VisualStrategyProfile, ...],
+    resources: VisualStrategyResourceCatalog,
+    policy: RegistryIntegrityPolicy,
+) -> tuple[RegistryValidationIssue, ...]:
+    issues: list[RegistryValidationIssue] = []
+    provider_ids = resources.provider_capability_ids
+    provider_validation_needed = policy.require_provider_capability_catalog or any(profile.provider_capabilities for profile in profiles)
+    if provider_validation_needed and provider_ids is None:
+        severity = RegistryValidationSeverity.WARNING
+        issues.append(
+            _issue(
+                code=RegistryValidationCode.PROVIDER_CAPABILITY_CATALOG_UNAVAILABLE,
+                severity=severity,
+                field_path="provider_capabilities",
+                message="provider capability catalog was not supplied",
+            )
+        )
+    for profile in profiles:
+        if profile.composition_template_id not in resources.composition_template_ids:
+            issues.append(_missing_resource_issue(profile, RegistryValidationCode.MISSING_COMPOSITION_TEMPLATE, "composition_template_id", profile.composition_template_id))
+        if profile.mood_preset_id not in resources.mood_preset_ids:
+            issues.append(_missing_resource_issue(profile, RegistryValidationCode.MISSING_MOOD_PRESET, "mood_preset_id", profile.mood_preset_id))
+        if profile.copy_tone_profile_id not in resources.copy_tone_profile_ids:
+            issues.append(_missing_resource_issue(profile, RegistryValidationCode.MISSING_COPY_TONE_PROFILE, "copy_tone_profile_id", profile.copy_tone_profile_id))
+        if provider_ids is not None:
+            for capability in sorted(profile.provider_capabilities - provider_ids):
+                issues.append(
+                    _issue(
+                        code=RegistryValidationCode.INVALID_PROVIDER_CAPABILITY,
+                        severity=RegistryValidationSeverity.ERROR,
+                        strategy_id=profile.strategy_id,
+                        field_path="provider_capabilities",
+                        related_id=capability,
+                        message="provider capability must exist in the supplied catalog",
+                    )
+                )
+    return tuple(issues)
+
+
+def _validate_archetypes(
+    profiles: tuple[VisualStrategyProfile, ...],
+    policy: RegistryIntegrityPolicy,
+) -> tuple[RegistryValidationIssue, ...]:
+    if policy.allowed_archetypes is None:
+        return ()
+    return tuple(
+        _issue(
+            code=RegistryValidationCode.INVALID_ARCHETYPE,
+            severity=RegistryValidationSeverity.ERROR,
+            strategy_id=profile.strategy_id,
+            field_path="archetype",
+            related_id=profile.archetype,
+            message="archetype must exist in the supplied archetype catalog",
+        )
+        for profile in profiles
+        if profile.archetype not in policy.allowed_archetypes
+    )
+
+
+def _validate_profile_structure(
+    profiles: tuple[VisualStrategyProfile, ...],
+    policy: RegistryIntegrityPolicy,
+) -> tuple[RegistryValidationIssue, ...]:
+    issues: list[RegistryValidationIssue] = []
+    for profile in profiles:
+        issues.extend(_validate_tag_conflicts(profile))
+        issues.extend(_validate_unscoped_required_tags(profile, policy))
+        issues.extend(_validate_source_requirements(profile))
+        issues.extend(_validate_visual_element_requirements(profile, policy))
+    return tuple(issues)
+
+
+def _validate_unscoped_required_tags(
+    profile: VisualStrategyProfile,
+    policy: RegistryIntegrityPolicy,
+) -> tuple[RegistryValidationIssue, ...]:
+    if not (policy.forbid_unscoped_required_tags and profile.enabled and profile.required_tags):
+        return ()
+    return tuple(
+        _issue(
+            code=RegistryValidationCode.UNSCOPED_REQUIRED_TAG,
+            severity=RegistryValidationSeverity.ERROR,
+            strategy_id=profile.strategy_id,
+            field_path="required_tags",
+            related_id=tag,
+            message="enabled profiles must express hard requirements via required_tag_requirements",
+        )
+        for tag in sorted(profile.required_tags)
+    )
+
+
+def _validate_tag_conflicts(profile: VisualStrategyProfile) -> tuple[RegistryValidationIssue, ...]:
+    checks = (
+        (profile.required_tags & profile.excluded_tags, RegistryValidationCode.REQUIRED_EXCLUDED_TAG_CONFLICT, "required_tags"),
+        (profile.preferred_tags & profile.excluded_tags, RegistryValidationCode.PREFERRED_EXCLUDED_TAG_CONFLICT, "preferred_tags"),
+        (profile.required_tags & profile.preferred_tags, RegistryValidationCode.REQUIRED_PREFERRED_TAG_CONFLICT, "required_tags"),
+    )
+    return tuple(
+        _issue(
+            code=code,
+            severity=RegistryValidationSeverity.ERROR,
+            strategy_id=profile.strategy_id,
+            field_path=field_path,
+            related_id=tag,
+            message="profile tag sets must not contain conflicting tags",
+        )
+        for tags, code, field_path in checks
+        for tag in sorted(tags)
+    )
+
+
+def _validate_source_requirements(profile: VisualStrategyProfile) -> tuple[RegistryValidationIssue, ...]:
+    counts = Counter(_requirement_key(requirement) for requirement in profile.required_tag_requirements)
+    return tuple(
+        _issue(
+            code=RegistryValidationCode.DUPLICATE_SOURCE_REQUIREMENT,
+            severity=RegistryValidationSeverity.ERROR,
+            strategy_id=profile.strategy_id,
+            field_path="required_tag_requirements",
+            related_id=_requirement_related_id(key),
+            message="duplicate source requirement would duplicate scoring and trace entries",
+        )
+        for key, count in counts.items()
+        if count > 1
+    )
+
+
+def _validate_visual_element_requirements(
+    profile: VisualStrategyProfile,
+    policy: RegistryIntegrityPolicy,
+) -> tuple[RegistryValidationIssue, ...]:
+    issues: list[RegistryValidationIssue] = []
+    requirement_elements = tuple(requirement.element for requirement in profile.visual_element_evidence_requirements)
+    counts = Counter(requirement_elements)
+    for element, count in counts.items():
+        if count > 1:
+            issues.append(
+                _issue(
+                    code=RegistryValidationCode.DUPLICATE_VISUAL_ELEMENT_REQUIREMENT,
+                    severity=RegistryValidationSeverity.ERROR,
+                    strategy_id=profile.strategy_id,
+                    field_path="visual_element_evidence_requirements",
+                    related_id=element,
+                    message="visual element evidence requirement must be unique per element",
+                )
+            )
+    for element in sorted(set(requirement_elements) - set(profile.introduced_visual_elements)):
+        issues.append(
+            _issue(
+                code=RegistryValidationCode.VISUAL_ELEMENT_REQUIREMENT_WITHOUT_INTRODUCED_ELEMENT,
+                severity=RegistryValidationSeverity.ERROR,
+                strategy_id=profile.strategy_id,
+                field_path="visual_element_evidence_requirements",
+                related_id=element,
+                message="visual element requirement references an element not introduced by the profile",
+            )
+        )
+    if policy.require_all_introduced_elements_grounded:
+        for element in sorted(set(profile.introduced_visual_elements) - set(requirement_elements)):
+            issues.append(
+                _issue(
+                    code=RegistryValidationCode.INTRODUCED_ELEMENT_WITHOUT_REQUIREMENT,
+                    severity=RegistryValidationSeverity.ERROR,
+                    strategy_id=profile.strategy_id,
+                    field_path="introduced_visual_elements",
+                    related_id=element,
+                    message="introduced visual element must have an evidence requirement",
+                )
+            )
+    for index, element_requirement in enumerate(profile.visual_element_evidence_requirements):
+        requirement_counts = Counter(_requirement_key(requirement) for requirement in element_requirement.requirements)
+        for key, count in requirement_counts.items():
+            if count > 1:
+                issues.append(
+                    _issue(
+                        code=RegistryValidationCode.DUPLICATE_SOURCE_REQUIREMENT,
+                        severity=RegistryValidationSeverity.ERROR,
+                        strategy_id=profile.strategy_id,
+                        field_path=f"visual_element_evidence_requirements.{index}.requirements",
+                        related_id=_requirement_related_id(key),
+                        message="duplicate visual element source requirement would duplicate scoring and trace entries",
+                    )
+                )
+        if not element_requirement.requirements:
+            issues.append(
+                _issue(
+                    code=RegistryValidationCode.INTRODUCED_ELEMENT_WITHOUT_REQUIREMENT,
+                    severity=RegistryValidationSeverity.ERROR,
+                    strategy_id=profile.strategy_id,
+                    field_path=f"visual_element_evidence_requirements.{index}.requirements",
+                    related_id=element_requirement.element,
+                    message="visual element requirement must contain at least one source requirement",
+                )
+            )
+    return tuple(issues)
+
+
+def _validate_registry_shape(
+    profiles: tuple[VisualStrategyProfile, ...],
+    policy: RegistryIntegrityPolicy,
+) -> tuple[RegistryValidationIssue, ...]:
+    issues: list[RegistryValidationIssue] = []
+    enabled = tuple(profile for profile in profiles if profile.enabled)
+    enabled_fallback = tuple(profile for profile in enabled if profile.fallback_tier > 0)
+    for profile in profiles:
+        if profile.fallback_tier == 0 and profile.fallback_role is not None:
+            issues.append(
+                _issue(
+                    code=RegistryValidationCode.PRIMARY_PROFILE_HAS_FALLBACK_ROLE,
+                    severity=RegistryValidationSeverity.ERROR,
+                    strategy_id=profile.strategy_id,
+                    field_path="fallback_role",
+                    related_id=profile.fallback_role,
+                    message="primary profile must not include fallback_role",
+                )
+            )
+        if profile.fallback_tier > 0 and profile.fallback_role is None:
+            issues.append(
+                _issue(
+                    code=RegistryValidationCode.FALLBACK_PROFILE_MISSING_ROLE,
+                    severity=RegistryValidationSeverity.ERROR,
+                    strategy_id=profile.strategy_id,
+                    field_path="fallback_role",
+                    message="fallback profile requires fallback_role",
+                )
+            )
+    enabled_roles = frozenset(profile.fallback_role for profile in enabled_fallback if profile.fallback_role is not None)
+    for role in sorted(policy.required_fallback_roles - enabled_roles):
+        issues.append(
+            _issue(
+                code=RegistryValidationCode.MISSING_REQUIRED_FALLBACK_ROLE,
+                severity=RegistryValidationSeverity.ERROR,
+                field_path="fallback_role",
+                related_id=role,
+                message="required fallback role must have at least one enabled fallback profile",
+            )
+        )
+    if not enabled:
+        issues.append(
+            _issue(
+                code=RegistryValidationCode.EMPTY_ENABLED_REGISTRY,
+                severity=RegistryValidationSeverity.ERROR,
+                message="registry must expose at least one enabled profile",
+            )
+        )
+    if policy.require_enabled_fallback and not enabled_fallback:
+        issues.append(
+            _issue(
+                code=RegistryValidationCode.MISSING_ENABLED_FALLBACK,
+                severity=RegistryValidationSeverity.ERROR,
+                field_path="fallback_tier",
+                message="registry must include at least one enabled fallback profile",
+            )
+        )
+    if policy.require_fallback_domain_coverage:
+        for domain in CanonicalBusinessDomain:
+            if not any(domain in profile.supported_domains for profile in enabled_fallback):
+                issues.append(
+                    _issue(
+                        code=RegistryValidationCode.FALLBACK_WITHOUT_DOMAIN_COVERAGE,
+                        severity=RegistryValidationSeverity.ERROR,
+                        field_path="supported_domains",
+                        related_id=domain.value,
+                        message="enabled fallback profiles must cover every canonical business domain",
+                    )
+                )
+    return tuple(issues)
+
+
+def _validate_exposed_profiles(profiles: Iterable[VisualStrategyProfile]) -> tuple[RegistryValidationIssue, ...]:
+    return tuple(
+        _issue(
+            code=RegistryValidationCode.DISABLED_PROFILE_EXPOSED,
+            severity=RegistryValidationSeverity.ERROR,
+            strategy_id=profile.strategy_id,
+            field_path="enabled",
+            message="registry default listing must not expose disabled profiles",
+        )
+        for profile in profiles
+        if not profile.enabled
+    )
+
+
+def _with_hash_check(report: RegistryValidationReport, registry: VisualStrategyRegistry) -> RegistryValidationReport:
+    compute_hash = getattr(registry, "compute_snapshot_hash", None)
+    if not callable(compute_hash):
+        return report.model_copy(update={"snapshot_hash_validation_mode": "unavailable"})
+    if compute_hash() == registry.snapshot_hash:
+        return report.model_copy(update={"snapshot_hash_validation_mode": "verified"})
+    return _append_report_issue(
+        report.model_copy(update={"snapshot_hash_validation_mode": "mismatch"}),
+        _issue(
+            code=RegistryValidationCode.REGISTRY_HASH_MISMATCH,
+            severity=RegistryValidationSeverity.ERROR,
+            field_path="snapshot_hash",
+            message="registry snapshot hash does not match canonical snapshot",
+        ),
+    )
+
+
+def _append_report_issue(report: RegistryValidationReport, issue: RegistryValidationIssue) -> RegistryValidationReport:
+    issues = _sort_issues([*report.issues, issue])
+    error_count = sum(1 for item in issues if item.severity == RegistryValidationSeverity.ERROR)
+    warning_count = sum(1 for item in issues if item.severity == RegistryValidationSeverity.WARNING)
+    info_count = sum(1 for item in issues if item.severity == RegistryValidationSeverity.INFO)
+    return report.model_copy(
+        update={
+            "issues": tuple(issues),
+            "error_count": error_count,
+            "warning_count": warning_count,
+            "info_count": info_count,
+            "valid": error_count == 0,
+        }
+    )
+
+
+def _build_report(
+    *,
+    registry_version: str | None,
+    registry_snapshot_hash: str | None,
+    profiles: tuple[VisualStrategyProfile, ...],
+    resources: VisualStrategyResourceCatalog,
+    policy: RegistryIntegrityPolicy,
+    issues: list[RegistryValidationIssue],
+) -> RegistryValidationReport:
+    error_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.ERROR)
+    warning_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.WARNING)
+    info_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.INFO)
+    provider_validation_needed = policy.require_provider_capability_catalog or any(profile.provider_capabilities for profile in profiles)
+    provider_catalog_available = resources.provider_capability_ids is not None
+    if policy.require_provider_capability_catalog and not provider_catalog_available:
+        replacement: list[RegistryValidationIssue] = []
+        for issue in issues:
+            if issue.code == RegistryValidationCode.PROVIDER_CAPABILITY_CATALOG_UNAVAILABLE:
+                replacement.append(issue.model_copy(update={"severity": RegistryValidationSeverity.ERROR}))
+            else:
+                replacement.append(issue)
+        issues = _sort_issues(replacement)
+        error_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.ERROR)
+        warning_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.WARNING)
+        info_count = sum(1 for issue in issues if issue.severity == RegistryValidationSeverity.INFO)
+
+    if not provider_validation_needed:
+        provider_mode = "not_required"
+        complete = True
+    elif provider_catalog_available:
+        provider_mode = "catalog"
+        complete = True
+    else:
+        provider_mode = "unavailable"
+        complete = False
+
+    return RegistryValidationReport(
+        validator_version=VISUAL_STRATEGY_REGISTRY_INTEGRITY_VALIDATOR_VERSION,
+        registry_version=registry_version,
+        registry_snapshot_hash=registry_snapshot_hash,
+        profile_count=len(profiles),
+        enabled_profile_count=sum(1 for profile in profiles if profile.enabled),
+        disabled_profile_count=sum(1 for profile in profiles if not profile.enabled),
+        fallback_profile_count=sum(1 for profile in profiles if profile.fallback_tier > 0),
+        enabled_fallback_profile_count=sum(1 for profile in profiles if profile.enabled and profile.fallback_tier > 0),
+        error_count=error_count,
+        warning_count=warning_count,
+        info_count=info_count,
+        valid=error_count == 0,
+        complete=complete,
+        issues=tuple(issues),
+        checked_composition_template_count=len(resources.composition_template_ids),
+        checked_mood_preset_count=len(resources.mood_preset_ids),
+        checked_copy_tone_profile_count=len(resources.copy_tone_profile_ids),
+        checked_provider_capability_count=0 if resources.provider_capability_ids is None else len(resources.provider_capability_ids),
+        archetype_validation_mode="catalog" if policy.allowed_archetypes is not None else "open",
+        provider_capability_validation_mode=provider_mode,
+        snapshot_hash_validation_mode="unavailable",
+        discriminated_union_status=policy.discriminated_union_status,
+    )
+
+
+def _resource_catalog_from_inputs(
+    *,
+    presets: PresetRegistryLike | None = None,
+    templates: TemplateRegistryLike | None = None,
+    copy_profiles: CopyToneRegistryLike | None = None,
+    provider_capabilities: ProviderCapabilityRegistryLike | None = None,
+) -> VisualStrategyResourceCatalog:
+    default = build_visual_strategy_resource_catalog()
+    return VisualStrategyResourceCatalog(
+        composition_template_ids=_catalog_ids(templates) if templates is not None else default.composition_template_ids,
+        mood_preset_ids=_catalog_ids(presets) if presets is not None else default.mood_preset_ids,
+        copy_tone_profile_ids=_catalog_ids(copy_profiles) if copy_profiles is not None else default.copy_tone_profile_ids,
+        provider_capability_ids=None if provider_capabilities is None else _catalog_ids(provider_capabilities),
+    )
+
+
+def _catalog_ids(catalog: ResourceIdCatalog | Iterable[str]) -> frozenset[str]:
+    if isinstance(catalog, (str, bytes)):
+        raise TypeError("resource catalog must be an iterable of IDs, not a single string")
+    if hasattr(catalog, "list_ids"):
+        values = catalog.list_ids()
+    elif isinstance(catalog, dict):
+        values = catalog.keys()
+    else:
+        values = catalog
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        if not isinstance(value, str):
+            raise TypeError("resource catalog IDs must be strings")
+        item = value.strip()
+        if not item:
+            raise ValueError("resource catalog IDs must not be empty")
+        if item in seen:
+            continue
+        output.append(item)
+        seen.add(item)
+    return frozenset(output)
+
+
+def _missing_resource_issue(
+    profile: VisualStrategyProfile,
+    code: RegistryValidationCode,
+    field_path: str,
+    related_id: str,
+) -> RegistryValidationIssue:
+    return _issue(
+        code=code,
+        severity=RegistryValidationSeverity.ERROR,
+        strategy_id=profile.strategy_id,
+        field_path=field_path,
+        related_id=related_id,
+        message="profile resource reference must exist in the supplied catalog",
+    )
+
+
+def _issue(
+    *,
+    code: RegistryValidationCode,
+    severity: RegistryValidationSeverity,
+    message: str,
+    strategy_id: str | None = None,
+    field_path: str | None = None,
+    related_id: str | None = None,
+) -> RegistryValidationIssue:
+    return RegistryValidationIssue(
+        code=code,
+        severity=severity,
+        strategy_id=strategy_id,
+        field_path=field_path,
+        related_id=related_id,
+        message=message,
+    )
+
+
+def _sort_issues(issues: Iterable[RegistryValidationIssue]) -> list[RegistryValidationIssue]:
+    severity_order = {
+        RegistryValidationSeverity.ERROR: 0,
+        RegistryValidationSeverity.WARNING: 1,
+        RegistryValidationSeverity.INFO: 2,
+    }
+    return sorted(
+        issues,
+        key=lambda issue: (
+            severity_order[issue.severity],
+            issue.code.value,
+            issue.strategy_id or "",
+            issue.field_path or "",
+            issue.related_id or "",
+        ),
+    )
+
+
+def _requirement_key(requirement: VisualStrategyTagRequirement) -> tuple[str, tuple[str, ...], tuple[str, ...]]:
+    return (
+        requirement.source.value,
+        tuple(sorted(requirement.all_of)),
+        tuple(sorted(requirement.any_of)),
+    )
+
+
+def _requirement_related_id(key: tuple[str, tuple[str, ...], tuple[str, ...]]) -> str:
+    return json.dumps(key, ensure_ascii=False, separators=(",", ":"))

@@ -82,18 +82,20 @@ def test_copy_candidate_generation_uses_cafe_appropriate_fallback_copy():
 def test_selected_copy_updates_marketing_copy_and_copy_spec():
     state = _state()
     state.update(copy_candidate_generation_node(state))
+    selected_candidate = next(candidate for candidate in state["copy_candidates"] if candidate["id"] == "copy_2")
     state["copy_selection"] = make_copy_selection_payload("copy_2")
     state.update(state_update_selected_copy_node(state))
     state.update(copy_spec_parser_node(state))
 
     assert state["selected_copy_id"] == "copy_2"
-    assert state["marketing_copy"]["headline"] == "회식은 역시 삼겹살"
+    assert state["marketing_copy"]["headline"] == selected_candidate["headline"]
     assert state["copy_spec"]["items"][0]["role"] == "headline"
 
 
 def test_selected_copy_node_uses_persisted_state_selection_without_resume_payload():
     state = _state()
     state.update(copy_candidate_generation_node(state))
+    selected_candidate = next(candidate for candidate in state["copy_candidates"] if candidate["id"] == "copy_2")
     state["selected_copy_id"] = "copy_2"
     state["selected_channel_id"] = "instagram-story"
     state["selected_tone"] = "깔끔한"
@@ -106,7 +108,7 @@ def test_selected_copy_node_uses_persisted_state_selection_without_resume_payloa
     assert update["selected_ad_format"] == "instagram_story"
     assert update["selected_tone"] == "깔끔한"
     assert update["custom_direction"] == "상품을 더 크게 보여줘"
-    assert update["marketing_copy"]["headline"] == "회식은 역시 삼겹살"
+    assert update["marketing_copy"]["headline"] == selected_candidate["headline"]
 
 
 def test_selected_copy_persists_frontend_choices_in_graph_state():
@@ -287,6 +289,34 @@ def test_actual_prompt_contains_context_strategy_and_wrong_domain_examples():
     assert "숯불구이" in prompt
     assert "reservation_cta" not in prompt
     assert "스마트폰" in prompt
+
+
+def test_a6_copy_prompt_does_not_describe_raw_bbq_value_as_grill_business():
+    context = MarketingContext(
+        business_type="restaurant_bbq",
+        item_or_service="감자튀김",
+        promotion_goal="brand_awareness",
+    )
+    strategy = build_message_strategy(context)
+    intent = resolve_copy_visual_intent(context)
+    prompt = build_copy_generation_v2_prompt(context=context, strategy=strategy, visual_intent=intent)
+
+    assert "숯불구이 음식점" not in prompt
+    assert "'business_category': 'local business'" in prompt
+
+
+def test_a6_copy_prompt_does_not_describe_ambiguous_beauty_as_skincare():
+    context = MarketingContext(
+        business_type="beauty_salon",
+        item_or_service="첫 방문 혜택",
+        promotion_goal="brand_awareness",
+    )
+    strategy = build_message_strategy(context)
+    intent = resolve_copy_visual_intent(context)
+    prompt = build_copy_generation_v2_prompt(context=context, strategy=strategy, visual_intent=intent)
+
+    assert "스킨케어" not in prompt
+    assert "'business_category': 'local business'" in prompt
 
 
 def test_router_knows_copy_generation_v2_actual(monkeypatch):
@@ -1090,7 +1120,7 @@ def test_visual_false_positive_rejects_mock_flux_result(tmp_path):
 
 
 # ===== from test_copy_quality_v2.py =====
-from orchestrator.app.llm.copy_fallbacks import THEMES, generate_fallback_candidates
+from orchestrator.app.llm.copy_fallbacks import THEMES, generate_fallback_candidates, resolve_copy_theme
 from orchestrator.app.llm.copy_quality_v2 import (
     build_deterministic_copy_output_v2,
     contains_generic_meta_phrase,
@@ -1103,6 +1133,59 @@ from orchestrator.app.schemas.llm_marketing import CopyCandidate, MarketingConte
 
 def test_copy_fallbacks_cover_at_least_ten_themes():
     assert len(THEMES) >= 10
+
+
+BBQ_BIASED_COPY_TERMS = ("숯불", "불판", "회식", "구워", "구이", "한상")
+
+
+@pytest.mark.parametrize("business_type", ["restaurant", "restaurant_bbq", "bbq", "meat_restaurant", "korean_food"])
+def test_a6_restaurant_and_bbq_like_fallback_theme_is_neutral(business_type):
+    theme = resolve_copy_theme(business_type)
+
+    assert theme.key == "generic"
+
+
+@pytest.mark.parametrize("business_type", ["restaurant", "restaurant_bbq", "bbq", "meat_restaurant", "korean_food"])
+def test_a6_restaurant_and_bbq_like_fallback_copy_avoids_bbq_language(business_type):
+    candidates = generate_fallback_candidates(
+        MarketingContext(
+            business_type=business_type,
+            item_or_service="감자튀김",
+            promotion_goal="brand_awareness",
+        )
+    )
+    joined = " ".join(
+        " ".join(filter(None, [candidate.headline, candidate.subcopy, candidate.cta]))
+        for candidate in candidates
+    )
+
+    assert all(term not in joined for term in BBQ_BIASED_COPY_TERMS)
+
+
+@pytest.mark.parametrize("business_type", ["beauty", "beauty_salon", "salon"])
+def test_a6_ambiguous_beauty_fallback_theme_is_neutral(business_type):
+    theme = resolve_copy_theme(business_type)
+
+    assert theme.key == "generic"
+
+
+@pytest.mark.parametrize(
+    ("business_type", "expected_theme"),
+    [
+        ("beauty_skincare", "beauty_skincare"),
+        ("skincare", "beauty_skincare"),
+        ("beauty_hair", "beauty_hair"),
+        ("hair", "beauty_hair"),
+        ("beauty_nail", "beauty_nail"),
+        ("nail", "beauty_nail"),
+        ("beauty_spa", "beauty_spa"),
+        ("spa", "beauty_spa"),
+    ],
+)
+def test_a6_exact_beauty_subtype_fallback_theme_stays_specialized(business_type, expected_theme):
+    theme = resolve_copy_theme(business_type)
+
+    assert theme.key == expected_theme
 
 
 def test_fallback_candidates_use_three_distinct_angles():
@@ -1266,7 +1349,9 @@ def test_copy_tone_profile_returns_fallback_for_unknown_business_type():
 def test_copy_tone_profile_adds_persona_hint_when_known():
     profile = get_copy_tone_profile("restaurant", "office_worker")
 
-    assert profile["voice"] == "warm_appetizing"
+    assert profile["voice"] == "friendly_clear"
+    assert profile["business_type"] == "generic"
+    assert profile["raw_business_type"] == "restaurant"
     assert profile["persona_hint"]["energy"] == "efficient"
 
 
@@ -1460,11 +1545,15 @@ def test_cafe_policy_warns_tacky_discount_terms_without_rewriting():
     assert "avoid_term_detected" in result["warnings"]
 
 
-def test_restaurant_bbq_policy_uses_reservation_cta():
-    policy = get_copy_tone_policy("restaurant_bbq")
+def test_a6_deprecated_bbq_policy_is_inventory_only_for_now():
+    from orchestrator.app.llm.copy_tone_policy import POLICIES, resolve_copy_route_key
 
-    assert any("\uc608\uc57d" in candidate for candidate in policy["cta_candidates"])
-    assert policy["promotion_style"] == "reservation_visit"
+    deprecated_policy = POLICIES["restaurant_bbq"]
+
+    assert deprecated_policy["policy_id"] == "restaurant_bbq_v1"
+    assert deprecated_policy["promotion_style"] == "reservation_visit"
+    assert resolve_copy_route_key("restaurant_bbq") == "generic"
+    assert get_copy_tone_policy("restaurant_bbq")["policy_id"] == "generic_v1"
 
 
 def test_beauty_skincare_policy_warns_medical_claims_without_rewriting():

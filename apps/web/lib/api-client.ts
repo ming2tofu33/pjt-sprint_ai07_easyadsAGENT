@@ -8,12 +8,13 @@ import type {
   ImageGenerationEngineFields,
   OptionQuestion,
   PartialInferredContext,
+  ProgressState,
   ReferenceImageFields,
   ReferenceTemplateFields
 } from "@/types/marketing";
 import { getGenerationEngineOption, resolveGenerationEnginePreference } from "@/lib/generation-engine";
 import { getSupabaseAuthorizationHeader, type RequestHeaders } from "@/lib/supabase/session";
-import { estimateJsonSizeBytes, measureWebPerf, perfTraceEnabled, recordWebPerfEvent } from "@/lib/performance";
+import { estimateJsonSizeBytes, measureWebPerf, perfTraceEnabled, recordWebPerfEvent, traceHeaders } from "@/lib/performance";
 
 const BFF_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_BFF_BASE_URL || "");
 
@@ -72,7 +73,10 @@ export type ChatStartResponse = {
   copyCandidates: CopyOption[];
   recommendedCopyId?: string | null;
   copyCandidateOrigin?: CopyCandidateOrigin;
+  copyFallbackUsed?: boolean;
+  copyFallbackReason?: string | null;
   copyGenerationMode?: CopyGenerationMode;
+  selectedChannelId?: string | null;
 };
 
 export type ChatQuestionResponse = {
@@ -82,8 +86,10 @@ export type ChatQuestionResponse = {
   status: string;
   context: PartialInferredContext;
   question: OptionQuestion;
+  progress?: ProgressState | null;
   missingFields?: string[];
   generationJob?: GenerationJob;
+  selectedChannelId?: string | null;
 };
 
 export type ChatBriefReadyResponse = {
@@ -94,6 +100,7 @@ export type ChatBriefReadyResponse = {
   context: InferredContext;
   brief: ChatBrief;
   copyGenerationMode: CopyGenerationMode;
+  selectedChannelId?: string | null;
 };
 
 export type ChatTurnResponse = ChatStartResponse | ChatQuestionResponse | ChatBriefReadyResponse;
@@ -103,6 +110,7 @@ export type ChatBriefResponse = {
   threadId: string;
   status: string;
   brief: ChatBrief;
+  selectedChannelId?: string | null;
 };
 
 export type GenerationStartOptions = CustomCopyFields & ReferenceTemplateFields & ReferenceImageFields & ImageGenerationEngineFields & {
@@ -217,6 +225,7 @@ export type BrandKitPayload = Record<string, unknown>;
 export interface GenerationJobCreateInput {
   userInput: string;
   threadId?: string | null;
+  continuationMode?: "new_thread" | "new_turn" | "retry_failed" | "regenerate_from_output";
   brandKitId?: string | null;
   entryMode?: string;
   selectedReferenceTemplateId?: string | null;
@@ -469,6 +478,27 @@ function compactPayload(payload: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined && value !== null));
 }
 
+async function withRefreshedSupabaseAuthRetry<TResponse>(
+  request: (headers: RequestHeaders) => Promise<TResponse>
+): Promise<TResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  try {
+    return await request(authHeaders);
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.errorCode !== "invalid_or_expired_session") {
+      throw error;
+    }
+    const refreshedHeaders = await getSupabaseAuthorizationHeader({
+      allowAnonymous: false,
+      forceRefresh: true
+    });
+    if (!refreshedHeaders.authorization || refreshedHeaders.authorization === authHeaders.authorization) {
+      throw error;
+    }
+    return request(refreshedHeaders);
+  }
+}
+
 async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
   const url = buildBffUrlWithParams(path, params);
   return measureWebPerf(
@@ -539,6 +569,9 @@ function apiErrorFrom(response: Response, payload: { message?: string; error?: s
 function normalizeApiErrorMessage(message: string, errorCode?: string): string {
   if (errorCode === "thread_limit_reached") {
     return "작업은 최대 3개까지만 만들 수 있어요. 새 작업을 시작하려면 기존 작업 하나를 삭제해주세요.";
+  }
+  if (errorCode === "upstream_orchestrator_unavailable") {
+    return "생성 서버에 연결하지 못했어요. 입력 내용은 유지했으니 잠시 후 다시 시도해 주세요.";
   }
   if (message.includes("OPENAI_API_KEY missing")) {
     return "이미지 생성 API 키가 설정되지 않았어요. OPENAI_API_KEY를 확인해주세요.";
@@ -935,13 +968,15 @@ export function updateBrandKit(brandKitId: string, payload: BrandKitPayload): Pr
 }
 
 export async function createGenerationJob(payload: GenerationJobCreateInput): Promise<GenerationJobResponse> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
-  return postJson<GenerationJobResponse>("/api/generation-jobs", compactPayload(payload), authHeaders);
+  const requestPayload = compactPayload(payload);
+  return withRefreshedSupabaseAuthRetry((authHeaders) =>
+    postJson<GenerationJobResponse>("/api/generation-jobs", requestPayload, { ...authHeaders, ...traceHeaders() })
+  );
 }
 
 export async function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
-  return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`, undefined, authHeaders);
+  return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`, undefined, { ...authHeaders, ...traceHeaders() });
 }
 
 export async function answerGenerationJob(jobId: string, payload: GenerationJobAnswerPayload): Promise<GenerationJobResponse> {
@@ -1043,6 +1078,24 @@ function mapArchiveItem(item: RawArchiveItem): ArchiveItem {
 
 // --- Chat Thread API ---
 
+export type ThreadResumeAction =
+  | "continue_draft"
+  | "answer_pending_job"
+  | "view_result"
+  | "locked_running"
+  | "retry_failed_job";
+
+export interface ChatThreadResumeState {
+  action: ThreadResumeAction;
+  thread_id: string;
+  resume_job_id?: string | null;
+  final_output_id?: string | null;
+  latest_snapshot_id?: string | null;
+  snapshot_kind?: string | null;
+  reason?: string | null;
+  current_question?: Record<string, unknown> | null;
+}
+
 export interface ChatThreadResponse {
   thread_id: string;
   title?: string | null;
@@ -1052,6 +1105,8 @@ export interface ChatThreadResponse {
   final_brief: Record<string, unknown>;
   active_job_id?: string | null;
   has_final_output: boolean;
+  final_output_id?: string | null;
+  resume_state?: ChatThreadResumeState | null;
   last_message_at: string;
   archived_at?: string | null;
   created_at: string;
@@ -1112,6 +1167,11 @@ export interface ChatThreadStateGetResponse {
   meta?: Record<string, unknown>;
 }
 
+export interface ChatThreadResumeStateGetResponse {
+  success: true;
+  resume_state: ChatThreadResumeState;
+}
+
 export async function listChatThreads(
   params: { limit?: number; offset?: number; includeTotal?: boolean; includeArchived?: boolean } = {}
 ): Promise<ChatThreadListResponse> {
@@ -1140,6 +1200,15 @@ export async function getChatThreadMessages(threadId: string, params: { limit?: 
 export async function getChatThreadState(threadId: string): Promise<ChatThreadStateGetResponse> {
   const authHeaders = await getSupabaseAuthorizationHeader();
   return getJson<ChatThreadStateGetResponse>(`/api/chat-threads/${encodeURIComponent(threadId)}/state`, undefined, authHeaders);
+}
+
+export async function getChatThreadResumeState(threadId: string): Promise<ChatThreadResumeStateGetResponse> {
+  const authHeaders = await getSupabaseAuthorizationHeader();
+  return getJson<ChatThreadResumeStateGetResponse>(
+    `/api/chat-threads/${encodeURIComponent(threadId)}/resume-state`,
+    undefined,
+    authHeaders
+  );
 }
 
 export type ArchiveChatThreadOptions = {

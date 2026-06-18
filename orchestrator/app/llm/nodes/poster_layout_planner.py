@@ -199,6 +199,20 @@ def poster_layout_planner_node(state: dict) -> dict[str, object]:
         components = []
         planning_warnings.append(f"Layout generation failed: {e}")
 
+    # Apply typography font families
+    typography = state.get("typography_art_direction") or {}
+    if not isinstance(typography, dict):
+        typography = getattr(typography, "model_dump", lambda: {})() or {}
+        
+    for c in components:
+        role = c.type.replace("_block", "").replace("_panel", "")
+        if role == "headline":
+            c.style["font_family"] = typography.get("headline_family_id")
+        elif role in ["footer", "speech_bubble"]:
+            c.style["font_family"] = typography.get("cta_family_id")
+        else:
+            c.style["font_family"] = typography.get("body_family_id")
+
     # Phase 5.4: BBox Adjustment Engine
     image_aware_bbox_adjustment_applied = False
     bbox_adjustment_source = "poster_layout_planner_node"

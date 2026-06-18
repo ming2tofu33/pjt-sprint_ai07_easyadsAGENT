@@ -26,9 +26,20 @@ type SupabasePrincipal = {
   userId: string;
   accountType: "guest" | "user";
 };
+type ProxyAuthDiagnostics = {
+  header_present: boolean;
+  principal_resolved: boolean;
+  account_type: "guest" | "user" | null;
+};
 
 function perfEnabled() {
   return process.env.EASYADS_PERF_TRACE === "1";
+}
+
+function canonicalTraceId(value: string | null): string {
+  return value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ? value
+    : crypto.randomUUID();
 }
 
 function getOrchestratorBaseUrl(): string {
@@ -41,6 +52,31 @@ function buildTargetUrl(path: string, request: NextRequest): URL {
     target.searchParams.append(key, value);
   });
   return target;
+}
+
+function sanitizedUpstream(targetUrl: URL | null) {
+  return {
+    host: targetUrl?.host ?? null,
+    path: targetUrl?.pathname ?? null
+  };
+}
+
+function errorCodeFromPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const record = payload as Record<string, unknown>;
+  if (typeof record.error_code === "string") {
+    return record.error_code;
+  }
+  const detail = record.detail;
+  if (detail && typeof detail === "object") {
+    const detailRecord = detail as Record<string, unknown>;
+    if (typeof detailRecord.error_code === "string") {
+      return detailRecord.error_code;
+    }
+  }
+  return null;
 }
 
 function buildInternalHeaders(contentType?: string): Record<string, string> {
@@ -110,16 +146,46 @@ async function resolveSupabasePrincipal(request: NextRequest): Promise<SupabaseP
   };
 }
 
-function unavailableResponse() {
+function unavailableResponse(input?: { requestId?: string; targetUrl?: URL | null }) {
   return NextResponse.json(
     {
       success: false,
-      error_code: "orchestrator_unavailable",
+      error_code: "upstream_orchestrator_unavailable",
       message: "Orchestrator API is unavailable.",
-      detail: "Failed to reach the orchestrator backend from the BFF proxy."
+      detail: "Failed to reach the orchestrator backend from the BFF proxy.",
+      request_id: input?.requestId ?? null
     },
     { status: 502 }
   );
+}
+
+function logUpstreamUnavailable(input?: {
+  requestId?: string;
+  targetUrl?: URL | null;
+  auth?: ProxyAuthDiagnostics;
+}) {
+  console.error("Next BFF upstream request failed", {
+    request_id: input?.requestId ?? null,
+    error_code: "upstream_orchestrator_unavailable",
+    upstream: sanitizedUpstream(input?.targetUrl ?? null),
+    auth: input?.auth ?? null
+  });
+}
+
+function logUpstreamResponseFailure(input: {
+  requestId: string;
+  path: string;
+  status: number;
+  payload: unknown;
+  auth: ProxyAuthDiagnostics;
+}) {
+  console.warn("Next BFF upstream response failed", {
+    request_id: input.requestId,
+    path: input.path,
+    status: input.status,
+    error_code: errorCodeFromPayload(input.payload),
+    auth: input.auth
+  });
 }
 
 function invalidRequestResponse(detail: unknown) {
@@ -179,8 +245,14 @@ export async function proxyOrchestratorJson(
 ) {
   const headers = buildInternalHeaders("application/json");
   const started = Date.now();
-  const traceId = request.headers.get("X-EasyAds-Trace-Id") || `trace_${crypto.randomUUID().replace(/-/g, "")}`;
+  const traceId = canonicalTraceId(request.headers.get("X-EasyAds-Trace-Id"));
   const requestId = request.headers.get("X-Request-Id") || `req_${crypto.randomUUID().replace(/-/g, "")}`;
+  const authDiagnostics: ProxyAuthDiagnostics = {
+    header_present: Boolean(request.headers.get("authorization")?.trim()),
+    principal_resolved: false,
+    account_type: null
+  };
+  let targetUrl: URL | null = null;
   let authCallRequestedCount = 0;
   let authNetworkRequestCount = 0;
   let authDedupHitCount = 0;
@@ -201,9 +273,15 @@ export async function proxyOrchestratorJson(
       }
       const authStarted = Date.now();
       authNetworkRequestCount += 1;
-      verifiedPrincipalPromise = resolveSupabasePrincipal(request).finally(() => {
-        authDurationMs += Date.now() - authStarted;
-      });
+      verifiedPrincipalPromise = resolveSupabasePrincipal(request)
+        .then((principal) => {
+          authDiagnostics.principal_resolved = Boolean(principal);
+          authDiagnostics.account_type = principal?.accountType ?? null;
+          return principal;
+        })
+        .finally(() => {
+          authDurationMs += Date.now() - authStarted;
+        });
       return verifiedPrincipalPromise;
     };
 
@@ -265,7 +343,7 @@ export async function proxyOrchestratorJson(
       }
     }
 
-    const targetUrl = buildTargetUrl(path, request);
+    targetUrl = buildTargetUrl(path, request);
     headers["X-EasyAds-Trace-Id"] = traceId;
     headers["X-Request-Id"] = requestId;
     if (options.injectVerifiedUserIdQuery) {
@@ -277,10 +355,23 @@ export async function proxyOrchestratorJson(
     const response = await fetch(targetUrl.toString(), init);
     const upstreamDuration = Date.now() - upstreamStarted;
     const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      logUpstreamResponseFailure({
+        requestId,
+        path,
+        status: response.status,
+        payload,
+        auth: authDiagnostics
+      });
+    }
     const nextResponse = NextResponse.json(payload, { status: response.ok && options.successStatus ? options.successStatus : response.status });
+    nextResponse.headers.set("X-EasyAds-Trace-Id", traceId);
     nextResponse.headers.set("X-Request-Id", requestId);
     if (perfEnabled()) {
       const totalDuration = Date.now() - started;
+      console.info(JSON.stringify({ event_type: "latency_span", trace_id: traceId, request_id: requestId, layer: "bff", operation: "bff_request_total", phase: "response", wall_time_utc: new Date().toISOString(), duration_ms: totalDuration, status: response.ok ? "ok" : "error", measurement_source: "actual", http_status: response.status }));
+      console.info(JSON.stringify({ event_type: "latency_span", trace_id: traceId, request_id: requestId, layer: "bff", operation: "bff_auth", phase: "auth", wall_time_utc: new Date().toISOString(), duration_ms: authDurationMs, status: "ok", measurement_source: "actual" }));
+      console.info(JSON.stringify({ event_type: "latency_span", trace_id: traceId, request_id: requestId, layer: "bff", operation: "bff_orchestrator_upstream", phase: "upstream", wall_time_utc: new Date().toISOString(), duration_ms: upstreamDuration, status: response.ok ? "ok" : "error", measurement_source: "actual", http_status: response.status }));
       nextResponse.headers.set(
         "Server-Timing",
         `auth;dur=${authDurationMs}, upstream;dur=${upstreamDuration}, total;dur=${totalDuration}`
@@ -295,7 +386,7 @@ export async function proxyOrchestratorJson(
     const statusCode = (error as ProxyError).statusCode;
     const errorCode = (error as ProxyError).errorCode;
     if (statusCode) {
-      return NextResponse.json(
+      const errorResponse = NextResponse.json(
         {
           success: false,
           error_code: errorCode || "orchestrator_proxy_error",
@@ -303,8 +394,13 @@ export async function proxyOrchestratorJson(
         },
         { status: statusCode }
       );
+      errorResponse.headers.set("X-EasyAds-Trace-Id", traceId);
+      return errorResponse;
     }
-    return unavailableResponse();
+    logUpstreamUnavailable({ requestId, targetUrl, auth: authDiagnostics });
+    const errorResponse = unavailableResponse({ requestId, targetUrl });
+    errorResponse.headers.set("X-EasyAds-Trace-Id", traceId);
+    return errorResponse;
   }
 }
 
@@ -355,6 +451,7 @@ export async function proxyOrchestratorBinary(request: NextRequest, path: string
     }
     return nextResponse;
   } catch {
-    return unavailableResponse();
+    logUpstreamUnavailable({ targetUrl });
+    return unavailableResponse({ targetUrl });
   }
 }

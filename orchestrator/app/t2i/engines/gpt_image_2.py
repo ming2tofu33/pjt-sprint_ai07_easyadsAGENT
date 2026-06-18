@@ -12,12 +12,30 @@ from PIL import Image
 
 from orchestrator.app.schemas.native_creative import NativeCreativePromptPackage
 from orchestrator.app.t2i.engines.base import T2IGenerationInput, T2IGenerationOutput
+from orchestrator.app.t2i.native_output_normalizer import normalize_native_output
 from orchestrator.app.t2i.settings import (
     T2IEngineUnavailableError,
     get_openai_api_key,
     load_t2i_settings,
     require_t2i_enabled,
 )
+
+
+def _is_production_runtime() -> bool:
+    from orchestrator.app.core.config import _get_env
+
+    for key in ("EASYADS_ENV", "APP_ENV", "ENVIRONMENT", "RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_NAME", "NODE_ENV"):
+        value = str(_get_env(key, "")).strip().lower()
+        if value in {"production", "prod"}:
+            return True
+    return False
+
+
+def _mock_default_engine_forbidden() -> bool:
+    from orchestrator.app.core.config import _get_env
+
+    return _is_production_runtime() and str(_get_env("T2I_DEFAULT_ENGINE", "")).strip().lower() == "mock"
+
 
 class GPTImageActualEngine:
     engine_name = "gpt_image_1"
@@ -58,11 +76,21 @@ class GPTImageActualEngine:
         if prompt_package.image_call_limit != 1 or prompt_package.automatic_edit_allowed or prompt_package.automatic_retry_allowed:
             raise T2IEngineUnavailableError("Native single-shot prompt package violates image call policy.")
         from orchestrator.app.core.config import _get_env
+        target_width = int(prompt_package.target_width or prompt_package.native_width or 1024)
+        target_height = int(prompt_package.target_height or prompt_package.native_height or 1024)
         if str(_get_env("T2I_DEFAULT_ENGINE", "")).lower() == "mock":
+            if _mock_default_engine_forbidden():
+                raise T2IEngineUnavailableError("mock_engine_forbidden_in_production")
             output_dir.mkdir(parents=True, exist_ok=True)
             final_path = output_dir / "final_native_image.png"
-            from PIL import Image
-            Image.new("RGB", (1024, 1024), "#E5E7EB").save(final_path)
+            provider_path = output_dir / "provider_native_image.png"
+            Image.new("RGB", (target_width, target_height), "#E5E7EB").save(provider_path)
+            normalization = normalize_native_output(
+                source_path=provider_path,
+                target_width=target_width,
+                target_height=target_height,
+                output_path=final_path,
+            )
             sha = _sha256(final_path)
             return {
                 "provider": "mock",
@@ -74,9 +102,17 @@ class GPTImageActualEngine:
                 "max_retries": 0,
                 "request_id": "mock_req_1",
                 "image_path": final_path.as_posix(),
+                "provider_image_path": provider_path.as_posix(),
                 "output_sha256": sha,
-                "width": 1024,
-                "height": 1024,
+                "width": target_width,
+                "height": target_height,
+                "provider_width": target_width,
+                "provider_height": target_height,
+                "output_width": target_width,
+                "output_height": target_height,
+                "normalization_applied": normalization.normalization_applied,
+                "normalization_mode": normalization.fit_mode,
+                "crop_box": normalization.crop_box,
                 "format": "png",
                 "latency_ms": int((perf_counter() - started) * 1000),
                 "prompt_sha256": prompt_package.prompt_sha256,
@@ -88,7 +124,9 @@ class GPTImageActualEngine:
             raise T2IEngineUnavailableError("OpenAI SDK is unavailable.") from exc
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        client = OpenAI(max_retries=0)
+        from orchestrator.app.t2i.settings import get_openai_api_key
+        api_key = get_openai_api_key()
+        client = OpenAI(api_key=api_key, max_retries=0)
         response = client.images.generate(
             model="gpt-image-2",
             prompt=prompt_package.final_prompt,
@@ -97,11 +135,20 @@ class GPTImageActualEngine:
         )
         image_paths = _save_response_images(response, output_dir, "native")
         source = Path(image_paths[0])
+        provider_path = output_dir / "provider_native_image.png"
+        if source.resolve() != provider_path.resolve():
+            source.replace(provider_path)
+        provider_width, provider_height = _image_size(provider_path)
         final_path = output_dir / "final_native_image.png"
-        if source.resolve() != final_path.resolve():
-            source.replace(final_path)
-        sha = _sha256(final_path)
+        normalization = normalize_native_output(
+            source_path=provider_path,
+            target_width=target_width,
+            target_height=target_height,
+            output_path=final_path,
+        )
         width, height = _image_size(final_path)
+        if (width, height) != (target_width, target_height):
+            raise T2IEngineUnavailableError("native_output_dimension_mismatch")
         return {
             "provider": "openai",
             "model": "gpt-image-2",
@@ -112,9 +159,17 @@ class GPTImageActualEngine:
             "max_retries": 0,
             "request_id": getattr(response, "id", None),
             "image_path": final_path.as_posix(),
-            "output_sha256": sha,
+            "provider_image_path": provider_path.as_posix(),
+            "output_sha256": normalization.output_sha256,
             "width": width,
             "height": height,
+            "provider_width": provider_width,
+            "provider_height": provider_height,
+            "output_width": width,
+            "output_height": height,
+            "normalization_applied": normalization.normalization_applied,
+            "normalization_mode": normalization.fit_mode,
+            "crop_box": normalization.crop_box,
             "format": "png",
             "latency_ms": int((perf_counter() - started) * 1000),
             "prompt_sha256": prompt_package.prompt_sha256,

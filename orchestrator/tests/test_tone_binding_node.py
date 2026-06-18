@@ -21,6 +21,28 @@ def test_tone_binding_returns_profile_for_restaurant_feed():
     assert update["llm_call_results"][0]["node_name"] == "tone_binding"
 
 
+def test_tone_binding_neutralizes_raw_restaurant_business_values():
+    for business_type in ["restaurant", "restaurant_bbq", "bbq", "meat_restaurant", "korean_food"]:
+        update = tone_binding_node(create_state(business_type))
+        output = update["tone_binding_output"]
+        tone_profile = output["metadata"]["tone_profile"]
+
+        assert output["tone_profile"] == "friendly_clear"
+        assert tone_profile["business_type"] == "generic"
+        assert tone_profile["raw_business_type"] == business_type
+
+
+def test_tone_binding_neutralizes_ambiguous_beauty_business_values():
+    for business_type in ["beauty", "beauty_salon", "salon"]:
+        update = tone_binding_node(create_state(business_type))
+        output = update["tone_binding_output"]
+        tone_profile = output["metadata"]["tone_profile"]
+
+        assert output["tone_profile"] == "friendly_clear"
+        assert tone_profile["business_type"] == "generic"
+        assert tone_profile["raw_business_type"] == business_type
+
+
 def test_tone_binding_prompt_uses_metadata_contract():
     state = create_state()
 
@@ -32,13 +54,13 @@ def test_tone_binding_prompt_uses_metadata_contract():
     assert "render_text_in_image" in prompt
 
 
-def create_state():
+def create_state(business_type: str = "restaurant"):
     state = create_initial_marketing_state(
         InitialMarketingRequest(
             user_input="ready",
             copy_generation_mode="auto_pilot",
             context=MarketingContext(
-                business_type="restaurant",
+                business_type=business_type,
                 item_or_service="삼겹살",
                 promotion_goal="reservation_cta",
                 extra={"ad_format": "instagram_feed"},

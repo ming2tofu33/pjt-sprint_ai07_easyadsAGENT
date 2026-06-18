@@ -7,6 +7,7 @@ import type {
   OptionQuestion
 } from "@/types/marketing";
 import type { ChatMessageResponse, ChatStateSnapshotResponse, GenerationJob } from "./api-client";
+import { normalizeSelectedChannelId, type ChannelId } from "./ad-formats";
 import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "./generation-engine";
 
 export type ThreadSnapshotRestoreState = {
@@ -17,8 +18,10 @@ export type ThreadSnapshotRestoreState = {
   copyGenerationMode: CopyGenerationMode;
   copyCandidates: CopyOption[];
   copyCandidateOrigin: CopyCandidateOrigin;
+  copyFallbackUsed: boolean;
+  copyFallbackReason: string | null;
   selectedCopyId: string;
-  selectedChannelId: string;
+  selectedChannelId: ChannelId | null;
   selectedTone: string;
   selectedImageGenerationEngine: ImageGenerationEngine;
   customDirection: string;
@@ -52,6 +55,17 @@ function firstString(...values: unknown[]): string {
   return "";
 }
 
+function selectedChannelIdValue(...values: unknown[]): ChannelId | null {
+  for (const value of values) {
+    const normalized = normalizeSelectedChannelId(stringValue(value));
+    if (!normalized) {
+      continue;
+    }
+    return normalized;
+  }
+  return null;
+}
+
 function copyMode(value: unknown): CopyGenerationMode {
   const mode = stringValue(value);
   if (mode === "suggest_candidates" || mode === "auto_pilot" || mode === "custom_input" || mode === "no_copy") {
@@ -62,7 +76,10 @@ function copyMode(value: unknown): CopyGenerationMode {
 
 function imageEngine(value: unknown): ImageGenerationEngine {
   const engine = stringValue(value);
-  if (engine === "gpt_image_1" || engine === "gpt_image_2" || engine === "flux2_klein_4b" || engine === "sd35_large") {
+  if (engine === "gpt_image_1") {
+    return DEFAULT_IMAGE_GENERATION_ENGINE;
+  }
+  if (engine === "gpt_image_2" || engine === "flux2_klein_4b" || engine === "sd35_large") {
     return engine;
   }
   if (engine === "flux" || engine === "flux_schnell" || engine === "flux_1_schnell" || engine === "flux2_klein") {
@@ -107,27 +124,11 @@ function copyCandidatesFrom(value: unknown): CopyOption[] {
 
 function copyCandidateOrigin(value: unknown): CopyCandidateOrigin {
   const origin = stringValue(value);
-  return origin === "llm" || origin === "rule_based" || origin === "fallback" || origin === "unknown" ? origin : "unknown";
+  return origin === "llm" || origin === "rule_based" || origin === "fallback" || origin === "mock" || origin === "unknown" ? origin : "unknown";
 }
 
-const contextDisplayLabels: Record<string, string> = {
-  beauty_nail: "네일샵",
-  beauty_salon: "뷰티/미용실",
-  cafe: "카페",
-  restaurant: "음식점/식당",
-  store: "일반 매장/소매",
-  seasonal_limited: "시즌 한정 홍보",
-  discount_event: "할인 이벤트",
-  new_launch: "신메뉴/신상품 출시",
-  reservation_cta: "예약/방문 유도",
-  brand_awareness: "브랜드 인지도",
-  review_event: "리뷰 이벤트",
-  retention: "재방문 유도"
-};
-
-function contextValue(...values: unknown[]): string {
-  const value = firstString(...values);
-  return contextDisplayLabels[value] ?? value;
+function booleanValue(value: unknown): boolean {
+  return typeof value === "boolean" ? value : false;
 }
 
 function optionQuestionFrom(value: unknown): OptionQuestion | null {
@@ -138,12 +139,17 @@ function optionQuestionFrom(value: unknown): OptionQuestion | null {
   if (!field || !text) {
     return null;
   }
+  const progress = asRecord(question.progress_state ?? question.progressState);
+  const current = Number(progress.current_step ?? progress.currentStep ?? progress.current);
+  const total = Number(progress.total_steps ?? progress.totalSteps ?? progress.total);
+  const label = firstString(progress.current_label, progress.currentLabel, progress.label);
   return {
     field,
     question: text,
     options: options as OptionQuestion["options"],
     required: typeof question.required === "boolean" ? question.required : undefined,
-    multi_select: typeof question.multi_select === "boolean" ? question.multi_select : undefined
+    multi_select: typeof question.multi_select === "boolean" ? question.multi_select : undefined,
+    progressState: Number.isFinite(current) && Number.isFinite(total) && label ? { current, total, label } : null
   };
 }
 
@@ -191,11 +197,13 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
 
   const currentQuestion = extractQuestion(payload, metadata);
   const resultPayload = asRecord(payload.result_payload);
+  const pendingInterrupt = asRecord(payload.pending_interrupt);
+  const pendingInterruptMetadata = asRecord(pendingInterrupt.metadata);
   const progressState = asRecord(payload.progress_state);
   const copyCandidates = copyCandidatesFrom(payload.copy_candidates ?? payload.copyCandidates);
   const status = snapshotStatus(snapshot.snapshot_kind, payload, currentQuestion);
   const context = {
-    businessType: contextValue(
+    businessType: firstString(
       payloadContext.business_type,
       payloadContext.businessType,
       metadataContext.business_type,
@@ -205,7 +213,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       currentBrief.business_type,
       currentBrief.businessType
     ),
-    itemOrService: contextValue(
+    itemOrService: firstString(
       payloadContext.item_or_service,
       payloadContext.itemOrService,
       metadataContext.item_or_service,
@@ -215,7 +223,7 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       currentBrief.item_or_service,
       currentBrief.itemOrService
     ),
-    promotionGoal: contextValue(
+    promotionGoal: firstString(
       payloadContext.promotion_goal,
       payloadContext.promotionGoal,
       metadataContext.promotion_goal,
@@ -224,6 +232,36 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
       payload.promotionGoal,
       currentBrief.promotion_goal,
       currentBrief.promotionGoal
+    ),
+    advertisedSubject: firstString(
+      payloadContext.advertised_subject,
+      payloadContext.advertisedSubject,
+      metadataContext.advertised_subject,
+      metadataContext.advertisedSubject,
+      payload.advertised_subject,
+      payload.advertisedSubject,
+      currentBrief.advertised_subject,
+      currentBrief.advertisedSubject
+    ),
+    advertisedSubjectType: firstString(
+      payloadContext.advertised_subject_type,
+      payloadContext.advertisedSubjectType,
+      metadataContext.advertised_subject_type,
+      metadataContext.advertisedSubjectType,
+      payload.advertised_subject_type,
+      payload.advertisedSubjectType,
+      currentBrief.advertised_subject_type,
+      currentBrief.advertisedSubjectType
+    ),
+    campaignIntent: firstString(
+      payloadContext.campaign_intent,
+      payloadContext.campaignIntent,
+      metadataContext.campaign_intent,
+      metadataContext.campaignIntent,
+      payload.campaign_intent,
+      payload.campaignIntent,
+      currentBrief.campaign_intent,
+      currentBrief.campaignIntent
     )
   };
 
@@ -260,9 +298,46 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     copyGenerationMode: copyMode(payload.copy_generation_mode ?? payload.copyGenerationMode),
     copyCandidates,
     copyCandidateOrigin: copyCandidateOrigin(payload.copy_candidate_origin ?? payload.copyCandidateOrigin),
+    copyFallbackUsed: booleanValue(
+      payload.copy_fallback_used ??
+        payload.copyFallbackUsed ??
+        resultPayload.copy_fallback_used ??
+        resultPayload.copyFallbackUsed ??
+        pendingInterrupt.copy_fallback_used ??
+        pendingInterrupt.copyFallbackUsed ??
+        pendingInterruptMetadata.copy_fallback_used ??
+        pendingInterruptMetadata.copyFallbackUsed ??
+        metadata.copy_fallback_used ??
+        metadata.copyFallbackUsed
+    ),
+    copyFallbackReason:
+      firstString(
+        payload.copy_fallback_reason,
+        payload.copyFallbackReason,
+        resultPayload.copy_fallback_reason,
+        resultPayload.copyFallbackReason,
+        pendingInterrupt.copy_fallback_reason,
+        pendingInterrupt.copyFallbackReason,
+        pendingInterruptMetadata.copy_fallback_reason,
+        pendingInterruptMetadata.copyFallbackReason,
+        metadata.copy_fallback_reason,
+        metadata.copyFallbackReason
+      ) || null,
     selectedCopyId: firstString(payload.selected_copy_id, payload.selectedCopyId, copyCandidates[0]?.id),
-    selectedChannelId: firstString(payload.selected_channel_id, payload.selectedChannelId, payload.ad_format) || "instagram-feed",
-    selectedTone: firstString(payload.selected_tone, payload.selectedTone) || "감성적인",
+    selectedChannelId: selectedChannelIdValue(
+      payload.selected_channel_id,
+      payload.selectedChannelId,
+      currentBrief.selected_channel_id,
+      currentBrief.selectedChannelId,
+      asRecord(payloadContext.extra).selected_channel_id,
+      asRecord(payloadContext.extra).selectedChannelId,
+      payload.ad_format,
+      currentBrief.requested_ad_format,
+      currentBrief.requestedAdFormat,
+      asRecord(payloadContext.extra).ad_format,
+      asRecord(payloadContext.extra).adFormat
+    ),
+    selectedTone: firstString(payload.selected_tone, payload.selectedTone) || "\uac10\uc131\uc801\uc778",
     selectedImageGenerationEngine: imageEngine(
       payload.image_generation_engine ??
         payload.imageGenerationEngine ??
@@ -305,7 +380,7 @@ function messageContent(message: ChatMessageResponse): string {
   if (content === "Waiting for user input.") {
     return "";
   }
-  const briefMarkerIndex = content.indexOf("[광고 브리프]");
+  const briefMarkerIndex = content.indexOf("[\uad11\uace0 \ube0c\ub9ac\ud504]");
   if (briefMarkerIndex > -1) {
     return content.slice(0, briefMarkerIndex).trim();
   }

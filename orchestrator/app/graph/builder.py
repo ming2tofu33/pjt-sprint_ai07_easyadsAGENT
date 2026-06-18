@@ -152,6 +152,19 @@ def build_intake_graph(checkpointer=None):
     return graph.compile(checkpointer=checkpointer or InMemorySaver())
 
 
+def build_text_analysis_latency_graph(checkpointer=None):
+    """Production-node text fixture for latency diagnosis; image lanes are excluded."""
+    graph = StateGraph(MarketingState)
+    graph.add_node("product_understanding", _instrument_node("product_understanding", product_understanding_node))
+    graph.add_node("tone_binding", _instrument_node("tone_binding", tone_binding_node))
+    graph.add_node("copy_candidate_generation", _instrument_node("copy_candidate_generation", copy_candidate_generation_node))
+    graph.set_entry_point("product_understanding")
+    graph.add_edge("product_understanding", "tone_binding")
+    graph.add_edge("tone_binding", "copy_candidate_generation")
+    graph.add_edge("copy_candidate_generation", END)
+    return graph.compile(checkpointer=checkpointer or InMemorySaver())
+
+
 def build_marketing_graph(checkpointer=None):
     # Lazy imports avoid graph.state -> graph package -> builder import cycles for
     # native nodes that themselves depend on graph.state.

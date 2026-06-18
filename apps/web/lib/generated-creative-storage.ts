@@ -11,6 +11,8 @@ export type GeneratedCreativeSnapshot = {
   copyCandidates: CopyOption[];
   copyCandidateSource?: CopyCandidateSource;
   copyCandidateOrigin?: CopyCandidateOrigin;
+  copyFallbackUsed?: boolean;
+  copyFallbackReason?: string | null;
   selectedCopyId: string;
   selectedChannelId: string;
   selectedTone: string;
@@ -30,6 +32,10 @@ const GENERATED_CREATIVES_STORAGE_KEY = "easyads_generated_creatives_v1";
 
 function resolveSnapshotImageUrl(snapshot: GeneratedCreativeSnapshot): string | null {
   return snapshot.brief.finalImageUrl || snapshot.brief.downloadUrl || buildGeneratedAssetUrl(snapshot.brief.finalImagePath);
+}
+
+function isNonEmptyString(value: string | null | undefined): value is string {
+  return Boolean(value);
 }
 
 function creativeFromSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative {
@@ -56,7 +62,7 @@ function creativeFromSnapshot(snapshot: GeneratedCreativeSnapshot): MockCreative
       snapshot.context.itemOrService,
       snapshot.context.promotionGoal,
       snapshot.brief.channel.replace(/\s*\(.+\)/, "")
-    ].filter(Boolean)
+    ].filter(isNonEmptyString)
   };
 }
 

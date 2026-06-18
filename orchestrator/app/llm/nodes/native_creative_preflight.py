@@ -72,13 +72,35 @@ def native_creative_preflight_node(state: dict[str, Any]) -> dict[str, Any]:
             revision_instructions=[],
         )
     else:
-        review = review_native_creative_preflight(
-            input_evidence=InputEvidenceBundle(**input_evidence),
-            product_understanding=ProductUnderstanding(**_complete_product_understanding(product)),
-            copy_brief=brief,
-            prompt_package=package,
-            state=state,
-        )
+        if brief.copy_source_mode == "user_exact":
+            review = NativeCreativePreflightReview(
+                decision="approved",
+                copy_grounded=True,
+                claims_supported=True,
+                language_natural=True,
+                generic_cta_absent=True,
+                text_budget_valid=True,
+                native_typography_suitable=True,
+                product_visual_direction_valid=True,
+                consumer_facing_copy=True,
+                meta_instruction_absent=True,
+                user_request_transformed=True,
+                product_identity_clean=True,
+                copy_relevance_score=1.0,
+                headline_quality_score=1.0,
+                positioning_alignment_score=1.0,
+                failure_reasons=[],
+                revision_instructions=[],
+                provider_metadata={"provider": "deterministic", "model": None, "fallback_used": False, "token_usage": None},
+            )
+        else:
+            review = review_native_creative_preflight(
+                input_evidence=InputEvidenceBundle(**input_evidence),
+                product_understanding=ProductUnderstanding(**_complete_product_understanding(product)),
+                copy_brief=brief,
+                prompt_package=package,
+                state=state,
+            )
         package = package.model_copy(update={"preflight_status": "approved" if review.decision == "approved" else "rejected"})
     decision = review.decision
     return {

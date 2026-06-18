@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from orchestrator.app.llm.copy_tone_policy import resolve_copy_route_key
+
 
 COPY_TONE_MAPPING: dict[str, dict[str, Any]] = {
     "restaurant": {
@@ -64,8 +66,10 @@ PERSONA_TONE_HINTS: dict[str, dict[str, Any]] = {
 
 
 def get_copy_tone_profile(business_type: str | None, target_persona: str | None) -> dict[str, Any]:
-    profile = dict(COPY_TONE_MAPPING.get(business_type or "", FALLBACK_COPY_TONE_PROFILE))
-    profile["business_type"] = business_type or "unknown"
+    route_key = resolve_copy_route_key(business_type)
+    profile = dict(COPY_TONE_MAPPING.get(route_key, FALLBACK_COPY_TONE_PROFILE))
+    profile["business_type"] = route_key
+    profile["raw_business_type"] = business_type or "unknown"
     profile["target_persona"] = target_persona or "unknown"
     profile["persona_hint"] = PERSONA_TONE_HINTS.get(target_persona or "", {})
     return profile

@@ -30,6 +30,7 @@ import {
   deleteArchiveItem,
   getChatThread,
   getChatThreadMessages,
+  getChatThreadResumeState,
   getChatThreadState,
   getGenerationJob,
   listArchiveItems,
@@ -61,8 +62,14 @@ import {
   type ChatFlowSnapshot,
   type ChatTurnSnapshot
 } from "@/lib/chat-snapshots";
-import { mapChatMessagesToTranscript, mapChatThreadSnapshotToRestoreState } from "@/lib/chat-thread-state-mapper";
-import { buildBrief, chatFlowReducer, createInitialChatFlowState } from "@/lib/chat-flow";
+import {
+  mapChatMessagesToTranscript,
+  mapChatThreadSnapshotToRestoreState,
+  type ThreadSnapshotRestoreState
+} from "@/lib/chat-thread-state-mapper";
+import { buildBrief, chatFlowReducer, createInitialChatFlowState, mergeInferredContext } from "@/lib/chat-flow";
+import { normalizeSelectedChannelId, toCanonicalAdFormat } from "@/lib/ad-formats";
+import { campaignIntentLabel } from "@/lib/context-presentation";
 import {
   buildDashboardHref,
   type DashboardStage,
@@ -78,7 +85,6 @@ import {
   DEFAULT_IMAGE_GENERATION_ENGINE,
   getGenerationEngineOption,
   isTerminalGenerationJobStatus,
-  resolveGenerationEnginePreference,
   resolveGenerationRunMode,
   type ImageGenerationEngine
 } from "@/lib/generation-engine";
@@ -121,13 +127,6 @@ const GENERATION_JOB_POLL_INTERVAL_MS = 1800;
 const GENERATION_JOB_MAX_POLLS = 80;
 const ignoreRouteJobRestore = (_jobId: string) => {};
 const ignoreRouteThreadRestore = (_threadId: string) => {};
-const AD_FORMAT_BY_CHANNEL_ID: Record<string, string> = {
-  "instagram-feed": "instagram_feed",
-  "instagram-story": "instagram_story",
-  poster: "poster",
-  flyer: "flyer"
-};
-
 function mergeBriefRefinement(existingDirection: string, refinement: string): string {
   return [existingDirection.trim(), refinement.trim()].filter(Boolean).join("\n");
 }
@@ -258,13 +257,6 @@ function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function toCanonicalAdFormat(value: string | null | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  return AD_FORMAT_BY_CHANNEL_ID[value] ?? value;
-}
-
 function buildGenerationJobUserInput(state: ChatFlowState) {
   return state.userInput;
 }
@@ -348,46 +340,61 @@ function getPayloadString(payload: Record<string, unknown>, ...keys: string[]): 
   return null;
 }
 
-function getCopyCandidateOrigin(payload: Record<string, unknown>, ...keys: string[]): CopyCandidateOrigin {
-  const value = getPayloadString(payload, ...keys);
-  return value === "llm" || value === "rule_based" || value === "fallback" || value === "unknown" ? value : "unknown";
+function getSelectedChannelId(payload: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const normalized = normalizeSelectedChannelId(getPayloadString(payload, key));
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
 }
 
-const contextDisplayLabels: Record<string, string> = {
-  beauty_nail: "네일샵",
-  beauty_salon: "뷰티/미용실",
-  cafe: "카페",
-  restaurant: "음식점/식당",
-  store: "일반 매장/소매",
-  seasonal_limited: "시즌 한정 홍보",
-  discount_event: "할인 이벤트",
-  new_launch: "신메뉴/신상품 출시",
-  reservation_cta: "예약/방문 유도",
-  brand_awareness: "브랜드 인지도",
-  review_event: "리뷰 이벤트",
-  retention: "재방문 유도"
-};
+function getCopyCandidateOrigin(payload: Record<string, unknown>, ...keys: string[]): CopyCandidateOrigin {
+  const value = getPayloadString(payload, ...keys);
+  return value === "llm" || value === "rule_based" || value === "fallback" || value === "mock" || value === "unknown" ? value : "unknown";
+}
 
-function displayContextValue(value: string | null | undefined): string | undefined {
-  if (!value) {
-    return undefined;
+function getPayloadBoolean(payload: Record<string, unknown>, ...keys: string[]): boolean {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
   }
-  return contextDisplayLabels[value] ?? value;
+  return false;
 }
 
 function normalizePartialContext(context: Record<string, unknown>): PartialInferredContext {
   return {
-    businessType: displayContextValue(getPayloadString(context, "businessType", "business_type")),
-    itemOrService: displayContextValue(getPayloadString(context, "itemOrService", "item_or_service")),
-    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal"))
+    businessType: getPayloadString(context, "businessType", "business_type"),
+    itemOrService: getPayloadString(context, "itemOrService", "item_or_service"),
+    promotionGoal: getPayloadString(context, "promotionGoal", "promotion_goal"),
+    advertisedSubject: getPayloadString(context, "advertisedSubject", "advertised_subject"),
+    advertisedSubjectType: getPayloadString(context, "advertisedSubjectType", "advertised_subject_type"),
+    campaignIntent: getPayloadString(context, "campaignIntent", "campaign_intent")
   };
 }
 
 function normalizeInferredContext(context: Record<string, unknown>): InferredContext {
   return {
-    businessType: displayContextValue(getPayloadString(context, "businessType", "business_type")) ?? "",
-    itemOrService: displayContextValue(getPayloadString(context, "itemOrService", "item_or_service")) ?? "",
-    promotionGoal: displayContextValue(getPayloadString(context, "promotionGoal", "promotion_goal")) ?? ""
+    businessType: getPayloadString(context, "businessType", "business_type") ?? null,
+    itemOrService: getPayloadString(context, "itemOrService", "item_or_service") ?? null,
+    promotionGoal: getPayloadString(context, "promotionGoal", "promotion_goal") ?? null,
+    advertisedSubject: getPayloadString(context, "advertisedSubject", "advertised_subject") ?? null,
+    advertisedSubjectType: getPayloadString(context, "advertisedSubjectType", "advertised_subject_type") ?? null,
+    campaignIntent: getPayloadString(context, "campaignIntent", "campaign_intent") ?? null
+  };
+}
+
+function normalizeOptionQuestion(question: Record<string, unknown>): OptionQuestion {
+  const progress = asRecord(question.progress_state ?? question.progressState);
+  const current = Number(progress.current_step ?? progress.currentStep ?? progress.current);
+  const total = Number(progress.total_steps ?? progress.totalSteps ?? progress.total);
+  const label = getPayloadString(progress, "currentLabel", "current_label", "label") ?? null;
+  return {
+    ...(question as unknown as OptionQuestion),
+    progressState: Number.isFinite(current) && Number.isFinite(total) && label ? { current, total, label } : null
   };
 }
 
@@ -428,11 +435,14 @@ function normalizeChatBrief(
   const downloadUrl = getPayloadString(brief, "downloadUrl", "download_url") ?? getPayloadString(payload, "downloadUrl", "download_url");
 
   return {
-    purpose: getPayloadString(brief, "purpose", "promotion_goal") ?? context.promotionGoal,
-    item: getPayloadString(brief, "item", "item_or_service") ?? context.itemOrService,
+    purpose: getPayloadString(brief, "purpose", "promotion_goal", "campaign_intent") ?? context.promotionGoal ?? campaignIntentLabel(context.campaignIntent) ?? "",
+    item: getPayloadString(brief, "item", "item_or_service", "advertised_subject") ?? context.itemOrService ?? context.advertisedSubject ?? "",
     copy,
     tone: getPayloadString(brief, "tone", "brand_tone", "selected_tone") ?? "",
     channel: getPayloadString(brief, "channel", "selected_channel_id", "requested_ad_format") ?? "",
+    selectedChannelId:
+      getSelectedChannelId(brief, "selectedChannelId", "selected_channel_id", "requestedAdFormat", "requested_ad_format") ??
+      getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format"),
     imageDirection,
     finalImagePath,
     finalImageUrl,
@@ -540,7 +550,10 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
         copyCandidates: interrupt.candidates as never[],
         recommendedCopyId: interrupt.recommendedCandidateId ?? null,
         copyCandidateOrigin: interrupt.copyCandidateOrigin,
-        copyGenerationMode: fallbackCopyGenerationMode ?? "suggest_candidates"
+        copyFallbackUsed: interrupt.copyFallbackUsed,
+        copyFallbackReason: interrupt.copyFallbackReason,
+        copyGenerationMode: fallbackCopyGenerationMode ?? "suggest_candidates",
+        selectedChannelId: getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
       };
     }
     if (interrupt?.type === "option_question") {
@@ -550,9 +563,11 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
         threadId,
         status: "waiting",
         context: normalizePartialContext(context),
-        question: interrupt.optionQuestion as never,
+        question: normalizeOptionQuestion(interrupt.optionQuestion as Record<string, unknown>) as never,
+        progress: normalizeOptionQuestion(interrupt.optionQuestion as Record<string, unknown>).progressState ?? null,
         missingFields: getPayloadArray<string>(metadata, "missingFields", "missing_fields"),
-        generationJob: job
+        generationJob: job,
+        selectedChannelId: getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
       };
     }
     const pendingInterrupt = asRecord(metadata.pending_interrupt);
@@ -572,9 +587,11 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
       threadId,
       status: "waiting",
       context: normalizePartialContext(context),
-      question: question as never,
+      question: normalizeOptionQuestion(question as Record<string, unknown>) as never,
+      progress: normalizeOptionQuestion(question as Record<string, unknown>).progressState ?? null,
       missingFields,
-      generationJob: job
+      generationJob: job,
+      selectedChannelId: getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
     };
   }
 
@@ -590,7 +607,10 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
       copyCandidates: copyCandidates as never[],
       recommendedCopyId: getPayloadString(payload, "recommendedCopyId", "recommended_copy_id"),
       copyCandidateOrigin: getCopyCandidateOrigin(payload, "copyCandidateOrigin", "copy_candidate_origin"),
-      copyGenerationMode: fallbackCopyGenerationMode
+      copyFallbackUsed: getPayloadBoolean(payload, "copyFallbackUsed", "copy_fallback_used"),
+      copyFallbackReason: getPayloadString(payload, "copyFallbackReason", "copy_fallback_reason"),
+      copyGenerationMode: fallbackCopyGenerationMode,
+      selectedChannelId: getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
     };
   }
 
@@ -607,7 +627,9 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
     status: job.status,
     context: normalizedContext,
     brief: normalizedBrief,
-    copyGenerationMode
+    copyGenerationMode,
+    selectedChannelId:
+      normalizedBrief.selectedChannelId ?? getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
   };
 }
 
@@ -619,11 +641,7 @@ function mergeContextFromTurnResponse(
   baseContext: InferredContext,
   response: ChatTurnResponse
 ): InferredContext {
-  return {
-    businessType: response.context.businessType || baseContext.businessType,
-    itemOrService: response.context.itemOrService || baseContext.itemOrService,
-    promotionGoal: response.context.promotionGoal || baseContext.promotionGoal
-  };
+  return mergeInferredContext(baseContext, response.context);
 }
 
 type PhotoGenerateInput = {
@@ -635,6 +653,7 @@ type InitialChatIntakeContext = {
   prompt: string;
   copyGenerationMode?: CopyGenerationMode;
   imageGenerationEngine: ImageGenerationEngine;
+  selectedChannelId?: string | null;
   sourceAssetId?: string | null;
   sourceImagePath?: string | null;
   referenceImagePath?: string | null;
@@ -660,10 +679,16 @@ function chatTurnSnapshotMatchesThread(snapshot: ChatTurnSnapshot | null, thread
 }
 
 function initialChatIntakeFromTurnSnapshot(snapshot: ChatTurnSnapshot): InitialChatIntakeContext {
+  const responseSelectedChannelId = snapshot.response
+    ? isBriefReadyResponse(snapshot.response)
+      ? snapshot.response.selectedChannelId ?? snapshot.response.brief.selectedChannelId ?? null
+      : snapshot.response.selectedChannelId ?? null
+    : null;
   return {
     prompt: snapshot.prompt,
     copyGenerationMode: snapshot.copyGenerationMode,
     imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
+    selectedChannelId: responseSelectedChannelId,
     sourceAssetId: snapshot.sourceAssetId ?? null,
     sourceImagePath: snapshot.sourceImagePath ?? null,
     referenceImagePath: snapshot.referenceImagePath ?? null,
@@ -671,6 +696,22 @@ function initialChatIntakeFromTurnSnapshot(snapshot: ChatTurnSnapshot): InitialC
     selectedReferenceTemplateTitle: snapshot.selectedReferenceTemplateTitle ?? null,
     userCustomHeadline: snapshot.userCustomHeadline ?? null,
     userCustomSubcopy: snapshot.userCustomSubcopy ?? null
+  };
+}
+
+function initialChatIntakeFromRestoreState(restoreState: ThreadSnapshotRestoreState): InitialChatIntakeContext {
+  return {
+    prompt: restoreState.prompt,
+    copyGenerationMode: restoreState.copyGenerationMode,
+    imageGenerationEngine: restoreState.selectedImageGenerationEngine,
+    selectedChannelId: restoreState.selectedChannelId,
+    sourceAssetId: restoreState.sourceAssetId,
+    sourceImagePath: restoreState.sourceImagePath,
+    referenceImagePath: restoreState.referenceImagePath,
+    selectedReferenceTemplateId: restoreState.selectedReferenceTemplateId,
+    selectedReferenceTemplateTitle: restoreState.selectedReferenceTemplateTitle,
+    userCustomHeadline: restoreState.userCustomHeadline,
+    userCustomSubcopy: restoreState.userCustomSubcopy
   };
 }
 
@@ -718,6 +759,7 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
       threadId: snapshot.response.threadId,
       context: snapshot.response.context,
       question: snapshot.response.question,
+      selectedChannelId: normalizeSelectedChannelId(snapshot.response.selectedChannelId) ?? null,
       generationJob: snapshot.response.generationJob,
       sourceAssetId: snapshot.sourceAssetId ?? null,
       sourceImagePath: snapshot.sourceImagePath ?? null,
@@ -736,6 +778,9 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
       recommendedCopyId: null,
       copyCandidateSource: "empty",
       copyCandidateOrigin: "unknown",
+      copyFallbackUsed: false,
+      copyFallbackReason: null,
+      selectedChannelId: normalizeSelectedChannelId(snapshot.response.selectedChannelId ?? snapshot.response.brief.selectedChannelId) ?? null,
       copyGenerationMode: snapshot.response.copyGenerationMode,
       imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceAssetId: snapshot.sourceAssetId ?? null,
@@ -757,6 +802,9 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
     copyCandidates: snapshot.response.copyCandidates,
     recommendedCopyId: snapshot.response.recommendedCopyId,
     copyCandidateOrigin: snapshot.response.copyCandidateOrigin,
+    copyFallbackUsed: snapshot.response.copyFallbackUsed ?? false,
+    copyFallbackReason: snapshot.response.copyFallbackReason ?? null,
+    selectedChannelId: normalizeSelectedChannelId(snapshot.response.selectedChannelId) ?? null,
     copyGenerationMode: snapshot.response.copyGenerationMode,
     imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
     sourceAssetId: snapshot.sourceAssetId ?? null,
@@ -806,6 +854,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const [currentThreadDeleteError, setCurrentThreadDeleteError] = useState<string | null>(null);
   const [currentThreadIsArchived, setCurrentThreadIsArchived] = useState(false);
   const activeThreadRef = useRef({ threadId: "", conversationMessageCount: 0 });
+  const freshChatSessionRef = useRef(0);
+  const forceNextPromptNewThreadRef = useRef(false);
   const finalGenerationJobIdsRef = useRef<Set<string>>(new Set());
   const inlinePollingJobIdsRef = useRef<Set<string>>(new Set());
   const appSurface = optimisticSurface ?? initialSurface;
@@ -856,6 +906,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       recommendedCopyId: snapshot.selectedCopyId,
       copyCandidateSource: snapshot.copyCandidateSource,
       copyCandidateOrigin: snapshot.copyCandidateOrigin,
+      copyFallbackUsed: snapshot.copyFallbackUsed ?? false,
+      copyFallbackReason: snapshot.copyFallbackReason ?? null,
+      selectedChannelId: normalizeSelectedChannelId(snapshot.selectedChannelId) ?? createInitialChatFlowState().selectedChannelId,
       imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceAssetId: snapshot.sourceAssetId ?? null,
       sourceImagePath: snapshot.sourceImagePath ?? null,
@@ -865,7 +918,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     });
     dispatch({ type: "selectTone", tone: snapshot.selectedTone });
     dispatch({ type: "selectCopy", copyId: snapshot.selectedCopyId });
-    dispatch({ type: "selectChannel", channelId: snapshot.selectedChannelId });
+    dispatch({ type: "selectChannel", channelId: normalizeSelectedChannelId(snapshot.selectedChannelId) ?? createInitialChatFlowState().selectedChannelId });
     dispatch({ type: "setCustomDirection", value: snapshot.customDirection });
     dispatch({ type: "backendBriefSucceeded", brief: snapshot.brief });
     dispatch({ type: "continueToBrief" });
@@ -890,8 +943,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         referenceImagePath?: string | null;
         userCustomHeadline?: string | null;
         userCustomSubcopy?: string | null;
+        selectedChannelId?: string | null;
+        fallbackSelectedChannelId?: string | null;
       }
     ) => {
+      const selectedChannelId =
+        response.selectedChannelId ?? response.brief.selectedChannelId ?? response.fallbackSelectedChannelId ?? null;
       const snapshot = {
         prompt,
         jobId: response.jobId,
@@ -900,8 +957,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         copyCandidates: [],
         copyCandidateSource: "empty" as const,
         copyCandidateOrigin: "unknown" as const,
+        copyFallbackUsed: false,
+        copyFallbackReason: null,
         selectedCopyId: "",
-        selectedChannelId: "instagram-feed",
+        selectedChannelId: selectedChannelId ?? createInitialChatFlowState().selectedChannelId,
         selectedTone: "",
         customDirection: "",
         brief: response.brief,
@@ -922,6 +981,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         recommendedCopyId: null,
         copyCandidateSource: "empty",
         copyCandidateOrigin: "unknown",
+        copyFallbackUsed: false,
+        copyFallbackReason: null,
+        selectedChannelId: normalizeSelectedChannelId(selectedChannelId) ?? null,
         copyGenerationMode: response.copyGenerationMode ?? "no_copy",
         imageGenerationEngine: response.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
         sourceAssetId: response.sourceAssetId ?? null,
@@ -949,7 +1011,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     sourceImagePath?: string | null,
     referenceImagePath?: string | null,
     userCustomHeadline?: string | null,
-    userCustomSubcopy?: string | null
+    userCustomSubcopy?: string | null,
+    fallbackSelectedChannelId?: string | null
   ) => {
     if (isQuestionResponse(response)) {
       dispatch({
@@ -958,6 +1021,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         threadId: response.threadId,
         context: response.context,
         question: response.question,
+      progress: response.question.progressState ?? null,
+        selectedChannelId: normalizeSelectedChannelId(response.selectedChannelId ?? fallbackSelectedChannelId) ?? null,
         generationJob: response.generationJob,
         sourceAssetId: sourceAssetId ?? null,
         sourceImagePath: sourceImagePath ?? null,
@@ -973,7 +1038,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         sourceImagePath: sourceImagePath ?? null,
         referenceImagePath: referenceImagePath ?? null,
         userCustomHeadline: userCustomHeadline ?? null,
-        userCustomSubcopy: userCustomSubcopy ?? null
+        userCustomSubcopy: userCustomSubcopy ?? null,
+        fallbackSelectedChannelId: fallbackSelectedChannelId ?? null
       });
       return;
     }
@@ -987,6 +1053,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       copyCandidates: response.copyCandidates,
       recommendedCopyId: response.recommendedCopyId,
       copyCandidateOrigin: response.copyCandidateOrigin,
+      copyFallbackUsed: response.copyFallbackUsed ?? false,
+      copyFallbackReason: response.copyFallbackReason ?? null,
+      selectedChannelId: normalizeSelectedChannelId(response.selectedChannelId) ?? null,
       copyGenerationMode: response.copyGenerationMode,
       imageGenerationEngine: imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceAssetId: sourceAssetId ?? null,
@@ -1030,6 +1099,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       }
 
       if (pendingTurn.response) {
+        const pendingTurnSelectedChannelId = isBriefReadyResponse(pendingTurn.response)
+          ? pendingTurn.response.selectedChannelId ?? pendingTurn.response.brief.selectedChannelId ?? null
+          : pendingTurn.response.selectedChannelId ?? null;
         applyTurnResponse(
           pendingTurn.prompt,
           pendingTurn.response,
@@ -1038,7 +1110,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           pendingTurn.sourceImagePath ?? null,
           pendingTurn.referenceImagePath ?? null,
           pendingTurn.userCustomHeadline ?? null,
-          pendingTurn.userCustomSubcopy ?? null
+          pendingTurn.userCustomSubcopy ?? null,
+          pendingTurnSelectedChannelId
         );
         setGenerationStage("brief");
         lastPrimedStageRef.current = "start";
@@ -1215,13 +1288,135 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         return;
       }
 
+      const restoreSession = freshChatSessionRef.current;
+      let isActive = true;
+      const restoreIsStale = () => !isActive || restoreSession !== freshChatSessionRef.current;
       Promise.all([
         getChatThread(threadIdParam).catch(() => null),
+        getChatThreadResumeState(threadIdParam).catch(() => null),
         getChatThreadState(threadIdParam),
         getChatThreadMessages(threadIdParam, { limit: 120 }).catch(() => ({ success: true as const, messages: [], total: 0 }))
-      ]).then(([threadResponse, stateResponse, messagesResponse]) => {
+      ]).then(async ([threadResponse, resumeStateResponse, stateResponse, messagesResponse]) => {
+        if (restoreIsStale()) {
+          return;
+        }
+        if (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId) {
+          return;
+        }
+
         setCurrentThreadIsArchived(Boolean(threadResponse?.thread.archived_at));
+        const resumeState = resumeStateResponse?.resume_state ?? null;
         const restoreState = mapChatThreadSnapshotToRestoreState(stateResponse.snapshot);
+        const transcript = mapChatMessagesToTranscript(messagesResponse.messages);
+
+        if (resumeState?.action === "view_result") {
+          const finalJobResponse = resumeState.resume_job_id
+            ? await getGenerationJob(resumeState.resume_job_id).catch(() => null)
+            : null;
+          if (restoreIsStale() || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
+            return;
+          }
+          const finalJob = finalJobResponse?.job ?? null;
+          if (!finalJob) {
+            showToast("완료된 결과를 불러오지 못했어요. 잠시 후 다시 시도해주세요.");
+            return;
+          }
+
+          if (restoreState) {
+            let nextContext = restoreState.context;
+            try {
+              const turnResponse = generationJobToChatTurnResponse(finalJob, restoreState.copyGenerationMode);
+              nextContext = mergeContextFromTurnResponse(restoreState.context, turnResponse);
+            } catch {
+              nextContext = restoreState.context;
+            }
+            dispatch({
+              type: "restoreThreadSnapshot",
+              ...restoreState,
+              context: nextContext,
+              generationJob: finalJob,
+              conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
+            });
+          } else {
+            dispatch({ type: "showResultShell" });
+            dispatch({ type: "generationJobUpdated", generationJob: finalJob });
+          }
+          setShowHistory(false);
+          setGenerationStage("complete");
+          lastPrimedStageRef.current = "complete";
+          return;
+        }
+
+        if (resumeState?.action === "answer_pending_job") {
+          const waitingJobResponse = resumeState.resume_job_id
+            ? await getGenerationJob(resumeState.resume_job_id).catch(() => null)
+            : null;
+          if (restoreIsStale() || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
+            return;
+          }
+          const waitingJob = waitingJobResponse?.job ?? null;
+          if (waitingJob) {
+            const restoreIntake = restoreState ? initialChatIntakeFromRestoreState(restoreState) : undefined;
+            if (restoreState) {
+              let nextContext = restoreState.context;
+              try {
+                const turnResponse = generationJobToChatTurnResponse(waitingJob, restoreState.copyGenerationMode);
+                nextContext = mergeContextFromTurnResponse(restoreState.context, turnResponse);
+              } catch {
+                nextContext = restoreState.context;
+              }
+              dispatch({
+                type: "restoreThreadSnapshot",
+                ...restoreState,
+                context: nextContext,
+                generationJob: waitingJob,
+                conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
+              });
+            } else {
+              dispatch({ type: "generationJobUpdated", generationJob: waitingJob });
+            }
+            setShowHistory(false);
+            if (stopForGenerationJobWaitingState(waitingJob, restoreIntake)) {
+              return;
+            }
+            if (isTerminalGenerationJobStatus(waitingJob.status)) {
+              setGenerationStage("complete");
+              lastPrimedStageRef.current = "complete";
+              return;
+            }
+            setGenerationStage("generating");
+            lastPrimedStageRef.current = "generating";
+            void pollGenerationJobUntilDoneOrQuestion(waitingJob, restoreIntake);
+            return;
+          }
+        }
+
+        if (resumeState?.action === "locked_running" && resumeState.resume_job_id) {
+          const runningJobResponse = await getGenerationJob(resumeState.resume_job_id).catch(() => null);
+          if (restoreIsStale() || (activeThreadRef.current.threadId && threadIdParam !== activeThreadRef.current.threadId)) {
+            return;
+          }
+          const runningJob = runningJobResponse?.job ?? null;
+          if (runningJob) {
+            const restoreIntake = restoreState ? initialChatIntakeFromRestoreState(restoreState) : undefined;
+            if (restoreState) {
+              dispatch({
+                type: "restoreThreadSnapshot",
+                ...restoreState,
+                generationJob: runningJob,
+                conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
+              });
+            } else {
+              dispatch({ type: "generationJobUpdated", generationJob: runningJob });
+            }
+            setShowHistory(false);
+            setGenerationStage("generating");
+            lastPrimedStageRef.current = "generating";
+            void pollGenerationJobUntilDoneOrQuestion(runningJob, restoreIntake);
+            return;
+          }
+        }
+
         if (!restoreState) {
           const pendingTurn = readChatTurnSnapshot();
           if (chatTurnSnapshotMatchesThread(pendingTurn, threadIdParam)) {
@@ -1232,29 +1427,17 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           return;
         }
 
-        const transcript = mapChatMessagesToTranscript(messagesResponse.messages);
         dispatch({
           type: "restoreThreadSnapshot",
           ...restoreState,
           conversationMessages: transcript.length > 0 ? transcript : restoreState.conversationMessages
         });
         setShowHistory(false);
-        const restoreIntake: InitialChatIntakeContext = {
-          prompt: restoreState.prompt,
-          copyGenerationMode: restoreState.copyGenerationMode,
-          imageGenerationEngine: restoreState.selectedImageGenerationEngine,
-          sourceAssetId: restoreState.sourceAssetId,
-          sourceImagePath: restoreState.sourceImagePath,
-          referenceImagePath: restoreState.referenceImagePath,
-          selectedReferenceTemplateId: restoreState.selectedReferenceTemplateId,
-          selectedReferenceTemplateTitle: restoreState.selectedReferenceTemplateTitle,
-          userCustomHeadline: restoreState.userCustomHeadline,
-          userCustomSubcopy: restoreState.userCustomSubcopy
-        };
+        const restoreIntake = initialChatIntakeFromRestoreState(restoreState);
         // interrupt(라이브 상태)가 스냅샷보다 우선. waiting이면 단일 디사이더로 stage 결정.
         if (
           restoreState.generationJob.status === "waiting_user_input" &&
-          stopForGenerationJobInterrupt(restoreState.generationJob, restoreIntake)
+          stopForGenerationJobWaitingState(restoreState.generationJob, restoreIntake)
         ) {
           return;
         }
@@ -1266,9 +1449,13 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         setGenerationStage(restoreState.currentQuestion ? "jobQuestion" : "brief");
         lastPrimedStageRef.current = restoreState.currentQuestion ? "generating" : "brief";
       }).catch(() => {
-        showToast("대화 기록을 불러오는데 실패했습니다.");
+        if (!restoreIsStale()) {
+          showToast("대화 기록을 불러오는데 실패했습니다.");
+        }
       });
-      return;
+      return () => {
+        isActive = false;
+      };
     }
 
     setCurrentThreadIsArchived(false);
@@ -1375,9 +1562,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     clearGenerationFailureSnapshot();
     const selectedReferenceTemplateId = (options.selectedReferenceTemplateId ?? readGenerationDraftReferenceTemplateId()) || undefined;
     const requestContext = readGenerationRequestContext();
-    const imageGenerationEngine = options.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
-    const engineOption = getGenerationEngineOption(imageGenerationEngine);
-    const backendEngine = resolveGenerationEnginePreference(imageGenerationEngine);
+    const engineOption = getGenerationEngineOption(options.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE);
+    const imageGenerationEngine = engineOption.id;
+    const backendEngine = engineOption.backendEngine;
     clearGenerationDraftPrompt();
     dispatch({
       type: "submitPrompt",
@@ -1420,10 +1607,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           transcriptMode: "update_current_turn"
         });
       }
-      const activeThreadId = toGenerationJobThreadId(threadIdParam || state.threadId);
+      const forceNewThread = forceNextPromptNewThreadRef.current;
+      const activeThreadId = forceNewThread ? null : toGenerationJobThreadId(threadIdParam || state.threadId);
       const response = await createGenerationJob({
         userInput: appendSavedBrandKitContext(prompt),
-        threadId: activeThreadId,
+        threadId: activeThreadId ?? undefined,
+        continuationMode: activeThreadId ? "new_turn" : "new_thread",
         ...(options.adFormat ? { adFormat: options.adFormat } : {}),
         runMode: "graph_job",
         copyGenerationMode: options.copyGenerationMode ?? undefined,
@@ -1443,6 +1632,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           copy_generation_mode: options.copyGenerationMode ?? null
         }
       });
+      forceNextPromptNewThreadRef.current = false;
 
       if (shouldPollInitialGenerationJob(response.job)) {
         writeChatTurnSnapshot({
@@ -1485,6 +1675,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           prompt,
           copyGenerationMode: options.copyGenerationMode,
           imageGenerationEngine,
+          selectedChannelId: state.selectedChannelId,
           sourceImagePath: null,
           referenceImagePath: referenceImagePath ?? null,
           selectedReferenceTemplateId: selectedReferenceTemplateId ?? null,
@@ -1509,7 +1700,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         null,
         referenceImagePath ?? null,
         options.userCustomHeadline ?? null,
-        options.userCustomSubcopy ?? null
+        options.userCustomSubcopy ?? null,
+        state.selectedChannelId
       );
 
       if (!threadIdParam && response.job.thread_id) {
@@ -1534,6 +1726,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       prompt: state.userInput,
       copyGenerationMode: state.copyGenerationMode,
       imageGenerationEngine: state.selectedImageGenerationEngine,
+      selectedChannelId: state.selectedChannelId,
       sourceAssetId: state.sourceAssetId ?? null,
       sourceImagePath: state.sourceImagePath ?? null,
       referenceImagePath: state.referenceImagePath ?? null,
@@ -1549,7 +1742,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
-    dispatch({ type: "submitQuestionAnswer", label: input.label });
+    dispatch({ 
+      type: "submitQuestionAnswer", 
+      label: input.label,
+      field: state.currentQuestion.field,
+      value: input.customText ?? input.value
+    });
     try {
       if (state.generationJob?.status === "waiting_user_input") {
         const answerPayload = {
@@ -1578,7 +1776,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         state.sourceImagePath ?? null,
         state.referenceImagePath ?? null,
         state.userCustomHeadline,
-        state.userCustomSubcopy
+        state.userCustomSubcopy,
+        state.selectedChannelId
       );
     } catch (error) {
       dispatch({
@@ -1600,11 +1799,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       if (!upload.sourceAssetId) {
         throw new Error("사진 업로드 정보가 이미지 생성용 asset으로 저장되지 않았어요. 사진을 다시 업로드해 주세요.");
       }
-      const imageGenerationEngine = input.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
-      const backendEngine = resolveGenerationEnginePreference(imageGenerationEngine);
-      const engineOption = getGenerationEngineOption(imageGenerationEngine);
+      const engineOption = getGenerationEngineOption(input.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE);
+      const imageGenerationEngine = engineOption.id;
+      const backendEngine = engineOption.backendEngine;
       const response = await createGenerationJob({
         userInput: appendSavedBrandKitContext(input.prompt),
+        continuationMode: "new_thread",
         entryMode: "photo_start",
         runMode: "graph_job",
         sourceAssetId: upload.sourceAssetId,
@@ -1671,8 +1871,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       copyCandidates: state.copyCandidates,
       copyCandidateSource: state.copyCandidateSource,
       copyCandidateOrigin: state.copyCandidateOrigin,
+      copyFallbackUsed: state.copyFallbackUsed,
+      copyFallbackReason: state.copyFallbackReason,
       selectedCopyId: state.copyGenerationMode === "suggest_candidates" ? "" : state.selectedCopyId,
-      selectedChannelId: state.selectedChannelId,
+      selectedChannelId: brief.selectedChannelId ?? state.selectedChannelId,
       selectedTone: state.selectedTone,
       customDirection,
       userCustomHeadline: state.userCustomHeadline,
@@ -1722,6 +1924,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       writeChatFlowSnapshot(snapshot);
       clearChatTurnSnapshot();
       setGeneratedCreatives(response.brief.finalImagePath ? addGeneratedCreativeSnapshot(snapshot) : readGeneratedCreatives());
+      const responseSelectedChannelId = normalizeSelectedChannelId(response.selectedChannelId ?? response.brief.selectedChannelId);
+      if (responseSelectedChannelId) {
+        dispatch({ type: "selectChannel", channelId: responseSelectedChannelId });
+      }
       dispatch({ type: "backendBriefSucceeded", brief: response.brief });
       dispatch({ type: "continueToBrief" });
     } catch (error) {
@@ -1772,6 +1978,10 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       writeChatFlowSnapshot(snapshot);
       clearChatTurnSnapshot();
       setGeneratedCreatives(response.brief.finalImagePath ? addGeneratedCreativeSnapshot(snapshot) : readGeneratedCreatives());
+      const responseSelectedChannelId = normalizeSelectedChannelId(response.selectedChannelId ?? response.brief.selectedChannelId);
+      if (responseSelectedChannelId) {
+        dispatch({ type: "selectChannel", channelId: responseSelectedChannelId });
+      }
       dispatch({ type: "briefRefinementSucceeded", brief: response.brief });
       dispatch({ type: "continueToBrief" });
     } catch (error) {
@@ -1804,7 +2014,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         dispatch({
           type: "generationJobQuestionReceived",
           generationJob: job,
-          question: incoming,
+          question: normalizeOptionQuestion(incoming as Record<string, unknown>),
+          progress: normalizeOptionQuestion(incoming as Record<string, unknown>).progressState ?? null,
           context,
           sourceAssetId: initialChatIntake?.sourceAssetId ?? null,
           sourceImagePath: initialChatIntake?.sourceImagePath ?? null,
@@ -1836,7 +2047,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     dispatch({
       type: "generationJobQuestionReceived",
       generationJob: job,
-      question: turnResponse.question,
+      question: normalizeOptionQuestion(turnResponse.question as Record<string, unknown>),
+      progress: normalizeOptionQuestion(turnResponse.question as Record<string, unknown>).progressState ?? null,
       context: turnResponse.context,
       sourceAssetId: initialChatIntake?.sourceAssetId ?? null,
       sourceImagePath: initialChatIntake?.sourceImagePath ?? null,
@@ -1865,6 +2077,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       recordRenderMark(`poll_iteration_${attempt + 1}`);
       currentJob = response.job;
       dispatch({ type: "generationJobUpdated", generationJob: currentJob });
+      recordRenderMark("reducer_applied");
 
       if (stopForGenerationJobWaitingState(currentJob, initialChatIntake)) {
         return currentJob;
@@ -1890,10 +2103,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         initialChatIntake.sourceImagePath ?? null,
         initialChatIntake.referenceImagePath ?? null,
         initialChatIntake.userCustomHeadline ?? null,
-        initialChatIntake.userCustomSubcopy ?? null
+        initialChatIntake.userCustomSubcopy ?? null,
+        initialChatIntake.selectedChannelId ?? null
       );
       setGenerationStage("brief");
       recordRenderMark("first_data_rendered");
+      window.requestAnimationFrame(() => recordRenderMark("context_summary_visible"));
       lastPrimedStageRef.current = "start";
       setOptimisticSurface("chat");
       router.replace(buildChatStageHrefWithJob("start", { threadId: currentJob.thread_id }));
@@ -1902,6 +2117,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
     setGenerationStage("complete");
     recordRenderMark("final_result_visible");
+    window.requestAnimationFrame(() => recordRenderMark("terminal_result_visible"));
     lastPrimedStageRef.current = "complete";
     clearGenerationFailureSnapshot();
     setOptimisticSurface("chat");
@@ -1916,7 +2132,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       return;
     }
 
-    dispatch({ type: "submitGenerationJobAnswer", label: input.label });
+    dispatch({ 
+      type: "submitGenerationJobAnswer", 
+      label: input.label,
+      field: question.field,
+      value: input.customText ?? input.value
+    });
 
     try {
       const shouldShowFinalGenerationProgress = isClientFinalImageGenerationJob(state.generationJob);
@@ -2064,9 +2285,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }
 
   async function handleOpenGeneratedResult() {
-    const engine = state.selectedImageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE;
-    const engineOption = getGenerationEngineOption(engine);
-    const backendEngine = resolveGenerationEnginePreference(engine);
+    const engineOption = getGenerationEngineOption(state.selectedImageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE);
+    const engine = engineOption.id;
+    const backendEngine = engineOption.backendEngine;
     const isDeferredCopySelection = state.copyGenerationMode === "suggest_candidates";
     const selectedCopy = state.copyCandidates.find((copy) => copy.id === state.selectedCopyId) ?? null;
     const finalCopyGenerationMode = state.copyGenerationMode;
@@ -2098,6 +2319,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       const created = await createGenerationJob({
         userInput: requestUserInput,
         threadId: toGenerationJobThreadId(state.threadId),
+        continuationMode: state.threadId ? "new_turn" : "new_thread",
         entryMode: state.entryMode,
         copyGenerationMode: finalCopyGenerationMode,
         adFormat: finalAdFormat,
@@ -2161,12 +2383,18 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   }
 
   function handleOpenFreshChat() {
+    freshChatSessionRef.current += 1;
+    forceNextPromptNewThreadRef.current = true;
+    activeThreadRef.current = { threadId: "", conversationMessageCount: 0 };
     clearChatFlowSnapshot();
     clearChatTurnSnapshot();
     clearGenerationFailureSnapshot();
     clearGenerationDraftPrompt();
     dispatch({ type: "reset" });
+    setCurrentThreadIsArchived(false);
+    setShowHistory(false);
     setGenerationStage("brief");
+    lastPrimedStageRef.current = "start";
     navigateTo("chat", "start");
   }
 
@@ -2329,6 +2557,12 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
   const hasThreadLimitError = state.errorCode === "thread_limit_reached";
   const displayState = hasThreadLimitError ? { ...state, errorMessage: null } : state;
   const canEditCurrentChat = appSurface === "chat" && !currentThreadIsArchived;
+  const hasInitialPromptStartFailure =
+    state.step === 2 &&
+    Boolean(state.errorMessage) &&
+    !state.jobId &&
+    !state.threadId &&
+    state.contextSource === "empty";
 
   return (
     <MobileShell>
@@ -2419,7 +2653,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
             setShowHistory(false);
           }}
         />
-      ) : canEditCurrentChat && state.step === 1 ? (
+      ) : canEditCurrentChat && (state.step === 1 || hasInitialPromptStartFailure) ? (
         <ChatStartStep
           onSubmit={handleSubmitPrompt}
           onBack={handleBackToFlowEntry}
@@ -2440,7 +2674,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {canEditCurrentChat && state.step === 2 && state.currentQuestion ? (
+      {canEditCurrentChat && !hasInitialPromptStartFailure && state.step === 2 && state.currentQuestion ? (
         <ChatContextQuestionStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}
@@ -2449,7 +2683,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {canEditCurrentChat && state.step === 2 && !state.currentQuestion && state.isLoading ? (
+      {canEditCurrentChat && !hasInitialPromptStartFailure && state.step === 2 && !state.currentQuestion && state.isLoading ? (
         <ChatAnalysisPendingStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}
@@ -2457,7 +2691,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         />
       ) : null}
 
-      {canEditCurrentChat && state.step === 2 && !state.currentQuestion && !state.isLoading ? (
+      {canEditCurrentChat && !hasInitialPromptStartFailure && state.step === 2 && !state.currentQuestion && !state.isLoading ? (
         <IntentReviewStep
           state={displayState}
           onBack={() => dispatch({ type: "back" })}

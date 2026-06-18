@@ -45,7 +45,7 @@ def test_brief_interpreter_disabled_does_not_call_runner(monkeypatch):
     assert called is False
 
 
-def test_validator_merges_valid_brief_interpreter_output(monkeypatch):
+def test_validator_merges_valid_brief_interpreter_output_without_promoting_closed_business_literal(monkeypatch):
     llm_output = BriefInterpreterOutput(
         business_type="cafe",
         item_or_service="Strawberry latte",
@@ -60,7 +60,7 @@ def test_validator_merges_valid_brief_interpreter_output(monkeypatch):
 
     result = validator_node(state)
 
-    assert result["context"]["business_type"] == "cafe"
+    assert result["context"]["business_type"] is None
     assert result["context"]["item_or_service"] == "Strawberry latte"
     assert result["context"]["promotion_goal"] == "new_launch"
     assert result["context"]["target_persona"] == "office workers"
@@ -68,7 +68,7 @@ def test_validator_merges_valid_brief_interpreter_output(monkeypatch):
     assert result["copy_generation_mode"] == "suggest_candidates"
     assert result["copy_mode_inference_output"]["source"] == "brief_interpreter_llm"
     assert result["copy_mode_inference_output"]["metadata"]["source"] == "brief_interpreter_llm"
-    assert "business_type" not in result["missing_fields"]
+    assert "business_type" in result["missing_fields"]
     assert result["validator_metadata"]["brief_interpreter"]["used"] is True
 
 
@@ -129,6 +129,71 @@ def test_romanized_item_recovered_from_korean_source():
     assert any("recovered from source" in w for w in warnings)
 
 
+def test_retail_business_type_is_preserved_from_brief_interpreter():
+    output = BriefInterpreterOutput(
+        business_type="retail",
+        item_or_service="돌반지",
+        promotion_goal="discount_event",
+        confidence=0.95,
+    )
+
+    updates, warnings = build_context_updates_from_brief_interpreter(
+        output,
+        source_text="돌반지 할인 이벤트",
+    )
+
+    assert updates["business_type"] == "retail"
+    assert updates["item_or_service"] == "돌반지"
+    assert updates["promotion_goal"] == "discount_event"
+    assert not any("business_type_fallback_generic" in warning for warning in warnings)
+
+
+def test_validator_turns_ambiguous_beauty_domain_into_business_type_question(monkeypatch):
+    llm_output = BriefInterpreterOutput(
+        business_type="beauty",
+        item_or_service="시카 세럼",
+        promotion_goal="reservation",
+        tone="premium",
+        confidence=0.9,
+    )
+    monkeypatch.setattr(
+        "orchestrator.app.graph.nodes.interpret_brief_with_llm",
+        lambda *args, **kwargs: (llm_output, {"fallback_used": False}),
+    )
+
+    result = validator_node(_state())
+
+    assert result["context"]["business_type"] is None
+    assert "business_type" in result["missing_fields"]
+    assert any(
+        "business_type_fallback_generic: ambiguous_beauty_subdomain" in warning
+        for warning in result["validator_metadata"]["brief_interpreter"]["warnings"]
+    )
+
+
+def test_validator_keeps_generic_fallback_business_literal_out_of_public_context(monkeypatch):
+    llm_output = BriefInterpreterOutput(
+        business_type="education",
+        item_or_service="영어 회화반",
+        promotion_goal="reservation",
+        tone="friendly",
+        confidence=0.9,
+    )
+    monkeypatch.setattr(
+        "orchestrator.app.graph.nodes.interpret_brief_with_llm",
+        lambda *args, **kwargs: (llm_output, {"fallback_used": False}),
+    )
+
+    result = validator_node(_state())
+
+    assert result["context"]["business_type"] is None
+    assert "business_type" in result["missing_fields"]
+    assert any(
+        "business_type_fallback_generic: unsupported_domain_in_mvp" in warning
+        for warning in result["validator_metadata"]["brief_interpreter"]["warnings"]
+    )
+
+
 def test_korean_item_kept_when_not_romanized():
     output = BriefInterpreterOutput(
         business_type="retail",
@@ -143,8 +208,7 @@ def test_korean_item_kept_when_not_romanized():
     )
 
     assert updates["item_or_service"] == "돌반지"
-    # `retail` has no domain routing yet, so an observable generic-fallback
-    # breadcrumb is expected; what must NOT appear is any item-level warning.
+    assert updates["business_type"] == "retail"
     assert not any("item_or_service" in w or "recovered" in w for w in warnings)
 
 

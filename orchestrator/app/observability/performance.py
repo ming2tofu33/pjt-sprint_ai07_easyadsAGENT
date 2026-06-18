@@ -24,6 +24,7 @@ REQUEST_ID_CTX: ContextVar[str | None] = ContextVar("easyads_perf_request_id", d
 SCENARIO_ID_CTX: ContextVar[str | None] = ContextVar("easyads_perf_scenario_id", default=None)
 RUN_ID_CTX: ContextVar[str | None] = ContextVar("easyads_perf_run_id", default=None)
 COLD_WARM_CTX: ContextVar[str | None] = ContextVar("easyads_perf_cold_or_warm", default=None)
+EVENT_SINK_CTX: ContextVar[Any | None] = ContextVar("easyads_perf_event_sink", default=None)
 _WRITE_LOCK = threading.Lock()
 _EVENT_BUFFER: list[str] = []
 _BUFFER_LIMIT = 100
@@ -54,7 +55,7 @@ def _process_events_path() -> Path:
 
 
 def new_trace_id() -> str:
-    return f"trace_{uuid4().hex}"
+    return str(uuid4())
 
 
 def new_request_id() -> str:
@@ -205,10 +206,17 @@ def build_event(
         "run_id": context["run_id"],
         "cold_or_warm": context["cold_or_warm"],
         "component": component,
+        "layer": component,
         "operation": operation,
+        "phase": event_type,
         "started_at": started_at or now_iso(),
+        "wall_time_utc": started_at or now_iso(),
         "duration_ms": round(max(duration_ms, 0.0), 3),
         "status": status,
+        "measurement_source": "actual",
+        "deployment_id": os.getenv("RAILWAY_DEPLOYMENT_ID") or os.getenv("VERCEL_DEPLOYMENT_ID"),
+        "replica_id": os.getenv("RAILWAY_REPLICA_ID"),
+        "git_commit_sha": os.getenv("RAILWAY_GIT_COMMIT_SHA") or os.getenv("VERCEL_GIT_COMMIT_SHA"),
         "metadata": metadata or {},
     }
 
@@ -216,10 +224,15 @@ def build_event(
 def record_perf_event(event: dict[str, Any]) -> None:
     if not perf_trace_enabled():
         return
+    sink = EVENT_SINK_CTX.get()
+    if sink is not None:
+        sink(event)
+        return
     try:
         path = _process_events_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event, ensure_ascii=False, default=str) + "\n"
+        logger.info("easyads_latency_event %s", line.rstrip())
         with _WRITE_LOCK:
             _EVENT_BUFFER.append(line)
             if len(_EVENT_BUFFER) >= _BUFFER_LIMIT:
@@ -261,6 +274,7 @@ class PerfTimer:
     metadata: dict[str, Any] | None = None
     started_at: str | None = None
     _start_ns: int | None = None
+    _end_ns: int | None = None
 
     def start(self) -> "PerfTimer":
         self.started_at = now_iso()
@@ -269,6 +283,7 @@ class PerfTimer:
 
     def finish(self, *, status: str = "ok", metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         end_ns = perf_counter_ns()
+        self._end_ns = end_ns
         duration_ms = 0.0 if self._start_ns is None else (end_ns - self._start_ns) / 1_000_000
         payload = build_event(
             self.event_type,
@@ -279,8 +294,20 @@ class PerfTimer:
             metadata={**(self.metadata or {}), **(metadata or {})},
             started_at=self.started_at,
         )
+        payload["started_at_ns"] = self._start_ns
+        payload["ended_at_ns"] = end_ns
         record_perf_event(payload)
         return payload
+
+
+@contextmanager
+def capture_perf_events(sink) -> Iterator[None]:
+    """Context-local event capture; safe across failures and concurrent contexts."""
+    token = EVENT_SINK_CTX.set(sink)
+    try:
+        yield
+    finally:
+        EVENT_SINK_CTX.reset(token)
 
 
 @contextmanager

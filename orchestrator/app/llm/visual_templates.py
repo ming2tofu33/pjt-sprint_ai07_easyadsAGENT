@@ -26,7 +26,7 @@ def get_visual_templates() -> list[VisualTemplate]:
     return [
         VisualTemplate(
             template_id="cafe_dessert_soft_premium",
-            business_types=["cafe", "dessert", "bakery"],
+            business_types=["cafe"],
             ad_formats=["instagram_feed", "instagram_story", "poster"],
             style_profiles=["premium", "warm", "emotional", "clean"],
             main_subject_zone="center lower third",
@@ -40,7 +40,7 @@ def get_visual_templates() -> list[VisualTemplate]:
         ),
         VisualTemplate(
             template_id="restaurant_bbq_warm_grill",
-            business_types=["restaurant_bbq", "bbq", "korean_food", "meat_restaurant"],
+            business_types=["restaurant_bbq"],
             ad_formats=["instagram_feed", "banner", "flyer", "poster"],
             style_profiles=["premium", "bold", "warm", "trendy"],
             main_subject_zone="center table hero away from text zones",
@@ -54,7 +54,7 @@ def get_visual_templates() -> list[VisualTemplate]:
         ),
         VisualTemplate(
             template_id="beauty_salon_clean_pastel",
-            business_types=["beauty", "salon", "hair_salon", "nail", "skincare"],
+            business_types=["beauty_skincare", "beauty_hair", "beauty_nail", "beauty_spa"],
             ad_formats=["instagram_feed", "instagram_story", "poster"],
             style_profiles=["clean", "premium", "emotional", "cute"],
             main_subject_zone="center right service mood",
@@ -68,7 +68,7 @@ def get_visual_templates() -> list[VisualTemplate]:
         ),
         VisualTemplate(
             template_id="restaurant_generic_clean",
-            business_types=["restaurant", "dining", "food", "치킨", "피자", "식당", "맛집"],
+            business_types=["restaurant"],
             ad_formats=["instagram_feed", "instagram_story", "banner", "poster", "flyer"],
             style_profiles=["clean", "premium", "warm", "trendy", "emotional"],
             main_subject_zone="appetizing food hero on one side away from text zones",
@@ -82,7 +82,7 @@ def get_visual_templates() -> list[VisualTemplate]:
         ),
         VisualTemplate(
             template_id="generic_clean_ad_background",
-            business_types=["*"],
+            business_types=["generic"],
             ad_formats=["*"],
             style_profiles=["*"],
             main_subject_zone="center away from text zones",
@@ -103,13 +103,9 @@ def select_visual_template(
     style_profile: str | None,
     selected_reference_template: dict[str, Any] | None = None,
 ) -> VisualTemplate:
-    reference_keywords = " ".join(str(item) for item in (selected_reference_template or {}).get("style_keywords", []))
-    haystack = " ".join(str(value or "") for value in [business_type, ad_format, style_profile, reference_keywords]).lower()
+    key = str(business_type or "").strip().lower()
     templates = get_visual_templates()
     for template in templates:
-        if template.template_id == "generic_clean_ad_background":
-            continue
-        if any(token != "*" and token.lower() in haystack for token in template.business_types):
+        if key in {token.lower() for token in template.business_types if token != "*"}:
             return template
     return templates[-1]
-
