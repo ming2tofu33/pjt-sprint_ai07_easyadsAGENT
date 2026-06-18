@@ -7,6 +7,12 @@
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{margin:0;padding:0;overflow:hidden;font-family:'Pretendard',sans-serif;color:#1A1A1A;-webkit-font-smoothing:antialiased}
+  .snapshot-wrap{display:grid;grid-template-columns:1.08fr 1.18fr .9fr 1.04fr;gap:10px;margin-top:12px}
+  .snapshot-item{min-height:58px;padding:10px 13px;border-radius:14px;background:#FFFFFF;border:1px solid #DAF0E8;text-align:left}
+  .snapshot-item strong{display:block;font-size:15px;font-weight:900;color:#1A1A1A;line-height:1.2;letter-spacing:-.2px}
+  .snapshot-item span{display:block;margin-top:5px;font-size:12.5px;font-weight:750;color:#5A5A5A;line-height:1.28;word-break:keep-all}
+  .graph-test-row{display:flex;align-items:center;justify-content:center;margin-top:8px;padding-top:8px;border-top:1px solid rgba(74,154,124,.16);font-size:15px;font-weight:750;color:#5A5A5A;line-height:1.28;letter-spacing:-.1px}
+  .graph-test-row b{color:#4A9A7C;font-weight:900}
 </style>
 </head>
 <body style="user-select: none;">
@@ -44,8 +50,8 @@
 
   <!-- 4 layers + verdict -->
   <!-- Layer 1: Auto -->
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:438px;width:380px;height:440px;background:#FFFFFF;border-radius:24px;border:1px solid #DAF0E8;box-shadow:0 8px 24px rgba(168,230,208,0.12);z-index:5" id="fabric-obj-4-1781683468182"></div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:124px;top:466px;width:324px;z-index:11" id="fabric-obj-5-1781683468182">
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:396px;width:380px;height:440px;background:#FFFFFF;border-radius:24px;border:1px solid #DAF0E8;box-shadow:0 8px 24px rgba(168,230,208,0.12);z-index:5" id="fabric-obj-4-1781683468182"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:124px;top:424px;width:324px;z-index:11" id="fabric-obj-5-1781683468182">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 13px;background:#F0FBF6;border-radius:12px;font-size:12px;font-weight:800;color:#4A9A7C;letter-spacing:0.5px">LAYER 01</div>
       <span class="icon icon-bot" style="--c:#4A9A7C;--s:38px"></span>
@@ -58,7 +64,7 @@
     </div>
   </div>
 
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:124px;top:750px;width:324px;z-index:11" id="fabric-obj-6-1781683468182">
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:124px;top:708px;width:324px;z-index:11" id="fabric-obj-6-1781683468182">
     <div style="padding:14px;background:#F0FBF6;border-radius:12px;font-size:14.5px;color:#3A3A3A;line-height:1.55">
       <div style="font-size:12px;font-weight:800;color:#4A9A7C;margin-bottom:5px">예</div>
       <div>• 카피 길이 ≤ 30자 ?</div>
@@ -68,8 +74,8 @@
   </div>
 
   <!-- Layer 2: LLM -->
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:494px;top:438px;width:380px;height:440px;background:#FFFFFF;border-radius:24px;border:1px solid #DAF0E8;box-shadow:0 8px 24px rgba(168,230,208,0.12);z-index:5" id="fabric-obj-7-1781683468183"></div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:522px;top:466px;width:324px;z-index:11" id="fabric-obj-8-1781683468183">
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:494px;top:396px;width:380px;height:440px;background:#FFFFFF;border-radius:24px;border:1px solid #DAF0E8;box-shadow:0 8px 24px rgba(168,230,208,0.12);z-index:5" id="fabric-obj-7-1781683468183"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:522px;top:424px;width:324px;z-index:11" id="fabric-obj-8-1781683468183">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 13px;background:#F4EEFB;border-radius:12px;font-size:12px;font-weight:800;color:#8A6FB8;letter-spacing:0.5px">LAYER 02</div>
       <span class="icon icon-brain" style="--c:#8A6FB8;--s:38px"></span>
@@ -82,7 +88,7 @@
     </div>
   </div>
 
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:522px;top:750px;width:324px;z-index:11" id="fabric-obj-9-1781683468183">
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:522px;top:708px;width:324px;z-index:11" id="fabric-obj-9-1781683468183">
     <div style="padding:14px;background:#F4EEFB;border-radius:12px;font-size:14.5px;color:#3A3A3A;line-height:1.55">
       <div style="font-size:12px;font-weight:800;color:#8A6FB8;margin-bottom:5px">예</div>
       <div>• 톤이 "감성적"과 일치 ?</div>
@@ -92,8 +98,8 @@
   </div>
 
   <!-- Layer 3: VLM -->
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:892px;top:438px;width:380px;height:440px;background:#FFFFFF;border-radius:24px;border:1px solid #DAF0E8;box-shadow:0 8px 24px rgba(168,230,208,0.12);z-index:5" id="fabric-obj-10-1781683468183"></div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:920px;top:466px;width:324px;z-index:11" id="fabric-obj-11-1781683468183">
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:892px;top:396px;width:380px;height:440px;background:#FFFFFF;border-radius:24px;border:1px solid #DAF0E8;box-shadow:0 8px 24px rgba(168,230,208,0.12);z-index:5" id="fabric-obj-10-1781683468183"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:920px;top:424px;width:324px;z-index:11" id="fabric-obj-11-1781683468183">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 13px;background:#FFF8F4;border-radius:12px;font-size:12px;font-weight:800;color:#E08A60;letter-spacing:0.5px">LAYER 03</div>
       <span class="icon icon-eye" style="--c:#E08A60;--s:38px"></span>
@@ -106,7 +112,7 @@
     </div>
   </div>
 
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:920px;top:750px;width:324px;z-index:11" id="fabric-obj-12-1781683468183">
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:920px;top:708px;width:324px;z-index:11" id="fabric-obj-12-1781683468183">
     <div style="padding:14px;background:#FFF8F4;border-radius:12px;font-size:14.5px;color:#3A3A3A;line-height:1.55">
       <div style="font-size:12px;font-weight:800;color:#E08A60;margin-bottom:5px">예</div>
       <div>• 글자 가독성 OK ?</div>
@@ -116,8 +122,8 @@
   </div>
 
   <!-- Layer 4: Human -->
-  <div data-object="true" data-object-type="shape" style="position:absolute;left:1290px;top:438px;width:534px;height:440px;background:linear-gradient(180deg, #F0FBF6 0%, #DAF0E8 100%);border-radius:24px;border:2px solid #A8E6D0;z-index:5" id="fabric-obj-13-1781683468184"></div>
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1318px;top:466px;width:478px;z-index:11" id="fabric-obj-14-1781683468184">
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1290px;top:396px;width:534px;height:440px;background:linear-gradient(180deg, #F0FBF6 0%, #DAF0E8 100%);border-radius:24px;border:2px solid #A8E6D0;z-index:5" id="fabric-obj-13-1781683468184"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1318px;top:424px;width:478px;z-index:11" id="fabric-obj-14-1781683468184">
     <div style="display:flex;align-items:center;justify-content:space-between">
       <div style="display:inline-flex;align-items:center;gap:8px;padding:6px 13px;background:#A8E6D0;border-radius:12px;font-size:12px;font-weight:800;color:#FFFFFF;letter-spacing:0.5px">LAYER 04 · VERDICT</div>
       <span class="icon icon-user" style="--c:#4A9A7C;--s:38px"></span>
@@ -131,12 +137,12 @@
   </div>
 
   <!-- Final verdict -->
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1318px;top:730px;width:478px;z-index:11" id="fabric-obj-15-1781683468184">
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1318px;top:688px;width:478px;z-index:11" id="fabric-obj-15-1781683468184">
     <div style="font-size:15px;font-weight:800;color:#4A9A7C;letter-spacing:0.5px;margin-bottom:9px">최종 판정 (Verdict)</div>
     <div style="display:flex;flex-direction:column;gap:6px">
       <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#FFFFFF;border-radius:10px">
         <span style="width:10px;height:10px;background:#7AB835;border-radius:50%"></span>
-        <span style="font-size:15px;font-weight:800;color:#1A1A1A">ship_ready</span>
+        <span style="font-size:15px;font-weight:800;color:#1A1A1A">accept</span>
         <span style="font-size:13.5px;color:#7A7A7A;margin-left:auto">바로 사용 가능</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#FFFFFF;border-radius:10px">
@@ -147,21 +153,42 @@
       <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#FFFFFF;border-radius:10px">
         <span style="width:10px;height:10px;background:#E57373;border-radius:50%"></span>
         <span style="font-size:15px;font-weight:800;color:#1A1A1A">blocked</span>
-        <span style="font-size:13.5px;color:#7A7A7A;margin-left:auto">사용 불가</span>
+        <span style="font-size:13.5px;color:#7A7A7A;margin-left:auto">수정/검토 필요</span>
       </div>
     </div>
   </div>
 
-  <!-- Bottom message -->
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:898px;width:1728px;z-index:10;text-align:center" id="fabric-obj-16-1781683468184">
-    <div style="display:inline-block;padding:14px 28px;background:#FAFAF7;border-radius:18px;font-size:22px;font-weight:650;color:#3A3A3A;line-height:1.45">
-      <span style="color:#4A9A7C;font-weight:800">생성과 Judge를 분리</span>한 이유 — 같은 모델이 만들고 같은 모델이 평가하면, 측정값이 모델 편향을 반영합니다
+  <!-- Validation snapshot -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:842px;width:1728px;height:160px;background:#FAFAF7;border:1px solid #DAF0E8;border-radius:20px;z-index:5" id="fabric-obj-16-1781683468184"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:124px;top:858px;width:1672px;z-index:10;text-align:center" id="fabric-obj-17-1781683468184">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;text-align:left">
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;background:#F0FBF6;border:1px solid #DAF0E8;border-radius:13px;font-size:12px;font-weight:900;color:#4A9A7C;letter-spacing:.8px;white-space:nowrap">
+        <span class="icon icon-chart" style="--c:#4A9A7C;--s:15px"></span>VALIDATION SNAPSHOT
+      </div>
+      <div style="font-size:15px;font-weight:800;color:#5A5A5A;line-height:1.25;text-align:right">
+        출력 이미지 평가와 함께 graph node · edge · partial execution도 검증합니다
+      </div>
     </div>
-  </div>
-
-  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:1000px;width:1728px;z-index:10;text-align:center" id="fabric-obj-17-1781683468184">
-    <div style="display:inline-block;padding:8px 22px;background:#F0FBF6;border-radius:18px;font-size:20px;font-weight:650;color:#3A3A3A">
-      <span class="icon icon-chart" style="--c:#5A5A5A;--s:18px;margin-right:6px;vertical-align:-3px"></span>측정 가능한 서비스만, 발전할 수 있습니다
+    <div class="snapshot-wrap">
+      <div class="snapshot-item">
+        <strong>Backend baseline</strong>
+        <span>1,397 / 1,399 passed · coverage artifact 기준</span>
+      </div>
+      <div class="snapshot-item">
+        <strong>Actual lane</strong>
+        <span>GPT Image 2 native format QA · 3/3 passed</span>
+      </div>
+      <div class="snapshot-item">
+        <strong>Mock / Actual separated</strong>
+        <span>개발 검증과 실제 산출물을 구분</span>
+      </div>
+      <div class="snapshot-item">
+        <strong>VLM verdict</strong>
+        <span>accept / needs_revision / blocked</span>
+      </div>
+    </div>
+    <div class="graph-test-row">
+      <span><b>Graph-specific testing</b>은 node · edge · partial execution 검증으로 중간 분기와 재진입 흐름까지 확인합니다</span>
     </div>
   </div>
 
