@@ -40,7 +40,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             return self._error(model_selection, "openai_sdk_missing", started, metadata)
         raw_text = ""
         try:
-            client = OpenAI(api_key=self.settings.openai_api_key, timeout=self.settings.request_timeout_seconds)
+            client = OpenAI(api_key=self.settings.openai_api_key, timeout=self.settings.request_timeout_seconds, max_retries=self.settings.max_retries)
             text_format = self._response_format(schema)
             # json_object requires the literal word "json" in the input or it 400s;
             # node prompts don't include it. json_schema carries the field spec itself
@@ -67,7 +67,7 @@ class OpenAIAdapter(BaseLLMAdapter):
                 latency_ms=elapsed_ms(started),
                 token_usage=_usage_dict(response),
                 cost_estimate=None,
-                metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "model_configured": True},
+                metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "model": model_name, "model_configured": True, "retry_count": 0},
             )
         except json.JSONDecodeError:
             return self._error(model_selection, "structured_output_parse_failed", started, metadata, raw_text=raw_text)
@@ -96,7 +96,7 @@ class OpenAIAdapter(BaseLLMAdapter):
         except Exception:
             return self._error(model_selection, "openai_sdk_missing", started, metadata)
         try:
-            client = OpenAI(api_key=self.settings.openai_api_key, timeout=self.settings.request_timeout_seconds)
+            client = OpenAI(api_key=self.settings.openai_api_key, timeout=self.settings.request_timeout_seconds, max_retries=self.settings.max_retries)
             response = client.responses.create(model=model_name, input=prompt)
             raw_text = getattr(response, "output_text", None) or ""
             return LLMCallResult(
@@ -108,7 +108,7 @@ class OpenAIAdapter(BaseLLMAdapter):
                 latency_ms=elapsed_ms(started),
                 token_usage=_usage_dict(response),
                 cost_estimate=None,
-                metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "model_configured": True},
+                metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "model": model_name, "model_configured": True, "retry_count": 0},
             )
         except Exception as exc:
             return self._error(model_selection, f"openai_api_error:{type(exc).__name__}", started, metadata)

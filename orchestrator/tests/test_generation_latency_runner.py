@@ -1,7 +1,8 @@
 import json,os,subprocess,sys
 from pathlib import Path
 import pytest
-from scripts.diagnose_generation_analysis_latency import FakeLLMAdapter,ImageLaneGuard,graph_inventory,instrumentation_inventory,run_graph
+from scripts.diagnose_generation_analysis_latency import ActualAdapter,FakeLLMAdapter,ImageLaneGuard,graph_inventory,instrumentation_inventory,run_graph
+from orchestrator.app.schemas.llm_model_policy import ModelSelection
 from orchestrator.app.observability import performance
 
 ROOT=Path(__file__).resolve().parents[2]; SCRIPT=ROOT/"scripts/diagnose_generation_analysis_latency.py"
@@ -12,6 +13,14 @@ def test_inventory_has_edges_unknowns_and_call_sites():
     assert any(e["type"]=="direct" for e in edges) and any(e["type"]=="conditional" for e in edges)
     assert any(n["node_kind"]=="unknown" for n in nodes) and calls
     assert any(i["decision"]=="reuse" for i in instrumentation_inventory())
+
+def test_actual_adapter_forwards_production_contract_once():
+    class Delegate:
+        def __init__(self): self.calls=[]
+        def invoke_structured(self,*args,**kwargs): self.calls.append((args,kwargs)); return "result"
+    delegate=Delegate(); adapter=ActualAdapter(delegate=delegate); schema=object(); selection=ModelSelection(node_name="tone_binding",user_plan="internal_benchmark",selected_model_class="api_nano",provider="openai",structured_output=True,reason="test")
+    assert adapter.invoke_structured(schema,"production prompt",selection,metadata={"safe":1})=="result"
+    assert delegate.calls==[((schema,"production prompt",selection),{"metadata":{"safe":1}})]
 
 def test_real_compiled_graph_uses_wrapper_and_fake_latency(monkeypatch):
     identity=performance.record_perf_event

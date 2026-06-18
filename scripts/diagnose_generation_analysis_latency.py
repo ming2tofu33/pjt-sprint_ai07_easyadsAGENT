@@ -10,7 +10,6 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
-from pydantic import BaseModel
 from orchestrator.app.graph.builder import build_text_analysis_latency_graph
 from orchestrator.app.graph.state import MarketingState
 from orchestrator.app.llm.adapters.openai import OpenAIAdapter
@@ -22,9 +21,6 @@ from orchestrator.app.observability.latency_trace import LatencySpan, build_repo
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection
 
 LATENCIES = {"product_understanding": 0.10, "tone_binding": 0.15, "copy_candidate_generation": 0.20}
-
-class DiagnosticOutput(BaseModel):
-    summary: str
 
 class ImageLaneGuard:
     calls = 0
@@ -101,12 +97,12 @@ def build_diagnostic_graph(adapter, events):
 
 def events_to_spans(trace_id,events,state,wall_ms):
     rows=[e for e in events if e.get("event_type")=="graph_node"]; spans=[]; previous=None; offset=0.0
-    results=state.get("llm_call_results") or []
+    results=state.get("llm_call_results") or []; results_by_node={str(r.get("node_name")):r for r in results if isinstance(r,dict) and r.get("node_name")}
     origin=min((e.get("started_at_ns") for e in rows if e.get("started_at_ns") is not None),default=None)
     for i,event in enumerate(rows):
-        duration=float(event["duration_ms"]); node=event["operation"]; result=results[i] if i<len(results) else {}; usage=result.get("token_usage") or {}; selection=result.get("model_selection") or {}; metadata=result.get("metadata") or {}
+        duration=float(event["duration_ms"]); node=event["operation"]; result=results_by_node.get(node) or (results[i] if i<len(results) else {}); usage=result.get("token_usage") or {}; selection=result.get("model_selection") or {}; metadata=result.get("metadata") or {}; attempted=bool(result)
         measured_offset=(event.get("started_at_ns")-origin)/1_000_000 if origin is not None and event.get("started_at_ns") is not None else offset
-        success=bool(result.get("success")); sid=f"node_{i}"; attrs={**usage,"call_attempted":True,"call_succeeded":success,"selected_provider":selection.get("provider"),"executed_provider":metadata.get("provider") or selection.get("provider"),"selected_model":selection.get("model_name") or selection.get("selected_model_class"),"executed_model":metadata.get("model") or selection.get("model_name"),"retry_count":metadata.get("retry_count",0),"fallback_used":bool(metadata.get("fallback_used")),"fallback_reason":metadata.get("fallback_reason"),"measurement_source":"instrumented_mock"}
+        success=bool(result.get("success")); selected_provider=result.get("provider") or selection.get("provider"); selected_model=result.get("model_name") or result.get("selected_model_class") or selection.get("model_name") or selection.get("selected_model_class"); sid=f"node_{i}"; attrs={**usage,"call_attempted":attempted,"call_succeeded":success,"selected_provider":selected_provider,"executed_provider":metadata.get("provider") or selected_provider,"selected_model":selected_model,"executed_model":metadata.get("model") or result.get("model_name"),"retry_count":metadata.get("retry_count",0),"fallback_used":bool(metadata.get("fallback_used")),"fallback_reason":metadata.get("fallback_reason"),"measurement_source":"instrumented_mock"}
         spans.append(LatencySpan(trace_id=trace_id,span_id=sid,parent_span_id="graph",layer="langgraph",operation=node,kind="llm",started_offset_ms=measured_offset,ended_offset_ms=measured_offset+duration,duration_ms=duration,depends_on_span_ids=[previous] if previous else [],status="ok" if success else "error",attributes=attrs))
         previous=sid; offset=measured_offset+duration
     spans.append(LatencySpan(trace_id=trace_id,span_id="graph",layer="langgraph",operation="graph_execution",kind="deterministic",duration_ms=wall_ms,ended_offset_ms=wall_ms,is_container_span=True,attributes={"measurement_source":"instrumented_mock"}))
@@ -137,16 +133,34 @@ def execute_compiled_graph(graph,adapter,run_kind,auth_mode,events=None):
         if previous_provider is None: os.environ.pop("EASYADS_LLM_PROVIDER",None)
         else: os.environ["EASYADS_LLM_PROVIDER"]=previous_provider
     spans=events_to_spans(trace_id,events,state,wall); source="actual" if isinstance(adapter,ActualAdapter) else "instrumented_mock"
+    for span in spans: span.attributes["measurement_source"]=source
     return build_report(trace_id,spans,total_wall_ms=wall,source=source).model_dump(),spans,{"run_id":run_id,"run_kind":run_kind,"auth_evidence_level":"fixture" if auth_mode=="authenticated-fixture" else "unavailable","image_lane_blocked":True,"t2i_calls":0,"vlm_calls":0,"measurement_source":source}
 
 class ActualAdapter:
-    def __init__(self): self.adapter=OpenAIAdapter(get_llm_settings())
-    def invoke(self,node_name): return self.adapter.invoke_structured(DiagnosticOutput,"Return JSON with a concise summary for: 카페 신메뉴 홍보",selection_for(node_name,"openai"),metadata={"diagnostic":True})
+    def __init__(self, settings=None, delegate=None):
+        self._delegate = delegate or OpenAIAdapter(settings or get_llm_settings())
+    def invoke_structured(self, output_schema, prompt, selection, metadata=None):
+        return self._delegate.invoke_structured(output_schema, prompt, selection, metadata=metadata)
 
 def write(path,payload): path.parent.mkdir(parents=True,exist_ok=True); path.write_text(json_safe_dump(payload),encoding="utf-8")
-def write_artifacts(out,runs):
+def validate_actual_run(item):
+    report,spans,result=item; llm=[s for s in spans if s.kind=="llm"]
+    if len(llm)!=3: return "ACTUAL_LLM_CALL_COUNT_MISMATCH"
+    if result.get("t2i_calls") or result.get("vlm_calls"): return "IMAGE_LANE_CALLED"
+    for span in llm:
+        a=span.attributes
+        if not a.get("call_attempted") or not a.get("call_succeeded"): return f"CALL_FAILED:{span.operation}"
+        if a.get("executed_provider")!="openai": return f"PROVIDER_MISMATCH:{span.operation}"
+        if a.get("fallback_used") or a.get("fallback_reason"): return f"FALLBACK_USED:{span.operation}"
+        if int(a.get("retry_count") or 0): return f"RETRY_USED:{span.operation}"
+    return None
+
+def write_artifacts(out,runs,plan=None,stop_reason=None):
     nodes,edges,warnings,calls=graph_inventory(); reports=[x[0] for x in runs]; spans=[s.model_dump() for _,ss,_ in runs for s in ss]; results=[x[2] for x in runs]
-    write(out/"instrumentation_inventory.json",instrumentation_inventory()); write(out/"summary.json",{"measurement_source":reports[0]["measurement_source"] if reports else "unavailable","runs":len(runs),"reports":reports,"actual_llm_calls":sum(r["llm_call_count"] for r in reports if r["measurement_source"]=="actual"),"t2i_calls":0,"vlm_calls":0,"image_lane_blocked":True})
+    actual_spans=[s for _,ss,_ in runs for s in ss if s.kind=="llm" and s.attributes.get("measurement_source")=="actual"]
+    attempted=sum(1 for s in actual_spans if s.attributes.get("call_attempted")); succeeded=sum(1 for s in actual_spans if s.attributes.get("call_succeeded")); fallback=sum(1 for s in actual_spans if s.attributes.get("fallback_used"))
+    summary={"measurement_source":reports[0]["measurement_source"] if reports else "unavailable","runs":len(runs),"reports":reports,"planned_graph_runs":plan.get("planned_graph_runs") if plan else len(runs),"planned_total_llm_calls":plan.get("planned_total_llm_calls") if plan else None,"attempted_graph_runs":len(runs),"completed_graph_runs":sum(1 for _,_,r in runs if not r.get("error")),"attempted_llm_calls":attempted,"succeeded_llm_calls":succeeded,"failed_llm_calls":attempted-succeeded,"fallback_llm_calls":fallback,"cold_completed":bool(runs and runs[0][2].get("run_kind")=="cold" and not stop_reason),"warm_completed":any(r[2].get("run_kind")=="warm" for r in runs),"stopped_after_cold":bool(stop_reason),"stop_reason":stop_reason,"actual_llm_calls":attempted,"t2i_calls":0,"vlm_calls":0,"image_lane_blocked":True}
+    write(out/"instrumentation_inventory.json",instrumentation_inventory()); write(out/"summary.json",summary)
     write(out/"run_matrix.json",results); write(out/"graph_topology.json",{"nodes":[n["node_name"] for n in nodes],"edges":edges,"warnings":warnings}); write(out/"node_inventory.json",nodes); write(out/"span_tree.json",spans); write(out/"llm_calls.json",[s for s in spans if s["kind"]=="llm"])
     cps=[]
     for report,ss,result in runs:
@@ -159,6 +173,14 @@ def write_artifacts(out,runs):
     top=sorted([s for s in spans if not s["is_container_span"]],key=lambda s:s["duration_ms"],reverse=True)[:3]; first=reports[0] if reports else {}
     lines=["# AI 분석 구간 Latency Root Cause Baseline v2","",f"Total wall: {first.get('total_wall_ms','unavailable')}ms","","## Top spans",""]
     lines += [f"{i}. {row['operation']}: {row['duration_ms']:.3f}ms" for i,row in enumerate(top,1)]
+    if len(runs)>=2:
+        cold_nodes={s.operation:s for s in runs[0][1] if s.kind=="llm"}; warm_nodes={s.operation:s for s in runs[1][1] if s.kind=="llm"}
+        lines += ["","## Node comparison","","| Node | Cold ms | Warm ms | Delta ms | Delta % | Input tokens | Output tokens | Cached tokens | Retry | Fallback |","|---|---:|---:|---:|---:|---:|---:|---:|---:|---|"]
+        for name in LATENCIES:
+            c,w=cold_nodes.get(name),warm_nodes.get(name)
+            if c and w:
+                delta=c.duration_ms-w.duration_ms; pct=delta/c.duration_ms*100 if c.duration_ms else 0; a=w.attributes
+                lines.append(f"| {name} | {c.duration_ms:.3f} | {w.duration_ms:.3f} | {delta:.3f} | {pct:.1f}% | {a.get('input_tokens','unavailable')} | {a.get('output_tokens','unavailable')} | {a.get('cached_tokens','unavailable')} | {a.get('retry_count',0)} | {a.get('fallback_used',False)} |")
     lines += ["","## Critical path","", " → ".join(cps[0]["operations"]) if cps else "unavailable","",f"LLM calls: {first.get('llm_call_count','unavailable')}",f"LLM critical path: {first.get('llm_critical_path_ms','unavailable')}ms",f"Dominant cause: {first.get('dominant_latency_class','INSUFFICIENT_EVIDENCE')}",f"Confidence: {first.get('confidence',0)}",f"Cold/warm delta: {comparison['cold_minus_warm_median_ms'] if comparison['cold_minus_warm_median_ms'] is not None else 'unavailable'}ms","","Mock 측정만으로 실제 제품 병목을 확정하지 않습니다. 실제 Google/BFF 인증 지연은 운영 trace 없이는 unavailable입니다. T2I/VLM 경계는 fail-fast로 차단했습니다."]
     (out/"report.md").write_text("\n".join(lines)+"\n",encoding="utf-8")
     (out/"railway_checklist.md").write_text("# Railway 확인 목록\n\n- deployment SHA, replica ID, trace_id\n- 요청 시작·종료 시각\n- CPU/Memory spike 및 process restart 여부\n- trace_id structured log\n\nSecret 또는 환경 변수 값은 공유하지 않습니다.\n",encoding="utf-8")
@@ -179,12 +201,13 @@ def main():
     if args.mode=="actual":
         plan=preflight_actual(args)
         if plan["blocked_reasons"]: print(json.dumps({"status":"blocked",**plan})); return 2
-        specs=["cold"]*args.cold_runs+["warm"]*args.warm_runs; runs=[]; adapter=ActualAdapter(); graph=build_diagnostic_graph(adapter,[])
-        for kind in specs:
-            item=execute_compiled_graph(graph,adapter,kind,args.auth_mode); runs.append(item)
-            if not item[0]["llm_call_count"] or any(s.status!="ok" for s in item[1]): break
+        runs=[]; stop_reason=None; adapter=ActualAdapter(); graph=build_diagnostic_graph(adapter,[])
+        if args.cold_runs:
+            cold=execute_compiled_graph(graph,adapter,"cold",args.auth_mode); runs.append(cold); stop_reason=validate_actual_run(cold)
+        if not stop_reason and args.warm_runs:
+            warm=execute_compiled_graph(graph,adapter,"warm",args.auth_mode); runs.append(warm); stop_reason=validate_actual_run(warm)
     else:
         count=1 if args.mode=="self-check" else args.runs; adapter=FakeLLMAdapter(); graph=build_diagnostic_graph(adapter,[])
         runs=[execute_compiled_graph(graph,adapter,"cold" if i==0 else "warm",args.auth_mode) for i in range(count)]
-    write_artifacts(out,runs); print(json.dumps({"status":"ok","mode":args.mode,"runs":len(runs),"output_dir":str(out),"t2i_calls":0,"vlm_calls":0})); return 0
+    write_artifacts(out,runs,plan if args.mode=="actual" else None,locals().get("stop_reason")); print(json.dumps({"status":"ok","mode":args.mode,"runs":len(runs),"output_dir":str(out),"t2i_calls":0,"vlm_calls":0,"stop_reason":locals().get("stop_reason")})); return 0
 if __name__=="__main__": raise SystemExit(main())
