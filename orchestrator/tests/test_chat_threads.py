@@ -51,6 +51,23 @@ def test_chat_start_returns_inferred_context_and_copy_candidates():
     assert payload["copyCandidateOrigin"] == "rule_based"
 
 
+def test_chat_start_normalizes_item_semantic_phrase_before_context_response():
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/start",
+        json={
+            "userInput": "직화삼겹김치찌개 이미지로 한식당 광고 만들어줘",
+            "adFormat": "instagram_feed",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["context"]["itemOrService"] == "직화삼겹김치찌개"
+    assert payload["context"]["advertisedSubject"] == "직화삼겹김치찌개"
+
+
 def test_copy_candidates_response_exposes_fallback_lineage():
     response = chat_api._copy_candidates_response(
         {
