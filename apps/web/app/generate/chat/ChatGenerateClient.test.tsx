@@ -1603,7 +1603,7 @@ describe("ChatGenerateClient", () => {
     });
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
-    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_analyzing"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_analyzing", expect.objectContaining({ signal: expect.any(AbortSignal) })));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
     expect(screen.getByText(/요청 내용을 분석하고 있어요/)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "광고 생성 중" })).toBeNull();
@@ -1643,7 +1643,7 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("대화로 찰떡 이미지 만들기")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
-    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_reference_analyzing"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_reference_analyzing", expect.objectContaining({ signal: expect.any(AbortSignal) })));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
     expect(screen.getByText(/참고 스타일을 읽고 있어요/)).toBeTruthy();
 
@@ -1750,7 +1750,7 @@ describe("ChatGenerateClient", () => {
         })
       )
     );
-    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_pending"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_pending", expect.objectContaining({ signal: expect.any(AbortSignal) })));
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("광고 브리프 요약")).toBeTruthy();
     expect(screen.getByText("네일 서비스")).toBeTruthy();
@@ -4656,7 +4656,7 @@ describe("ChatGenerateClient", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
 
-    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("photo_pending"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("photo_pending", expect.objectContaining({ signal: expect.any(AbortSignal) })));
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.queryByText("완성된 광고 브리프 정보가 비어 있어요. 다시 시도해주세요.")).toBeNull();
     expect(api.startPhotoGeneration).not.toHaveBeenCalled();

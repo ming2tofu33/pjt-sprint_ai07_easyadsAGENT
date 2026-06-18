@@ -25,7 +25,7 @@ export function generationStageViewFromJob(job: GenerationJob | null | undefined
   const percent = progressPercent(job);
   const message = progressMessage(job);
 
-  if (status === "failed" || stage === "failed") {
+  if (["failed", "cancelled"].includes(status) || ["failed", "cancelled"].includes(stage)) {
     return {
       key: "failed",
       label: "생성 오류 확인 중",

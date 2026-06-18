@@ -35,6 +35,8 @@ export function GenerationInProgressStep({ state, onBrowse }: GenerationInProgre
       <section className={styles.statusCard}>
         <h2>진행 상황</h2>
         <p className={styles.engineStatusNote}>선택한 모델: {engine.modelName}</p>
+        <p><strong>{generationStage.label}</strong></p>
+        <p>{generationStage.detail}</p>
         <div className={styles.statusList}>
           {generationStatusSteps.map((item, index) => {
             const isDone = generationStage.isTerminal && !generationStage.isFailed ? true : index < generationStage.activeStepIndex;

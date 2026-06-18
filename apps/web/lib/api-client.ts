@@ -509,7 +509,7 @@ async function withRefreshedSupabaseAuthRetry<TResponse>(
   }
 }
 
-async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}): Promise<TResponse> {
+async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, headers: RequestHeaders = {}, signal?: AbortSignal): Promise<TResponse> {
   const url = buildBffUrlWithParams(path, params);
   return measureWebPerf(
     "frontend_request",
@@ -517,7 +517,8 @@ async function getJson<TResponse>(path: string, params?: ReferenceQueryParams, h
     async (span) => {
       const response = await fetch(url, {
         method: "GET",
-        headers: { accept: "application/json", ...headers }
+        headers: { accept: "application/json", ...headers },
+        signal
       });
       const payload = await response.json().catch(() => ({}));
       span.addMetadata({
@@ -988,9 +989,14 @@ export async function createGenerationJob(payload: GenerationJobCreateInput): Pr
   );
 }
 
-export async function getGenerationJob(jobId: string): Promise<GenerationJobResponse> {
-  const authHeaders = await getSupabaseAuthorizationHeader();
-  return getJson<GenerationJobResponse>(`/api/generation-jobs/${encodeURIComponent(jobId)}`, undefined, { ...authHeaders, ...traceHeaders() });
+export async function getGenerationJob(jobId: string, options: { signal?: AbortSignal; authContext?: AuthContext } = {}): Promise<GenerationJobResponse> {
+  const authHeaders = await authHeadersFrom(options.authContext);
+  return getJson<GenerationJobResponse>(
+    `/api/generation-jobs/${encodeURIComponent(jobId)}`,
+    undefined,
+    { ...authHeaders, ...traceHeaders() },
+    options.signal
+  );
 }
 
 export async function answerGenerationJob(jobId: string, payload: GenerationJobAnswerPayload): Promise<GenerationJobResponse> {
