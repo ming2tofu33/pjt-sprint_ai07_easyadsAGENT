@@ -31,3 +31,11 @@ def test_missing_parent_allowed_and_tokens_aggregate():
     assert (report.input_tokens,report.cached_tokens)==(30,5)
     assert report.dominant_latency_class=="INSUFFICIENT_EVIDENCE"
 
+@pytest.mark.parametrize(("span","expected"),[
+    (s("queue_wait",40),"WORKER_QUEUE_OR_COLD_START"),
+    (s("checkpoint_write",40,kind="persistence"),"CHECKPOINT_OR_PERSISTENCE_OVERHEAD"),
+    (s("workspace_lookup",40,kind="db"),"DB_OR_WORKSPACE_OVERHEAD"),
+    (s("polling_visibility",40,kind="ui"),"POLLING_VISIBILITY_DELAY"),
+])
+def test_actual_non_llm_classifiers(span,expected):
+    assert build_report("t",[span],total_wall_ms=100,source="actual").dominant_latency_class==expected

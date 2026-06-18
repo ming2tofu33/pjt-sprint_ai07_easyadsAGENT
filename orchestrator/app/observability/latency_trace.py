@@ -133,10 +133,28 @@ def build_report(trace_id: str, spans: list[LatencySpan], *, total_wall_ms: floa
         return sum(values) if values else None
     llm_critical = sum(s.duration_ms for s in llm_path)
     dominant, confidence, evidence = "INSUFFICIENT_EVIDENCE", 0.3 if spans else 0.0, []
-    if source == "actual" and len(llm_path) >= 2 and wall and llm_critical / wall >= 0.5:
+    execution = _execution_spans(spans)
+    by_kind = lambda *kinds: sum(s.duration_ms for s in execution if s.kind in kinds)
+    operation_ms = lambda terms: sum(s.duration_ms for s in execution if any(term in s.operation.lower() for term in terms))
+    retries = sum(int(s.attributes.get("retry_count") or 0) for s in llm)
+    if source == "actual" and retries:
+        dominant, confidence, evidence = "LLM_RETRY_OR_TIMEOUT", 0.95, [f"retry_count={retries}"]
+    elif source == "actual" and wall and operation_ms(("queue", "cold_start", "compile")) / wall >= 0.25:
+        dominant, confidence, evidence = "WORKER_QUEUE_OR_COLD_START", 0.85, ["queue_or_startup_over_25_percent"]
+    elif source == "actual" and wall and operation_ms(("checkpoint", "persist", "snapshot")) / wall >= 0.25:
+        dominant, confidence, evidence = "CHECKPOINT_OR_PERSISTENCE_OVERHEAD", 0.85, ["persistence_over_25_percent"]
+    elif source == "actual" and wall and by_kind("db") / wall >= 0.25:
+        dominant, confidence, evidence = "DB_OR_WORKSPACE_OVERHEAD", 0.8, ["db_over_25_percent"]
+    elif source == "actual" and wall and operation_ms(("poll", "terminal_to_ui")) / wall >= 0.25:
+        dominant, confidence, evidence = "POLLING_VISIBILITY_DELAY", 0.85, ["polling_over_25_percent"]
+    elif source == "actual" and len(llm_path) >= 2 and wall and llm_critical / wall >= 0.5:
         dominant, confidence, evidence = "GRAPH_SERIAL_LLM_ACCUMULATION", 0.9, ["multiple_llm_calls_on_dependency_path"]
     elif source == "actual" and len(llm) == 1 and wall and llm[0].duration_ms / wall >= 0.5:
         dominant, confidence, evidence = "SINGLE_LLM_PROVIDER_DOMINANT", 0.85, ["single_llm_over_half_wall_time"]
+    elif source == "actual" and (token_total("input_tokens") or 0) >= 4000:
+        dominant, confidence, evidence = "PROMPT_INPUT_TOKEN_DOMINANT", 0.7, ["input_tokens_at_least_4000"]
+    elif source == "actual" and (token_total("output_tokens") or 0) >= 2000:
+        dominant, confidence, evidence = "OUTPUT_TOKEN_DOMINANT", 0.7, ["output_tokens_at_least_2000"]
     return GenerationLatencyReport(
         trace_id=trace_id, total_wall_ms=round(wall, 3), llm_call_count=len(llm), llm_sequential_call_count=len(llm_path),
         llm_total_sum_ms=round(sum(s.duration_ms for s in llm), 3), llm_critical_path_ms=round(llm_critical, 3),
