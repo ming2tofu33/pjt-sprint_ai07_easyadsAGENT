@@ -406,6 +406,10 @@ export async function proxyOrchestratorJson(
 
 export async function proxyOrchestratorBinary(request: NextRequest, path: string, cacheControl?: string) {
   const headers = buildInternalHeaders();
+  const traceId = canonicalTraceId(request.headers.get("X-EasyAds-Trace-Id"));
+  const requestId = request.headers.get("X-Request-Id") || `req_${crypto.randomUUID().replace(/-/g, "")}`;
+  headers["X-EasyAds-Trace-Id"] = traceId;
+  headers["X-Request-Id"] = requestId;
   const targetUrl = buildTargetUrl(path, request);
   const started = Date.now();
 
@@ -446,6 +450,8 @@ export async function proxyOrchestratorBinary(request: NextRequest, path: string
       status: response.status,
       headers: responseHeaders
     });
+    nextResponse.headers.set("X-EasyAds-Trace-Id", traceId);
+    nextResponse.headers.set("X-Request-Id", requestId);
     if (perfEnabled()) {
       nextResponse.headers.set("Server-Timing", `upstream;dur=${Date.now() - started}`);
     }

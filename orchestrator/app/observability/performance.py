@@ -232,7 +232,8 @@ def record_perf_event(event: dict[str, Any]) -> None:
         path = _process_events_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         line = json.dumps(event, ensure_ascii=False, default=str) + "\n"
-        logger.info("easyads_latency_event %s", line.rstrip())
+        # Emit pure JSON so Railway can index trace_id and other attributes.
+        logger.info(line.rstrip())
         with _WRITE_LOCK:
             _EVENT_BUFFER.append(line)
             if len(_EVENT_BUFFER) >= _BUFFER_LIMIT:
