@@ -384,6 +384,7 @@ def answer_generation_job_route(
     background_tasks: BackgroundTasks,
     workspace_id: str | None = None,
     principal: RequestPrincipal = Depends(_request_principal),
+    response: Response = None,
 ) -> GenerationJobGetResponse:
     from orchestrator.app.generation_jobs.errors import GenerationJobError
     try:
@@ -439,4 +440,8 @@ def answer_generation_job_route(
             message="Generation job could not be resumed.",
             detail=str(exc),
         )
-    return GenerationJobGetResponse(job=running or job)
+    response_job = running or job
+    trace_id = (response_job.metadata or {}).get("trace_id")
+    if trace_id and response is not None:
+        response.headers["X-EasyAds-Trace-Id"] = str(trace_id)
+    return GenerationJobGetResponse(job=response_job)
