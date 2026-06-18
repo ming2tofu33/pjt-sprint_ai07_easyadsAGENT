@@ -175,7 +175,7 @@ class OpenAIAdapter(BaseLLMAdapter):
             latency_ms=elapsed_ms(started),
             token_usage=None,
             cost_estimate=None,
-            metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "api_key_present": bool(self.settings.openai_api_key), "raw_text_snippet": snippet},
+            metadata={**sanitize_metadata(metadata or {}), "provider": "openai", "api_key_present": bool(self.settings.openai_api_key), "raw_output_present": bool(raw_text), "raw_output_length": len(raw_text) if raw_text else 0, "retry_count": 0},
         )
 
 

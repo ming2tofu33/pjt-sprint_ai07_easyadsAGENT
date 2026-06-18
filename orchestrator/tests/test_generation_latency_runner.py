@@ -30,6 +30,19 @@ def test_real_compiled_graph_uses_wrapper_and_fake_latency(monkeypatch):
     assert report["measurement_source"]=="instrumented_mock" and result["image_lane_blocked"]
     assert performance.record_perf_event is identity
     assert [s.started_offset_ms for s in spans if s.kind=="llm"]==sorted(s.started_offset_ms for s in spans if s.kind=="llm")
+    for span in [s for s in spans if s.kind=="llm"]:
+        assert span.attributes["result_source"]=="adapter_event"
+        assert span.attributes["call_attempted"] is True
+        assert span.attributes["output_schema_name"]
+        assert "raw_text_snippet" not in span.attributes
+
+def test_copy_call_observation_does_not_depend_on_state_lineage():
+    report,spans,result=run_graph(FakeLLMAdapter({k:0 for k in ("product_understanding","tone_binding","copy_candidate_generation")}),"cold","anonymous")
+    copy=next(s for s in spans if s.operation=="copy_candidate_generation")
+    assert result["adapter_call_events"]==3
+    assert copy.attributes["call_attempted"] is True
+    assert copy.attributes["result_source"]=="adapter_event"
+    assert copy.attributes["structured_output_used"] is True
 
 def test_event_sink_restores_after_failure():
     events=[]
