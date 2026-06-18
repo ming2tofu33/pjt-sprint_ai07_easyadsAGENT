@@ -1287,7 +1287,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       if (threadIdParam === activeThread.threadId && activeThread.conversationMessageCount > 0) {
         return;
       }
-
       const restoreSession = freshChatSessionRef.current;
       let isActive = true;
       const restoreIsStale = () => !isActive || restoreSession !== freshChatSessionRef.current;

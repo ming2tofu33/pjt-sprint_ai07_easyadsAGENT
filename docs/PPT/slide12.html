@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>12 Input Normalization</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<link href="../assets/icons.css" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{margin:0;padding:0;overflow:hidden;font-family:'Pretendard',sans-serif;color:#1A1A1A;-webkit-font-smoothing:antialiased}
+  .mono{font-family:'SF Mono',Menlo,Consolas,monospace}
+  .slide-container{position:relative;width:1920px;height:1080px;overflow:hidden;background:#FFFFFF}
+  .panel{position:absolute;border-radius:22px;border:1px solid #F0EFE9;background:#FAFAF7;z-index:2}
+  .badge{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:13px;font-size:12px;font-weight:850;letter-spacing:.8px;white-space:nowrap}
+  .badge.purple{background:#FFFFFF;color:#8A6FB8;border:1px solid #E5DBF5}
+  .badge.dark{background:#1A1A1A;color:#C8E66B}
+  .quote-box{border-radius:20px;background:#FFFFFF;border:1px solid #E5DBF5;padding:24px;box-shadow:0 16px 36px rgba(26,26,26,.055)}
+  .quote-box p{font-size:25px;font-weight:850;line-height:1.36;letter-spacing:-.65px;color:#1A1A1A;word-break:keep-all}
+  .kv-grid{display:grid;grid-template-columns:112px 1fr;gap:7px 10px}
+  .kv-key{font-size:11px;font-weight:900;color:#8A6FB8;letter-spacing:.45px;line-height:1.3}
+  .kv-value{font-size:13px;font-weight:820;color:#1A1A1A;line-height:1.35;word-break:keep-all}
+  .mini-note{font-size:11px;font-weight:720;color:#777;line-height:1.45;word-break:keep-all}
+  .section-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+  .section-title strong{font-size:20px;font-weight:900;color:#1A1A1A;letter-spacing:-.45px}
+  .section-title span{font-size:10px;font-weight:900;color:#A0A0A0;letter-spacing:.8px}
+  .mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .mode{min-height:42px;border-radius:14px;background:#FFFFFF;border:1px solid #E5DBF5;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:#8A6FB8}
+  .mode.active{background:#F4EEFB;border-color:#C9B8E8;color:#1A1A1A}
+  .bucket{border-radius:16px;background:#FFFFFF;border:1px solid #E8E4EE;padding:13px 14px}
+  .bucket + .bucket{margin-top:9px}
+  .bucket-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .bucket-head strong{font-size:13px;font-weight:900;color:#1A1A1A}
+  .bucket-head small{font-size:10px;font-weight:900;color:#8A6FB8;white-space:nowrap}
+  .bucket-body{margin-top:8px;font-size:12px;font-weight:720;color:#606060;line-height:1.42;word-break:keep-all}
+  .chip-row{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+  .chip{display:inline-flex;align-items:center;gap:5px;min-height:24px;border-radius:999px;padding:0 9px;background:#F7F7F4;border:1px solid #ECEAE4;font-size:10.5px;font-weight:850;color:#333;white-space:nowrap}
+  .chip.verified{background:#F7FBE9;border-color:#DCEFB4;color:#5A7A20}
+  .chip.unknown{background:#F4EEFB;border-color:#E5DBF5;color:#8A6FB8}
+  .chip.block{background:#FFF4ED;border-color:#FFE2CF;color:#C86F42}
+  .product-card{border-radius:17px;background:#FFFFFF;border:1px solid #E5DBF5;padding:15px 16px}
+  .product-card + .product-card{margin-top:10px}
+  .product-card strong{display:block;font-size:15px;font-weight:900;color:#1A1A1A;letter-spacing:-.25px}
+  .product-card span{display:block;margin-top:7px;font-size:12px;font-weight:720;color:#666;line-height:1.42;word-break:keep-all}
+  .confidence{height:10px;border-radius:999px;background:#ECEAE4;overflow:hidden;margin-top:10px}
+  .confidence div{height:100%;width:82%;background:linear-gradient(90deg,#C9B8E8,#C8E66B);border-radius:999px}
+</style>
+</head>
+<body>
+<div class="slide-container" data-screen-label="12 Input Normalization">
+
+  <!-- Section ribbon -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:0;top:0;width:1920px;height:6px;background:#C9B8E8;z-index:2"></div>
+
+  <!-- Section indicator -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:980px;top:60px;width:840px;z-index:10;text-align:right">
+    <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:16px;font-size:18px;font-weight:600;color:#7A7A7A;letter-spacing:0.5px;white-space:nowrap;line-height:1">
+      <span style="color:#C8C8C8">01 제품 스토리</span>
+      <span style="color:#C8C8C8">02 생성 시스템</span>
+      <span style="color:#1A1A1A">03 신뢰 레이어</span>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#C9B8E8"></span>
+      <span style="color:#C8C8C8">04 서비스 완성도</span>
+    </div>
+  </div>
+
+  <!-- Brand mark -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:54px;width:300px;z-index:10">
+    <div style="font-size:28px;font-weight:800;letter-spacing:-0.5px">개떡찰떡<span style="color:#C9B8E8">✦</span></div>
+  </div>
+
+  <!-- Title -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:120px;width:1560px;z-index:10">
+    <div style="font-size:22px;font-weight:600;color:#8A6FB8;letter-spacing:0.5px;margin-bottom:8px">SLIDE 12 · INPUT NORMALIZATION · PRODUCT UNDERSTANDING</div>
+    <div style="font-size:54px;font-weight:850;line-height:1.15;letter-spacing:-2px;color:#1A1A1A">
+      생성하기 전에, 사용자의 말을 <span style="background:linear-gradient(180deg, transparent 60%, #C9B8E8 60%, #C9B8E8 92%, transparent 92%)">광고 제작 근거</span>로 바꿉니다
+    </div>
+    <div style="margin-top:12px;font-size:20px;font-weight:500;color:#5A5A5A;line-height:1.48">
+      사용자의 문장과 이미지를 그대로 프롬프트로 넘기지 않고, 상품·목적·톤·확인된 사실·모르는 정보를 분리합니다
+    </div>
+  </div>
+
+  <!-- Left: user input and normalized result -->
+  <div data-object="true" data-object-type="shape" class="panel" style="left:96px;top:292px;width:520px;height:632px;background:#FFF8F4;border-color:#FFE2CF"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:126px;top:318px;width:460px;z-index:11">
+    <div class="badge purple"><span class="icon icon-chat" style="--c:#8A6FB8;--s:16px"></span>USER INPUT</div>
+    <div style="margin-top:17px" class="quote-box">
+      <div style="font-size:12px;font-weight:900;color:#8A6FB8;letter-spacing:1px;margin-bottom:10px">입력</div>
+      <p>“우리 카페 신메뉴 딸기라떼 홍보 이미지 만들어줘. 상큼하고 귀엽게.”</p>
+    </div>
+
+    <div style="margin-top:18px;border-radius:18px;background:#FFFFFF;border:1px solid #FFE2CF;padding:18px 18px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div style="font-size:13px;font-weight:900;color:#E08A60;letter-spacing:1px">정규화 결과</div>
+        <div class="mono" style="font-size:11px;font-weight:800;color:#A0A0A0">text_only</div>
+      </div>
+      <div class="kv-grid">
+        <div class="kv-key">상품명</div><div class="kv-value">딸기라떼</div>
+        <div class="kv-key">업종</div><div class="kv-value">카페</div>
+        <div class="kv-key">캠페인 의도</div><div class="kv-value">신메뉴 홍보</div>
+        <div class="kv-key">톤</div><div class="kv-value">상큼함, 귀여움</div>
+        <div class="kv-key">비표시 지시문</div><div class="kv-value">홍보 이미지 만들어줘</div>
+        <div class="kv-key">표시 가능 문구</div><div class="kv-value">없음</div>
+        <div class="kv-key">확인된 사실</div><div class="kv-value">신메뉴, 딸기라떼</div>
+        <div class="kv-key">알 수 없는 정보</div><div class="kv-value">가격, 매장명, 할인 여부, 판매 기간</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:628px;top:555px;width:68px;z-index:11;text-align:center">
+    <div style="font-size:13px;font-weight:900;color:#8A6FB8;letter-spacing:1px;margin-bottom:8px">분리</div>
+    <div style="font-size:50px;color:#C9B8E8;font-weight:300;line-height:1">→</div>
+    <div style="margin-top:8px;font-size:11px;font-weight:800;color:#A0A0A0" class="mono">normalize</div>
+  </div>
+
+  <!-- Middle: Input Evidence Bundle -->
+  <div data-object="true" data-object-type="shape" class="panel" style="left:708px;top:292px;width:530px;height:632px;background:#FAF6FF;border-color:#E5DBF5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:738px;top:318px;width:470px;z-index:11">
+    <div class="badge dark"><span class="icon icon-box" style="--c:#C8E66B;--s:16px"></span>INPUT EVIDENCE BUNDLE</div>
+
+    <div style="margin-top:18px" class="section-title">
+      <strong>입력 모드 구분</strong>
+      <span>input_mode</span>
+    </div>
+    <div class="mode-grid">
+      <div class="mode active">text_only</div>
+      <div class="mode">image_only</div>
+      <div class="mode">text_and_image</div>
+    </div>
+
+    <div style="margin-top:18px" class="bucket">
+      <div class="bucket-head"><strong>사용자 입력에서 분리하는 것</strong><small>parsed fields</small></div>
+      <div class="chip-row">
+        <span class="chip verified">상품명</span>
+        <span class="chip verified">캠페인 의도</span>
+        <span class="chip block">비표시 지시문</span>
+        <span class="chip">정확히 넣고 싶은 문구</span>
+        <span class="chip verified">확인된 사실</span>
+        <span class="chip">이미지 관찰 정보</span>
+        <span class="chip">충돌 정보</span>
+        <span class="chip unknown">알 수 없는 필드</span>
+      </div>
+    </div>
+
+    <div class="bucket">
+      <div class="bucket-head"><strong>카피에 직접 써도 되는 근거</strong><small>verified</small></div>
+      <div class="bucket-body">사용자가 명시한 `신메뉴`, `딸기라떼`만 광고 카피와 이미지 지시에 직접 전달합니다.</div>
+    </div>
+
+    <div class="bucket">
+      <div class="bucket-head"><strong>광고에 그대로 쓰면 안 되는 문장</strong><small>instruction</small></div>
+      <div class="bucket-body">“홍보 이미지 만들어줘”는 사용자의 작업 지시이지, 이미지 안에 들어갈 광고 문구가 아닙니다.</div>
+    </div>
+
+    <div class="bucket">
+      <div class="bucket-head"><strong>모르는 것은 unknown으로 남김</strong><small>fail-closed</small></div>
+      <div class="bucket-body">가격, 매장명, 할인 여부, 판매 기간은 추측하지 않고 질문 후보로 넘깁니다.</div>
+    </div>
+  </div>
+
+  <!-- Right: Product Understanding -->
+  <div data-object="true" data-object-type="shape" class="panel" style="left:1268px;top:292px;width:556px;height:632px;background:linear-gradient(180deg,#FFFFFF 0%,#F7FBE9 100%);border-color:#DCEFB4"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1298px;top:318px;width:496px;z-index:11">
+    <div class="badge dark"><span class="icon icon-search" style="--c:#C8E66B;--s:16px"></span>PRODUCT UNDERSTANDING</div>
+
+    <div style="margin-top:18px" class="product-card">
+      <strong>상품 정체성</strong>
+      <span>상품명: 딸기라떼 · 정규화된 상품 유형: 음료 · 넓은 카테고리: 카페 음료 · 경로: F&B / Cafe / Beverage</span>
+    </div>
+
+    <div class="product-card">
+      <strong>검증된 사실과 시각 관찰</strong>
+      <span>텍스트 요청 기준으로 확인된 사실은 `신메뉴`, `딸기라떼`입니다. 이미지 입력이 없다면 시각 관찰 정보는 비워 둡니다.</span>
+      <div class="chip-row">
+        <span class="chip verified">신메뉴</span>
+        <span class="chip verified">딸기라떼</span>
+        <span class="chip unknown">visual_observation: none</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <strong>지원되지 않는 주장 카테고리</strong>
+      <span>가격 할인, 판매 기간, 매장명, 원재료 원산지, 품질 보증 같은 주장은 근거가 없으면 생성하지 않습니다.</span>
+      <div class="chip-row">
+        <span class="chip block">가격</span>
+        <span class="chip block">할인</span>
+        <span class="chip block">판매 기간</span>
+        <span class="chip block">매장명</span>
+      </div>
+    </div>
+
+    <div class="product-card">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <strong>신뢰도와 수동 검토</strong>
+        <span class="mono" style="margin:0;font-size:11px;font-weight:900;color:#7A9A2A">confidence 0.82</span>
+      </div>
+      <div class="confidence"><div></div></div>
+      <span>핵심 상품 이해는 충분하지만, 가격·매장명·할인 정보는 unknown이므로 필요 시 HITL 질문으로 보냅니다.</span>
+    </div>
+  </div>
+
+  <!-- Bottom message -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:970px;width:1728px;height:50px;background:#1A1A1A;border-radius:14px;z-index:2"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:126px;top:984px;width:1668px;z-index:11;text-align:center">
+    <div style="font-size:17px;font-weight:800;color:#FFFFFF;line-height:1.3">
+      <span style="color:#C8E66B;letter-spacing:1px">핵심</span> · “홍보 이미지 만들어줘”는 카피가 아니라 지시문입니다. 시스템은 상품, 목적, 근거, unknown을 분리한 뒤 생성 단계로 넘깁니다
+    </div>
+  </div>
+
+  <!-- Page number -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1740px;top:96px;width:80px;z-index:10;text-align:right">
+    <div style="font-size:16px;font-weight:600;color:#A0A0A0;letter-spacing:1px">12 / 18</div>
+  </div>
+
+</div>
+</body>
+</html>

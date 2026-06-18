@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>06 Readability Gate Analysis</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<link href="../assets/icons.css" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{margin:0;padding:0;overflow:hidden;font-family:'Pretendard',sans-serif;color:#1A1A1A;-webkit-font-smoothing:antialiased}
+  .mono{font-family:'SF Mono', Menlo, Consolas, monospace}
+</style>
+</head>
+<body>
+<div class="slide-container" data-screen-label="06 Readability Gate Analysis" style="position:relative;width:1920px;height:1080px;overflow:hidden;background:#FFFFFF">
+
+  <!-- Section ribbon -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:0;top:0;width:1920px;height:6px;background:#FFC4A3;z-index:2"></div>
+
+  <!-- Section indicator -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:980px;top:60px;width:840px;z-index:10;text-align:right">
+    <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:16px;font-size:18px;font-weight:600;color:#7A7A7A;letter-spacing:0.5px;white-space:nowrap;line-height:1">
+      <span style="color:#C8C8C8">01 제품 스토리</span>
+      <span style="color:#1A1A1A">02 생성 시스템</span>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#FFC4A3"></span>
+      <span style="color:#C8C8C8">03 신뢰 레이어</span>
+      <span style="color:#C8C8C8">04 서비스 완성도</span>
+    </div>
+  </div>
+
+  <!-- Brand mark -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:54px;width:300px;z-index:10">
+    <div style="font-size:28px;font-weight:800;letter-spacing:-0.5px">개떡찰떡<span style="color:#FFC4A3">✦</span></div>
+  </div>
+
+  <!-- Title -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:122px;width:1560px;z-index:10">
+    <div style="font-size:23px;font-weight:700;color:#E08A60;letter-spacing:0.5px;margin-bottom:10px">SLIDE 06 · READABILITY GATE</div>
+    <div style="font-size:60px;font-weight:850;line-height:1.14;letter-spacing:-2px;color:#1A1A1A">
+      이미지를 분석해, <span style="background:linear-gradient(180deg, transparent 60%, #C8E66B 60%, #C8E66B 92%, transparent 92%)">글자가 들어갈 자리</span>를 찾습니다
+    </div>
+    <div style="margin-top:16px;font-size:22px;font-weight:500;color:#5A5A5A;line-height:1.45">
+      원본 이미지를 먼저 이해하고, 물체 영역과 가독성 위험을 제외한 뒤 텍스트 슬롯을 확정합니다
+    </div>
+  </div>
+
+  <!-- Main analysis panel -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:300px;width:1728px;height:510px;background:#FAFAF7;border-radius:24px;border:1px solid #F0EFE9;z-index:2"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:126px;top:326px;width:1668px;z-index:11">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;background:#FFFFFF;border-radius:13px;font-size:12px;font-weight:850;color:#E08A60;letter-spacing:1px;border:1px solid #FFE2CF">
+        <span class="icon icon-eye" style="--c:#E08A60;--s:16px"></span>IMAGE ANALYSIS TO TEXT SLOTS
+      </div>
+      <div style="font-size:13px;color:#A0A0A0;font-weight:700" class="mono">original → object / OCR map → candidate areas → TextLayoutSpec.slots</div>
+    </div>
+  </div>
+
+  <!-- Step 1 -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:126px;top:374px;width:356px;height:386px;background:#FFFFFF;border-radius:22px;border:1px solid #EDEDE8;box-shadow:0 14px 30px rgba(0,0,0,0.05);z-index:5"></div>
+  <div data-object="true" data-object-type="image" style="position:absolute;left:146px;top:394px;width:316px;height:316px;z-index:6;border-radius:18px;overflow:hidden;background:#FFFFFF">
+    <img src="../assets/ppt/06/mango_bingsu_03.png" alt="Original mango bingsu image" style="width:100%;height:100%;object-fit:cover;display:block">
+  </div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:146px;top:724px;width:316px;z-index:11">
+    <div style="font-size:12px;font-weight:850;color:#E08A60;letter-spacing:0.9px">01 ORIGINAL IMAGE</div>
+    <div style="margin-top:4px;font-size:18px;font-weight:850;color:#1A1A1A">먼저 이미지를 그대로 봅니다</div>
+  </div>
+
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:490px;top:526px;width:54px;z-index:11;text-align:center">
+    <div style="font-size:36px;color:#D0D0D0">→</div>
+  </div>
+
+  <!-- Step 2 -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:552px;top:374px;width:318px;height:386px;background:#FFFFFF;border-radius:22px;border:1px solid #E5DBF5;box-shadow:0 14px 30px rgba(0,0,0,0.05);z-index:5"></div>
+  <div data-object="true" data-object-type="image" style="position:absolute;left:574px;top:400px;width:274px;height:274px;z-index:6;border-radius:18px;overflow:hidden;background:#060606">
+    <img src="../assets/ppt/06/mango_bingsu_02.png" alt="Mango bingsu diagnostic image map" style="width:100%;height:100%;object-fit:cover;display:block">
+  </div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:574px;top:694px;width:274px;z-index:11">
+    <div style="font-size:12px;font-weight:850;color:#8A6FB8;letter-spacing:0.9px">02 OBJECT / OCR MAP</div>
+    <div style="margin-top:5px;font-size:18px;font-weight:850;color:#1A1A1A;line-height:1.25">상품 영역과 읽힘 위험을<br>진단합니다</div>
+  </div>
+
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:878px;top:526px;width:54px;z-index:11;text-align:center">
+    <div style="font-size:36px;color:#D0D0D0">→</div>
+  </div>
+
+  <!-- Step 3 -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:940px;top:374px;width:356px;height:386px;background:#FFFFFF;border-radius:22px;border:1px solid #DCEFB4;box-shadow:0 14px 30px rgba(0,0,0,0.05);z-index:5"></div>
+  <div data-object="true" data-object-type="image" style="position:absolute;left:960px;top:394px;width:316px;height:316px;z-index:6;border-radius:18px;overflow:hidden;background:#FFFFFF">
+    <img src="../assets/ppt/06/mango_bingsu_01.png" alt="Mango bingsu candidate text areas" style="width:100%;height:100%;object-fit:cover;display:block">
+  </div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:960px;top:724px;width:316px;z-index:11">
+    <div style="font-size:12px;font-weight:850;color:#7A9A2A;letter-spacing:0.9px">03 CANDIDATE TEXT AREAS</div>
+    <div style="margin-top:4px;font-size:18px;font-weight:850;color:#1A1A1A">비어 있는 후보 영역만 남깁니다</div>
+  </div>
+
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1304px;top:526px;width:54px;z-index:11;text-align:center">
+    <div style="font-size:36px;color:#D0D0D0">→</div>
+  </div>
+
+  <!-- Output contract -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1366px;top:374px;width:428px;height:386px;background:#1A1A1A;border-radius:22px;box-shadow:0 18px 42px rgba(0,0,0,0.16);z-index:5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1400px;top:410px;width:360px;z-index:11">
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 13px;background:#C8E66B;border-radius:13px;font-size:12px;font-weight:850;color:#1A1A1A;letter-spacing:0.8px">
+      <span class="icon icon-ruler" style="--c:#1A1A1A;--s:16px"></span>TEXTLAYOUTSPEC.SLOTS
+    </div>
+    <div style="margin-top:28px;font-size:33px;font-weight:850;color:#FFFFFF;line-height:1.14;letter-spacing:-1px">
+      글자를 놓아도 되는<br>영역만 계약합니다
+    </div>
+    <div style="margin-top:28px;display:grid;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="icon icon-check" style="--c:#C8E66B;--s:18px"></span>
+        <span style="font-size:17px;font-weight:800;color:#FFFFFF">상품 영역 침범 방지</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="icon icon-check" style="--c:#C8E66B;--s:18px"></span>
+        <span style="font-size:17px;font-weight:800;color:#FFFFFF">OCR / 대비 기준 통과</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="icon icon-check" style="--c:#C8E66B;--s:18px"></span>
+        <span style="font-size:17px;font-weight:800;color:#FFFFFF">안전 여백 확보</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="icon icon-check" style="--c:#C8E66B;--s:18px"></span>
+        <span style="font-size:17px;font-weight:800;color:#FFFFFF">텍스트 후보 슬롯 확정</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom check cards -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:842px;width:1728px;z-index:11">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+      <div style="padding:22px 24px;background:#FFFFFF;border-radius:20px;border:1px solid #FFE2CF;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="icon icon-box" style="--c:#E08A60;--s:26px"></span>
+          <div style="font-size:21px;font-weight:850;color:#1A1A1A">Object Region Detection</div>
+        </div>
+        <div style="margin-top:11px;font-size:15px;font-weight:700;color:#5A5A5A;line-height:1.45">망고빙수와 주요 시각 요소를 찾아 텍스트 침범 위험을 줄입니다.</div>
+      </div>
+      <div style="padding:22px 24px;background:#FFFFFF;border-radius:20px;border:1px solid #E5DBF5;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="icon icon-search" style="--c:#8A6FB8;--s:26px"></span>
+          <div style="font-size:21px;font-weight:850;color:#1A1A1A">OCR / Readability Check</div>
+        </div>
+        <div style="margin-top:11px;font-size:15px;font-weight:700;color:#5A5A5A;line-height:1.45">글자가 작거나 대비가 낮거나 잘릴 가능성이 있는 위치를 제외합니다.</div>
+      </div>
+      <div style="padding:22px 24px;background:#FFFFFF;border-radius:20px;border:1px solid #DCEFB4;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="icon icon-ruler" style="--c:#7A9A2A;--s:26px"></span>
+          <div style="font-size:21px;font-weight:850;color:#1A1A1A">Slot Decision</div>
+        </div>
+        <div style="margin-top:11px;font-size:15px;font-weight:700;color:#5A5A5A;line-height:1.45">남은 안전 영역을 실제 렌더링 단계의 텍스트 슬롯으로 넘깁니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom message -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:1018px;width:1728px;z-index:10;text-align:center">
+    <div style="font-size:18px;font-weight:750;color:#5A5A5A">
+      ReadabilityGate는 결과를 평가하는 단계이면서, 텍스트가 들어갈 수 있는 위치를 계산하는 분석 단계입니다
+    </div>
+  </div>
+
+  <!-- Page number -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1740px;top:96px;width:80px;z-index:10;text-align:right">
+    <div style="font-size:16px;font-weight:600;color:#A0A0A0;letter-spacing:1px">06 / 18</div>
+  </div>
+
+</div>
+</body>
+</html>

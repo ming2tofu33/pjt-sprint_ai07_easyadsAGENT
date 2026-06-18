@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>17 Limits and Conclusion</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<link href="../assets/icons.css" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{margin:0;padding:0;overflow:hidden;font-family:'Pretendard',sans-serif;color:#1A1A1A;-webkit-font-smoothing:antialiased}
+  .slide-container{position:relative;width:1920px;height:1080px;overflow:hidden;background:#FFFFFF}
+  .card{position:absolute;top:392px;width:548px;height:520px;border-radius:24px;background:#FFFFFF;border:1px solid #ECEAE4;box-shadow:0 8px 24px rgba(0,0,0,0.06);z-index:5}
+  .topline{position:absolute;top:392px;width:548px;height:8px;border-radius:24px 24px 0 0;z-index:6}
+  .card-body{position:absolute;top:424px;width:492px;z-index:11}
+  .card-head{display:flex;align-items:center;justify-content:space-between}
+  .card-num{font-size:58px;font-weight:850;letter-spacing:-2.4px;line-height:1}
+  .icon-badge{display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:16px;background:#FAFAF7;border:1px solid #ECEAE4}
+  .label{margin-top:16px;font-size:13px;font-weight:850;letter-spacing:1.2px}
+  .card-title{margin-top:6px;font-size:31px;font-weight:900;line-height:1.22;letter-spacing:-0.9px}
+  .card-desc{margin-top:12px;font-size:15.5px;font-weight:520;color:#5A5A5A;line-height:1.5;word-break:keep-all}
+  .item-list{position:absolute;top:642px;width:492px;z-index:11;display:grid;gap:8px}
+  .item{display:flex;align-items:flex-start;gap:10px;min-height:52px;padding:9px 12px;border-radius:14px;background:#FAFAF7;border:1px solid #ECEAE4}
+  .dot{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:9px;flex-shrink:0;font-size:11px;font-weight:900}
+  .item strong{display:block;font-size:14.6px;font-weight:900;color:#1A1A1A;line-height:1.18;letter-spacing:-0.2px}
+  .item span{display:block;margin-top:2px;font-size:12px;font-weight:620;color:#666;line-height:1.28;word-break:keep-all}
+  .green{color:#7A9A2A}.orange{color:#D47A42}.purple{color:#8A6FB8}
+  .green-bg{background:#F7FBE9;border-color:#DCEFB4}.orange-bg{background:#FFF4ED;border-color:#FFE2CF}.purple-bg{background:#FAF6FF;border-color:#E5DBF5}
+  .conclusion{position:absolute;left:96px;top:946px;width:1728px;height:78px;border-radius:20px;background:#1A1A1A;z-index:5}
+  .conclusion-text{position:absolute;left:132px;top:961px;width:1656px;z-index:11;display:flex;align-items:center;gap:20px}
+  .conclusion-icon{display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:16px;background:#C8E66B;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="slide-container" data-screen-label="17 Limits and Conclusion">
+
+  <!-- Section ribbon -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:0;top:0;width:1920px;height:6px;background:linear-gradient(90deg,#C8E66B 0%,#FFC4A3 34%,#C9B8E8 68%,#A8E6D0 100%);z-index:2"></div>
+
+  <!-- Section indicator -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:980px;top:60px;width:840px;z-index:10;text-align:right">
+    <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:16px;font-size:18px;font-weight:600;color:#7A7A7A;letter-spacing:0.5px;white-space:nowrap;line-height:1">
+      <span style="color:#1A1A1A">전체 발표 마무리</span>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#1A1A1A"></span>
+    </div>
+  </div>
+
+  <!-- Brand mark -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:54px;width:300px;z-index:10">
+    <div style="font-size:28px;font-weight:800;letter-spacing:-0.5px">개떡찰떡<span style="color:#C8E66B">✦</span></div>
+  </div>
+
+  <!-- Title -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:132px;width:1540px;z-index:10">
+    <div style="font-size:24px;font-weight:650;color:#5A5A5A;letter-spacing:0.5px;margin-bottom:12px">SLIDE 17 · LIMITS AND CONCLUSION</div>
+    <div style="font-size:66px;font-weight:850;line-height:1.16;letter-spacing:-2px;color:#1A1A1A">
+      완성형 자동화가 아니라,<br>
+      <span style="background:linear-gradient(180deg,transparent 60%,#C8E66B 60%,#C8E66B 92%,transparent 92%)">검증 가능한 MVP</span>를 만들었습니다
+    </div>
+    <div style="margin-top:22px;font-size:25px;font-weight:500;color:#5A5A5A;line-height:1.48">
+      소상공인의 모호한 요청을 광고 제작 정보로 구조화하고, 생성·검증·저장 흐름까지 연결했습니다
+    </div>
+  </div>
+
+  <!-- Card 1: Achievements -->
+  <div data-object="true" data-object-type="shape" class="card" style="left:96px"></div>
+  <div data-object="true" data-object-type="shape" class="topline" style="left:96px;background:#C8E66B"></div>
+  <div data-object="true" data-object-type="textbox" class="card-body" style="left:124px">
+    <div class="card-head">
+      <div class="card-num green">01</div>
+      <div class="icon-badge green-bg"><span class="icon icon-check" style="--c:#7A9A2A;--s:26px"></span></div>
+    </div>
+    <div class="label green">WHAT WE BUILT</div>
+    <div class="card-title">주요 성과</div>
+    <div class="card-desc">데모 이미지를 한 번 만드는 수준을 넘어, 대화형 광고 생성 서비스의 기본 흐름을 연결했습니다.</div>
+  </div>
+  <div data-object="true" data-object-type="textbox" class="item-list" style="left:124px">
+    <div class="item green-bg"><div class="dot" style="background:#C8E66B;color:#1A1A1A">1</div><div><strong>대화형 광고 생성 MVP</strong><span>자연어 입력을 상품, 업종, 목적, 톤, 채널 정보로 구조화</span></div></div>
+    <div class="item green-bg"><div class="dot" style="background:#C8E66B;color:#1A1A1A">2</div><div><strong>E2E 생성 파이프라인</strong><span>입력 이해 → 카피 결정 → 이미지 생성 → 검증 → 저장</span></div></div>
+    <div class="item green-bg"><div class="dot" style="background:#C8E66B;color:#1A1A1A">3</div><div><strong>상태 기반 생성 구조</strong><span>LangGraph와 MarketingState로 질문, 선택, 생성, 재개 관리</span></div></div>
+    <div class="item green-bg"><div class="dot" style="background:#C8E66B;color:#1A1A1A">4</div><div><strong>검증 기반 마련</strong><span>Compliance Gate, Quality Gate, Eval Layer, 테스트 기반 구축</span></div></div>
+  </div>
+
+  <!-- Card 2: Limits -->
+  <div data-object="true" data-object-type="shape" class="card" style="left:686px"></div>
+  <div data-object="true" data-object-type="shape" class="topline" style="left:686px;background:#FFC4A3"></div>
+  <div data-object="true" data-object-type="textbox" class="card-body" style="left:714px">
+    <div class="card-head">
+      <div class="card-num orange">02</div>
+      <div class="icon-badge orange-bg"><span class="icon icon-scale" style="--c:#D47A42;--s:26px"></span></div>
+    </div>
+    <div class="label orange">CURRENT LIMITS</div>
+    <div class="card-title">현재 한계</div>
+    <div class="card-desc">서비스 파이프라인은 연결했지만, 실제 제품 수준으로 안정화하려면 아직 남은 변수가 있습니다.</div>
+  </div>
+  <div data-object="true" data-object-type="textbox" class="item-list" style="left:714px">
+    <div class="item orange-bg"><div class="dot" style="background:#FFC4A3;color:#7A3C20">1</div><div><strong>생성 품질 의존성</strong><span>모델과 입력 이미지 품질에 따라 결과 편차 발생 가능</span></div></div>
+    <div class="item orange-bg"><div class="dot" style="background:#FFC4A3;color:#7A3C20">2</div><div><strong>광고 검토의 보조적 한계</strong><span>Compliance Gate는 법률 자문이 아닌 위험 문구 완화 장치</span></div></div>
+    <div class="item orange-bg"><div class="dot" style="background:#FFC4A3;color:#7A3C20">3</div><div><strong>업종·상품 커버리지</strong><span>Domain Routing SSOT와 Rule Pack 고도화 필요</span></div></div>
+    <div class="item orange-bg"><div class="dot" style="background:#FFC4A3;color:#7A3C20">4</div><div><strong>운영 환경 대응</strong><span>비용, 지연 시간, 모델 장애 대응 체계 추가 필요</span></div></div>
+  </div>
+
+  <!-- Card 3: Next -->
+  <div data-object="true" data-object-type="shape" class="card" style="left:1276px"></div>
+  <div data-object="true" data-object-type="shape" class="topline" style="left:1276px;background:#C9B8E8"></div>
+  <div data-object="true" data-object-type="textbox" class="card-body" style="left:1304px">
+    <div class="card-head">
+      <div class="card-num purple">03</div>
+      <div class="icon-badge purple-bg"><span class="icon icon-trend" style="--c:#8A6FB8;--s:26px"></span></div>
+    </div>
+    <div class="label purple">NEXT TASKS</div>
+    <div class="card-title">향후 과제</div>
+    <div class="card-desc">다음 단계는 더 많은 기능보다, 실제 운영에서 흔들리지 않는 품질과 기준을 만드는 일입니다.</div>
+  </div>
+  <div data-object="true" data-object-type="textbox" class="item-list" style="left:1304px">
+    <div class="item purple-bg"><div class="dot" style="background:#C9B8E8;color:#4E3878">1</div><div><strong>생성 품질 안정화</strong><span>모델과 입력 이미지 품질에 따른 결과 편차 개선</span></div></div>
+    <div class="item purple-bg"><div class="dot" style="background:#C9B8E8;color:#4E3878">2</div><div><strong>광고 검토 기준 고도화</strong><span>Compliance Rule Pack과 안전 문구 제안 기준 정교화</span></div></div>
+    <div class="item purple-bg"><div class="dot" style="background:#C9B8E8;color:#4E3878">3</div><div><strong>업종·상품 대응 확장</strong><span>Domain Routing SSOT 고도화로 다양한 광고 상황 대응</span></div></div>
+    <div class="item purple-bg"><div class="dot" style="background:#C9B8E8;color:#4E3878">4</div><div><strong>운영 지표 관리</strong><span>비용, 지연 시간, 모델 장애, 실제 로그 기반 정량 지표 관리</span></div></div>
+  </div>
+
+  <!-- Conclusion -->
+  <div data-object="true" data-object-type="shape" class="conclusion"></div>
+  <div data-object="true" data-object-type="textbox" class="conclusion-text">
+    <div class="conclusion-icon"><span class="icon icon-sparkle" style="--c:#1A1A1A;--s:26px"></span></div>
+    <div style="flex:1">
+      <div style="font-size:13px;font-weight:850;color:#C8E66B;letter-spacing:1.5px;margin-bottom:4px">CONCLUSION</div>
+      <div style="font-size:26px;font-weight:850;color:#FFFFFF;line-height:1.28;letter-spacing:-0.5px;word-break:keep-all">
+        개떡찰떡은 단순 이미지 생성 데모가 아니라, 모호한 요청을 광고 제작 정보로 바꾸고 생성·검증·저장·재개까지 연결한 대화형 AI 광고 제작 MVP입니다.
+      </div>
+    </div>
+  </div>
+
+  <!-- Page number -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1740px;top:96px;width:80px;z-index:10;text-align:right">
+    <div style="font-size:16px;font-weight:600;color:#A0A0A0;letter-spacing:1px">17 / 18</div>
+  </div>
+
+</div>
+</body>
+</html>

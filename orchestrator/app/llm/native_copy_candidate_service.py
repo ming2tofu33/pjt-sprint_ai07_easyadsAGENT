@@ -18,6 +18,33 @@ from orchestrator.app.schemas.product_understanding import ProductUnderstanding
 
 
 STRATEGIES = ["minimal_identity", "product_detail", "sensory_expression", "campaign_context", "brand_editorial"]
+NATIVE_COPY_MAX_TOTAL_CHARACTERS = 80
+
+
+def _trim_text_to_budget(text: str, budget: int) -> str | None:
+    if budget <= 0:
+        return None
+    stripped = text.strip()
+    if len(stripped) <= budget:
+        return stripped
+    if budget == 1:
+        return stripped[:1]
+    return stripped[: budget - 1].rstrip() + "…"
+
+
+def _fit_candidate_text_blocks(
+    *,
+    headline: str,
+    support: str | None,
+    closing: str | None,
+) -> tuple[str, str | None, str | None]:
+    fitted_headline = _trim_text_to_budget(headline, NATIVE_COPY_MAX_TOTAL_CHARACTERS) or ""
+    remaining = NATIVE_COPY_MAX_TOTAL_CHARACTERS - len(fitted_headline)
+    if support:
+        return fitted_headline, _trim_text_to_budget(support, remaining), None
+    if closing:
+        return fitted_headline, None, _trim_text_to_budget(closing, remaining)
+    return fitted_headline, None, None
 
 
 def generate_native_copy_strategy_bundle(
@@ -156,6 +183,11 @@ def _coerce_candidate(payload: dict[str, Any], *, index: int, product_name: str,
         closing=closing,
     )
     strategy = _normalize_strategy(data.get("strategy"), index)
+    headline, support, closing = _fit_candidate_text_blocks(
+        headline=headline or product_name,
+        support=support,
+        closing=closing,
+    )
     texts = [headline, support or closing or ""]
     sensory_terms = list(data.get("sensory_terms_used") or _sensory_terms_used(" ".join(texts)))
     return NativeCopyCandidate(
@@ -163,7 +195,7 @@ def _coerce_candidate(payload: dict[str, Any], *, index: int, product_name: str,
         strategy=strategy,  # type: ignore[arg-type]
         headline=headline,
         supporting_copy=support,
-        closing_copy=closing if not support else None,
+        closing_copy=closing if closing and not support else None,
         action_cta=None,
         headline_basis_ids=list(data.get("headline_basis_ids") or product_ids),
         support_basis_ids=list(data.get("support_basis_ids") or []),

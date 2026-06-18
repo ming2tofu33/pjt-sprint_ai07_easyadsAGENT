@@ -1,0 +1,45 @@
+.icon {
+  --s: 24px;
+  --c: currentColor;
+  display: inline-block;
+  width: var(--s);
+  height: var(--s);
+  color: var(--c);
+  background-color: currentColor;
+  vertical-align: -0.15em;
+  flex: 0 0 auto;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.icon-bot { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/bot.svg"); }
+.icon-box { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/box.svg"); }
+.icon-brain { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/brain.svg"); }
+.icon-bulb { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/lightbulb.svg"); }
+.icon-chart { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/chart-no-axes-combined.svg"); }
+.icon-chat { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/message-circle.svg"); }
+.icon-check { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/check.svg"); }
+.icon-coin { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/coins.svg"); }
+.icon-cut { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/scissors.svg"); }
+.icon-doc { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/file-text.svg"); }
+.icon-edit-line { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/square-pen.svg"); }
+.icon-eye { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/eye.svg"); }
+.icon-film { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/film.svg"); }
+.icon-globe { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/globe.svg"); }
+.icon-image { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/image.svg"); }
+.icon-inbox { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/inbox.svg"); }
+.icon-palette { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/palette.svg"); }
+.icon-pen { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/pen-line.svg"); }
+.icon-phone { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/phone.svg"); }
+.icon-refresh { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/refresh-cw.svg"); }
+.icon-ruler { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/ruler.svg"); }
+.icon-save { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/save.svg"); }
+.icon-scale { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/scale.svg"); }
+.icon-search { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/search.svg"); }
+.icon-shield { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/shield.svg"); }
+.icon-sparkle { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/sparkles.svg"); }
+.icon-target { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/target.svg"); }
+.icon-trend { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/trending-up.svg"); }
+.icon-user { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/user.svg"); }
+.icon-warn { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/triangle-alert.svg"); }
+.icon-x { --icon: url("https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/x.svg"); }

@@ -149,7 +149,6 @@ class DomainRoutingResult(BaseModel):
             return self.unsupported_domain_hint
         return None
 
-
 class LegacyVisualRouteKey(StrEnum):
     CAFE = "cafe"
     RESTAURANT = "restaurant"

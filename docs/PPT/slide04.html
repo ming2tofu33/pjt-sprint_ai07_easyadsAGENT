@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>04 Why Simple Generation Failed</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<link href="../assets/icons.css" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{margin:0;padding:0;overflow:hidden;font-family:'Pretendard',sans-serif;color:#1A1A1A;-webkit-font-smoothing:antialiased}
+</style>
+</head>
+<body>
+<div class="slide-container" data-screen-label="04 Why Simple Generation Failed" style="position:relative;width:1920px;height:1080px;overflow:hidden;background:#FFFFFF">
+
+  <!-- Section ribbon -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:0;top:0;width:1920px;height:6px;background:#C8E66B;z-index:2"></div>
+
+  <!-- Section indicator -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:980px;top:60px;width:840px;z-index:10;text-align:right">
+    <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:16px;font-size:18px;font-weight:600;color:#7A7A7A;letter-spacing:0.5px;white-space:nowrap;line-height:1">
+      <span style="color:#1A1A1A">01 제품 스토리</span>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#C8E66B"></span>
+      <span style="color:#C8C8C8">02 생성 시스템</span>
+      <span style="color:#C8C8C8">03 신뢰 레이어</span>
+      <span style="color:#C8C8C8">04 서비스 완성도</span>
+    </div>
+  </div>
+
+  <!-- Brand mark -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:54px;width:300px;z-index:10">
+    <div style="font-size:28px;font-weight:800;letter-spacing:-0.5px">개떡찰떡<span style="color:#C8E66B">✦</span></div>
+  </div>
+
+  <!-- Title block (compact) -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:130px;width:1500px;z-index:10">
+    <div style="font-size:22px;font-weight:600;color:#7A9A2A;letter-spacing:0.5px;margin-bottom:10px">SLIDE 04 · WHY SIMPLE GENERATION FAILED</div>
+    <div style="font-size:54px;font-weight:800;line-height:1.16;letter-spacing:-2px;color:#1A1A1A">
+      단순 생성은 <span style="background:linear-gradient(180deg, transparent 60%, #FFD4D4 60%, #FFD4D4 92%, transparent 92%)">왜 광고가 되지 못했나</span>
+    </div>
+    <div style="margin-top:14px;font-size:22px;font-weight:500;color:#5A5A5A;line-height:1.5">
+      실제 산출물에서 발견한 세 가지 실패 — 이 실패들이 시스템 설계를 결정했습니다
+    </div>
+  </div>
+
+  <!-- 3 Failure Cards -->
+  <!-- Card 1: Input Drift -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:300px;width:552px;height:624px;background:#FFFFFF;border-radius:24px;border:1px solid #F0DADA;box-shadow:0 16px 42px rgba(80,30,30,0.08);z-index:5"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:300px;width:552px;height:8px;background:#E57373;border-radius:24px 24px 0 0;z-index:6"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:120px;top:326px;width:504px;z-index:11">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;background:#FFF0F0;border-radius:14px;font-size:13px;font-weight:800;color:#C56060;letter-spacing:1px">FAILURE 01</div>
+      <div style="font-size:15px;font-weight:800;color:#C56060">문구 누수</div>
+    </div>
+    <div style="font-size:28px;font-weight:800;color:#1A1A1A;line-height:1.18;letter-spacing:-0.7px">
+      프롬프트가 광고 문구로 새어 나옴
+    </div>
+  </div>
+  <div data-object="true" data-object-type="image" style="position:absolute;left:172px;top:408px;width:400px;height:400px;z-index:6">
+    <div style="width:100%;height:100%;border-radius:18px;overflow:hidden;background:#FAFAF7;border:1px solid #E7D4D4;box-shadow:0 14px 34px rgba(40,20,20,0.12);display:flex;align-items:center;justify-content:center">
+      <img src="../assets/ppt/04/doenjang_prompt_leak.png" alt="문구 누수 실패 이미지" style="width:100%;height:100%;object-fit:contain;object-position:center">
+    </div>
+  </div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:120px;top:820px;width:504px;z-index:11">
+    <div style="padding:11px 14px;background:#FAFAF7;border-radius:14px;font-size:16px;font-weight:700;color:#1A1A1A;line-height:1.35">
+      요청 문장이 광고 카피처럼 그대로 노출
+    </div>
+    <div style="margin-top:6px;padding:9px 12px;background:#FFF8F4;border-radius:12px;border-left:4px solid #E08A60;font-size:16px;font-weight:800;color:#1A1A1A;line-height:1.25">
+      → Raw request와 Display copy 분리
+    </div>
+  </div>
+
+  <!-- Card 2: Domain Bias -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:684px;top:300px;width:552px;height:624px;background:#FFFFFF;border-radius:24px;border:1px solid #F2E2C9;box-shadow:0 16px 42px rgba(100,60,20,0.08);z-index:5"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:684px;top:300px;width:552px;height:8px;background:#FFB547;border-radius:24px 24px 0 0;z-index:6"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:708px;top:326px;width:504px;z-index:11">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;background:#FFF8E8;border-radius:14px;font-size:13px;font-weight:800;color:#C77E10;letter-spacing:1px">FAILURE 02</div>
+      <div style="font-size:15px;font-weight:800;color:#C77E10">업종 편향</div>
+    </div>
+    <div style="font-size:28px;font-weight:800;color:#1A1A1A;line-height:1.18;letter-spacing:-0.7px">
+      고깃집 맥락이 상품을 덮음
+    </div>
+  </div>
+  <div data-object="true" data-object-type="image" style="position:absolute;left:760px;top:408px;width:400px;height:400px;z-index:6">
+    <div style="width:100%;height:100%;border-radius:18px;overflow:hidden;background:#FAFAF7;border:1px solid #E9DCCB;box-shadow:0 14px 34px rgba(50,30,10,0.12);display:flex;align-items:center;justify-content:center">
+      <img src="../assets/ppt/04/fries_grill_bias.png" alt="고깃집 감자튀김 업종 편향 이미지" style="width:100%;height:100%;object-fit:contain;object-position:center">
+    </div>
+  </div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:708px;top:820px;width:504px;z-index:11">
+    <div style="padding:11px 14px;background:#FAFAF7;border-radius:14px;font-size:16px;font-weight:700;color:#1A1A1A;line-height:1.35">
+      감자튀김보다 불판과 고깃집 분위기가 먼저 보임
+    </div>
+    <div style="margin-top:6px;padding:9px 12px;background:#FFF8F4;border-radius:12px;border-left:4px solid #E08A60;font-size:16px;font-weight:800;color:#1A1A1A;line-height:1.25">
+      → 업종 · 상품 · 장면을 Evidence로 분리
+    </div>
+  </div>
+
+  <!-- Card 3: Unsupported Claim -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1272px;top:300px;width:552px;height:624px;background:#FFFFFF;border-radius:24px;border:1px solid #E5DBF5;box-shadow:0 16px 42px rgba(70,50,110,0.08);z-index:5"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1272px;top:300px;width:552px;height:8px;background:#C9B8E8;border-radius:24px 24px 0 0;z-index:6"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1296px;top:326px;width:504px;z-index:11">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;background:#F4EEFB;border-radius:14px;font-size:13px;font-weight:800;color:#8A6FB8;letter-spacing:1px">FAILURE 03</div>
+      <div style="font-size:15px;font-weight:800;color:#8A6FB8">근거 없는 주장</div>
+    </div>
+    <div style="font-size:28px;font-weight:800;color:#1A1A1A;line-height:1.18;letter-spacing:-0.7px">
+      "최고", "맛집"이 근거 없이 등장
+    </div>
+  </div>
+  <div data-object="true" data-object-type="image" style="position:absolute;left:1348px;top:408px;width:400px;height:400px;z-index:6">
+    <div style="width:100%;height:100%;border-radius:18px;overflow:hidden;background:#050505;border:1px solid #DED3EF;box-shadow:0 14px 34px rgba(40,25,70,0.12);display:flex;align-items:center;justify-content:center">
+      <img src="../assets/ppt/04/unsupported_claim_best_fresh_meat.png" alt="근거 없는 신선한 고기 주장 실패 이미지" style="width:100%;height:100%;object-fit:cover;object-position:center">
+    </div>
+  </div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1296px;top:820px;width:504px;z-index:11">
+    <div style="padding:11px 14px;background:#FAFAF7;border-radius:14px;font-size:16px;font-weight:700;color:#1A1A1A;line-height:1.35">
+      제공하지 않은 품질 표현과 업장 톤이 자동으로 섞임
+    </div>
+    <div style="margin-top:6px;padding:9px 12px;background:#FFF8F4;border-radius:12px;border-left:4px solid #E08A60;font-size:16px;font-weight:800;color:#1A1A1A;line-height:1.25">
+      → 근거 없는 Claim은 검수 Gate로 차단
+    </div>
+  </div>
+
+  <!-- Bottom: Invariant statement -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:944px;width:1728px;height:56px;background:#1A1A1A;border-radius:12px;z-index:5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:120px;top:958px;width:1680px;z-index:11">
+    <div style="display:flex;align-items:center;gap:16px">
+      <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:#C8E66B;border-radius:10px;font-size:11px;font-weight:800;color:#1A1A1A;letter-spacing:1px;flex-shrink:0">INVARIANT</div>
+      <div style="font-size:18px;font-weight:600;color:#FFFFFF;letter-spacing:-0.3px">
+        그럴듯한 결과보다, <span style="color:#C8E66B">입력 근거와 검증 루프</span>가 광고에서는 더 중요하다 — 이 원칙이 다음 슬라이드들의 모든 구조를 결정했습니다
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom message -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:1018px;width:1728px;z-index:10;text-align:center">
+    <div style="font-size:13px;color:#A0A0A0">실제 산출물 캡처 · 2025-2026 개발 과정에서 수집</div>
+  </div>
+
+  <!-- Page number -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1740px;top:96px;width:80px;z-index:10;text-align:right">
+    <div style="font-size:16px;font-weight:600;color:#A0A0A0;letter-spacing:1px">04 / 18</div>
+  </div>
+
+</div>
+</body>
+</html>
