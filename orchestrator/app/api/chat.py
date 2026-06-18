@@ -133,7 +133,9 @@ class ChatStartResponse(CamelModel):
     copy_candidates: list[CopyCandidate] = Field(alias="copyCandidates")
     recommended_copy_id: str | None = Field(default=None, alias="recommendedCopyId")
     copy_generation_mode: CopyGenerationMode | None = Field(default=None, alias="copyGenerationMode")
-    copy_candidate_origin: Literal["llm", "rule_based", "fallback", "unknown"] = Field(default="unknown", alias="copyCandidateOrigin")
+    copy_candidate_origin: Literal["llm", "rule_based", "fallback", "mock", "unknown"] = Field(default="unknown", alias="copyCandidateOrigin")
+    copy_fallback_used: bool = Field(default=False, alias="copyFallbackUsed")
+    copy_fallback_reason: str | None = Field(default=None, alias="copyFallbackReason")
     selected_channel_id: str | None = Field(default=None, alias="selectedChannelId")
 
 
@@ -327,6 +329,7 @@ def _copy_candidates_response(
     candidates = result.get("copy_candidates") or []
     recommended_copy_id = None
     copy_candidate_origin = str(result.get("copy_candidate_origin") or "unknown")
+    copy_fallback_used, copy_fallback_reason = _copy_fallback_status(result)
     if interrupt and interrupt.get("type") == "copy_candidate_selection":
         candidates = interrupt.get("candidates") or candidates
         recommended_copy_id = interrupt.get("recommended_candidate_id")
@@ -343,9 +346,21 @@ def _copy_candidates_response(
         copyCandidates=[_candidate_from_raw(candidate) for candidate in candidates],
         recommendedCopyId=recommended_copy_id or candidates[0].get("id"),
         copyGenerationMode=result.get("copy_generation_mode"),
-        copyCandidateOrigin=copy_candidate_origin if copy_candidate_origin in {"llm", "rule_based", "fallback"} else "unknown",
+        copyCandidateOrigin=copy_candidate_origin if copy_candidate_origin in {"llm", "rule_based", "fallback", "mock"} else "unknown",
+        copyFallbackUsed=copy_fallback_used or copy_candidate_origin in {"fallback", "mock"},
+        copyFallbackReason=copy_fallback_reason,
         selectedChannelId=_selected_channel_id_from_result(result, fallback_ad_format=fallback_ad_format),
     )
+
+
+def _copy_fallback_status(result: dict[str, Any]) -> tuple[bool, str | None]:
+    trace = result.get("copy_generation_trace") or {}
+    lineage = trace.get("lineage") if isinstance(trace, dict) else {}
+    if not isinstance(lineage, dict):
+        lineage = {}
+    fallback_used = bool(lineage.get("fallback_used") or result.get("copy_candidate_origin") in {"fallback", "mock"})
+    fallback_reason = _clean_optional_text(str(lineage.get("fallback_reason"))) if lineage.get("fallback_reason") is not None else None
+    return fallback_used, fallback_reason
 
 
 def _normalize_selected_channel_id(value: str | None) -> str | None:

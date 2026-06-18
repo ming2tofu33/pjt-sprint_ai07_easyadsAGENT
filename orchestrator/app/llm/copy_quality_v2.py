@@ -66,10 +66,10 @@ BENIGN_COPY_TERMS = {"맞춤", "완성"}
 
 def build_deterministic_copy_output_v2(state: dict[str, Any] | Any, max_candidates: int = 3) -> CopyGenerationV2Output:
     context = _context_from_state(state)
-    candidates = generate_fallback_candidates(context, max_candidates=min(3, max(1, max_candidates)))
+    candidates = generate_fallback_candidates(state, max_candidates=min(3, max(1, max_candidates)))
     ranking = rank_copy_candidates(candidates, state=state)
     return CopyGenerationV2Output(
-        message_strategy=build_message_strategy(context),
+        message_strategy=build_message_strategy(state),
         candidates=candidates,
         ranking=ranking,
         recommended_candidate_id=ranking.recommended_candidate_id,
@@ -96,7 +96,7 @@ def generate_copy_candidates_v2_actual(
 ) -> tuple[CopyGenerationV2Output, dict[str, Any]]:
     fallback = lambda: build_deterministic_copy_output_v2(state, max_candidates=max_candidates)
     context = _context_from_state(state)
-    strategy = build_message_strategy(context)
+    strategy = build_message_strategy(state)
     visual_intent = resolve_copy_visual_intent(context, selected_reference_template=(state.get("selected_reference_template") if isinstance(state, dict) else None))
     state["copy_visual_intent"] = visual_intent.model_dump()
     grounded_prompt = build_copy_generation_v2_prompt(context=context, strategy=strategy, visual_intent=visual_intent)

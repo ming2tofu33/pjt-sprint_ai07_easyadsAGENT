@@ -1,8 +1,10 @@
 import type { InferredContext } from "@/types/marketing";
 
 const CONTEXT_DISPLAY_LABELS: Record<string, string> = {
+  beauty: "뷰티/미용",
   beauty_nail: "네일",
   beauty_salon: "뷰티/미용",
+  food_and_beverage: "음식점/식당",
   brand_awareness: "브랜드 인지도",
   cafe: "카페",
   discount_event: "할인 이벤트",
@@ -10,6 +12,7 @@ const CONTEXT_DISPLAY_LABELS: Record<string, string> = {
   new_menu_launch: "신메뉴 출시",
   new_product_launch: "신상품 출시",
   reservation_cta: "예약/방문 유도",
+  retail: "매장/소매",
   restaurant: "음식점/식당",
   retention: "재방문 유도",
   review_event: "리뷰 이벤트",

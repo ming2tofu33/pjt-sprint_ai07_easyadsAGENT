@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from orchestrator.app.llm.copy_subject_anchor import resolve_copy_subject_anchor
 from orchestrator.app.llm.copy_tone_policy import resolve_copy_route_key
 from orchestrator.app.llm.option_registry import option_label_for_value
 from orchestrator.app.schemas.llm_marketing import CopyCandidate, CopyMessageStrategy
@@ -46,7 +47,7 @@ THEMES: tuple[CopyTheme, ...] = (
 
 
 def build_message_strategy(context: Any) -> CopyMessageStrategy:
-    item = _display_item(_get(context, "item_or_service"))
+    item = _display_item(_anchor_value(context))
     promotion_goal = _get(context, "promotion_goal")
     target = _get(context, "target_persona")
     brand_voice = _get(context, "brand_tone")
@@ -83,7 +84,7 @@ def build_message_strategy(context: Any) -> CopyMessageStrategy:
 
 
 def generate_fallback_candidates(context: Any, max_candidates: int = 3) -> list[CopyCandidate]:
-    item = _display_item(_get(context, "item_or_service"))
+    item = _display_item(_anchor_value(context))
     theme = resolve_copy_theme(_get(context, "business_type"))
     strategy = build_message_strategy(context)
     product_headline = theme.product_headline
@@ -201,7 +202,16 @@ def _display_item(value: str | None) -> str:
     return value
 
 
+def _anchor_value(context: Any) -> str | None:
+    return resolve_copy_subject_anchor(context).value
+
+
 def _get(context: Any, key: str) -> Any:
     if isinstance(context, dict):
-        return context.get(key)
+        if key in context:
+            return context.get(key)
+        nested = context.get("context")
+        if isinstance(nested, dict):
+            return nested.get(key)
+        return getattr(nested, key, None) if nested is not None else None
     return getattr(context, key, None)

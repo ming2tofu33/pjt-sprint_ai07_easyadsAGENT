@@ -51,6 +51,66 @@ def test_chat_start_returns_inferred_context_and_copy_candidates():
     assert payload["copyCandidateOrigin"] == "rule_based"
 
 
+def test_chat_start_normalizes_item_semantic_phrase_before_context_response():
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/marketing/chat/start",
+        json={
+            "userInput": "직화삼겹김치찌개 이미지로 한식당 광고 만들어줘",
+            "adFormat": "instagram_feed",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["context"]["itemOrService"] == "직화삼겹김치찌개"
+    assert payload["context"]["advertisedSubject"] == "직화삼겹김치찌개"
+
+
+def test_copy_candidates_response_exposes_fallback_lineage():
+    response = chat_api._copy_candidates_response(
+        {
+            "job_id": "job_fallback",
+            "thread_id": "thread_fallback",
+            "status": "waiting_copy_selection",
+            "context": {"business_type": "beauty"},
+            "copy_candidates": [{"id": "copy_1", "headline": "Fallback copy"}],
+            "copy_candidate_origin": "fallback",
+            "copy_generation_trace": {
+                "lineage": {
+                    "fallback_used": True,
+                    "fallback_reason": "api_call_disabled",
+                }
+            },
+        },
+        job_id="job_fallback",
+        thread_id="thread_fallback",
+    ).model_dump(by_alias=True)
+
+    assert response["copyCandidateOrigin"] == "fallback"
+    assert response["copyFallbackUsed"] is True
+    assert response["copyFallbackReason"] == "api_call_disabled"
+
+
+def test_copy_candidates_response_preserves_mock_origin():
+    response = chat_api._copy_candidates_response(
+        {
+            "job_id": "job_mock",
+            "thread_id": "thread_mock",
+            "status": "waiting_copy_selection",
+            "context": {"business_type": "beauty"},
+            "copy_candidates": [{"id": "copy_1", "headline": "Mock copy"}],
+            "copy_candidate_origin": "mock",
+        },
+        job_id="job_mock",
+        thread_id="thread_mock",
+    ).model_dump(by_alias=True)
+
+    assert response["copyCandidateOrigin"] == "mock"
+    assert response["copyFallbackUsed"] is True
+
+
 def test_chat_start_returns_option_question_when_context_is_missing():
     client = TestClient(app)
 

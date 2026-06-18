@@ -27,6 +27,8 @@ describe("GenerationJobInterruptStep", () => {
       ],
       recommendedCandidateId: "copy_1",
       copyCandidateOrigin: "rule_based",
+      copyFallbackUsed: false,
+      copyFallbackReason: null,
       raw: { type: "copy_candidate_selection" },
     };
 
@@ -58,6 +60,8 @@ describe("GenerationJobInterruptStep", () => {
       ],
       recommendedCandidateId: "copy_1",
       copyCandidateOrigin: "rule_based",
+      copyFallbackUsed: false,
+      copyFallbackReason: null,
       raw: { type: "copy_candidate_selection" },
     };
 
@@ -96,6 +100,8 @@ describe("GenerationJobInterruptStep", () => {
       ],
       recommendedCandidateId: "copy_1",
       copyCandidateOrigin: "rule_based",
+      copyFallbackUsed: false,
+      copyFallbackReason: null,
       raw: { type: "copy_candidate_selection" },
     };
 
@@ -121,6 +127,31 @@ describe("GenerationJobInterruptStep", () => {
     // Only 선택 완료 submits the chosen candidate.
     fireEvent.click(submit);
     expect(onSelectCopyCandidate).toHaveBeenCalledWith({ selectedCopyId: "copy_2", label: "두 번째 문구" });
+  });
+
+  it("shows fallback provenance for deferred copy candidate selection", () => {
+    const interrupt: ParsedGenerationJobInterrupt = {
+      type: "copy_candidate_selection",
+      candidates: [{ id: "copy_1", headline: "Fallback copy", subcopy: null, cta: null }],
+      recommendedCandidateId: "copy_1",
+      copyCandidateOrigin: "fallback",
+      copyFallbackUsed: true,
+      copyFallbackReason: "api_call_disabled",
+      raw: { type: "copy_candidate_selection" },
+    };
+
+    render(
+      <GenerationJobInterruptStep
+        interrupt={interrupt}
+        onBack={vi.fn()}
+        onSelectCopyCandidate={vi.fn()}
+        onSubmitCustomCopy={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(/임시 추천 문구/)).toBeTruthy();
+    expect(screen.getByText("AI 문구 생성이 완료되지 않아 기본 추천 문구를 표시했습니다.")).toBeTruthy();
+    expect(screen.queryByText(/AI 추천 문구/)).toBeNull();
   });
 
   it("renders validated compliance suggestions before legacy suggested text", () => {

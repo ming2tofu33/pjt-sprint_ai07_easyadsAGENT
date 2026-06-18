@@ -352,7 +352,17 @@ function getSelectedChannelId(payload: Record<string, unknown>, ...keys: string[
 
 function getCopyCandidateOrigin(payload: Record<string, unknown>, ...keys: string[]): CopyCandidateOrigin {
   const value = getPayloadString(payload, ...keys);
-  return value === "llm" || value === "rule_based" || value === "fallback" || value === "unknown" ? value : "unknown";
+  return value === "llm" || value === "rule_based" || value === "fallback" || value === "mock" || value === "unknown" ? value : "unknown";
+}
+
+function getPayloadBoolean(payload: Record<string, unknown>, ...keys: string[]): boolean {
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+  return false;
 }
 
 function normalizePartialContext(context: Record<string, unknown>): PartialInferredContext {
@@ -540,6 +550,8 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
         copyCandidates: interrupt.candidates as never[],
         recommendedCopyId: interrupt.recommendedCandidateId ?? null,
         copyCandidateOrigin: interrupt.copyCandidateOrigin,
+        copyFallbackUsed: interrupt.copyFallbackUsed,
+        copyFallbackReason: interrupt.copyFallbackReason,
         copyGenerationMode: fallbackCopyGenerationMode ?? "suggest_candidates",
         selectedChannelId: getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
       };
@@ -595,6 +607,8 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
       copyCandidates: copyCandidates as never[],
       recommendedCopyId: getPayloadString(payload, "recommendedCopyId", "recommended_copy_id"),
       copyCandidateOrigin: getCopyCandidateOrigin(payload, "copyCandidateOrigin", "copy_candidate_origin"),
+      copyFallbackUsed: getPayloadBoolean(payload, "copyFallbackUsed", "copy_fallback_used"),
+      copyFallbackReason: getPayloadString(payload, "copyFallbackReason", "copy_fallback_reason"),
       copyGenerationMode: fallbackCopyGenerationMode,
       selectedChannelId: getSelectedChannelId(payload, "selectedChannelId", "selected_channel_id", "adFormat", "ad_format")
     };
@@ -764,6 +778,8 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
       recommendedCopyId: null,
       copyCandidateSource: "empty",
       copyCandidateOrigin: "unknown",
+      copyFallbackUsed: false,
+      copyFallbackReason: null,
       selectedChannelId: normalizeSelectedChannelId(snapshot.response.selectedChannelId ?? snapshot.response.brief.selectedChannelId) ?? null,
       copyGenerationMode: snapshot.response.copyGenerationMode,
       imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
@@ -786,6 +802,8 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
     copyCandidates: snapshot.response.copyCandidates,
     recommendedCopyId: snapshot.response.recommendedCopyId,
     copyCandidateOrigin: snapshot.response.copyCandidateOrigin,
+    copyFallbackUsed: snapshot.response.copyFallbackUsed ?? false,
+    copyFallbackReason: snapshot.response.copyFallbackReason ?? null,
     selectedChannelId: normalizeSelectedChannelId(snapshot.response.selectedChannelId) ?? null,
     copyGenerationMode: snapshot.response.copyGenerationMode,
     imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
@@ -888,6 +906,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       recommendedCopyId: snapshot.selectedCopyId,
       copyCandidateSource: snapshot.copyCandidateSource,
       copyCandidateOrigin: snapshot.copyCandidateOrigin,
+      copyFallbackUsed: snapshot.copyFallbackUsed ?? false,
+      copyFallbackReason: snapshot.copyFallbackReason ?? null,
       selectedChannelId: normalizeSelectedChannelId(snapshot.selectedChannelId) ?? createInitialChatFlowState().selectedChannelId,
       imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceAssetId: snapshot.sourceAssetId ?? null,
@@ -937,6 +957,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         copyCandidates: [],
         copyCandidateSource: "empty" as const,
         copyCandidateOrigin: "unknown" as const,
+        copyFallbackUsed: false,
+        copyFallbackReason: null,
         selectedCopyId: "",
         selectedChannelId: selectedChannelId ?? createInitialChatFlowState().selectedChannelId,
         selectedTone: "",
@@ -959,6 +981,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         recommendedCopyId: null,
         copyCandidateSource: "empty",
         copyCandidateOrigin: "unknown",
+        copyFallbackUsed: false,
+        copyFallbackReason: null,
         selectedChannelId: normalizeSelectedChannelId(selectedChannelId) ?? null,
         copyGenerationMode: response.copyGenerationMode ?? "no_copy",
         imageGenerationEngine: response.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
@@ -1029,6 +1053,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       copyCandidates: response.copyCandidates,
       recommendedCopyId: response.recommendedCopyId,
       copyCandidateOrigin: response.copyCandidateOrigin,
+      copyFallbackUsed: response.copyFallbackUsed ?? false,
+      copyFallbackReason: response.copyFallbackReason ?? null,
       selectedChannelId: normalizeSelectedChannelId(response.selectedChannelId) ?? null,
       copyGenerationMode: response.copyGenerationMode,
       imageGenerationEngine: imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
@@ -1845,6 +1871,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       copyCandidates: state.copyCandidates,
       copyCandidateSource: state.copyCandidateSource,
       copyCandidateOrigin: state.copyCandidateOrigin,
+      copyFallbackUsed: state.copyFallbackUsed,
+      copyFallbackReason: state.copyFallbackReason,
       selectedCopyId: state.copyGenerationMode === "suggest_candidates" ? "" : state.selectedCopyId,
       selectedChannelId: brief.selectedChannelId ?? state.selectedChannelId,
       selectedTone: state.selectedTone,

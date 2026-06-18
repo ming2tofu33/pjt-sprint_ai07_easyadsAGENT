@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from orchestrator.app.llm.campaign_semantics import normalize_campaign_intent, project_legacy_promotion_goal
-from orchestrator.app.llm.domain_routing import normalize_business_type
+from orchestrator.app.llm.domain_routing import find_business_alias_span, normalize_business_type
+from orchestrator.app.llm.intake_item_normalization import ItemCandidateNormalization, normalize_item_or_service_candidate
 from orchestrator.app.llm.native_campaign_copy_rules import detect_campaign_status, strip_generic_request_language
 from orchestrator.app.schemas.brief_llm import BriefInterpreterOutput
 from orchestrator.app.schemas.input_evidence import EvidenceItem
@@ -52,6 +53,8 @@ def understand_intake(
     brief_projector: BriefProjector | None = None,
 ) -> tuple[IntakeUnderstandingResult, dict[str, Any]]:
     deterministic = build_deterministic_intake_understanding(state, text, hints=deterministic_hints)
+    deterministic_normalization = _normalization_for_deterministic_candidate(state, text, deterministic_hints)
+    deterministic_source = _deterministic_candidate_source(state, deterministic_hints)
     trace: dict[str, Any] = {
         "mode": deterministic.extraction_mode,
         "fallback_used": deterministic.fallback_used,
@@ -59,6 +62,7 @@ def understand_intake(
         "field_sources": _field_sources_for(deterministic),
         "candidate_counts": _candidate_counts_for(deterministic),
         "source_text_hash": _source_text_hash(text),
+        **_item_normalization_trace(deterministic_normalization, candidate_source=deterministic_source),
         "brief_interpreter": {
             "used": False,
             "llm_metadata": {"llm_attempted": False},
@@ -88,6 +92,15 @@ def understand_intake(
         projected_context_updates = dict(llm_updates)
         structured = _brief_output_to_structured_intake(llm_output, llm_updates, text)
         merged = _merge_structured_intake(deterministic, structured, text, llm_output.confidence)
+        structured_raw = structured.product_or_service_phrase
+        if structured_raw:
+            structured_normalization = normalize_item_or_service_candidate(
+                structured_raw,
+                source_text=text,
+                candidate_source="structured_llm",
+                ad_format=deterministic.ad_format_candidate,
+            )
+            trace.update(_item_normalization_trace(structured_normalization, candidate_source="structured_llm"))
 
     trace["mode"] = merged.extraction_mode
     trace["fallback_used"] = merged.fallback_used
@@ -113,16 +126,29 @@ def build_deterministic_intake_understanding(
     bundle = state.get("input_evidence_bundle") or {}
     user_text = str(bundle.get("user_text") or text or "").strip()
     confirmed_context = ((state.get("context") or {}) if isinstance(state.get("context"), dict) else {}) or {}
+    business_phrase, routed_business_alias = find_business_alias_span(user_text)
     business_candidate = _first_non_empty(
         confirmed_context.get("business_type"),
+        routed_business_alias,
         hints.get("business_type"),
     )
-    product_candidate = _first_non_empty(
-        confirmed_context.get("item_or_service"),
-        _first_explicit_product_mention(bundle),
-        hints.get("item_or_service"),
+    raw_product_candidate, product_candidate_source = _select_product_candidate(
+        confirmed_context=confirmed_context,
+        bundle=bundle,
+        hints=hints,
     )
-    advertised_subject, advertised_subject_type = _advertised_subject(user_text, product_candidate)
+    item_normalization = normalize_item_or_service_candidate(
+        raw_product_candidate,
+        source_text=user_text,
+        candidate_source=product_candidate_source,
+        ad_format=hints.get("ad_format"),
+    )
+    product_candidate = item_normalization.normalized_value
+    advertised_subject, advertised_subject_type = _advertised_subject(
+        user_text,
+        product_candidate,
+        business_phrase=business_phrase,
+    )
     campaign_candidate = _campaign_intent_candidate(
         user_text,
         confirmed_context.get("promotion_goal") or hints.get("promotion_goal"),
@@ -142,10 +168,17 @@ def build_deterministic_intake_understanding(
     evidence_items: list[EvidenceItem] = []
     confidence_by_field: dict[str, float] = {}
 
-    def add_scalar(field: str, value: str | None, *, confidence: float, exact_span: str | None = None) -> None:
+    def add_scalar(
+        field: str,
+        value: str | None,
+        *,
+        confidence: float,
+        exact_span: str | None = None,
+        source: str = "deterministic_parser",
+    ) -> None:
         if not value:
             return
-        item = _evidence_item(field, value, user_text=user_text, source="deterministic_parser", confidence=confidence, exact_span=exact_span)
+        item = _evidence_item(field, value, user_text=user_text, source=source, confidence=confidence, exact_span=exact_span)
         evidence_items.append(item)
         confidence_by_field[field] = confidence
 
@@ -159,10 +192,16 @@ def build_deterministic_intake_understanding(
         confidence_by_field[field] = confidence
 
     add_scalar("business_candidate", business_candidate, confidence=0.75, exact_span=_span_if_present(user_text, business_candidate))
-    add_scalar("venue_type_candidate", advertised_subject if advertised_subject_type == "business" else None, confidence=0.7, exact_span=_span_if_present(user_text, advertised_subject))
+    add_scalar("venue_type_candidate", business_phrase or (advertised_subject if advertised_subject_type == "business" else None), confidence=0.7, exact_span=_span_if_present(user_text, business_phrase or advertised_subject))
     add_scalar("advertised_subject", advertised_subject, confidence=0.72, exact_span=_span_if_present(user_text, advertised_subject))
     add_scalar("advertised_subject_type", advertised_subject_type, confidence=0.7, exact_span=_span_if_present(user_text, advertised_subject))
-    add_scalar("product_or_service_candidate", product_candidate, confidence=0.78, exact_span=_span_if_present(user_text, product_candidate))
+    add_scalar(
+        "product_or_service_candidate",
+        product_candidate,
+        confidence=0.78,
+        exact_span=_span_if_present(user_text, product_candidate),
+        source="previous_confirmed_state" if product_candidate_source == "confirmed_context" else "deterministic_parser",
+    )
     add_scalar("campaign_intent_candidate", campaign_candidate, confidence=0.8, exact_span=_campaign_span(user_text, campaign_candidate))
     add_scalar("ad_format_candidate", ad_format_candidate, confidence=0.9, exact_span=_format_span(user_text, ad_format_candidate))
     add_many("time_context", time_context, confidence=0.84)
@@ -172,7 +211,7 @@ def build_deterministic_intake_understanding(
 
     return IntakeUnderstandingResult(
         business_candidate=business_candidate,
-        venue_type_candidate=advertised_subject if advertised_subject_type == "business" else None,
+        venue_type_candidate=business_phrase or (advertised_subject if advertised_subject_type == "business" else None),
         advertised_subject=advertised_subject,
         advertised_subject_type=advertised_subject_type,
         product_or_service_candidate=product_candidate,
@@ -203,13 +242,28 @@ def project_intake_to_context(result: IntakeUnderstandingResult) -> tuple[dict[s
 
     normalized = normalize_business_type(result.business_candidate)
     metadata["domain_routing_result"] = normalized.model_dump()
-    if normalized.business_type:
+    if normalized.business_type and _should_project_business_type(result):
         updates["business_type"] = normalized.business_type
-    projected_item = _projectable_item_or_service(result.product_or_service_candidate)
-    if projected_item is None and result.extraction_mode == "hybrid_structured_llm":
-        projected_item = _normalize_phrase(result.product_or_service_candidate)
+    elif _should_project_business_type(result) and normalized.canonical_domain.value in {"food_and_beverage", "beauty", "retail"}:
+        updates["business_type"] = normalized.canonical_domain.value
+    candidate_source = _candidate_source_from_result(result)
+    item_normalization = normalize_item_or_service_candidate(
+        result.product_or_service_candidate,
+        source_text=_source_text_proxy(result) or "",
+        candidate_source=candidate_source,
+        ad_format=result.ad_format_candidate,
+    )
+    metadata.update(_item_normalization_trace(item_normalization, candidate_source=candidate_source))
+    projected_item, rejection_reason = _project_item_candidate(
+        item_normalization.normalized_value,
+        source_text=_source_text_proxy(result),
+    )
+    if rejection_reason:
+        metadata["rejected_item_candidate"] = _normalize_phrase(result.product_or_service_candidate)
+        metadata["rejection_reason"] = rejection_reason
     if projected_item and result.advertised_subject_type in {"product", "service"}:
         updates["item_or_service"] = projected_item
+        metadata["normalized_advertised_subject"] = projected_item
     promotion_goal = _promotion_goal_from_candidate(result.campaign_intent_candidate)
     if promotion_goal:
         updates["promotion_goal"] = promotion_goal
@@ -247,6 +301,8 @@ def _brief_output_to_structured_intake(
     llm_updates: dict[str, Any],
     source_text: str,
 ) -> StructuredIntakeOutput:
+    exact_business_phrase, _ = find_business_alias_span(source_text)
+    business_phrase = exact_business_phrase or _normalize_phrase(llm_output.business_type) or _business_subject_phrase(source_text)
     product_phrase = _normalize_phrase(llm_updates.get("item_or_service") or llm_output.item_or_service)
     advertised_subject = product_phrase or _business_subject_phrase(source_text)
     if product_phrase:
@@ -263,12 +319,12 @@ def _brief_output_to_structured_intake(
     )
     target_phrases = tuple(value for value in (_normalize_phrase(llm_output.target_persona),) if value)
     return StructuredIntakeOutput(
-        business_candidate_phrase=None,
-        venue_candidate_phrase=_normalize_phrase(_business_subject_phrase(source_text)),
+        business_candidate_phrase=business_phrase,
+        venue_candidate_phrase=exact_business_phrase or _normalize_phrase(_business_subject_phrase(source_text)),
         advertised_subject=advertised_subject,
         advertised_subject_type=advertised_subject_type,
         product_or_service_phrase=product_phrase,
-        campaign_intent_phrase=_normalize_phrase(llm_output.promotion_goal),
+        campaign_intent_phrase=_normalize_phrase(llm_updates.get("promotion_goal") or llm_output.promotion_goal),
         tone_phrases=tone_phrases,
         target_phrases=target_phrases,
     )
@@ -280,10 +336,25 @@ def _merge_structured_intake(
     source_text: str,
     llm_confidence: float,
 ) -> IntakeUnderstandingResult:
-    business_candidate = deterministic.business_candidate
-    product_candidate = structured.product_or_service_phrase or deterministic.product_or_service_candidate
+    business_candidate = structured.business_candidate_phrase or deterministic.business_candidate
+    raw_product_candidate = structured.product_or_service_phrase or deterministic.product_or_service_candidate
+    item_normalization = normalize_item_or_service_candidate(
+        raw_product_candidate,
+        source_text=source_text,
+        candidate_source="structured_llm" if structured.product_or_service_phrase else _candidate_source_from_result(deterministic),
+        ad_format=deterministic.ad_format_candidate,
+    )
+    product_candidate, _ = _project_item_candidate(
+        item_normalization.normalized_value,
+        source_text=source_text,
+    )
     advertised_subject = structured.advertised_subject or deterministic.advertised_subject
     advertised_subject_type = structured.advertised_subject_type or deterministic.advertised_subject_type
+    if product_candidate and advertised_subject_type in {"product", "service"}:
+        advertised_subject = product_candidate
+    if product_candidate is None and advertised_subject_type in {"product", "service"}:
+        advertised_subject = structured.business_candidate_phrase or structured.venue_candidate_phrase or deterministic.advertised_subject
+        advertised_subject_type = "business" if advertised_subject else None
     campaign_candidate = normalize_campaign_intent(
         structured.campaign_intent_phrase or deterministic.campaign_intent_candidate,
         advertised_subject_type=advertised_subject_type,
@@ -306,6 +377,7 @@ def _merge_structured_intake(
             )
         )
 
+    add_if_present("business_candidate", business_candidate)
     add_if_present("advertised_subject", advertised_subject)
     add_if_present("advertised_subject_type", advertised_subject_type)
     add_if_present("product_or_service_candidate", product_candidate)
@@ -320,6 +392,8 @@ def _merge_structured_intake(
     confidence_map = dict(deterministic.confidence_by_field)
     if product_candidate:
         confidence_map["product_or_service_candidate"] = llm_confidence
+    if business_candidate:
+        confidence_map["business_candidate"] = llm_confidence
     if campaign_candidate:
         confidence_map["campaign_intent_candidate"] = llm_confidence
     if tone_candidates:
@@ -330,7 +404,7 @@ def _merge_structured_intake(
     ambiguity_flags = tuple(dict.fromkeys([*deterministic.ambiguity_flags, *_ambiguity_flags(business_candidate, source_text)]))
     return IntakeUnderstandingResult(
         business_candidate=business_candidate,
-        venue_type_candidate=deterministic.venue_type_candidate,
+        venue_type_candidate=structured.venue_candidate_phrase or deterministic.venue_type_candidate,
         advertised_subject=advertised_subject,
         advertised_subject_type=advertised_subject_type,
         product_or_service_candidate=product_candidate,
@@ -379,10 +453,91 @@ def _first_explicit_product_mention(bundle: dict[str, Any]) -> str | None:
     return _normalize_phrase(str(mentions[0]))
 
 
-def _advertised_subject(text: str, product_candidate: str | None) -> tuple[str | None, str | None]:
+def _select_product_candidate(
+    *,
+    confirmed_context: dict[str, Any],
+    bundle: dict[str, Any],
+    hints: dict[str, str | None],
+) -> tuple[str | None, str]:
+    confirmed = _normalize_phrase(confirmed_context.get("item_or_service"))
+    if confirmed:
+        return confirmed, "confirmed_context"
+    explicit = _first_explicit_product_mention(bundle)
+    if explicit:
+        return explicit, "explicit_product_mention"
+    hint = _normalize_phrase(hints.get("item_or_service"))
+    if hint:
+        return hint, "deterministic_hint"
+    return None, "unknown"
+
+
+def _normalization_for_deterministic_candidate(
+    state: dict[str, Any],
+    text: str,
+    hints: dict[str, str | None],
+) -> ItemCandidateNormalization:
+    bundle = state.get("input_evidence_bundle") or {}
+    confirmed_context = state.get("context") if isinstance(state.get("context"), dict) else {}
+    raw, source = _select_product_candidate(
+        confirmed_context=confirmed_context or {},
+        bundle=bundle,
+        hints=hints,
+    )
+    return normalize_item_or_service_candidate(
+        raw,
+        source_text=str(bundle.get("user_text") or text or ""),
+        candidate_source=source,
+        ad_format=hints.get("ad_format"),
+    )
+
+
+def _deterministic_candidate_source(state: dict[str, Any], hints: dict[str, str | None]) -> str:
+    bundle = state.get("input_evidence_bundle") or {}
+    confirmed_context = state.get("context") if isinstance(state.get("context"), dict) else {}
+    _, source = _select_product_candidate(
+        confirmed_context=confirmed_context or {},
+        bundle=bundle,
+        hints=hints,
+    )
+    return source
+
+
+def _candidate_source_from_result(result: IntakeUnderstandingResult) -> str:
+    for item in reversed(result.evidence_items):
+        if item.key != "product_or_service_candidate":
+            continue
+        if item.source == "structured_llm":
+            return "structured_llm"
+        if item.source in {"user_option", "previous_confirmed_state"}:
+            return "confirmed_user_answer"
+        return "explicit_product_mention" if item.usable_for_copy else "deterministic_hint"
+    return "unknown"
+
+
+def _item_normalization_trace(
+    normalization: ItemCandidateNormalization,
+    *,
+    candidate_source: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "item_candidate_source": candidate_source or "unknown",
+        "raw_item_or_service_candidate": normalization.raw_value,
+        "normalized_item_or_service_candidate": normalization.normalized_value,
+        "removed_non_subject_fragments": list(normalization.removed_fragments),
+        "item_normalization_reason_codes": list(normalization.reason_codes),
+        "item_normalization_confidence": normalization.confidence,
+    }
+
+
+def _advertised_subject(
+    text: str,
+    product_candidate: str | None,
+    *,
+    business_phrase: str | None = None,
+) -> tuple[str | None, str | None]:
     if product_candidate:
         return product_candidate, "service" if _looks_like_service_phrase(product_candidate) else "product"
-    business_subject = _business_subject_phrase(text)
+    business_subject = business_phrase or _business_subject_phrase(text)
     if business_subject:
         return business_subject, "business"
     return None, None
@@ -491,6 +646,69 @@ def _projectable_item_or_service(value: str | None) -> str | None:
     if re.fullmatch(r"[A-Za-z0-9 _-]+", candidate):
         return None
     return candidate
+
+
+def _project_item_candidate(
+    value: str | None,
+    *,
+    source_text: str | None = None,
+) -> tuple[str | None, str | None]:
+    candidate = _normalize_phrase(value)
+    if not candidate:
+        return None, None
+    source = _normalize_phrase(source_text)
+    if source:
+        if candidate == source:
+            return None, "whole_prompt_candidate"
+        if len(candidate) >= 40 and len(candidate) / max(len(source), 1) >= 0.55:
+            return None, "whole_prompt_candidate"
+        if candidate in source and len(candidate) >= 40:
+            return None, "instruction_residue_or_whole_prompt"
+    if _contains_request_or_brief_residue(candidate):
+        return None, "instruction_residue_or_whole_prompt"
+    projected = _projectable_item_or_service(candidate)
+    if projected is None and re.fullmatch(r"[A-Za-z0-9 _-]+", candidate):
+        if len(candidate.split()) >= 2:
+            return candidate, None
+        return None, "non_specific_ascii_phrase"
+    return projected, None
+
+
+def _contains_request_or_brief_residue(value: str) -> bool:
+    lowered = value.lower()
+    if re.search(r"\b(?:create|make|poster|banner|flyer|advertisement|ad)\b", lowered):
+        return True
+    return any(
+        token in value
+        for token in (
+            "만들어",
+            "제작",
+            "광고",
+            "포스터",
+            "배너",
+            "전단지",
+            "상세페이지",
+            "분위기",
+            "느낌",
+            "타깃",
+            "대상",
+            "타겟",
+        )
+    )
+
+
+def _source_text_proxy(result: IntakeUnderstandingResult) -> str | None:
+    source_refs = [item.source_ref for item in result.evidence_items if isinstance(item.source_ref, str) and item.source_ref.strip()]
+    if not source_refs:
+        return None
+    return max(source_refs, key=len)
+
+
+def _should_project_business_type(result: IntakeUnderstandingResult) -> bool:
+    for item in result.evidence_items:
+        if item.key == "business_candidate" and item.source != "structured_llm":
+            return True
+    return False
 
 
 def _normalize_phrase(value: str | None) -> str | None:

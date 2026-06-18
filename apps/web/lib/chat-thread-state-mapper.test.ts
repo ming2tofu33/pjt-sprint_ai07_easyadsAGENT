@@ -240,6 +240,42 @@ describe("mapChatThreadSnapshotToRestoreState", () => {
     });
   });
 
+  it("restores copy fallback provenance from pending interrupt metadata", () => {
+    const restore = mapChatThreadSnapshotToRestoreState({
+      snapshot_id: "snapshot_fallback_interrupt",
+      thread_id: "thread_fallback_interrupt",
+      job_id: "job_fallback_interrupt",
+      snapshot_version: 1,
+      schema_version: 1,
+      snapshot_kind: "waiting_user_input",
+      state_payload: {
+        user_input: "Fallback copy request",
+        copy_generation_mode: "suggest_candidates",
+        copy_candidates: [{ id: "copy_1", headline: "Fallback copy" }],
+        copy_candidate_origin: "fallback",
+        pending_interrupt: {
+          type: "copy_candidate_selection",
+          candidates: [{ id: "copy_1", headline: "Fallback copy" }],
+          metadata: {
+            copy_fallback_used: true,
+            copy_fallback_reason: "api_call_disabled",
+          },
+        },
+      },
+      changed_fields: [],
+      reference_template_snapshot: {},
+      brand_kit_snapshot: {},
+      metadata: {},
+      created_at: "2026-06-18T00:00:00+00:00",
+    });
+
+    expect(restore).toMatchObject({
+      copyCandidateOrigin: "fallback",
+      copyFallbackUsed: true,
+      copyFallbackReason: "api_call_disabled",
+    });
+  });
+
   it("normalizes ad_format fallback into the canonical selected channel id", () => {
     const restore = mapChatThreadSnapshotToRestoreState({
       snapshot_id: "snapshot_banner",
