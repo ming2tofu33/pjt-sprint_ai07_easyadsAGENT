@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Response, status
 
 from orchestrator.app.api.chat import _forced_user_plan
 from orchestrator.app.api.errors import raise_api_error
@@ -38,6 +38,7 @@ from orchestrator.app.generation_jobs.service import (
     should_route_generation_job_to_modal,
 )
 from orchestrator.app.db import settings as db_settings
+from orchestrator.app.observability.performance import current_perf_context
 from orchestrator.app.chat_threads.errors import ChatThreadServiceError
 from orchestrator.app.reference_catalog.service import get_reference_template
 
@@ -295,6 +296,9 @@ def create_generation_job_route(
     principal: RequestPrincipal = Depends(_request_principal),
 ) -> GenerationJobCreateResponse:
     request = _scoped_create_request(request, principal)
+    perf_context = current_perf_context()
+    if perf_context.get("trace_id") or perf_context.get("request_id"):
+        request = request.model_copy(update={"metadata": {**(request.metadata or {}), "trace_id": perf_context.get("trace_id"), "request_id": perf_context.get("request_id"), "job_created_at": __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat()}})
     forced_plan = _forced_user_plan()
     if forced_plan:
         request = request.model_copy(update={"user_plan": forced_plan})
@@ -333,6 +337,7 @@ def create_generation_job_route(
 @router.get("/generation-jobs/{job_id}", response_model=GenerationJobGetResponse)
 def get_generation_job_route(
     job_id: str,
+    response: Response,
     workspace_id: str | None = None,
     principal: RequestPrincipal = Depends(_request_principal),
 ) -> GenerationJobGetResponse:
@@ -366,6 +371,9 @@ def get_generation_job_route(
     job = maybe_mark_stale_generation_job_failed(job, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
     if job.status != "failed":
         job = maybe_poll_generation_job_from_modal(job, workspace_id=resolved_workspace_id, user_id=resolved_user_id)
+    trace_id = (job.metadata or {}).get("trace_id")
+    if trace_id:
+        response.headers["X-EasyAds-Trace-Id"] = str(trace_id)
     return GenerationJobGetResponse(job=job)
 
 

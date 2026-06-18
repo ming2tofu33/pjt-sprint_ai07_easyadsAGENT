@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from uuid import UUID
 
 from orchestrator.app.api.chat import router as chat_router
 from orchestrator.app.api.internal_auth import enforce_internal_secret
@@ -40,7 +41,11 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def performance_middleware(request: Request, call_next):
-        trace_id = request.headers.get("X-EasyAds-Trace-Id") or new_trace_id()
+        incoming_trace = request.headers.get("X-EasyAds-Trace-Id")
+        try:
+            trace_id = str(UUID(incoming_trace)) if incoming_trace and len(incoming_trace) <= 36 else new_trace_id()
+        except (ValueError, AttributeError):
+            trace_id = new_trace_id()
         request_id = request.headers.get("X-Request-Id") or new_request_id()
         tokens = bind_perf_context(trace_id=trace_id, request_id=request_id)
         started_at = __import__("time").perf_counter_ns()
@@ -48,6 +53,7 @@ def create_app() -> FastAPI:
         exception_type = None
         try:
             response = await call_next(request)
+            response.headers.setdefault("X-EasyAds-Trace-Id", trace_id)
             response.headers.setdefault("X-Request-Id", request_id)
             return response
         except Exception as exc:
