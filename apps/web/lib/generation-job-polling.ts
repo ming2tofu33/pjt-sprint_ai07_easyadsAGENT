@@ -12,6 +12,26 @@ function normalized(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+export function isWaitingGenerationJob(job: GenerationJob): boolean {
+  const status = normalized(job.status);
+  const stage = normalized(job.progress?.current_stage ?? job.current_stage);
+  return status === "waiting_user_input" || stage === "waiting_user_input";
+}
+
+export function isTerminalGenerationJob(job: GenerationJob): boolean {
+  const terminal = ["done", "completed", "failed", "cancelled"];
+  const status = normalized(job.status);
+  const stage = normalized(job.progress?.current_stage ?? job.current_stage);
+  return terminal.includes(status) || terminal.includes(stage);
+}
+
+export function isFailedGenerationJob(job: GenerationJob): boolean {
+  const failed = ["failed", "cancelled"];
+  const status = normalized(job.status);
+  const stage = normalized(job.progress?.current_stage ?? job.current_stage);
+  return failed.includes(status) || failed.includes(stage);
+}
+
 export function getGenerationJobPollingDecision(input: {
   job: GenerationJob;
   attempt: number;
@@ -21,10 +41,10 @@ export function getGenerationJobPollingDecision(input: {
   const status = normalized(input.job.status);
   const stage = normalized(input.job.progress?.current_stage ?? input.job.current_stage);
 
-  if (["done", "completed", "failed", "cancelled"].includes(status)) {
+  if (isTerminalGenerationJob(input.job)) {
     return { shouldContinue: false, delayMs: 0, reason: `terminal_${status}` };
   }
-  if (status === "waiting_user_input" || stage === "waiting_user_input") {
+  if (isWaitingGenerationJob(input.job)) {
     return { shouldContinue: false, delayMs: 0, reason: "waiting_user_input" };
   }
   if (input.consecutiveErrors >= MAX_CONSECUTIVE_POLL_ERRORS) {

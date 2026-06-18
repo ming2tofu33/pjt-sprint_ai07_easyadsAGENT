@@ -621,9 +621,13 @@ describe("api-client backend contract routes", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await getGenerationJob("job_signal", { signal: controller.signal });
+    await getGenerationJob("job_signal", {
+      signal: controller.signal,
+      authContext: { authorizationHeaders: { authorization: "Bearer pre_resolved" } }
+    });
 
     expect(fetchMock.mock.calls[0][1]?.signal).toBe(controller.signal);
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(expect.objectContaining({ authorization: "Bearer pre_resolved" }));
   });
 
   it("normalizes upstream orchestrator failures into retryable Korean copy", async () => {

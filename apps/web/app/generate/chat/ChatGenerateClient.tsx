@@ -49,6 +49,9 @@ import {
 import {
   getGenerationJobPollingDecision,
   isAbortError,
+  isFailedGenerationJob,
+  isTerminalGenerationJob,
+  isWaitingGenerationJob,
   MAX_CONSECUTIVE_POLL_ERRORS,
   withPollingJitter
 } from "@/lib/generation-job-polling";
@@ -91,7 +94,6 @@ import { getPendingGenerationJobParsedInterrupt } from "@/lib/generation-job-int
 import {
   DEFAULT_IMAGE_GENERATION_ENGINE,
   getGenerationEngineOption,
-  isTerminalGenerationJobStatus,
   resolveGenerationRunMode,
   type ImageGenerationEngine
 } from "@/lib/generation-engine";
@@ -562,7 +564,7 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
   const context = extractGenerationJobContext(payload, metadata);
   const threadId = job.thread_id ?? `thread_${job.job_id}`;
 
-  if (job.status === "waiting_user_input") {
+  if (isWaitingGenerationJob(job)) {
     const interrupt = getPendingGenerationJobParsedInterrupt(job);
     if (interrupt?.type === "copy_candidate_selection") {
       return {
@@ -658,7 +660,7 @@ export function generationJobToChatTurnResponse(job: GenerationJob, fallbackCopy
 }
 
 function shouldPollInitialGenerationJob(job: GenerationJob): boolean {
-  return job.status !== "waiting_user_input" && !isTerminalGenerationJobStatus(job.status);
+  return !isWaitingGenerationJob(job) && !isTerminalGenerationJob(job);
 }
 
 function mergeContextFromTurnResponse(
@@ -1254,7 +1256,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           clearGenerationFailureSnapshot();
           setShowHistory(false);
 
-          if (job.status === "waiting_user_input") {
+          if (isWaitingGenerationJob(job)) {
             const restoreIntake: InitialChatIntakeContext | undefined = restoreState
               ? {
                   prompt: restoreState.prompt,
@@ -1277,7 +1279,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
             }
           }
 
-          if (isTerminalGenerationJobStatus(job.status)) {
+          if (isTerminalGenerationJob(job)) {
             setGenerationStage("complete");
             lastPrimedStageRef.current = "complete";
             return;
@@ -1404,7 +1406,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
             if (stopForGenerationJobWaitingState(waitingJob, restoreIntake)) {
               return;
             }
-            if (isTerminalGenerationJobStatus(waitingJob.status)) {
+            if (isTerminalGenerationJob(waitingJob)) {
               setGenerationStage("complete");
               lastPrimedStageRef.current = "complete";
               return;
@@ -1466,7 +1468,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         ) {
           return;
         }
-        if (isTerminalGenerationJobStatus(restoreState.generationJob.status)) {
+        if (isTerminalGenerationJob(restoreState.generationJob)) {
           setGenerationStage("complete");
           lastPrimedStageRef.current = "complete";
           return;
@@ -1546,7 +1548,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
   useEffect(() => {
     const job = state.generationJob;
-    if (appSurface !== "chat" || generationStage !== "complete" || !job || isTerminalGenerationJobStatus(job.status)) {
+    if (appSurface !== "chat" || generationStage !== "complete" || !job || isTerminalGenerationJob(job)) {
       return;
     }
 
@@ -1558,7 +1560,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       let currentJob = initialJob;
       let attempt = 0;
       let consecutiveErrors = 0;
-      while (isActive && !isTerminalGenerationJobStatus(currentJob.status)) {
+      while (isActive && !isTerminalGenerationJob(currentJob)) {
         const decision = getGenerationJobPollingDecision({
           job: currentJob,
           attempt,
@@ -1700,7 +1702,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
 
       const pendingInterrupt = getPendingGenerationJobParsedInterrupt(response.job);
       if (
-        response.job.status === "waiting_user_input" &&
+        isWaitingGenerationJob(response.job) &&
         pendingInterrupt &&
         pendingInterrupt.type !== "option_question"
       ) {
@@ -2078,7 +2080,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     if (stopForGenerationJobInterrupt(job, initialChatIntake)) {
       return true;
     }
-    if (job.status !== "waiting_user_input") {
+    if (!isWaitingGenerationJob(job)) {
       return false;
     }
 
@@ -2150,9 +2152,9 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
             recordRenderMark("poll_waiting_user_input");
             return currentJob;
           }
-          if (isTerminalGenerationJobStatus(currentJob.status)) {
+          if (isTerminalGenerationJob(currentJob)) {
             recordRenderMark("poll_terminal_detected");
-            recordRenderMark("result_detail_requested");
+            recordRenderMark("terminal_payload_reused");
             break;
           }
         } catch (error) {
@@ -2179,15 +2181,15 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       }
     }
 
-    if (currentJob.status === "waiting_user_input") {
+    if (isWaitingGenerationJob(currentJob)) {
       throw new Error("추가 질문 정보를 받지 못했어요. 잠시 후 다시 시도해주세요.");
     }
 
-    if (!isTerminalGenerationJobStatus(currentJob.status)) {
+    if (!isTerminalGenerationJob(currentJob)) {
       throw new Error("작업이 예상보다 오래 걸리고 있어요. 잠시 후 다시 확인해 주세요.");
     }
 
-    if (initialChatIntake && currentJob.status !== "failed" && currentJob.status !== "cancelled") {
+    if (initialChatIntake && !isFailedGenerationJob(currentJob)) {
       const turnResponse = generationJobToChatTurnResponse(currentJob, initialChatIntake.copyGenerationMode);
       writeChatTurnSnapshot({
         ...initialChatIntake,
