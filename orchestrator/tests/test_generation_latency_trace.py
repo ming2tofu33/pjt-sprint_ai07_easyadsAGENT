@@ -1,36 +1,33 @@
-from orchestrator.app.observability.latency_trace import LatencySpan, build_report, critical_path, redact
+import pytest
+from orchestrator.app.observability.latency_trace import LatencySpan, build_report, critical_path, interval_union_ms, redact
 
+def s(name,duration,*,deps=None,offset=0,container=False,kind="deterministic",attrs=None,parent=None):
+    return LatencySpan(trace_id="t",span_id=name,parent_span_id=parent,layer="x",operation=name,kind=kind,started_offset_ms=offset,ended_offset_ms=offset+duration,duration_ms=duration,is_container_span=container,depends_on_span_ids=deps or [],attributes=attrs or {})
 
-def span(name, duration, *, parent=None, kind="deterministic", offset=0, attributes=None):
-    return LatencySpan(trace_id="trace_1", span_id=name, parent_span_id=parent, layer="test", operation=name,
-                       kind=kind, duration_ms=duration, started_offset_ms=offset, attributes=attributes or {})
+def test_safe_telemetry_token_redaction():
+    value=redact({"input_tokens":120,"cached_tokens":80,"access_token":"abc","refresh_token":"abc","nested":{"authorization":"x"},"raw_prompt":"p"})
+    assert value=={"input_tokens":120,"cached_tokens":80,"access_token":"[REDACTED]","refresh_token":"[REDACTED]","nested":{"authorization":"[REDACTED]"},"raw_prompt":"[REDACTED]"}
 
+def test_container_not_double_counted():
+    duration,_=critical_path([s("graph",470,container=True),s("a",100),s("b",150,deps=["a"]),s("c",200,deps=["b"])])
+    assert duration==450
 
-def test_span_duration_and_nested_critical_path():
-    spans = [span("root", 10), span("a", 100, parent="root"), span("b", 30, parent="a")]
-    duration, path = critical_path(spans)
-    assert duration == 140
-    assert [item.operation for item in path] == ["root", "a", "b"]
+def test_sequential_and_parallel_dag():
+    assert critical_path([s("a",100),s("b",150,deps=["a"]),s("c",200,deps=["b"])])[0]==450
+    assert critical_path([s("a",150),s("b",200)])[0]==200
 
+def test_provider_child_hierarchy_not_dependency():
+    assert critical_path([s("node",200),s("provider",180,parent="node",kind="llm")])[0]==200
 
-def test_parallel_siblings_are_not_summed_on_critical_path():
-    spans = [span("root", 5), span("slow", 100, parent="root"), span("fast", 20, parent="root")]
-    duration, path = critical_path(spans)
-    assert duration == 105
-    assert [item.operation for item in path] == ["root", "slow"]
+def test_overlapping_intervals_union():
+    assert interval_union_ms([s("a",150,offset=0),s("b",200,offset=100)])==300
 
+def test_cycle_fails():
+    with pytest.raises(ValueError,match="cycle"): critical_path([s("a",1,deps=["b"]),s("b",1,deps=["a"])])
 
-def test_token_usage_and_serial_llm_classification():
-    spans = [span("root", 10), span("llm1", 60, parent="root", kind="llm", attributes={"input_tokens": 10, "cached_tokens": 2}),
-             span("llm2", 50, parent="llm1", kind="llm", attributes={"input_tokens": 20, "cached_tokens": 0})]
-    report = build_report("trace_1", spans, total_wall_ms=120)
-    assert report.llm_call_count == 2
-    assert report.input_tokens == 30
-    assert report.cached_tokens == 2
-    assert report.dominant_latency_class == "GRAPH_SERIAL_LLM_ACCUMULATION"
-
-
-def test_redaction_blocks_secrets_and_raw_prompts():
-    value = redact({"authorization": "Bearer secret", "raw_prompt": "private", "safe": {"count": 2}})
-    assert value == {"authorization": "[REDACTED]", "raw_prompt": "[REDACTED]", "safe": {"count": 2}}
+def test_missing_parent_allowed_and_tokens_aggregate():
+    spans=[s("a",60,kind="llm",parent="missing",attrs={"input_tokens":10,"cached_tokens":2}),s("b",50,kind="llm",deps=["a"],attrs={"input_tokens":20,"cached_tokens":3})]
+    report=build_report("t",spans,total_wall_ms=120,source="instrumented_mock")
+    assert (report.input_tokens,report.cached_tokens)==(30,5)
+    assert report.dominant_latency_class=="INSUFFICIENT_EVIDENCE"
 

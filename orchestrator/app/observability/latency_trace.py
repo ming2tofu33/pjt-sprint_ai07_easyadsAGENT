@@ -6,11 +6,11 @@ from collections import defaultdict
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-
-JSONSafeValue = str | int | float | bool | None | list["JSONSafeValue"] | dict[str, "JSONSafeValue"]
-_SENSITIVE = {"authorization", "cookie", "access_token", "api_key", "prompt", "raw_prompt", "raw_response", "email"}
+SAFE_TELEMETRY_TOKEN_KEYS = {"input_tokens", "output_tokens", "cached_tokens", "reasoning_tokens", "token_source"}
+SENSITIVE_EXACT_KEYS = {"access_token", "refresh_token", "authorization", "cookie", "api_key", "secret", "password", "raw_prompt", "raw_response", "email"}
+SENSITIVE_SUFFIX_KEYS = ("_access_token", "_refresh_token", "_api_key", "_secret", "_password")
 
 
 class LatencySpan(BaseModel):
@@ -19,24 +19,30 @@ class LatencySpan(BaseModel):
     parent_span_id: str | None = None
     layer: str
     operation: str
-    kind: Literal["deterministic", "llm", "db", "external_io", "interrupt", "persistence", "network", "ui"]
-    duration_ms: float = Field(ge=0)
-    status: str = "ok"
+    kind: Literal["deterministic", "llm", "db", "external_io", "interrupt", "persistence", "network", "ui", "unknown"]
     started_offset_ms: float = Field(default=0, ge=0)
+    ended_offset_ms: float | None = Field(default=None, ge=0)
+    duration_ms: float = Field(ge=0)
+    is_container_span: bool = False
+    depends_on_span_ids: list[str] = Field(default_factory=list)
+    parallel_group_id: str | None = None
+    status: str = "ok"
     attributes: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_timing(self):
+        if self.ended_offset_ms is None:
+            self.ended_offset_ms = self.started_offset_ms + self.duration_ms
+        if self.ended_offset_ms < self.started_offset_ms:
+            raise ValueError("ended_offset_ms must be >= started_offset_ms")
+        if abs((self.ended_offset_ms - self.started_offset_ms) - self.duration_ms) > 1.0:
+            raise ValueError("duration_ms must match ended_offset_ms - started_offset_ms")
+        return self
 
 
 class GenerationLatencyReport(BaseModel):
     trace_id: str
     total_wall_ms: float
-    browser_to_bff_ms: float | None = None
-    bff_auth_ms: float | None = None
-    bff_to_orchestrator_ms: float | None = None
-    job_create_ms: float | None = None
-    graph_queue_wait_ms: float | None = None
-    graph_execution_ms: float | None = None
-    graph_persist_ms: float | None = None
-    terminal_to_ui_ms: float | None = None
     llm_call_count: int = 0
     llm_sequential_call_count: int = 0
     llm_total_sum_ms: float = 0
@@ -47,18 +53,23 @@ class GenerationLatencyReport(BaseModel):
     input_tokens: int | None = None
     output_tokens: int | None = None
     cached_tokens: int | None = None
-    cold_start_suspected: bool = False
+    reasoning_tokens: int | None = None
     dominant_latency_class: str = "INSUFFICIENT_EVIDENCE"
     confidence: float = 0
-    evidence_codes: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    counter_evidence: list[str] = Field(default_factory=list)
+    measurement_source: str = "unavailable"
+    additional_measurement_needed: list[str] = Field(default_factory=list)
 
 
 def safe_hash(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(value.encode()).hexdigest()[:16]
 
 
-def redact(value: Any, key: str = "") -> JSONSafeValue:
-    if key.lower() in _SENSITIVE or any(part in key.lower() for part in ("secret", "token", "password")):
+def redact(value: Any, key: str = "") -> Any:
+    normalized = key.lower()
+    sensitive = normalized in SENSITIVE_EXACT_KEYS or normalized.endswith(SENSITIVE_SUFFIX_KEYS)
+    if normalized not in SAFE_TELEMETRY_TOKEN_KEYS and sensitive:
         return "[REDACTED]"
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
@@ -69,53 +80,72 @@ def redact(value: Any, key: str = "") -> JSONSafeValue:
     return str(value)
 
 
+def _execution_spans(spans: list[LatencySpan]) -> list[LatencySpan]:
+    return [span for span in spans if not span.is_container_span]
+
+
 def critical_path(spans: list[LatencySpan]) -> tuple[float, list[LatencySpan]]:
-    """Return longest parent/child path. Siblings are treated as parallel."""
-    by_parent: dict[str | None, list[LatencySpan]] = defaultdict(list)
-    ids = {span.span_id for span in spans}
-    for span in spans:
-        by_parent[span.parent_span_id if span.parent_span_id in ids else None].append(span)
+    """Longest execution-dependency DAG path; hierarchy never implies dependency."""
+    execution = _execution_spans(spans)
+    by_id = {span.span_id: span for span in execution}
+    state: dict[str, int] = {}
+    memo: dict[str, tuple[float, list[LatencySpan]]] = {}
 
-    def visit(span: LatencySpan, seen: frozenset[str]) -> tuple[float, list[LatencySpan]]:
-        if span.span_id in seen:
-            return 0, []
-        children = [visit(child, seen | {span.span_id}) for child in by_parent[span.span_id]]
-        child_ms, child_path = max(children, key=lambda item: item[0], default=(0, []))
-        return span.duration_ms + child_ms, [span, *child_path]
+    def visit(span_id: str) -> tuple[float, list[LatencySpan]]:
+        if state.get(span_id) == 1:
+            raise ValueError(f"dependency cycle detected at {span_id}")
+        if span_id in memo:
+            return memo[span_id]
+        state[span_id] = 1
+        span = by_id[span_id]
+        dependencies = [visit(dep) for dep in span.depends_on_span_ids if dep in by_id]
+        previous_ms, previous_path = max(dependencies, key=lambda item: item[0], default=(0.0, []))
+        result = previous_ms + span.duration_ms, [*previous_path, span]
+        state[span_id] = 2
+        memo[span_id] = result
+        return result
 
-    return max((visit(root, frozenset()) for root in by_parent[None]), key=lambda item: item[0], default=(0, []))
+    return max((visit(span_id) for span_id in by_id), key=lambda item: item[0], default=(0.0, []))
 
 
-def build_report(trace_id: str, spans: list[LatencySpan], *, total_wall_ms: float | None = None) -> GenerationLatencyReport:
-    wall = total_wall_ms if total_wall_ms is not None else max((s.started_offset_ms + s.duration_ms for s in spans), default=0)
+def interval_union_ms(spans: list[LatencySpan]) -> float:
+    intervals = sorted((s.started_offset_ms, s.ended_offset_ms or s.started_offset_ms) for s in _execution_spans(spans))
+    total = 0.0
+    start = end = None
+    for left, right in intervals:
+        if start is None:
+            start, end = left, right
+        elif left <= end:
+            end = max(end, right)
+        else:
+            total += end - start
+            start, end = left, right
+    return total + (end - start if start is not None else 0)
+
+
+def build_report(trace_id: str, spans: list[LatencySpan], *, total_wall_ms: float | None = None, source: str = "unavailable") -> GenerationLatencyReport:
+    wall = total_wall_ms if total_wall_ms is not None else max((s.ended_offset_ms or 0 for s in spans), default=0)
     _, path = critical_path(spans)
-    llm = [s for s in spans if s.kind == "llm"]
+    llm = [s for s in _execution_spans(spans) if s.kind == "llm"]
     llm_path = [s for s in path if s.kind == "llm"]
-    tokens = lambda name: sum(int(s.attributes.get(name) or 0) for s in llm)
-    evidence: list[str] = []
-    dominant = "INSUFFICIENT_EVIDENCE"
-    confidence = 0.35 if spans else 0
+    def token_total(name: str) -> int | None:
+        values = [int(s.attributes[name]) for s in llm if isinstance(s.attributes.get(name), int)]
+        return sum(values) if values else None
     llm_critical = sum(s.duration_ms for s in llm_path)
-    if len(llm_path) >= 2 and wall and llm_critical / wall >= 0.5:
-        dominant, confidence = "GRAPH_SERIAL_LLM_ACCUMULATION", min(0.95, 0.65 + llm_critical / wall * 0.25)
-        evidence.append("GRAPH_SERIAL_LLM_ACCUMULATION")
-    elif len(llm) == 1 and wall and llm[0].duration_ms / wall >= 0.5:
-        dominant, confidence = "SINGLE_LLM_PROVIDER_DOMINANT", 0.85
-        evidence.append("SINGLE_LLM_PROVIDER_DOMINANT")
-    elif any(s.operation in {"polling_visibility", "terminal_to_ui"} and wall and s.duration_ms / wall >= 0.25 for s in spans):
-        dominant, confidence = "POLLING_VISIBILITY_DELAY", 0.8
-        evidence.append("POLLING_VISIBILITY_DELAY")
+    dominant, confidence, evidence = "INSUFFICIENT_EVIDENCE", 0.3 if spans else 0.0, []
+    if source == "actual" and len(llm_path) >= 2 and wall and llm_critical / wall >= 0.5:
+        dominant, confidence, evidence = "GRAPH_SERIAL_LLM_ACCUMULATION", 0.9, ["multiple_llm_calls_on_dependency_path"]
+    elif source == "actual" and len(llm) == 1 and wall and llm[0].duration_ms / wall >= 0.5:
+        dominant, confidence, evidence = "SINGLE_LLM_PROVIDER_DOMINANT", 0.85, ["single_llm_over_half_wall_time"]
     return GenerationLatencyReport(
-        trace_id=trace_id, total_wall_ms=round(wall, 3), llm_call_count=len(llm),
-        llm_sequential_call_count=len(llm_path), llm_total_sum_ms=sum(s.duration_ms for s in llm),
-        llm_critical_path_ms=llm_critical,
-        deterministic_node_sum_ms=sum(s.duration_ms for s in spans if s.kind == "deterministic"),
-        db_sum_ms=sum(s.duration_ms for s in spans if s.kind == "db"),
-        external_io_sum_ms=sum(s.duration_ms for s in spans if s.kind == "external_io"),
-        input_tokens=tokens("input_tokens") if any("input_tokens" in s.attributes for s in llm) else None,
-        output_tokens=tokens("output_tokens") if any("output_tokens" in s.attributes for s in llm) else None,
-        cached_tokens=tokens("cached_tokens") if any("cached_tokens" in s.attributes for s in llm) else None,
-        dominant_latency_class=dominant, confidence=round(confidence, 3), evidence_codes=evidence,
+        trace_id=trace_id, total_wall_ms=round(wall, 3), llm_call_count=len(llm), llm_sequential_call_count=len(llm_path),
+        llm_total_sum_ms=round(sum(s.duration_ms for s in llm), 3), llm_critical_path_ms=round(llm_critical, 3),
+        deterministic_node_sum_ms=round(sum(s.duration_ms for s in _execution_spans(spans) if s.kind == "deterministic"), 3),
+        db_sum_ms=round(sum(s.duration_ms for s in _execution_spans(spans) if s.kind == "db"), 3),
+        external_io_sum_ms=round(sum(s.duration_ms for s in _execution_spans(spans) if s.kind == "external_io"), 3),
+        input_tokens=token_total("input_tokens"), output_tokens=token_total("output_tokens"), cached_tokens=token_total("cached_tokens"),
+        reasoning_tokens=token_total("reasoning_tokens"), dominant_latency_class=dominant, confidence=confidence, evidence=evidence,
+        measurement_source=source, additional_measurement_needed=[] if source == "actual" else ["approved actual cold/warm trace"],
     )
 
 
