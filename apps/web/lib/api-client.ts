@@ -984,7 +984,7 @@ export async function answerGenerationJob(jobId: string, payload: GenerationJobA
   return postJson<GenerationJobResponse>(
     `/api/generation-jobs/${encodeURIComponent(jobId)}/answer`,
     compactPayload(payload),
-    authHeaders
+    { ...authHeaders, ...traceHeaders() }
   );
 }
 
