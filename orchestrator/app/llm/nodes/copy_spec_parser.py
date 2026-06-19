@@ -6,8 +6,8 @@ from typing import Any
 
 from orchestrator.app.llm.metadata_builders import build_copy_spec_parser_metadata, build_metadata_contract_summary
 from orchestrator.app.llm.copy_visual_intent import resolve_copy_visual_intent
-from orchestrator.app.graph.state import read_model
-from orchestrator.app.schemas.llm_marketing import MarketingContext, MarketingCopy
+from orchestrator.app.graph.state import context_to_model, read_model, write_model
+from orchestrator.app.schemas.llm_marketing import MarketingCopy
 from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, CopyVisualIntent
 
 
@@ -17,12 +17,12 @@ def copy_spec_parser_node(state: dict[str, Any]) -> dict[str, Any]:
     if state.get("copy_generation_mode") == "no_copy" or state.get("copy_required") is False:
         copy_spec = build_no_copy_spec(metadata_summary)
         return {
-            "copy_spec": copy_spec.model_dump(),
+            "copy_spec": write_model(copy_spec),
             "current_brief": {**state.get("current_brief", {}), "copy_spec_ready": True},
             "status": "bypassing_copy",
         }
     marketing_copy = read_model(state, "marketing_copy", MarketingCopy)
-    context = _context_to_model(state.get("context"))
+    context = context_to_model(state.get("context"))
     intent = read_model(state, "copy_visual_intent", CopyVisualIntent, default=None) or resolve_copy_visual_intent(context, selected_reference_template=state.get("selected_reference_template"))
     items: list[CopyItem] = [
         CopyItem(role="headline", text=marketing_copy.headline, priority=1),
@@ -56,7 +56,7 @@ def copy_spec_parser_node(state: dict[str, Any]) -> dict[str, Any]:
         },
     )
     return {
-        "copy_spec": copy_spec.model_dump(),
+        "copy_spec": write_model(copy_spec),
         "current_brief": {**state.get("current_brief", {}), "copy_spec_ready": True},
         "status": "copywriting",
     }
@@ -73,11 +73,3 @@ def build_no_copy_spec(metadata_summary: dict[str, Any] | None = None) -> CopySp
             "llm_metadata_summary": metadata_summary or {},
         },
     )
-
-
-def _context_to_model(context: dict[str, Any] | MarketingContext | None) -> MarketingContext:
-    if isinstance(context, MarketingContext):
-        return context
-    if isinstance(context, dict):
-        return MarketingContext(**context)
-    return MarketingContext()

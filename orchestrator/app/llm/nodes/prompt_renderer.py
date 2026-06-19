@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from orchestrator.app.llm.metadata_builders import build_prompt_renderer_metadata
 from orchestrator.app.llm.prompt_renderer import render_prompt_for_engine, render_prompt_spec_for_engine
-from orchestrator.app.graph.state import read_model
+from orchestrator.app.graph.state import read_model, write_model
 from orchestrator.app.schemas.llm_marketing import ImagePrompt
 
 if TYPE_CHECKING:
@@ -64,6 +64,6 @@ def prompt_renderer_node(state: MarketingState) -> dict[str, Any]:
         )
     return {
         "engine": effective_engine,
-        "prompt_render_output": output.model_dump(),
+        "prompt_render_output": write_model(output),
         "status": "rendering_prompt",
     }

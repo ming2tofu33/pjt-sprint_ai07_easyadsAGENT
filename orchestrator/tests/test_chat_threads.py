@@ -485,7 +485,7 @@ def test_photo_flow_passes_uploaded_image_to_final_t2i_request(monkeypatch, tmp_
         output_path.parent.mkdir(parents=True, exist_ok=True)
         write_test_png(output_path, size=(width, height), color=(245, 220, 225))
         return T2IResult(
-            engine="gpt_image_1",
+            engine="gpt_image_2",
             image_paths=[str(output_path)],
             seed=seed,
             latency_ms=1,
@@ -547,7 +547,7 @@ def test_photo_flow_passes_uploaded_image_to_final_t2i_request(monkeypatch, tmp_
 
     assert brief_response.status_code == 200
     assert captured["input_image_paths"] == [str(source)]
-    assert captured["engine_preference"] == "gpt_image_1"
+    assert captured["engine_preference"] == "gpt_image_2"
     assert captured["metadata"]["source_image_path"] == str(source)
     assert captured["metadata"]["vision_pipeline_enabled"] is True
     brief_payload = brief_response.json()["brief"]

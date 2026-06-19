@@ -499,7 +499,7 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
     from orchestrator.app.db import settings as db_settings
     from orchestrator.app.db.session import db_transaction
 
-    from orchestrator.app.graph.state import create_initial_marketing_state
+    from orchestrator.app.graph.state import create_initial_marketing_state, overlay_current_request_asset_ids
     from orchestrator.app.schemas.llm_marketing import InitialMarketingRequest
 
     job = get_generation_job(job_id)
@@ -551,20 +551,17 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
             )
         )
         initial_state.update(restore_persistent_state(input_snapshot.state_payload))
+        initial_state = overlay_current_request_asset_ids(
+            initial_state,
+            source_asset_id=request.source_asset_id,
+            reference_asset_id=request.reference_asset_id,
+        )
 
         # Enforce current context
         initial_state["job_id"] = public_job_id
         initial_state["thread_id"] = job.thread_id
         initial_state["user_input"] = request.user_input
         initial_state["workspace_id"] = workspace_id
-
-        if request.source_asset_id is not None:
-            initial_state["source_asset_id"] = request.source_asset_id
-            initial_state["source_image_path"] = None
-
-        if request.reference_asset_id is not None:
-            initial_state["reference_asset_id"] = request.reference_asset_id
-            initial_state["reference_image_path"] = None
 
         if request.selected_reference_template_id is not None:
             initial_state["selected_reference_template_id"] = request.selected_reference_template_id
