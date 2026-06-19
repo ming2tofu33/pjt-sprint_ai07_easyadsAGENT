@@ -15,6 +15,17 @@ from orchestrator.app.db.session import db_transaction
 
 logger = logging.getLogger(__name__)
 
+_INTERNAL_PAYLOAD_KEYS = {
+    "object_key",
+    "local_path",
+    "base64",
+    "b64_json",
+    "raw_image",
+    "image_bytes",
+    "binary",
+    "encoded_image",
+}
+
 
 class GenerationOutputNotFound(LookupError):
     pass
@@ -45,7 +56,7 @@ def _strip_internal_payload_fields(value: Any) -> Any:
         return {
             key: _strip_internal_payload_fields(item)
             for key, item in value.items()
-            if str(key).lower() not in {"object_key", "local_path", "base64", "b64_json"}
+            if str(key).lower() not in _INTERNAL_PAYLOAD_KEYS
         }
     if isinstance(value, list):
         return [_strip_internal_payload_fields(item) for item in value]

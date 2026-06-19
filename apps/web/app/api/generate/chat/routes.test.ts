@@ -190,7 +190,7 @@ describe("generate chat and photo Next routes", () => {
 
     const payload = {
       userInput: "사진으로 메뉴 광고",
-      sourceImagePath: "data/uploads/photo_1.png"
+      sourceAssetId: "asset_11111111111111111111111111111111"
     };
     const response = await POST(
       new NextRequest("http://localhost/api/generate/photo/start", {
@@ -215,7 +215,7 @@ describe("generate chat and photo Next routes", () => {
 
     const payload = {
       userInput: "사진으로 고품질 메뉴 광고",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       imageGenerationEngine: "gpt_image_2",
       requestedEngine: "gpt_image_2",
       t2iEngine: "gpt_image_2"

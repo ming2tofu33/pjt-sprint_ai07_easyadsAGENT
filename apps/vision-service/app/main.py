@@ -46,6 +46,7 @@ async def api_remove_background(file: UploadFile = File(...)):
             media_type="image/png",
             background=BackgroundTask(cleanup_paths, [input_path, mask_path]),
         )
-    except Exception as e:
+    except Exception:
         cleanup_paths([input_path, mask_path])
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("remove-background failed")
+        raise HTTPException(status_code=500, detail="background removal failed")

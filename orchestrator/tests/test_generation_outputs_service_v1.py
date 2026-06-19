@@ -111,6 +111,9 @@ def test_generation_output_payload_does_not_expose_internal_or_binary_fields():
                 "base64": "encoded",
                 "b64_json": "encoded",
                 "raw_image": b"binary",
+                "image_bytes": b"binary",
+                "binary": b"binary",
+                "encoded_image": "encoded",
                 "nested": {"object_key": "private/nested.png"},
             }
         )

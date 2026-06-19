@@ -82,7 +82,6 @@ class GenerationJobCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_asset_conflicts(self):
-        import os
         if self.source_asset_id and self.source_image_path:
             raise ValueError("source_asset_id and source_image_path cannot be provided together")
         if self.reference_asset_id and self.reference_image_path:

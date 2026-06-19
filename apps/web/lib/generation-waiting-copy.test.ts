@@ -29,10 +29,9 @@ describe("generation waiting copy", () => {
     const copy = resolveWaitingStatusCopy({
       context: "chat_analysis",
       state: {
-        referenceImagePath: "data/uploads/reference.png",
+        referenceAssetId: "asset_22222222222222222222222222222222",
         selectedReferenceTemplateId: null,
         sourceAssetId: null,
-        sourceImagePath: null,
         generationJob: null
       }
     });

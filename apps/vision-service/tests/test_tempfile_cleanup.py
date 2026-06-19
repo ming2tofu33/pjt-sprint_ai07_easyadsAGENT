@@ -5,7 +5,8 @@ import sys
 import types
 from pathlib import Path
 
-from fastapi import UploadFile
+import pytest
+from fastapi import HTTPException, UploadFile
 
 
 service_module = types.ModuleType("services.rembg_pipeline")
@@ -61,3 +62,18 @@ def test_remove_background_registers_cleanup_after_file_response(monkeypatch):
     assert all(path.exists() for path in cleanup_targets)
     asyncio.run(response.background())
     assert all(not path.exists() for path in cleanup_targets)
+
+
+def test_remove_background_does_not_expose_internal_exception(monkeypatch):
+    monkeypatch.setattr(
+        vision_main,
+        "extract_mask_only",
+        lambda path: (_ for _ in ()).throw(RuntimeError(f"failed at {path}")),
+    )
+    upload = UploadFile(filename="input.png", file=io.BytesIO(b"input"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(vision_main.api_remove_background(upload))
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == "background removal failed"

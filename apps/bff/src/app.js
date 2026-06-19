@@ -1,8 +1,3 @@
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
@@ -17,7 +12,8 @@ const referenceTemplateFieldsSchema = {
   selectedReferenceTemplateId: z.string().trim().min(1).optional()
 };
 const referenceImageFieldsSchema = {
-  referenceImagePath: z.string().trim().min(1).optional()
+  referenceAssetId: z.string().trim().min(1).optional(),
+  referenceImagePath: z.never().optional()
 };
 const imageGenerationEngineFieldsSchema = {
   imageGenerationEngine: z.enum(imageGenerationEngines).optional(),
@@ -67,8 +63,6 @@ const chatThreadArchiveSchema = z.object({
 });
 
 const supportedPhotoMimeTypes = ["image/png", "image/jpeg", "image/webp"];
-const BFF_SRC_DIR = path.dirname(fileURLToPath(import.meta.url));
-export const DEFAULT_UPLOAD_DIR = path.resolve(BFF_SRC_DIR, "..", "..", "..", "data", "uploads");
 export const DEFAULT_BODY_LIMIT_BYTES = 80 * 1024 * 1024;
 
 const photoUploadSchema = z.object({
@@ -79,7 +73,8 @@ const photoUploadSchema = z.object({
 
 const photoStartSchema = z.object({
   userInput: z.string().min(1),
-  sourceImagePath: z.string().min(1),
+  sourceAssetId: z.string().min(1),
+  sourceImagePath: z.never().optional(),
   adFormat: z.string().optional(),
   renderProfile: z.string().optional(),
   copyGenerationMode: z.enum(copyGenerationModes).optional(),
@@ -112,6 +107,10 @@ const generationJobSchema = z.object({
   selectedCopyId: z.string().optional(),
   selected_channel_id: z.string().optional(),
   selectedChannelId: z.string().optional(),
+  source_asset_id: z.string().optional(),
+  sourceAssetId: z.string().optional(),
+  reference_asset_id: z.string().optional(),
+  referenceAssetId: z.string().optional(),
   selected_tone: z.string().optional(),
   selectedTone: z.string().optional(),
   custom_direction: z.string().optional(),
@@ -120,10 +119,10 @@ const generationJobSchema = z.object({
   userCustomHeadline: z.string().optional(),
   user_custom_subcopy: z.string().optional(),
   userCustomSubcopy: z.string().optional(),
-  source_image_path: z.string().optional(),
-  sourceImagePath: z.string().optional(),
-  reference_image_path: z.string().optional(),
-  referenceImagePath: z.string().optional()
+  source_image_path: z.never().optional(),
+  sourceImagePath: z.never().optional(),
+  reference_image_path: z.never().optional(),
+  referenceImagePath: z.never().optional()
 }).passthrough();
 
 const generationJobAnswerSchema = z.object({
@@ -439,30 +438,6 @@ async function requireSupabaseUserId(args) {
   return principal.userId;
 }
 
-function extensionForMimeType(mimeType) {
-  if (mimeType === "image/jpeg") {
-    return ".jpg";
-  }
-  if (mimeType === "image/webp") {
-    return ".webp";
-  }
-  return ".png";
-}
-
-function decodeDataUrl(dataUrl, mimeType) {
-  const prefix = `data:${mimeType};base64,`;
-  if (!dataUrl.startsWith(prefix)) {
-    const error = new Error("dataUrl mime type does not match mimeType");
-    error.statusCode = 400;
-    throw error;
-  }
-  return Buffer.from(dataUrl.slice(prefix.length), "base64");
-}
-
-function publicUploadPath(fileName) {
-  return `data/uploads/${fileName}`;
-}
-
 function resolveBodyLimitBytes(value) {
   const limit = Number(value);
   return Number.isFinite(limit) && limit > 0 ? limit : DEFAULT_BODY_LIMIT_BYTES;
@@ -495,7 +470,6 @@ export function buildApp(options = {}) {
   });
   const orchestratorBaseUrl = options.orchestratorBaseUrl ?? process.env.ORCHESTRATOR_BASE_URL ?? "http://127.0.0.1:8000";
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-  const uploadDir = options.uploadDir ?? process.env.BFF_UPLOAD_DIR ?? DEFAULT_UPLOAD_DIR;
   const supabaseUrl = options.supabaseUrl ?? process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = options.supabaseAnonKey ?? process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -728,18 +702,11 @@ export function buildApp(options = {}) {
       return reply.code(400).send({ error: "invalid_request", issues: parsed.error.issues });
     }
 
-    const imageBuffer = decodeDataUrl(parsed.data.dataUrl, parsed.data.mimeType);
-    const extension = extensionForMimeType(parsed.data.mimeType);
-    const savedName = `photo_${crypto.randomUUID()}${extension}`;
-    await fs.mkdir(uploadDir, { recursive: true });
-    await fs.writeFile(path.join(uploadDir, savedName), imageBuffer);
-
-    return {
-      sourceImagePath: publicUploadPath(savedName),
-      fileName: parsed.data.filename,
-      mimeType: parsed.data.mimeType,
-      sizeBytes: imageBuffer.length
-    };
+    return reply.code(410).send({
+      error: "legacy_photo_upload_not_supported",
+      error_code: "legacy_photo_upload_not_supported",
+      message: "Upload images through the asset presign and complete APIs."
+    });
   });
 
   app.post("/api/generate/photo/start", async (request, reply) => {
@@ -792,8 +759,8 @@ export function buildApp(options = {}) {
       customDirection: parsed.data.customDirection ?? parsed.data.custom_direction,
       userCustomHeadline: parsed.data.userCustomHeadline ?? parsed.data.user_custom_headline,
       userCustomSubcopy: parsed.data.userCustomSubcopy ?? parsed.data.user_custom_subcopy,
-      sourceImagePath: parsed.data.sourceImagePath ?? parsed.data.source_image_path,
-      referenceImagePath: parsed.data.referenceImagePath ?? parsed.data.reference_image_path
+      source_asset_id: parsed.data.sourceAssetId ?? parsed.data.source_asset_id,
+      reference_asset_id: parsed.data.referenceAssetId ?? parsed.data.reference_asset_id
     };
 
     delete body.user_input;
@@ -805,8 +772,8 @@ export function buildApp(options = {}) {
     delete body.custom_direction;
     delete body.user_custom_headline;
     delete body.user_custom_subcopy;
-    delete body.source_image_path;
-    delete body.reference_image_path;
+    delete body.sourceAssetId;
+    delete body.referenceAssetId;
 
     return proxyJson({
       fetchImpl,

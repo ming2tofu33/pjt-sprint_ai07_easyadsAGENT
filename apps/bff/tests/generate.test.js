@@ -1,10 +1,6 @@
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildApp, DEFAULT_UPLOAD_DIR } from "../src/app.js";
+import { buildApp } from "../src/app.js";
 
 function jsonResponse(payload, init = {}) {
   return new Response(JSON.stringify(payload), {
@@ -37,7 +33,7 @@ describe("generate chat routes", () => {
       payload: {
         userInput: "우리 카페 딸기라떼 광고",
         renderProfile: "premium_api",
-        referenceImagePath: "data/uploads/reference_1.png"
+        referenceAssetId: "asset_22222222222222222222222222222222"
       }
     });
 
@@ -50,7 +46,7 @@ describe("generate chat routes", () => {
         body: JSON.stringify({
           userInput: "우리 카페 딸기라떼 광고",
           renderProfile: "premium_api",
-          referenceImagePath: "data/uploads/reference_1.png"
+          referenceAssetId: "asset_22222222222222222222222222222222"
         })
       })
     );
@@ -614,6 +610,8 @@ describe("generate chat routes", () => {
         selectedReferenceTemplateId: "seed_1",
         selectedCopyId: "copy_1",
         selectedChannelId: "instagram-feed",
+        sourceAssetId: "asset_11111111111111111111111111111111",
+        referenceAssetId: "asset_22222222222222222222222222222222",
         selectedTone: "깔끔한",
         customDirection: "제품을 크게",
         userCustomHeadline: "오늘만 반값",
@@ -642,7 +640,9 @@ describe("generate chat routes", () => {
           selectedTone: "깔끔한",
           customDirection: "제품을 크게",
           userCustomHeadline: "오늘만 반값",
-          userCustomSubcopy: "오후 5시까지"
+          userCustomSubcopy: "오후 5시까지",
+          source_asset_id: "asset_11111111111111111111111111111111",
+          reference_asset_id: "asset_22222222222222222222222222222222"
         })
       })
     );
@@ -651,6 +651,21 @@ describe("generate chat routes", () => {
       "http://orchestrator/api/v1/generation-jobs/job_1",
       expect.objectContaining({ method: "GET" })
     );
+    await app.close();
+  });
+
+  it("rejects legacy image paths on generation job creation", async () => {
+    const fetchImpl = vi.fn();
+    const app = buildApp({ orchestratorBaseUrl: "http://orchestrator", fetchImpl });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generation-jobs",
+      payload: { userInput: "legacy path", sourceImagePath: "legacy/source.png" }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(fetchImpl).not.toHaveBeenCalled();
     await app.close();
   });
 
@@ -1083,60 +1098,7 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
-  it("saves JSON photo uploads and returns a source image path", async () => {
-    const uploadDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyads-upload-"));
-    const app = buildApp({ fetchImpl: vi.fn(), uploadDir });
-    const dataUrl = `data:image/png;base64,${Buffer.from("fake image bytes").toString("base64")}`;
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/api/generate/photo/upload",
-      payload: {
-        filename: "menu photo.png",
-        mimeType: "image/png",
-        dataUrl
-      }
-    });
-
-    expect(response.statusCode).toBe(200);
-    const payload = response.json();
-    expect(payload.sourceImagePath).toMatch(/^data\/uploads\/photo_/);
-    expect(payload.sourceImagePath.endsWith(".png")).toBe(true);
-    expect(payload.fileName).toBe("menu photo.png");
-    expect(payload.mimeType).toBe("image/png");
-    expect(payload.sizeBytes).toBe(Buffer.from("fake image bytes").length);
-    await expect(fs.readFile(path.join(uploadDir, path.basename(payload.sourceImagePath)))).resolves.toEqual(
-      Buffer.from("fake image bytes")
-    );
-    await app.close();
-    await fs.rm(uploadDir, { recursive: true, force: true });
-  });
-
-  it("accepts phone-sized JSON photo uploads larger than the previous body limit", async () => {
-    const uploadDir = await fs.mkdtemp(path.join(os.tmpdir(), "easyads-upload-large-"));
-    const app = buildApp({ fetchImpl: vi.fn(), uploadDir });
-    const imageBytes = Buffer.alloc(20 * 1024 * 1024, 7);
-    const dataUrl = `data:image/png;base64,${imageBytes.toString("base64")}`;
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/api/generate/photo/upload",
-      payload: {
-        filename: "large-menu.png",
-        mimeType: "image/png",
-        dataUrl
-      }
-    });
-
-    expect(response.statusCode).toBe(200);
-    const payload = response.json();
-    expect(payload.sizeBytes).toBe(imageBytes.length);
-    await expect(fs.stat(path.join(uploadDir, path.basename(payload.sourceImagePath)))).resolves.toMatchObject({ size: imageBytes.length });
-    await app.close();
-    await fs.rm(uploadDir, { recursive: true, force: true });
-  }, 20_000);
-
-  it("uses the repo data/uploads directory by default", async () => {
+  it("retires the legacy JSON photo upload route without exposing a local path", async () => {
     const app = buildApp({ fetchImpl: vi.fn() });
     const dataUrl = `data:image/png;base64,${Buffer.from("fake image bytes").toString("base64")}`;
 
@@ -1150,12 +1112,50 @@ describe("generate chat routes", () => {
       }
     });
 
-    expect(response.statusCode).toBe(200);
+    expect(response.statusCode).toBe(410);
     const payload = response.json();
-    const savedPath = path.join(DEFAULT_UPLOAD_DIR, path.basename(payload.sourceImagePath));
-    await expect(fs.readFile(savedPath)).resolves.toEqual(Buffer.from("fake image bytes"));
+    expect(payload.error_code).toBe("legacy_photo_upload_not_supported");
+    expect(payload).not.toHaveProperty("sourceImagePath");
     await app.close();
-    await fs.rm(savedPath, { force: true });
+  });
+
+  it("accepts phone-sized JSON photo uploads larger than the previous body limit", async () => {
+    const app = buildApp({ fetchImpl: vi.fn() });
+    const imageBytes = Buffer.alloc(20 * 1024 * 1024, 7);
+    const dataUrl = `data:image/png;base64,${imageBytes.toString("base64")}`;
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/photo/upload",
+      payload: {
+        filename: "large-menu.png",
+        mimeType: "image/png",
+        dataUrl
+      }
+    });
+
+    expect(response.statusCode).toBe(410);
+    expect(response.json().error_code).toBe("legacy_photo_upload_not_supported");
+    await app.close();
+  }, 20_000);
+
+  it("does not create a default local upload path", async () => {
+    const app = buildApp({ fetchImpl: vi.fn() });
+    const dataUrl = `data:image/png;base64,${Buffer.from("fake image bytes").toString("base64")}`;
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/generate/photo/upload",
+      payload: {
+        filename: "menu photo.png",
+        mimeType: "image/png",
+        dataUrl
+      }
+    });
+
+    expect(response.statusCode).toBe(410);
+    expect(response.json()).not.toHaveProperty("sourceImagePath");
+    await app.close();
   });
 
   it("validates JSON photo upload payloads", async () => {
@@ -1194,7 +1194,7 @@ describe("generate chat routes", () => {
       url: "/api/generate/photo/start",
       payload: {
         userInput: "이 사진으로 신메뉴 광고 만들어줘",
-        sourceImagePath: "data/uploads/photo_abc.png",
+        sourceAssetId: "asset_11111111111111111111111111111111",
         adFormat: "instagram_feed",
         renderProfile: "premium_api"
       }
@@ -1208,7 +1208,7 @@ describe("generate chat routes", () => {
         method: "POST",
         body: JSON.stringify({
           userInput: "이 사진으로 신메뉴 광고 만들어줘",
-          sourceImagePath: "data/uploads/photo_abc.png",
+          sourceAssetId: "asset_11111111111111111111111111111111",
           adFormat: "instagram_feed",
           renderProfile: "premium_api"
         })
@@ -1254,7 +1254,7 @@ describe("generate chat routes", () => {
       url: "/api/generate/photo/start",
       payload: {
         userInput: "이 사진으로 이미지만 만들어줘",
-        sourceImagePath: "data/uploads/photo_abc.png",
+        sourceAssetId: "asset_11111111111111111111111111111111",
         adFormat: "instagram_feed",
         renderProfile: "premium_api",
         copyGenerationMode: "no_copy"
@@ -1279,7 +1279,7 @@ describe("generate chat routes", () => {
       expect.objectContaining({
         body: JSON.stringify({
           userInput: "이 사진으로 이미지만 만들어줘",
-          sourceImagePath: "data/uploads/photo_abc.png",
+          sourceAssetId: "asset_11111111111111111111111111111111",
           adFormat: "instagram_feed",
           renderProfile: "premium_api",
           copyGenerationMode: "no_copy"
@@ -1326,7 +1326,7 @@ describe("generate chat routes", () => {
       url: "/api/generate/photo/start",
       payload: {
         userInput: "이 사진으로 딸기라떼 신메뉴 인스타 피드 광고",
-        sourceImagePath: "data/uploads/photo_abc.png",
+        sourceAssetId: "asset_11111111111111111111111111111111",
         adFormat: "instagram_feed",
         renderProfile: "premium_api",
         copyGenerationMode: "auto_pilot"
@@ -1351,7 +1351,7 @@ describe("generate chat routes", () => {
       expect.objectContaining({
         body: JSON.stringify({
           userInput: "이 사진으로 딸기라떼 신메뉴 인스타 피드 광고",
-          sourceImagePath: "data/uploads/photo_abc.png",
+          sourceAssetId: "asset_11111111111111111111111111111111",
           adFormat: "instagram_feed",
           renderProfile: "premium_api",
           copyGenerationMode: "auto_pilot"
@@ -1399,7 +1399,7 @@ describe("generate chat routes", () => {
       url: "/api/generate/photo/start",
       payload: {
         userInput: "이 사진으로 수박주스 신메뉴 광고",
-        sourceImagePath: "data/uploads/photo_abc.png",
+        sourceAssetId: "asset_11111111111111111111111111111111",
         adFormat: "instagram_feed",
         renderProfile: "premium_api",
         copyGenerationMode: "auto_pilot",
@@ -1430,7 +1430,7 @@ describe("generate chat routes", () => {
       url: "/api/generate/photo/start",
       payload: {
         userInput: "이 사진으로 고품질 광고",
-        sourceImagePath: "data/uploads/photo_abc.png",
+        sourceAssetId: "asset_11111111111111111111111111111111",
         adFormat: "instagram_feed",
         renderProfile: "premium_api",
         imageGenerationEngine: "gpt_image_2",
@@ -1445,7 +1445,7 @@ describe("generate chat routes", () => {
       expect.objectContaining({
         body: JSON.stringify({
           userInput: "이 사진으로 고품질 광고",
-          sourceImagePath: "data/uploads/photo_abc.png",
+          sourceAssetId: "asset_11111111111111111111111111111111",
           adFormat: "instagram_feed",
           renderProfile: "premium_api",
           imageGenerationEngine: "gpt_image_2",
@@ -1496,7 +1496,7 @@ describe("generate chat routes", () => {
       url: "/api/generate/photo/start",
       payload: {
         userInput: "이 사진으로 딸기라떼 신메뉴 인스타 피드 광고",
-        sourceImagePath: "data/uploads/photo_abc.png",
+        sourceAssetId: "asset_11111111111111111111111111111111",
         adFormat: "instagram_feed",
         renderProfile: "premium_api",
         copyGenerationMode: "custom_input",
@@ -1525,7 +1525,7 @@ describe("generate chat routes", () => {
       expect.objectContaining({
         body: JSON.stringify({
           userInput: "이 사진으로 딸기라떼 신메뉴 인스타 피드 광고",
-          sourceImagePath: "data/uploads/photo_abc.png",
+          sourceAssetId: "asset_11111111111111111111111111111111",
           adFormat: "instagram_feed",
           renderProfile: "premium_api",
           copyGenerationMode: "custom_input",

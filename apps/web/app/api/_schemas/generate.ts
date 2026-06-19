@@ -14,7 +14,8 @@ const referenceTemplateFieldsSchema = {
 };
 
 const referenceImageFieldsSchema = {
-  referenceImagePath: z.string().trim().min(1).optional()
+  referenceAssetId: z.string().trim().min(1).optional(),
+  referenceImagePath: z.never().optional()
 };
 
 const imageGenerationEngineFieldsSchema = {
@@ -76,7 +77,8 @@ export const photoUploadSchema = z.object({
 export const photoStartSchema = z
   .object({
     userInput: z.string().trim().min(1),
-    sourceImagePath: z.string().trim().min(1),
+    sourceAssetId: z.string().trim().min(1),
+    sourceImagePath: z.never().optional(),
     adFormat: z.string().optional(),
     renderProfile: z.string().optional(),
     copyGenerationMode: z.enum(copyGenerationModes).optional(),
@@ -115,10 +117,10 @@ export const generationJobSchema = z
     sourceAssetId: z.string().optional(),
     reference_asset_id: z.string().optional(),
     referenceAssetId: z.string().optional(),
-    source_image_path: z.string().optional(),
-    sourceImagePath: z.string().optional(),
-    reference_image_path: z.string().optional(),
-    referenceImagePath: z.string().optional()
+    source_image_path: z.never().optional(),
+    sourceImagePath: z.never().optional(),
+    reference_image_path: z.never().optional(),
+    referenceImagePath: z.never().optional()
   })
   .passthrough();
 

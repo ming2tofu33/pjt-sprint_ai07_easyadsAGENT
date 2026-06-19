@@ -74,8 +74,12 @@ async function runPhotoUploadSmoke(browser) {
   });
   await expect(page.getByText("사진이 선택됐어요")).toBeVisible({ timeout: 10000 });
   await page.getByLabel("사진 광고 요청 입력").fill("이 사진으로 카페 수박주스 신메뉴 인스타 광고 만들어줘");
-  const uploadResponsePromise = page.waitForResponse((response) => response.url().includes("/api/generate/photo/upload") && response.status() === 200);
-  const startRequestPromise = page.waitForRequest((request) => request.method() === "POST" && request.url().includes("/api/generate/photo/start"));
+  const uploadResponsePromise = page.waitForResponse(
+    (response) => response.url().includes("/api/assets/uploads/") && response.url().endsWith("/complete") && response.status() === 200
+  );
+  const startRequestPromise = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().includes("/api/generation-jobs")
+  );
   await page.getByRole("button", { name: /사진 기반 생성 시작/ }).click();
   const uploadResponse = await uploadResponsePromise;
   const uploadPayload = await uploadResponse.json();
@@ -83,13 +87,14 @@ async function runPhotoUploadSmoke(browser) {
   const startBody = JSON.parse(startRequest.postData() || "{}");
   await page.screenshot({ path: "/tmp/easyads-photo-upload-smoke.png", fullPage: true });
   await page.close();
-  if (!uploadPayload.sourceImagePath || !uploadPayload.sourceImagePath.startsWith("data/uploads/photo_")) {
-    throw new Error(`upload did not return sourceImagePath: ${JSON.stringify(uploadPayload)}`);
+  const sourceAssetId = uploadPayload.asset?.assetId ?? uploadPayload.asset?.asset_id;
+  if (!sourceAssetId) {
+    throw new Error(`upload did not return a public asset id: ${JSON.stringify(uploadPayload)}`);
   }
-  if (startBody.sourceImagePath !== uploadPayload.sourceImagePath) {
-    throw new Error(`photo start did not use uploaded source path: ${JSON.stringify({ uploadPayload, startBody })}`);
+  if (startBody.sourceAssetId !== sourceAssetId) {
+    throw new Error(`generation job did not use uploaded source asset id: ${JSON.stringify({ uploadPayload, startBody })}`);
   }
-  return { status: "PASS", sourceImagePath: startBody.sourceImagePath, prompt: startBody.userInput };
+  return { status: "PASS", sourceAssetId: startBody.sourceAssetId, prompt: startBody.userInput };
 }
 
 async function runArchiveSelectedItemSmoke(browser) {
