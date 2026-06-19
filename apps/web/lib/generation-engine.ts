@@ -1,8 +1,10 @@
-export type ImageGenerationEngine = "gpt_image_1" | "gpt_image_2" | "flux2_klein_4b" | "sd35_large";
+export const SUPPORTED_IMAGE_GENERATION_ENGINES = ["gpt_image_2", "flux2_klein_4b", "sd35_large"] as const;
+
+export type ImageGenerationEngine = (typeof SUPPORTED_IMAGE_GENERATION_ENGINES)[number];
 
 export type GenerationRunMode = "graph_job";
-export type DirectGenerationRunMode = "gpt_image_1_actual" | "gpt_image_2_actual" | "flux2_klein_4b" | "sd35_large_real";
-export type BackendImageEngine = "gpt_image_1" | "gpt_image_2" | "flux2_klein_4b" | "sd35_large";
+export type DirectGenerationRunMode = "gpt_image_2_actual" | "flux2_klein_4b" | "sd35_large_real";
+export type BackendImageEngine = ImageGenerationEngine;
 
 export type GenerationEngineOption = {
   id: ImageGenerationEngine;
@@ -44,8 +46,22 @@ export const generationEngineOptions: GenerationEngineOption[] = [
 
 export const allGenerationEngineOptions: GenerationEngineOption[] = generationEngineOptions;
 
-export function getGenerationEngineOption(engine: ImageGenerationEngine | null | undefined): GenerationEngineOption {
-  return allGenerationEngineOptions.find((option) => option.id === engine) ?? generationEngineOptions[0];
+export function normalizeImageGenerationEngine(value: unknown): ImageGenerationEngine {
+  if (value === "gpt_image_1") {
+    return DEFAULT_IMAGE_GENERATION_ENGINE;
+  }
+  if (value === "flux" || value === "flux_schnell" || value === "flux_1_schnell" || value === "flux2_klein") {
+    return "flux2_klein_4b";
+  }
+  if (SUPPORTED_IMAGE_GENERATION_ENGINES.includes(value as ImageGenerationEngine)) {
+    return value as ImageGenerationEngine;
+  }
+  return DEFAULT_IMAGE_GENERATION_ENGINE;
+}
+
+export function getGenerationEngineOption(engine: unknown): GenerationEngineOption {
+  const normalized = normalizeImageGenerationEngine(engine);
+  return allGenerationEngineOptions.find((option) => option.id === normalized) ?? generationEngineOptions[0];
 }
 
 export function resolveGenerationRunMode(_engine: ImageGenerationEngine | null | undefined): GenerationRunMode {

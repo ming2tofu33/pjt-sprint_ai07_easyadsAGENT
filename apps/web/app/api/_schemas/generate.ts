@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { SUPPORTED_IMAGE_GENERATION_ENGINES } from "@/lib/generation-engine";
 
 export const copyGenerationModes = ["suggest_candidates", "auto_pilot", "custom_input", "no_copy"] as const;
 export const supportedPhotoMimeTypes = ["image/png", "image/jpeg", "image/webp"] as const;
-export const supportedImageGenerationEngines = ["gpt_image_2", "flux2_klein_4b", "sd35_large"] as const;
+export const supportedImageGenerationEngines = SUPPORTED_IMAGE_GENERATION_ENGINES;
 
 const customCopyFieldsSchema = {
   userCustomHeadline: z.string().trim().min(1).optional(),
@@ -99,6 +100,12 @@ export const generationJobSchema = z
     userId: z.string().optional(),
     run_mode: z.string().optional(),
     runMode: z.string().optional(),
+    image_generation_engine: z.enum(supportedImageGenerationEngines).optional(),
+    imageGenerationEngine: z.enum(supportedImageGenerationEngines).optional(),
+    requested_engine: z.enum(supportedImageGenerationEngines).optional(),
+    requestedEngine: z.enum(supportedImageGenerationEngines).optional(),
+    t2i_engine: z.enum(supportedImageGenerationEngines).optional(),
+    t2iEngine: z.enum(supportedImageGenerationEngines).optional(),
     selected_reference_template_id: z.string().optional(),
     selectedReferenceTemplateId: z.string().optional(),
     selected_copy_id: z.string().optional(),

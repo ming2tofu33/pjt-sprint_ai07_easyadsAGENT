@@ -64,6 +64,12 @@ from orchestrator.app.storage.object_keys import build_generation_object_key
 from orchestrator.app.storage.r2_service import upload_file_to_r2
 from orchestrator.app.usage import service as usage_service
 from orchestrator.app.archive import service as archive_service
+from orchestrator.app.t2i.contracts import (
+    GenerationRunMode,
+    T2IEngine,
+    engine_for_run_mode,
+    normalize_t2i_engine,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -158,17 +164,16 @@ def _sanitize_metadata_value(value):
 
 
 def _initial_run_mode_metadata(run_mode: str) -> tuple[str, str]:
-    if run_mode == "mock_immediate":
+    if run_mode == GenerationRunMode.MOCK_IMMEDIATE:
         return "mock_immediate", "pending_deterministic_mock"
-    if run_mode == "graph_job":
+    if run_mode == GenerationRunMode.GRAPH_JOB:
         return "graph_job", "pending_graph_execution"
-    if run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke"}:
-        return "gpt_image_1_actual", "pending_t2i_actual"
-    if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
+    engine = engine_for_run_mode(run_mode)
+    if engine is T2IEngine.GPT_IMAGE_2:
         return "gpt_image_2_actual", "pending_t2i_actual"
-    if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
+    if engine is T2IEngine.SD35_LARGE:
         return "sd35_local", "pending_t2i_actual"
-    if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke", "flux2_klein_4b"}:
+    if engine is T2IEngine.FLUX2_KLEIN_4B:
         return "flux_local", "pending_t2i_actual"
     return "queued_only", "queued_only"
 
@@ -1213,42 +1218,20 @@ def maybe_poll_generation_job_from_modal(
 
 
 def _normalize_engine_preference(value: object) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip().lower().replace("-", "_")
-    aliases = {
-        "gpt_image_1": "gpt_image_1",
-        "gpt_image1": "gpt_image_1",
-        "gptimage1": "gpt_image_1",
-        "gpt_image_2": "gpt_image_2",
-        "gpt_image2": "gpt_image_2",
-        "gptimage2": "gpt_image_2",
-        "flux": "flux2_klein_4b",
-        "flux_schnell": "flux2_klein_4b",
-        "flux_1_schnell": "flux2_klein_4b",
-        "flux2_klein": "flux2_klein_4b",
-        "flux2_klein_4b": "flux2_klein_4b",
-        "flux_2_klein_4b": "flux2_klein_4b",
-        "sd35": "sd35_large",
-        "sd35_large": "sd35_large",
-        "sd3_5_large": "sd35_large",
-    }
-    return aliases.get(normalized)
+    engine = normalize_t2i_engine(value)
+    return engine.value if engine and engine is not T2IEngine.MOCK else None
 
 
 def _engine_preference(run_mode: str) -> str | None:
-    if run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke"}:
-        return "gpt_image_1"
-    if run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
-        return "gpt_image_2"
-    if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
-        return "sd35_large"
-    if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke", "flux2_klein_4b"}:
-        return "flux2_klein_4b"
-    return None
+    engine = engine_for_run_mode(run_mode)
+    return engine.value if engine and engine is not T2IEngine.MOCK else None
 
 
 def _engine_preference_for_request(request: GenerationJobCreateRequest) -> str | None:
+    for value in (request.requested_engine, request.t2i_engine, request.image_generation_engine):
+        engine = _normalize_engine_preference(value)
+        if engine:
+            return engine
     metadata = request.metadata or {}
     for key in ("requested_engine", "t2i_engine", "selected_engine", "engine"):
         engine = _normalize_engine_preference(metadata.get(key))
@@ -1269,21 +1252,12 @@ def _apply_generation_engine_to_state(restored_payload: dict, request: Generatio
 
 
 def _model_provider_for_run_mode(run_mode: str) -> str | None:
-    if run_mode in {"mock_immediate"}:
+    engine = engine_for_run_mode(run_mode)
+    if engine is T2IEngine.MOCK:
         return "mock"
-    if run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke", "gpt_image_2_actual", "gpt_image_2_smoke"}:
+    if engine is T2IEngine.GPT_IMAGE_2:
         return "openai"
-    if run_mode in {
-        "sd35_local",
-        "sd35_local_smoke",
-        "sd35_large_real",
-        "flux_local",
-        "flux_local_smoke",
-        "flux_schnell_real",
-        "flux",
-        "flux_smoke",
-        "flux2_klein_4b",
-    }:
+    if engine in {T2IEngine.SD35_LARGE, T2IEngine.FLUX2_KLEIN_4B}:
         return "local"
     return None
 

@@ -47,6 +47,7 @@ from orchestrator.app.observability.performance import (
 )
 from orchestrator.app.chat_threads.errors import ChatThreadServiceError
 from orchestrator.app.reference_catalog.service import get_reference_template
+from orchestrator.app.t2i.contracts import RUN_MODE_TO_T2I_ENGINE, T2IEngine
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -54,19 +55,9 @@ router = APIRouter()
 # run_mode aliases -> t2i engine. Non-t2i modes (mock_immediate, graph_job,
 # modal routing) are handled explicitly in create_generation_job_route.
 T2I_RUN_MODE_TO_ENGINE: dict[str, str] = {
-    "gpt_image_1_actual": "gpt_image_1",
-    "gpt_image_1_smoke": "gpt_image_1",
-    "gpt_image_2_actual": "gpt_image_2",
-    "gpt_image_2_smoke": "gpt_image_2",
-    "sd35_local": "sd35_large",
-    "sd35_local_smoke": "sd35_large",
-    "sd35_large_real": "sd35_large",
-    "flux2_klein_4b": "flux2_klein_4b",
-    "flux_local": "flux2_klein_4b",
-    "flux_local_smoke": "flux2_klein_4b",
-    "flux_schnell_real": "flux2_klein_4b",
-    "flux": "flux2_klein_4b",
-    "flux_smoke": "flux2_klein_4b",
+    run_mode.value: engine.value
+    for run_mode, engine in RUN_MODE_TO_T2I_ENGINE.items()
+    if engine is not T2IEngine.MOCK
 }
 
 

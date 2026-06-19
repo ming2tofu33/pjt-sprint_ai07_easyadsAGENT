@@ -125,7 +125,7 @@ def test_regeneration_api_dispatches_gpt_image_1_job(monkeypatch):
     )
 
     assert response.status_code == 202
-    assert calls == [("job_gpt1", "gpt_image_1_actual", "gpt_image_1", {"regeneration_patch": {"scope": "image", "patches": {}}})]
+    assert calls == [("job_gpt1", "gpt_image_1_actual", "gpt_image_2", {"regeneration_patch": {"scope": "image", "patches": {}}})]
     assert "_dispatch" not in str(response.json())
 
 

@@ -2475,8 +2475,8 @@ from orchestrator.app.api.routers.generation_jobs import T2I_RUN_MODE_TO_ENGINE
 def test_run_mode_mapping_matches_legacy_elif_chain():
     # Exact behavior of the elif chain this mapping replaced.
     expected = {
-        "gpt_image_1_actual": "gpt_image_1",
-        "gpt_image_1_smoke": "gpt_image_1",
+        "gpt_image_1_actual": "gpt_image_2",
+        "gpt_image_1_smoke": "gpt_image_2",
         "gpt_image_2_actual": "gpt_image_2",
         "gpt_image_2_smoke": "gpt_image_2",
         "sd35_local": "sd35_large",

@@ -170,7 +170,7 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
         route_family_id=resolved_visual_route_key,
     )
     policy = build_prompt_quality_policy(preset)
-    engine = state.get("engine") or "gpt_image_1"
+    engine = state.get("engine") or "gpt_image_2"
     adapter_output = render_engine_prompt(engine, scene_plan, policy, preset_id=preset_id)
     adapter_positive_prompt = adapter_output.prompt
     if extra_hints:

@@ -12,7 +12,12 @@ import type {
   ReferenceImageFields,
   ReferenceTemplateFields
 } from "@/types/marketing";
-import { getGenerationEngineOption, resolveGenerationEnginePreference } from "@/lib/generation-engine";
+import {
+  getGenerationEngineOption,
+  resolveGenerationEnginePreference,
+  type BackendImageEngine,
+  type ImageGenerationEngine
+} from "@/lib/generation-engine";
 import { getSupabaseAuthorizationHeader, type RequestHeaders } from "@/lib/supabase/session";
 import { estimateJsonSizeBytes, measureWebPerf, perfTraceEnabled, recordWebPerfEvent, traceHeaders } from "@/lib/performance";
 
@@ -254,6 +259,9 @@ export interface GenerationJobCreateInput {
   userPlan?: string;
   adFormat?: string | null;
   runMode?: string;
+  imageGenerationEngine?: ImageGenerationEngine | null;
+  requestedEngine?: BackendImageEngine | null;
+  t2iEngine?: BackendImageEngine | null;
   metadata?: Record<string, unknown>;
 }
 
