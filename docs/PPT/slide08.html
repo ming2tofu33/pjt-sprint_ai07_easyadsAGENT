@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>08 LangGraph Agent Workflow</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<link href="../assets/icons.css" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{margin:0;padding:0;overflow:hidden;font-family:'Pretendard',sans-serif;color:#1A1A1A;-webkit-font-smoothing:antialiased}
+  .mono{font-family:'SF Mono', Menlo, Consolas, monospace}
+</style>
+</head>
+<body>
+<div class="slide-container" data-screen-label="08 LangGraph Agent Workflow" style="position:relative;width:1920px;height:1080px;overflow:hidden;background:#FFFFFF">
+
+  <!-- Section ribbon -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:0;top:0;width:1920px;height:6px;background:#FFC4A3;z-index:2"></div>
+
+  <!-- Section indicator -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:980px;top:60px;width:840px;z-index:10;text-align:right">
+    <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:16px;font-size:18px;font-weight:600;color:#7A7A7A;letter-spacing:0.5px;white-space:nowrap;line-height:1">
+      <span style="color:#C8C8C8">01 제품 스토리</span>
+      <span style="color:#1A1A1A">02 생성 시스템</span>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#FFC4A3"></span>
+      <span style="color:#C8C8C8">03 신뢰 레이어</span>
+      <span style="color:#C8C8C8">04 서비스 완성도</span>
+    </div>
+  </div>
+
+  <!-- Brand mark -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:54px;width:300px;z-index:10">
+    <div style="font-size:28px;font-weight:800;letter-spacing:-0.5px">개떡찰떡<span style="color:#FFC4A3">✦</span></div>
+  </div>
+
+  <!-- Title -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:120px;width:1500px;z-index:10">
+    <div style="font-size:22px;font-weight:600;color:#E08A60;letter-spacing:0.5px;margin-bottom:8px">SLIDE 08 · LANGGRAPH AGENT WORKFLOW</div>
+    <div style="font-size:54px;font-weight:850;line-height:1.15;letter-spacing:-2px;color:#1A1A1A">
+      광고 생성은 <span style="background:linear-gradient(180deg, transparent 60%, #FFC4A3 60%, #FFC4A3 92%, transparent 92%)">Node와 Edge</span>로 실행됩니다
+    </div>
+    <div style="margin-top:12px;font-size:20px;font-weight:500;color:#5A5A5A;line-height:1.5">
+      하나의 모델 호출이 아니라, 질문 · 판단 · 생성 · 검증을 이어가는 LangGraph 기반 workflow입니다
+    </div>
+  </div>
+
+  <!-- Three-column body -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:300px;width:438px;height:680px;background:linear-gradient(180deg,#FFF7F1 0%,#FFF1E6 100%);border-radius:24px;border:1px solid #FFD9C3;box-shadow:0 18px 44px rgba(224,138,96,0.11);z-index:2"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:130px;top:334px;width:370px;z-index:11">
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 15px;background:#FFC4A3;border-radius:14px;font-size:12px;font-weight:850;color:#1A1A1A;letter-spacing:0.8px">
+      <span class="icon icon-bulb" style="--c:#1A1A1A;--s:16px"></span>WHY LANGGRAPH
+    </div>
+    <div style="margin-top:30px;font-size:42px;font-weight:900;color:#1A1A1A;line-height:1.12;letter-spacing:-1.8px">
+      광고 생성은<br>한 번에 끝나는<br>작업이 아닙니다
+    </div>
+    <div style="margin-top:22px;font-size:17px;font-weight:700;color:#5A5A5A;line-height:1.55">
+      입력이 모호하고, 사용자가 중간에 선택하며, 검증 결과에 따라 특정 단계로 되돌아가야 합니다.
+    </div>
+    <div style="margin-top:28px;display:grid;gap:13px">
+      <div style="padding:15px 16px;background:#FFFFFF;border-radius:16px;border:1px solid #FFE2CF;box-shadow:0 10px 24px rgba(224,138,96,0.06)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="display:inline-grid;place-items:center;width:28px;height:28px;border-radius:10px;background:#FFF0E7;color:#E08A60;font-size:13px;font-weight:900">01</span>
+          <div style="font-size:17px;font-weight:850;color:#1A1A1A">모호한 요청 보완</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;font-weight:700;color:#6A6A6A;line-height:1.42">목적, 타겟, 톤앤매너를 질문으로 채웁니다.</div>
+      </div>
+      <div style="padding:15px 16px;background:#FFFFFF;border-radius:16px;border:1px solid #FFE2CF;box-shadow:0 10px 24px rgba(224,138,96,0.06)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="display:inline-grid;place-items:center;width:28px;height:28px;border-radius:10px;background:#F4EEFB;color:#8A6FB8;font-size:13px;font-weight:900">02</span>
+          <div style="font-size:17px;font-weight:850;color:#1A1A1A">사용자 선택 반영</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;font-weight:700;color:#6A6A6A;line-height:1.42">카피 선택, 직접 입력, 승인 흐름을 이어갑니다.</div>
+      </div>
+      <div style="padding:15px 16px;background:#FFFFFF;border-radius:16px;border:1px solid #FFE2CF;box-shadow:0 10px 24px rgba(224,138,96,0.06)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="display:inline-grid;place-items:center;width:28px;height:28px;border-radius:10px;background:#F1F9D6;color:#7A9A2A;font-size:13px;font-weight:900">03</span>
+          <div style="font-size:17px;font-weight:850;color:#1A1A1A">검증 후 재진입</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;font-weight:700;color:#6A6A6A;line-height:1.42">실패한 지점부터 다시 실행할 수 있어야 합니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Node & edge flow -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:558px;top:300px;width:850px;height:680px;background:#FAFAF7;border-radius:24px;border:1px solid #F0EFE9;box-shadow:0 16px 40px rgba(0,0,0,0.035);z-index:2"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:590px;top:326px;width:786px;z-index:11">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 15px;background:#FFFFFF;border-radius:14px;font-size:12px;font-weight:850;color:#E08A60;letter-spacing:0.8px;border:1px solid #FFE2CF">
+        <span class="icon icon-bot" style="--c:#E08A60;--s:16px"></span>NODE & EDGE FLOW
+      </div>
+      <div style="font-size:12px;font-weight:750;color:#A0A0A0" class="mono">stateful graph execution</div>
+    </div>
+    <div style="margin-top:25px;display:grid;grid-template-columns:repeat(4,1fr);gap:22px">
+      <div style="order:1;height:112px;padding:16px;background:#FFFFFF;border-radius:18px;border:1.5px solid #FFE2CF;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:900;color:#E08A60">01</span>
+          <span class="icon icon-user" style="--c:#E08A60;--s:22px"></span>
+        </div>
+        <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A">사용자 입력</div>
+        <div style="margin-top:5px;font-size:12px;font-weight:700;color:#7A7A7A">text · image</div>
+      </div>
+      <div style="order:2;height:112px;padding:16px;background:#FFFFFF;border-radius:18px;border:1.5px solid #FFE2CF;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:900;color:#E08A60">02</span>
+          <span class="icon icon-search" style="--c:#E08A60;--s:22px"></span>
+        </div>
+        <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A">입력 분석</div>
+        <div style="margin-top:5px;font-size:12px;font-weight:700;color:#7A7A7A">intent · evidence</div>
+      </div>
+      <div style="order:3;height:112px;padding:16px;background:#F7F3FC;border-radius:18px;border:1.5px dashed #C9B8E8;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:900;color:#8A6FB8">03</span>
+          <span class="icon icon-chat" style="--c:#8A6FB8;--s:22px"></span>
+        </div>
+        <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A">부족 정보 질문</div>
+        <div style="margin-top:5px;font-size:12px;font-weight:850;color:#8A6FB8">Interrupt</div>
+      </div>
+      <div style="order:4;height:112px;padding:16px;background:#FFFFFF;border-radius:18px;border:1.5px solid #FFE2CF;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:900;color:#E08A60">04</span>
+          <span class="icon icon-target" style="--c:#E08A60;--s:22px"></span>
+        </div>
+        <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A">전략·포맷</div>
+        <div style="margin-top:5px;font-size:12px;font-weight:700;color:#7A7A7A">tone · format</div>
+      </div>
+      <div style="order:8;height:112px;padding:16px;background:#FFFFFF;border-radius:18px;border:1.5px solid #FFE2CF;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:900;color:#E08A60">05</span>
+          <span class="icon icon-pen" style="--c:#E08A60;--s:22px"></span>
+        </div>
+        <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A">카피 확정</div>
+        <div style="margin-top:5px;font-size:12px;font-weight:700;color:#7A7A7A">candidate · select</div>
+      </div>
+      <div style="order:7;height:112px;padding:16px;background:#FFFFFF;border-radius:18px;border:1.5px solid #FFE2CF;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:900;color:#E08A60">06</span>
+          <span class="icon icon-ruler" style="--c:#E08A60;--s:22px"></span>
+        </div>
+        <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A">레이아웃 계획</div>
+        <div style="margin-top:5px;font-size:12px;font-weight:700;color:#7A7A7A">slots · safe area</div>
+      </div>
+      <div style="order:6;height:112px;padding:16px;background:#FFFFFF;border-radius:18px;border:1.5px solid #FFE2CF;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:900;color:#E08A60">07</span>
+          <span class="icon icon-image" style="--c:#E08A60;--s:22px"></span>
+        </div>
+        <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A">이미지 생성</div>
+        <div style="margin-top:5px;font-size:12px;font-weight:700;color:#7A7A7A">T2I lane</div>
+      </div>
+      <div style="order:5;height:112px;padding:16px;background:#F4FBE3;border-radius:18px;border:1.5px solid #DCEFB4;box-shadow:0 10px 26px rgba(0,0,0,0.035)">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:12px;font-weight:900;color:#7A9A2A">08</span>
+          <span class="icon icon-check" style="--c:#7A9A2A;--s:22px"></span>
+        </div>
+        <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A">검증·저장</div>
+        <div style="margin-top:5px;font-size:12px;font-weight:700;color:#7A7A7A">verify · archive</div>
+      </div>
+    </div>
+    <div style="position:absolute;left:184px;top:103px;width:20px;text-align:center;font-size:22px;font-weight:900;color:#E08A60;line-height:1">→</div>
+    <div style="position:absolute;left:386px;top:103px;width:20px;text-align:center;font-size:22px;font-weight:900;color:#E08A60;line-height:1">→</div>
+    <div style="position:absolute;left:588px;top:103px;width:20px;text-align:center;font-size:22px;font-weight:900;color:#E08A60;line-height:1">→</div>
+    <div style="position:absolute;left:688px;top:171px;width:22px;text-align:center;font-size:24px;font-weight:900;color:#E08A60;line-height:1">↓</div>
+    <div style="position:absolute;left:588px;top:239px;width:20px;text-align:center;font-size:22px;font-weight:900;color:#E08A60;line-height:1">←</div>
+    <div style="position:absolute;left:386px;top:239px;width:20px;text-align:center;font-size:22px;font-weight:900;color:#E08A60;line-height:1">←</div>
+    <div style="position:absolute;left:184px;top:239px;width:20px;text-align:center;font-size:22px;font-weight:900;color:#E08A60;line-height:1">←</div>
+    <div style="margin-top:28px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div style="padding:16px 18px;background:#FFFFFF;border-radius:18px;border:1px solid #E5DBF5">
+        <div style="display:flex;align-items:center;gap:9px;color:#8A6FB8;font-size:13px;font-weight:900;letter-spacing:0.6px">
+          <span class="icon icon-chat" style="--c:#8A6FB8;--s:18px"></span>INTERRUPT / RESUME
+        </div>
+        <div style="margin-top:10px;font-size:15px;font-weight:760;color:#4A4A4A;line-height:1.45">질문이 필요한 순간 멈추고, 응답 후 같은 그래프로 이어갑니다.</div>
+      </div>
+      <div style="padding:16px 18px;background:#FFFFFF;border-radius:18px;border:1px solid #FFD4D4">
+        <div style="display:flex;align-items:center;gap:9px;color:#C56060;font-size:13px;font-weight:900;letter-spacing:0.6px">
+          <span class="icon icon-refresh" style="--c:#C56060;--s:18px"></span>RETRY CONTROL
+        </div>
+        <div style="margin-top:10px;font-size:15px;font-weight:760;color:#4A4A4A;line-height:1.45">검증 실패 시 전체가 아니라 필요한 단계부터 다시 실행합니다.</div>
+      </div>
+    </div>
+    <div style="margin-top:22px;padding:15px 18px;background:#1A1A1A;border-radius:18px;color:#FFFFFF;font-size:17px;font-weight:800;text-align:center">
+      입력 분석 → 질문 → 생성 → 검증 → 저장을 하나의 상태 그래프로 제어
+    </div>
+    <div style="margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+      <div style="height:86px;padding:15px 16px;background:#FFFFFF;border-radius:17px;border:1px solid #EDEBE4">
+        <div style="font-size:12px;font-weight:900;color:#A0A0A0;letter-spacing:0.6px">STATE</div>
+        <div style="margin-top:7px;font-size:17px;font-weight:850;color:#1A1A1A">중간 결과를 상태로 보관</div>
+      </div>
+      <div style="height:86px;padding:15px 16px;background:#FFFFFF;border-radius:17px;border:1px solid #E5DBF5">
+        <div style="font-size:12px;font-weight:900;color:#8A6FB8;letter-spacing:0.6px">BRANCH</div>
+        <div style="margin-top:7px;font-size:17px;font-weight:850;color:#1A1A1A">조건에 따라 다음 노드 선택</div>
+      </div>
+      <div style="height:86px;padding:15px 16px;background:#F7FCEB;border-radius:17px;border:1px solid #DCEFB4">
+        <div style="font-size:12px;font-weight:900;color:#7A9A2A;letter-spacing:0.6px">RESUME</div>
+        <div style="margin-top:7px;font-size:17px;font-weight:850;color:#1A1A1A">사용자 응답 후 이어서 실행</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LangGraph roles -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1432px;top:300px;width:392px;height:680px;background:#FAFAF7;border-radius:24px;border:1px solid #F0EFE9;box-shadow:0 16px 40px rgba(0,0,0,0.035);z-index:2"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1462px;top:326px;width:332px;z-index:11">
+    <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 15px;background:#1A1A1A;border-radius:14px;font-size:12px;font-weight:850;color:#C8E66B;letter-spacing:0.8px">LANGGRAPH 구성과 역할</div>
+    <div style="margin-top:20px;display:grid;gap:11px">
+      <div style="height:96px;padding:14px 16px;background:#FFFFFF;border-radius:17px;border:1px solid #FFE2CF">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span class="icon icon-bot" style="--c:#E08A60;--s:20px"></span>
+          <div style="font-size:18px;font-weight:850;color:#E08A60">Node</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;font-weight:720;color:#5A5A5A;line-height:1.36">입력 분석, 질문, 생성, 검증 같은 작업 단위</div>
+      </div>
+      <div style="height:96px;padding:14px 16px;background:#FFFFFF;border-radius:17px;border:1px solid #FFE2CF">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span class="icon icon-trend" style="--c:#E08A60;--s:20px"></span>
+          <div style="font-size:18px;font-weight:850;color:#E08A60">Edge</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;font-weight:720;color:#5A5A5A;line-height:1.36">Node 사이의 실행 순서와 다음 단계를 연결</div>
+      </div>
+      <div style="height:96px;padding:14px 16px;background:#FFFFFF;border-radius:17px;border:1px solid #E5DBF5">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span class="icon icon-scale" style="--c:#8A6FB8;--s:20px"></span>
+          <div style="font-size:18px;font-weight:850;color:#8A6FB8">Conditional</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;font-weight:720;color:#5A5A5A;line-height:1.36">정보 부족, 검증 실패, 사용자 선택에 따른 분기</div>
+      </div>
+      <div style="height:96px;padding:14px 16px;background:#FFFFFF;border-radius:17px;border:1px solid #E5DBF5">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span class="icon icon-chat" style="--c:#8A6FB8;--s:20px"></span>
+          <div style="font-size:18px;font-weight:850;color:#8A6FB8">Interrupt</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;font-weight:720;color:#5A5A5A;line-height:1.36">사용자 응답이 필요한 지점에서 멈추고 재개</div>
+      </div>
+      <div style="height:96px;padding:14px 16px;background:#F7FCEB;border-radius:17px;border:1px solid #DCEFB4">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span class="icon icon-refresh" style="--c:#7A9A2A;--s:20px"></span>
+          <div style="font-size:18px;font-weight:850;color:#7A9A2A">Control</div>
+        </div>
+        <div style="margin-top:8px;font-size:13px;font-weight:720;color:#5A5A5A;line-height:1.36">수정이 필요한 경우 특정 단계부터 다시 실행</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom message -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:1018px;width:1728px;z-index:10;text-align:center">
+    <div style="font-size:18px;font-weight:750;color:#5A5A5A">
+      LangGraph는 광고 생성 과정을 Node와 Edge로 나누고, 질문 · 판단 · 생성 · 검증 흐름을 제어하는 에이전트 실행 구조입니다
+    </div>
+  </div>
+
+  <!-- Page number -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1740px;top:96px;width:80px;z-index:10;text-align:right">
+    <div style="font-size:16px;font-weight:600;color:#A0A0A0;letter-spacing:1px">08 / 18</div>
+  </div>
+
+</div>
+</body>
+</html>

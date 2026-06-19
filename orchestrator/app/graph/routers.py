@@ -176,7 +176,14 @@ def should_use_native_typography_lane(state: MarketingState) -> bool:
 
 
 def route_after_native_copy_brief(state: MarketingState) -> str:
-    return "native_creative_preflight" if state.get("native_generation_status") == "copy_approved" else "native_result_adapter"
+    status = state.get("native_generation_status")
+    if status == "copy_approved":
+        return "native_creative_preflight"
+    if status == "manual_review":
+        bundle = state.get("format_approved_plan_bundle") or {}
+        if isinstance(bundle, dict) and bundle.get("decision") == "manual_review":
+            return "copy_spec_parser"
+    return "native_result_adapter"
 
 
 def route_after_native_preflight(state: MarketingState) -> str:

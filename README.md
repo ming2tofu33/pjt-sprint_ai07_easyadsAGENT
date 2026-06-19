@@ -37,7 +37,9 @@
 | ------------------- | -------------------------------------------------------------------------------- |
 | Team Hub             | [Notion Team Hub](https://app.notion.com/p/easyads/3665cd53900f809f86e2d3dae2960a72)                                        |
 | Website             | [easyads-agent.com](https://easyads-agent.vercel.app/)                                        |
+| PPT Deck            | [GitHub Pages](https://ming2tofu33.github.io/pjt-sprint_ai07_easyadsAGENT/)           |
 | GitHub Repository   | [easyadsAGENT](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT)      |
+| Project Report      | [`docs/report/4팀_보고서.pdf`](./docs/report/4팀_보고서.pdf)                   |
 | Architecture Map    | [`docs/FE_BFF_BE_LOGIC_MAP.md`](./docs/FE_BFF_BE_LOGIC_MAP.md)                   |
 | LangGraph Schema    | [`docs/llm-langgraph-schema-v1.md`](./docs/llm-langgraph-schema-v1.md)           |
 | Quality Gate Design | [`docs/ad-compliance-gate-design-v1.md`](./docs/ad-compliance-gate-design-v1.md) |

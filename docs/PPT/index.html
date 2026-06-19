@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>개떡찰떡 PPT</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<style>
+  :root {
+    --bg: #111315;
+    --panel: rgba(255, 255, 255, 0.92);
+    --text: #1a1a1a;
+    --muted: #747474;
+    --accent: #a8e6d0;
+    --accent-strong: #4a9a7c;
+    --shadow: 0 18px 70px rgba(0, 0, 0, 0.34);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 12% 16%, rgba(200, 230, 107, 0.18), transparent 30%),
+      radial-gradient(circle at 88% 82%, rgba(255, 196, 163, 0.16), transparent 28%),
+      linear-gradient(135deg, #111315 0%, #1f2422 100%);
+    font-family: "Pretendard", sans-serif;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .deck-shell {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 72px 86px;
+  }
+
+  .stage {
+    position: relative;
+    width: min(calc(100vw - 144px), calc((100vh - 154px) * 16 / 9));
+    aspect-ratio: 16 / 9;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: var(--shadow);
+  }
+
+  .stage iframe {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    border: 0;
+    transform-origin: top left;
+    background: #fff;
+  }
+
+  .topbar,
+  .controls {
+    position: fixed;
+    left: 50%;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transform: translateX(-50%);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    background: var(--panel);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.16);
+    backdrop-filter: blur(14px);
+  }
+
+  .topbar {
+    top: 18px;
+    width: min(760px, calc(100vw - 32px));
+    justify-content: space-between;
+    padding: 10px 14px 10px 18px;
+    border-radius: 18px;
+  }
+
+  .brand {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: -0.2px;
+    white-space: nowrap;
+  }
+
+  .brand-mark {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: #1a1a1a;
+    color: var(--accent);
+    font-size: 14px;
+  }
+
+  .slide-title {
+    overflow: hidden;
+    max-width: 360px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .counter {
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f0fbf6;
+    color: var(--accent-strong);
+    font-size: 13px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .controls {
+    bottom: 22px;
+    padding: 10px;
+    border-radius: 999px;
+  }
+
+  button,
+  .jump-input {
+    height: 38px;
+    border: 0;
+    border-radius: 999px;
+    font-family: inherit;
+    font-weight: 800;
+  }
+
+  button {
+    min-width: 42px;
+    padding: 0 14px;
+    background: #ffffff;
+    color: #1a1a1a;
+    cursor: pointer;
+    transition: transform 140ms ease, background 140ms ease, color 140ms ease;
+  }
+
+  button:hover {
+    transform: translateY(-1px);
+    background: var(--accent);
+  }
+
+  button:active {
+    transform: translateY(0);
+  }
+
+  .primary {
+    background: #1a1a1a;
+    color: #ffffff;
+  }
+
+  .primary:hover {
+    background: var(--accent-strong);
+    color: #ffffff;
+  }
+
+  .jump {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 0 12px;
+    border-radius: 999px;
+    background: #f7f7f4;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .jump-input {
+    width: 54px;
+    padding: 0 10px;
+    outline: none;
+    background: #ffffff;
+    color: #1a1a1a;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hint {
+    position: fixed;
+    right: 24px;
+    bottom: 28px;
+    z-index: 10;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  @media (max-width: 900px) {
+    .deck-shell {
+      padding: 72px 14px 98px;
+    }
+
+    .stage {
+      width: min(calc(100vw - 28px), calc((100vh - 170px) * 16 / 9));
+      border-radius: 10px;
+    }
+
+    .topbar {
+      top: 10px;
+      padding: 9px 10px 9px 12px;
+    }
+
+    .slide-title {
+      display: none;
+    }
+
+    .controls {
+      bottom: 12px;
+      max-width: calc(100vw - 24px);
+      overflow-x: auto;
+      border-radius: 18px;
+    }
+
+    .hint {
+      display: none;
+    }
+  }
+</style>
+</head>
+<body>
+<header class="topbar" aria-label="presentation status">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">*</span>
+    <span>개떡찰떡 PPT</span>
+  </div>
+  <div class="slide-title" id="slideTitle">01 Cover</div>
+  <div class="counter" id="counter">01 / 18</div>
+</header>
+
+<main class="deck-shell">
+  <div class="stage" id="stage">
+    <iframe id="slideFrame" title="presentation slide" src="slide01.html"></iframe>
+  </div>
+</main>
+
+<nav class="controls" aria-label="presentation controls">
+  <button type="button" id="firstBtn" title="First slide">First</button>
+  <button type="button" id="prevBtn" class="primary" title="Previous slide">Prev</button>
+  <div class="jump">
+    <label for="jumpInput">Slide</label>
+    <input id="jumpInput" class="jump-input" type="number" min="1" max="18" value="1" inputmode="numeric">
+  </div>
+  <button type="button" id="nextBtn" class="primary" title="Next slide">Next</button>
+  <button type="button" id="lastBtn" title="Last slide">Last</button>
+  <button type="button" id="fullscreenBtn" title="Fullscreen">Full</button>
+</nav>
+
+<div class="hint">Keys: Left/Right, Space, Home, End, F</div>
+
+<script>
+  const slideCount = 18;
+  const slideTitles = [
+    "01 Cover",
+    "02 Problem",
+    "03 UX Flow",
+    "04 Why Simple Generation Failed",
+    "05 Core Design Principle",
+    "06 Readability Gate Analysis",
+    "07 Web App to Generation Agent",
+    "08 LangGraph Agent Workflow",
+    "09 MarketingState Context",
+    "10 LangGraph State Graph",
+    "11 Generation Lanes",
+    "12 Input Normalization",
+    "13 Copy Policy",
+    "14 Compliance Gate",
+    "15 Demo Flow",
+    "16 Eval Layer",
+    "17 Limits & Conclusion",
+    "18 Team Responsibilities"
+  ];
+
+  const frame = document.getElementById("slideFrame");
+  const stage = document.getElementById("stage");
+  const counter = document.getElementById("counter");
+  const slideTitle = document.getElementById("slideTitle");
+  const jumpInput = document.getElementById("jumpInput");
+
+  let currentSlide = 1;
+
+  function clampSlide(value) {
+    const number = Number.parseInt(value, 10);
+    if (Number.isNaN(number)) return 1;
+    return Math.min(slideCount, Math.max(1, number));
+  }
+
+  function slideFile(slideNumber) {
+    return `slide${String(slideNumber).padStart(2, "0")}.html`;
+  }
+
+  function updateScale() {
+    const scale = stage.clientWidth / 1920;
+    frame.style.transform = `scale(${scale})`;
+  }
+
+  function goToSlide(slideNumber, options = {}) {
+    currentSlide = clampSlide(slideNumber);
+    const padded = String(currentSlide).padStart(2, "0");
+    frame.src = slideFile(currentSlide);
+    counter.textContent = `${padded} / ${slideCount}`;
+    slideTitle.textContent = slideTitles[currentSlide - 1] || `Slide ${currentSlide}`;
+    jumpInput.value = currentSlide;
+
+    if (!options.skipHash) {
+      history.replaceState(null, "", `#${currentSlide}`);
+    }
+  }
+
+  function nextSlide() {
+    goToSlide(currentSlide + 1);
+  }
+
+  function prevSlide() {
+    goToSlide(currentSlide - 1);
+  }
+
+  document.getElementById("firstBtn").addEventListener("click", () => goToSlide(1));
+  document.getElementById("prevBtn").addEventListener("click", prevSlide);
+  document.getElementById("nextBtn").addEventListener("click", nextSlide);
+  document.getElementById("lastBtn").addEventListener("click", () => goToSlide(slideCount));
+  document.getElementById("fullscreenBtn").addEventListener("click", () => {
+    const target = document.fullscreenElement ? document : document.documentElement;
+    if (document.fullscreenElement) {
+      target.exitFullscreen();
+    } else {
+      target.requestFullscreen();
+    }
+  });
+
+  jumpInput.addEventListener("change", () => goToSlide(jumpInput.value));
+  jumpInput.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      goToSlide(jumpInput.value);
+      jumpInput.blur();
+    }
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.target === jumpInput) return;
+    if (event.key === "ArrowRight" || event.key === " " || event.key === "PageDown") {
+      event.preventDefault();
+      nextSlide();
+    }
+    if (event.key === "ArrowLeft" || event.key === "PageUp") {
+      event.preventDefault();
+      prevSlide();
+    }
+    if (event.key === "Home") {
+      event.preventDefault();
+      goToSlide(1);
+    }
+    if (event.key === "End") {
+      event.preventDefault();
+      goToSlide(slideCount);
+    }
+    if (event.key.toLowerCase() === "f") {
+      event.preventDefault();
+      document.getElementById("fullscreenBtn").click();
+    }
+  });
+
+  window.addEventListener("resize", updateScale);
+  window.addEventListener("hashchange", () => goToSlide(location.hash.slice(1), { skipHash: true }));
+
+  goToSlide(location.hash ? location.hash.slice(1) : 1, { skipHash: Boolean(location.hash) });
+  updateScale();
+</script>
+</body>
+</html>

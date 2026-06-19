@@ -68,13 +68,36 @@ describe("supabase session helper", () => {
     const firstTokenPromise = getSupabaseAccessToken();
     await vi.waitFor(() => expect(signInAnonymously).toHaveBeenCalledTimes(1));
     const secondTokenPromise = getSupabaseAccessToken();
-    await vi.waitFor(() => expect(getSession).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(getSession).toHaveBeenCalledTimes(1));
     finishSignIn?.();
     const [firstToken, secondToken] = await Promise.all([firstTokenPromise, secondTokenPromise]);
 
     expect(firstToken).toBe("anon_access_token_1");
     expect(secondToken).toBe("anon_access_token_1");
     expect(signInAnonymously).toHaveBeenCalledTimes(1);
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates in-flight auth state on Supabase auth events", async () => {
+    let onAuthStateChange: (() => void) | undefined;
+    const getSession = vi.fn(async () => ({ data: { session: { access_token: `token_${getSession.mock.calls.length}` } } }));
+    vi.doMock("./browser", () => ({
+      createSupabaseBrowserClient: () => ({
+        auth: {
+          getSession,
+          onAuthStateChange: (callback: () => void) => {
+            onAuthStateChange = callback;
+            return { data: { subscription: { unsubscribe: vi.fn() } } };
+          }
+        }
+      })
+    }));
+    const { getSupabaseAccessToken } = await import("./session");
+
+    expect(await getSupabaseAccessToken()).toBe("token_1");
+    onAuthStateChange?.();
+    expect(await getSupabaseAccessToken()).toBe("token_2");
+    expect(getSession).toHaveBeenCalledTimes(2);
   });
 
   it("throws when anonymous Supabase session creation returns an auth error", async () => {

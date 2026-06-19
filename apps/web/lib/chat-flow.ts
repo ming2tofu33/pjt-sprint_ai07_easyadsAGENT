@@ -23,16 +23,16 @@ export const toneOptions: ToneOption[] = [
 
 const CHAT_ERROR_MESSAGE_BY_CODE: Partial<Record<string, string>> = {
   thread_limit_reached:
-    "\ube44\ub85c\uadf8\uc778 \uc0c1\ud0dc\uc5d0\uc11c\ub294 \uc791\uc5c5\ubc29\uc744 3\uac1c\uae4c\uc9c0 \ub9cc\ub4e4 \uc218 \uc788\uc5b4\uc694. \uae30\uc874 \uc791\uc5c5\ubc29\uc744 \uc0ad\uc81c\ud558\uac70\ub098 \ub85c\uadf8\uc778\ud558\uba74 \uacc4\uc18d \ub9cc\ub4e4 \uc218 \uc788\uc5b4\uc694.",
-  workspace_required: "\uc791\uc5c5\ubc29\uc744 \uc900\ube44\ud558\uc9c0 \ubabb\ud588\uc5b4\uc694. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.",
-  archive_workspace_required: "\ubcf4\uad00\ud568\uc744 \uc900\ube44\ud558\uc9c0 \ubabb\ud588\uc5b4\uc694. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.",
-  usage_workspace_required: "\uc0ac\uc6a9\ub7c9 \uc815\ubcf4\ub97c \ubd88\ub7ec\uc624\uc9c0 \ubabb\ud588\uc5b4\uc694. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.",
-  invalid_or_expired_session: "\ub85c\uadf8\uc778\uc774 \ub9cc\ub8cc\ub410\uc5b4\uc694. \ub2e4\uc2dc \ub85c\uadf8\uc778\ud55c \ub4a4 \uc774\uc5b4\uc11c \uc9c4\ud589\ud574 \uc8fc\uc138\uc694.",
-  supabase_auth_configuration_missing: "\ub85c\uadf8\uc778 \uc124\uc815\uc744 \ud655\uc778\ud574\uc57c \ud574\uc694. \uad00\ub9ac\uc790\uc5d0\uac8c \ubb38\uc758\ud574 \uc8fc\uc138\uc694.",
-  upstream_orchestrator_unavailable: "\uc0dd\uc131 \uc11c\ubc84\uc5d0 \uc5f0\uacb0\ud558\uc9c0 \ubabb\ud588\uc5b4\uc694. \uc785\ub825 \ub0b4\uc6a9\uc740 \uc720\uc9c0\ud588\uc73c\ub2c8 \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694."
+    "비로그인 상태에서는 작업방을 3개까지 만들 수 있어요. 기존 작업방을 삭제하거나 로그인하면 계속 만들 수 있어요.",
+  workspace_required: "작업방을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
+  archive_workspace_required: "보관함을 준비하지 못했어요. 잠시 후 다시 시도해 주세요.",
+  usage_workspace_required: "사용량 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+  invalid_or_expired_session: "로그인이 만료됐어요. 다시 로그인한 뒤 이어서 진행해 주세요.",
+  supabase_auth_configuration_missing: "로그인 설정을 확인해야 해요. 관리자에게 문의해 주세요.",
+  upstream_orchestrator_unavailable: "생성 서버에 연결하지 못했어요. 입력 내용은 유지했으니 잠시 후 다시 시도해 주세요."
 };
 
-const CHAT_FALLBACK_ERROR_MESSAGE = "\uc694\uccad \ucc98\ub9ac \uc911 \ubb38\uc81c\uac00 \uc0dd\uacbc\uc5b4\uc694. \uc7a0\uc2dc \ud6c4 \ub2e4\uc2dc \uc2dc\ub3c4\ud574 \uc8fc\uc138\uc694.";
+const CHAT_FALLBACK_ERROR_MESSAGE = "요청 처리 중 문제가 생겼어요. 잠시 후 다시 시도해 주세요.";
 
 export type ChatFailureLike = {
   errorCode?: string | null;
@@ -339,6 +339,16 @@ export function chatFlowReducer(state: ChatFlowState, action: ChatFlowAction): C
         return {
           ...state,
           progress: { ...state.progress, label: "\uc791\uc5c5 \uc2dc\uc791 \uc2e4\ud328" },
+          currentQuestion: null,
+          isLoading: false,
+          errorMessage: backendFailure.message,
+          errorCode: backendFailure.errorCode
+        };
+      }
+      if (action.recoverToStart) {
+        return {
+          ...state,
+          progress: { ...state.progress, label: "작업 시작 실패" },
           currentQuestion: null,
           isLoading: false,
           errorMessage: backendFailure.message,

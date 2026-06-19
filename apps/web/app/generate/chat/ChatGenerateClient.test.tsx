@@ -15,6 +15,7 @@ const searchParamsMock = vi.hoisted(() => ({
 
 vi.mock("@/lib/api-client", () => ({
   recordRenderMark: vi.fn(),
+  resolveAuthContext: vi.fn(async () => ({ authorizationHeaders: { authorization: "Bearer test" } })),
   ApiError: class ApiError extends Error {
     errorCode?: string;
     status: number;
@@ -1038,7 +1039,7 @@ describe("ChatGenerateClient", () => {
 
     render(<ChatGenerateClient initialSurface="chat" />);
 
-    await waitFor(() => expect(api.getChatThreadResumeState).toHaveBeenCalledWith("thread_pending_resume"));
+    await waitFor(() => expect(api.getChatThreadResumeState).toHaveBeenCalledWith("thread_pending_resume", expect.any(Object)));
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_pending_resume"));
     await waitFor(() => expect(screen.getAllByText("홍보할 상품이나 서비스는 무엇인가요?").length).toBeGreaterThan(0));
     expect(api.createGenerationJob).not.toHaveBeenCalled();
@@ -1602,7 +1603,7 @@ describe("ChatGenerateClient", () => {
     });
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
-    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_analyzing"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_analyzing", expect.objectContaining({ signal: expect.any(AbortSignal) })));
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
     expect(screen.getByText(/요청 내용을 분석하고 있어요/)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "광고 생성 중" })).toBeNull();
@@ -1642,11 +1643,13 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("대화로 찰떡 이미지 만들기")).toBeTruthy());
     fireEvent.click(screen.getByLabelText("요청 보내기"));
 
-    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_reference_analyzing"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_reference_analyzing", expect.objectContaining({ signal: expect.any(AbortSignal) })));
+    const firstPollingSignal = vi.mocked(api.getGenerationJob).mock.calls[0][1]?.signal;
     expect(screen.getByText("대화로 찰떡 만들기")).toBeTruthy();
     expect(screen.getByText(/참고 스타일을 읽고 있어요/)).toBeTruthy();
 
     view.unmount();
+    expect(firstPollingSignal?.aborted).toBe(true);
     render(<ChatGenerateClient initialSurface="chat" />);
 
     await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledTimes(2));
@@ -1660,6 +1663,8 @@ describe("ChatGenerateClient", () => {
   it("keeps completed queued initial graph jobs inside the chat brief flow", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.createGenerationJob).mockClear();
+    vi.mocked(api.getGenerationJob).mockClear();
+    vi.mocked(api.recordRenderMark).mockClear();
     vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
       success: true,
       job: {
@@ -1693,7 +1698,7 @@ describe("ChatGenerateClient", () => {
       job: {
         job_id: "job_initial_pending",
         thread_id: "thread_initial_pending",
-        status: "done",
+        status: "running",
         progress: { progress_percent: 100, current_stage: "completed" },
         result_payload: {
           schema_version: "result_artifact_v1",
@@ -1749,7 +1754,9 @@ describe("ChatGenerateClient", () => {
         })
       )
     );
-    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_pending"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("job_initial_pending", expect.objectContaining({ signal: expect.any(AbortSignal) })));
+    expect(api.getGenerationJob).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(api.recordRenderMark).mock.calls.filter(([mark]) => mark === "terminal_payload_reused")).toHaveLength(1);
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.getByText("광고 브리프 요약")).toBeTruthy();
     expect(screen.getByText("네일 서비스")).toBeTruthy();
@@ -1760,12 +1767,13 @@ describe("ChatGenerateClient", () => {
   it("shows context from an initial graph job option question for reference-style requests", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.createGenerationJob).mockClear();
+    vi.mocked(api.getGenerationJob).mockClear();
     vi.mocked(api.createGenerationJob).mockResolvedValueOnce({
       success: true,
       job: {
         job_id: "job_reference_question",
         thread_id: "thread_reference_question",
-        status: "waiting_user_input",
+        status: "running",
         progress: { progress_percent: 50, current_stage: "waiting_user_input" },
         result_payload: null,
         metadata: {
@@ -1804,6 +1812,7 @@ describe("ChatGenerateClient", () => {
     expect(screen.getByText("음식점/식당")).toBeTruthy();
     expect(screen.getByText("원육")).toBeTruthy();
     expect(screen.getAllByText("확인 필요")).toHaveLength(1);
+    expect(api.getGenerationJob).not.toHaveBeenCalled();
   });
 
   it("routes initial copy-candidate interrupts into copy selection instead of an empty question screen", async () => {
@@ -4655,7 +4664,7 @@ describe("ChatGenerateClient", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /사진 기반 생성 시작/ }));
 
-    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("photo_pending"));
+    await waitFor(() => expect(api.getGenerationJob).toHaveBeenCalledWith("photo_pending", expect.objectContaining({ signal: expect.any(AbortSignal) })));
     await waitFor(() => expect(screen.getByText("AI가 브리프를 정리했어요")).toBeTruthy());
     expect(screen.queryByText("완성된 광고 브리프 정보가 비어 있어요. 다시 시도해주세요.")).toBeNull();
     expect(api.startPhotoGeneration).not.toHaveBeenCalled();

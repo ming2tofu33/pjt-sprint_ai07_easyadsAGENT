@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>07 Web App to Generation Agent</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<link href="../assets/icons.css" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{margin:0;padding:0;overflow:hidden;font-family:'Pretendard',sans-serif;color:#1A1A1A;-webkit-font-smoothing:antialiased}
+  .mono{font-family:'SF Mono', Menlo, Consolas, monospace}
+</style>
+</head>
+<body>
+<div class="slide-container" data-screen-label="07 Web App to Generation Agent" style="position:relative;width:1920px;height:1080px;overflow:hidden;background:#FFFFFF">
+
+  <!-- Section ribbon -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:0;top:0;width:1920px;height:6px;background:#FFC4A3;z-index:2"></div>
+
+  <!-- Section indicator -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:980px;top:60px;width:840px;z-index:10;text-align:right">
+    <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:16px;font-size:18px;font-weight:600;color:#7A7A7A;letter-spacing:0.5px;white-space:nowrap;line-height:1">
+      <span style="color:#C8C8C8">01 제품 스토리</span>
+      <span style="color:#1A1A1A">02 생성 시스템</span>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#FFC4A3"></span>
+      <span style="color:#C8C8C8">03 신뢰 레이어</span>
+      <span style="color:#C8C8C8">04 서비스 완성도</span>
+    </div>
+  </div>
+
+  <!-- Brand mark -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:54px;width:300px;z-index:10">
+    <div style="font-size:28px;font-weight:800;letter-spacing:-0.5px">개떡찰떡<span style="color:#FFC4A3">✦</span></div>
+  </div>
+
+  <!-- Title -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:120px;width:1500px;z-index:10">
+    <div style="font-size:22px;font-weight:600;color:#E08A60;letter-spacing:0.5px;margin-bottom:8px">SLIDE 07 · SYSTEM STRUCTURE</div>
+    <div style="font-size:54px;font-weight:850;line-height:1.15;letter-spacing:-2px;color:#1A1A1A">
+      웹앱에서 생성 에이전트까지, <span style="background:linear-gradient(180deg, transparent 60%, #FFC4A3 60%, #FFC4A3 92%, transparent 92%)">책임으로 연결</span>합니다
+    </div>
+    <div style="margin-top:12px;font-size:20px;font-weight:500;color:#5A5A5A;line-height:1.5">
+      Monorepo 구조 자체보다, 사용자 경험에서 AI 생성 흐름까지 안정적으로 이어지는 경계를 보여줍니다
+    </div>
+  </div>
+
+  <!-- Main architecture panel -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:286px;width:1728px;height:392px;background:#FAFAF7;border-radius:22px;border:1px solid #F0EFE9;z-index:2"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:126px;top:312px;width:1668px;z-index:11">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;background:#FFFFFF;border-radius:13px;font-size:12px;font-weight:850;color:#E08A60;letter-spacing:1px;border:1px solid #FFE4D2">
+        <span class="icon icon-globe" style="--c:#E08A60;--s:16px"></span>FLOW · WEB APP TO GENERATION AGENT
+      </div>
+      <div style="font-size:13px;color:#A0A0A0;font-weight:700" class="mono">FE → BFF → FastAPI Orchestrator → LLM / T2I / DB / Storage</div>
+    </div>
+  </div>
+
+  <!-- Flow cards -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:126px;top:390px;width:282px;height:180px;background:#FFFFFF;border-radius:20px;border:2px solid #C8E66B;box-shadow:0 16px 32px rgba(80,100,40,0.08);z-index:5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:154px;top:418px;width:226px;z-index:11">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="icon icon-globe" style="--c:#7A9A2A;--s:28px"></span>
+      <div>
+        <div style="font-size:12px;font-weight:850;color:#7A9A2A;letter-spacing:0.8px">FRONTEND</div>
+        <div style="margin-top:4px;font-size:23px;font-weight:850;color:#1A1A1A;letter-spacing:-0.5px">Web App</div>
+      </div>
+    </div>
+    <div style="margin-top:22px;font-size:15px;font-weight:700;color:#5A5A5A;line-height:1.45">
+      입력 · 업로드 · 결과 확인 · 아카이브 UI
+    </div>
+  </div>
+
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:422px;top:462px;width:56px;z-index:11;text-align:center">
+    <div style="font-size:34px;color:#D0D0D0">→</div>
+  </div>
+
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:492px;top:390px;width:282px;height:180px;background:#FFFFFF;border-radius:20px;border:2px solid #FFC4A3;box-shadow:0 16px 32px rgba(224,138,96,0.10);z-index:5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:520px;top:418px;width:226px;z-index:11">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="icon icon-shield" style="--c:#E08A60;--s:28px"></span>
+      <div>
+        <div style="font-size:12px;font-weight:850;color:#E08A60;letter-spacing:0.8px">BFF</div>
+        <div style="margin-top:4px;font-size:23px;font-weight:850;color:#1A1A1A;letter-spacing:-0.5px">Auth / Proxy</div>
+      </div>
+    </div>
+    <div style="margin-top:22px;font-size:15px;font-weight:700;color:#5A5A5A;line-height:1.45">
+      인증 경계 · API 라우팅 · 요청 계약
+    </div>
+  </div>
+
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:788px;top:462px;width:56px;z-index:11;text-align:center">
+    <div style="font-size:34px;color:#D0D0D0">→</div>
+  </div>
+
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:858px;top:360px;width:360px;height:240px;background:linear-gradient(180deg,#FFF6EE 0%,#FFE4D2 100%);border-radius:24px;border:2px solid #FFC4A3;box-shadow:0 18px 42px rgba(224,138,96,0.16);z-index:5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:890px;top:396px;width:296px;z-index:11;text-align:center">
+    <span class="icon icon-bot" style="--c:#E08A60;--s:36px"></span>
+    <div style="margin-top:14px;font-size:12px;font-weight:850;color:#E08A60;letter-spacing:0.9px">FASTAPI ORCHESTRATOR</div>
+    <div style="margin-top:8px;font-size:29px;font-weight:850;color:#1A1A1A;letter-spacing:-0.8px">LangGraph 실행</div>
+    <div style="margin:18px auto 0;width:268px;padding:12px 14px;background:#FFFFFF;border-radius:14px;border:1px solid #FFD7C2;font-size:15px;font-weight:750;color:#5A5A5A;line-height:1.45">
+      상태 관리 · 생성 작업 관리 · 분기 제어
+    </div>
+  </div>
+
+  <!-- Fan-out connectors -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1218px;top:478px;width:64px;height:3px;background:#FFC4A3;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1280px;top:408px;width:3px;height:160px;background:#FFC4A3;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1280px;top:408px;width:64px;height:3px;background:#FFC4A3;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1546px;top:408px;width:24px;height:3px;background:#FFC4A3;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1280px;top:568px;width:64px;height:3px;background:#FFC4A3;z-index:4"></div>
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1546px;top:568px;width:24px;height:3px;background:#FFC4A3;z-index:4"></div>
+
+  <!-- Service cards -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1344px;top:354px;width:202px;height:108px;background:#FFFFFF;border-radius:18px;border:1.5px solid #C9B8E8;z-index:5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1366px;top:376px;width:158px;z-index:11">
+    <div style="display:flex;align-items:center;gap:8px"><span class="icon icon-brain" style="--c:#8A6FB8;--s:22px"></span><span style="font-size:12px;font-weight:850;color:#8A6FB8;letter-spacing:0.7px">LLM SERVICES</span></div>
+    <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A;line-height:1.25">Copy / Product<br>Understanding</div>
+  </div>
+
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1570px;top:354px;width:202px;height:108px;background:#FFFFFF;border-radius:18px;border:1.5px solid #C9B8E8;z-index:5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1592px;top:376px;width:158px;z-index:11">
+    <div style="display:flex;align-items:center;gap:8px"><span class="icon icon-image" style="--c:#8A6FB8;--s:22px"></span><span style="font-size:12px;font-weight:850;color:#8A6FB8;letter-spacing:0.7px">T2I ENGINES</span></div>
+    <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A;line-height:1.25">GPT Image 2<br>FLUX / SD</div>
+  </div>
+
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1344px;top:514px;width:202px;height:108px;background:#FFFFFF;border-radius:18px;border:1.5px solid #A8E6D0;z-index:5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1366px;top:536px;width:158px;z-index:11">
+    <div style="display:flex;align-items:center;gap:8px"><span class="icon icon-inbox" style="--c:#4A9A7C;--s:22px"></span><span style="font-size:12px;font-weight:850;color:#4A9A7C;letter-spacing:0.7px">DB</span></div>
+    <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A;line-height:1.25">Threads / Jobs<br>Outputs</div>
+  </div>
+
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1570px;top:514px;width:202px;height:108px;background:#FFFFFF;border-radius:18px;border:1.5px solid #A8E6D0;z-index:5"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1592px;top:536px;width:158px;z-index:11">
+    <div style="display:flex;align-items:center;gap:8px"><span class="icon icon-save" style="--c:#4A9A7C;--s:22px"></span><span style="font-size:12px;font-weight:850;color:#4A9A7C;letter-spacing:0.7px">STORAGE</span></div>
+    <div style="margin-top:12px;font-size:17px;font-weight:850;color:#1A1A1A;line-height:1.25">Assets / Result<br>Images</div>
+  </div>
+
+  <!-- Responsibility cards -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:720px;width:1728px;z-index:11">
+    <div style="display:flex;align-items:center;justify-content:flex-start;margin-bottom:18px">
+      <div style="display:inline-flex;align-items:center;gap:8px;padding:7px 14px;background:#1A1A1A;border-radius:13px;font-size:12px;font-weight:850;color:#C8E66B;letter-spacing:1px">
+        RESPONSIBILITY SPLIT
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px">
+      <div style="height:178px;padding:19px;background:#FFFFFF;border-radius:18px;border:1px solid #E9F5C8;box-shadow:0 12px 28px rgba(0,0,0,0.035)">
+        <div style="font-size:17px;font-weight:850;color:#1A1A1A">Frontend / Web App</div>
+        <div style="margin-top:14px;font-size:14px;font-weight:700;color:#5A5A5A;line-height:1.55">
+          사용자 입력<br>이미지 업로드<br>결과 확인<br>아카이브 UI
+        </div>
+      </div>
+      <div style="height:178px;padding:19px;background:#FFFFFF;border-radius:18px;border:1px solid #FFE2CF;box-shadow:0 12px 28px rgba(0,0,0,0.035)">
+        <div style="font-size:17px;font-weight:850;color:#1A1A1A">BFF</div>
+        <div style="margin-top:14px;font-size:14px;font-weight:700;color:#5A5A5A;line-height:1.55">
+          인증 경계<br>API 라우팅<br>요청 검증<br>에러 응답 표준화
+        </div>
+      </div>
+      <div style="height:178px;padding:19px;background:#FFF8F4;border-radius:18px;border:1px solid #FFC4A3;box-shadow:0 12px 28px rgba(224,138,96,0.08)">
+        <div style="font-size:17px;font-weight:850;color:#1A1A1A">FastAPI Orchestrator</div>
+        <div style="margin-top:14px;font-size:14px;font-weight:700;color:#5A5A5A;line-height:1.55">
+          LangGraph 실행<br>상태 관리<br>생성 작업 관리<br>내부 시크릿 전달
+        </div>
+      </div>
+      <div style="height:178px;padding:19px;background:#FFFFFF;border-radius:18px;border:1px solid #E6DCF8;box-shadow:0 12px 28px rgba(0,0,0,0.035)">
+        <div style="font-size:17px;font-weight:850;color:#1A1A1A">AI / T2I Workers</div>
+        <div style="margin-top:14px;font-size:14px;font-weight:700;color:#5A5A5A;line-height:1.55">
+          LLM 호출<br>이미지 생성 Lane<br>로컬 / Modal / API<br>기반 실행 분기
+        </div>
+      </div>
+      <div style="height:178px;padding:19px;background:#FFFFFF;border-radius:18px;border:1px solid #CFEFE3;box-shadow:0 12px 28px rgba(0,0,0,0.035)">
+        <div style="font-size:17px;font-weight:850;color:#1A1A1A">DB / Storage</div>
+        <div style="margin-top:14px;font-size:14px;font-weight:700;color:#5A5A5A;line-height:1.55">
+          대화 저장<br>작업 · 산출물 저장<br>에셋 · 결과 이미지<br>아카이브 저장
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom message -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:1018px;width:1728px;z-index:10;text-align:center">
+    <div style="font-size:18px;font-weight:750;color:#5A5A5A">
+      웹앱은 경험에 집중하고, BFF는 경계를 지키며, Orchestrator와 Worker가 실제 광고 제작 그래프를 실행합니다
+    </div>
+  </div>
+
+  <!-- Page number -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1740px;top:96px;width:80px;z-index:10;text-align:right">
+    <div style="font-size:16px;font-weight:600;color:#A0A0A0;letter-spacing:1px">07 / 18</div>
+  </div>
+
+</div>
+</body>
+</html>

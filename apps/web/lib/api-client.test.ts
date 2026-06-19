@@ -614,6 +614,22 @@ describe("api-client backend contract routes", () => {
     expect(fetched.job.result_payload?.final_image_path).toBe("data/outputs/job_1/final_0.png");
   });
 
+  it("forwards an optional AbortSignal when polling a generation job", async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      jsonResponse({ success: true, job: { job_id: "job_signal", status: "running" } })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getGenerationJob("job_signal", {
+      signal: controller.signal,
+      authContext: { authorizationHeaders: { authorization: "Bearer pre_resolved" } }
+    });
+
+    expect(fetchMock.mock.calls[0][1]?.signal).toBe(controller.signal);
+    expect(fetchMock.mock.calls[0][1]?.headers).toEqual(expect.objectContaining({ authorization: "Bearer pre_resolved" }));
+  });
+
   it("normalizes upstream orchestrator failures into retryable Korean copy", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(

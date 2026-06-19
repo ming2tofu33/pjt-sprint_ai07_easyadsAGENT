@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>05 Core Design Principle</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" rel="stylesheet">
+<link href="../assets/icons.css" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{margin:0;padding:0;overflow:hidden;font-family:'Pretendard',sans-serif;color:#1A1A1A;-webkit-font-smoothing:antialiased}
+  .mono{font-family:'SF Mono', Menlo, Consolas, monospace}
+</style>
+</head>
+<body>
+<div class="slide-container" data-screen-label="05 Core Design Principle" style="position:relative;width:1920px;height:1080px;overflow:hidden;background:#FFFFFF">
+
+  <!-- Section ribbon -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:0;top:0;width:1920px;height:6px;background:#FFC4A3;z-index:2"></div>
+
+  <!-- Section indicator -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:980px;top:60px;width:840px;z-index:10;text-align:right">
+    <div style="display:inline-flex;align-items:center;justify-content:flex-end;gap:16px;font-size:18px;font-weight:600;color:#7A7A7A;letter-spacing:0.5px;white-space:nowrap;line-height:1">
+      <span style="color:#C8C8C8">01 제품 스토리</span>
+      <span style="color:#1A1A1A">02 생성 시스템</span>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#FFC4A3"></span>
+      <span style="color:#C8C8C8">03 신뢰 레이어</span>
+      <span style="color:#C8C8C8">04 서비스 완성도</span>
+    </div>
+  </div>
+
+  <!-- Brand mark -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:54px;width:300px;z-index:10">
+    <div style="font-size:28px;font-weight:800;letter-spacing:-0.5px">개떡찰떡<span style="color:#FFC4A3">✦</span></div>
+  </div>
+
+  <!-- Title -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:122px;width:1540px;z-index:10">
+    <div style="font-size:23px;font-weight:700;color:#E08A60;letter-spacing:0.5px;margin-bottom:10px">SLIDE 05 · CORE DESIGN PRINCIPLE</div>
+    <div style="font-size:62px;font-weight:850;line-height:1.14;letter-spacing:-2px;color:#1A1A1A">
+      광고 제작 판단을 <span style="background:linear-gradient(180deg, transparent 60%, #FFC4A3 60%, #FFC4A3 92%, transparent 92%)">모델 밖으로</span> 꺼냈습니다
+    </div>
+    <div style="margin-top:16px;font-size:23px;font-weight:500;color:#5A5A5A;line-height:1.45">
+      카피, 레이아웃, 이미지 생성, 텍스트 합성, 검증을 분리해 광고 제작 흐름을 제어합니다
+    </div>
+  </div>
+
+  <!-- Main pipeline panel -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:314px;width:1208px;height:492px;background:#FFF8F4;border-radius:24px;border:1px solid #FFE2CF;box-shadow:0 16px 42px rgba(90,55,30,0.06);z-index:2"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:128px;top:344px;width:1144px;z-index:11">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:inline-flex;align-items:center;gap:9px;padding:8px 16px;background:#FFC4A3;border-radius:14px;font-size:14px;font-weight:850;color:#1A1A1A;letter-spacing:0.8px">
+        <span class="icon icon-ruler" style="--c:#1A1A1A;--s:16px"></span>SEPARATED GENERATION PIPELINE
+      </div>
+      <div style="font-size:20px;font-weight:850;color:#1A1A1A;letter-spacing:-0.4px">
+        한 번에 그리지 않고, 단계별 계약으로 넘깁니다
+      </div>
+    </div>
+  </div>
+
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:132px;top:438px;width:1140px;z-index:11">
+    <div style="position:relative;height:190px">
+      <div style="position:absolute;left:92px;right:92px;top:54px;height:4px;background:#FFD7C2;border-radius:999px"></div>
+      <div style="display:flex;justify-content:space-between;position:relative;z-index:2">
+        <div style="width:188px;text-align:center">
+          <div style="margin:0 auto;width:64px;height:64px;border-radius:20px;background:#FFFFFF;border:1px solid #FFE2CF;box-shadow:0 8px 18px rgba(90,55,30,0.06);display:flex;align-items:center;justify-content:center"><span class="icon icon-doc" style="--c:#E08A60;--s:30px"></span></div>
+          <div style="margin-top:14px;font-size:22px;font-weight:850;line-height:1.15;color:#1A1A1A">Copy</div>
+          <div style="margin-top:8px;font-size:13px;font-weight:700;color:#6A6A6A;line-height:1.35">광고 문구 후보와<br>역할을 분리</div>
+        </div>
+        <div style="width:188px;text-align:center">
+          <div style="margin:0 auto;width:64px;height:64px;border-radius:20px;background:#FFC4A3;border:2px solid #E08A60;box-shadow:0 10px 22px rgba(224,138,96,0.18);display:flex;align-items:center;justify-content:center"><span class="icon icon-ruler" style="--c:#1A1A1A;--s:30px"></span></div>
+          <div style="margin-top:14px;font-size:22px;font-weight:850;line-height:1.15;color:#1A1A1A">Layout<br>Contract</div>
+          <div style="margin-top:8px;font-size:13px;font-weight:800;color:#E08A60;line-height:1.35">TextLayoutSpec</div>
+        </div>
+        <div style="width:188px;text-align:center">
+          <div style="margin:0 auto;width:64px;height:64px;border-radius:20px;background:#FFFFFF;border:1px solid #FFE2CF;box-shadow:0 8px 18px rgba(90,55,30,0.06);display:flex;align-items:center;justify-content:center"><span class="icon icon-image" style="--c:#E08A60;--s:30px"></span></div>
+          <div style="margin-top:14px;font-size:22px;font-weight:850;line-height:1.15;color:#1A1A1A">Image<br>Planning</div>
+          <div style="margin-top:8px;font-size:13px;font-weight:700;color:#6A6A6A;line-height:1.35">배경과 상품 영역<br>분리</div>
+        </div>
+        <div style="width:188px;text-align:center">
+          <div style="margin:0 auto;width:64px;height:64px;border-radius:20px;background:#FFFFFF;border:1px solid #FFE2CF;box-shadow:0 8px 18px rgba(90,55,30,0.06);display:flex;align-items:center;justify-content:center"><span class="icon icon-pen" style="--c:#E08A60;--s:30px"></span></div>
+          <div style="margin-top:14px;font-size:22px;font-weight:850;line-height:1.15;color:#1A1A1A">Text<br>Rendering</div>
+          <div style="margin-top:8px;font-size:13px;font-weight:700;color:#6A6A6A;line-height:1.35">한국어 카피를<br>직접 합성</div>
+        </div>
+        <div style="width:188px;text-align:center">
+          <div style="margin:0 auto;width:64px;height:64px;border-radius:20px;background:#C8E66B;border:1px solid #B8D958;box-shadow:0 10px 22px rgba(120,150,40,0.15);display:flex;align-items:center;justify-content:center"><span class="icon icon-eye" style="--c:#1A1A1A;--s:30px"></span></div>
+          <div style="margin-top:14px;font-size:22px;font-weight:850;line-height:1.15;color:#1A1A1A">Quality<br>Gate</div>
+          <div style="margin-top:8px;font-size:13px;font-weight:700;color:#6A6A6A;line-height:1.35">가독성·침범 위험<br>확인</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:128px;top:664px;width:1144px;z-index:11">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:18px">
+      <div style="padding:20px;background:#FFFFFF;border-radius:18px;border:1px solid #FFE2CF">
+        <div style="font-size:14px;font-weight:850;color:#E08A60;letter-spacing:0.8px">COPY FIRST</div>
+        <div style="margin-top:10px;font-size:18px;font-weight:850;color:#1A1A1A;line-height:1.35">요청문을 그대로 쓰지 않고<br>광고 카피로 재구성</div>
+      </div>
+      <div style="padding:20px;background:#FFFFFF;border-radius:18px;border:1px solid #FFE2CF">
+        <div style="font-size:14px;font-weight:850;color:#E08A60;letter-spacing:0.8px">LAYOUT FIRST</div>
+        <div style="margin-top:10px;font-size:18px;font-weight:850;color:#1A1A1A;line-height:1.35">문구 위치와 안전 여백을<br>먼저 계약</div>
+      </div>
+      <div style="padding:20px;background:#1A1A1A;border-radius:18px">
+        <div style="font-size:14px;font-weight:850;color:#C8E66B;letter-spacing:0.8px">VERIFY FIRST</div>
+        <div style="margin-top:10px;font-size:18px;font-weight:850;color:#FFFFFF;line-height:1.35">읽히지 않거나 불확실하면<br><span style="color:#C8E66B">다음 단계로 넘기지 않음</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- HITL panel -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:1328px;top:314px;width:496px;height:492px;background:#F4FBE3;border-radius:24px;border:1px solid #DCEFB4;box-shadow:0 16px 42px rgba(80,100,40,0.07);z-index:2"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1360px;top:344px;width:432px;z-index:11">
+    <div style="display:inline-flex;align-items:center;gap:9px;padding:8px 16px;background:#C8E66B;border-radius:14px;font-size:14px;font-weight:850;color:#1A1A1A;letter-spacing:0.8px">
+      <span class="icon icon-user" style="--c:#1A1A1A;--s:16px"></span>HUMAN IN THE LOOP
+    </div>
+    <div style="margin-top:20px;font-size:34px;font-weight:850;color:#1A1A1A;line-height:1.16;letter-spacing:-0.9px">
+      불확실한 판단은<br>사용자에게 돌려줍니다
+    </div>
+    <div style="margin-top:18px;font-size:16px;font-weight:650;color:#5A5A5A;line-height:1.45">
+      생성 흐름을 계속 달리게 하는 것보다, 멈춰야 할 지점을 설계하는 것이 중요했습니다.
+    </div>
+  </div>
+
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1360px;top:536px;width:432px;z-index:11">
+    <div style="display:grid;gap:12px">
+      <div style="display:flex;align-items:center;gap:14px;padding:15px 17px;background:#FFFFFF;border-radius:18px;border:1px solid #DCEFB4">
+        <span style="width:13px;height:13px;border-radius:50%;background:#FFC4A3;display:inline-block;flex-shrink:0"></span>
+        <div>
+          <div style="font-size:18px;font-weight:850;color:#1A1A1A">정보가 부족할 때</div>
+          <div style="margin-top:4px;font-size:13px;font-weight:700;color:#6A6A6A">추가 질문으로 보완</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;padding:15px 17px;background:#FFFFFF;border-radius:18px;border:1px solid #DCEFB4">
+        <span style="width:13px;height:13px;border-radius:50%;background:#FFC4A3;display:inline-block;flex-shrink:0"></span>
+        <div>
+          <div style="font-size:18px;font-weight:850;color:#1A1A1A">카피 선택이 필요할 때</div>
+          <div style="margin-top:4px;font-size:13px;font-weight:700;color:#6A6A6A">후보 선택 또는 직접 입력</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;padding:15px 17px;background:#FFFFFF;border-radius:18px;border:1px solid #DCEFB4">
+        <span style="width:13px;height:13px;border-radius:50%;background:#FFC4A3;display:inline-block;flex-shrink:0"></span>
+        <div>
+          <div style="font-size:18px;font-weight:850;color:#1A1A1A">검토가 필요할 때</div>
+          <div style="margin-top:4px;font-size:13px;font-weight:700;color:#6A6A6A">수동 승인 또는 재생성</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Supporting principles -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:96px;top:842px;width:1728px;height:112px;background:#FAFAF7;border-radius:20px;border:1px solid #F0EFE9;z-index:2"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:126px;top:866px;width:1668px;z-index:11">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="font-size:13px;font-weight:850;color:#A0A0A0;letter-spacing:0.8px;width:210px">SUPPORTING PRINCIPLES</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:nowrap">
+        <span style="padding:13px 18px;background:#FFFFFF;border-radius:14px;border:1px solid #E8E8E8;font-size:17px;font-weight:850;color:#1A1A1A">Evidence First</span>
+        <span style="padding:13px 18px;background:#FFFFFF;border-radius:14px;border:1px solid #E8E8E8;font-size:17px;font-weight:850;color:#1A1A1A">Product First</span>
+        <span style="padding:13px 18px;background:#FFFFFF;border-radius:14px;border:1px solid #E8E8E8;font-size:17px;font-weight:850;color:#1A1A1A">Model-aware</span>
+        <span style="padding:13px 18px;background:#FFFFFF;border-radius:14px;border:1px solid #E8E8E8;font-size:17px;font-weight:850;color:#1A1A1A">Fail-closed</span>
+        <span style="padding:13px 18px;background:#FFFFFF;border-radius:14px;border:1px solid #E8E8E8;font-size:17px;font-weight:850;color:#1A1A1A">Persistent Workflow</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lane distinction -->
+  <div data-object="true" data-object-type="shape" style="position:absolute;left:390px;top:968px;width:1140px;height:34px;background:#FFFFFF;border-radius:999px;border:1px solid #FFE2CF;box-shadow:0 10px 24px rgba(90,55,30,0.05);z-index:3"></div>
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:420px;top:975px;width:1080px;z-index:11;text-align:center">
+    <div style="display:flex;align-items:center;justify-content:center;gap:18px;font-size:14px;font-weight:850;color:#4A4A4A;line-height:1">
+      <span><span style="color:#E08A60;font-weight:900">Local lane</span>: TLFP + renderer</span>
+      <span style="color:#C8C8C8">|</span>
+      <span><span style="color:#7A9A2A;font-weight:900">GPT Image 2 lane</span>: approved copy + native typography</span>
+    </div>
+  </div>
+
+  <!-- Bottom message -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:96px;top:1018px;width:1728px;z-index:10;text-align:center">
+    <div style="font-size:18px;font-weight:750;color:#5A5A5A">
+      핵심은 모델을 잘 부르는 것이 아니라, 카피와 레이아웃과 검증을 서비스가 직접 통제하는 것입니다
+    </div>
+  </div>
+
+  <!-- Page number -->
+  <div data-object="true" data-object-type="textbox" style="position:absolute;left:1740px;top:96px;width:80px;z-index:10;text-align:right">
+    <div style="font-size:16px;font-weight:600;color:#A0A0A0;letter-spacing:1px">05 / 18</div>
+  </div>
+
+</div>
+</body>
+</html>
