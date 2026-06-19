@@ -12,6 +12,22 @@ ALLOWED_LLM_PROVIDERS = {"mock", "openai", "openai_compatible", "local_openai_co
 ALLOWED_LOCAL_LLM_PROVIDERS = {"local_openai_compat", "mock"}
 
 
+def _safe_positive_int(value: str | None, default: int) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _safe_non_negative_int(value: str | None, default: int | None) -> int | None:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed >= 0 else default
+
+
 @dataclass(frozen=True)
 class LLMSettings:
     enable_api_call: bool = False
@@ -52,21 +68,21 @@ class LLMSettings:
             llm_model=easyads_model,
             llm_base_url=_get_env("EASYADS_LLM_BASE_URL", "") or None,
             llm_api_style=normalize_llm_api_style(_get_env("EASYADS_LLM_API_STYLE", "responses"), default="responses"),
-            max_retries=int(max_retries) if max_retries.isdigit() else 0,
+            max_retries=_safe_non_negative_int(max_retries, 0) or 0,
             openai_text_model_nano=_get_env("LLM_OPENAI_TEXT_MODEL_NANO", "") or easyads_model,
             openai_text_model_mini=_get_env("LLM_OPENAI_TEXT_MODEL_MINI", "") or easyads_model,
             openai_text_model_full=_get_env("LLM_OPENAI_TEXT_MODEL_FULL", "") or easyads_model,
             openai_vision_model=_get_env("LLM_OPENAI_VISION_MODEL", "") or easyads_model,
-            max_api_calls_per_job_override=int(override) if override.isdigit() else None,
-            request_timeout_seconds=int(easyads_timeout or legacy_timeout),
+            max_api_calls_per_job_override=_safe_non_negative_int(override, None),
+            request_timeout_seconds=_safe_positive_int(easyads_timeout or legacy_timeout, 30),
             provider_strict_mode=_get_bool("LLM_PROVIDER_STRICT_MODE", True),
             local_llm_provider=normalize_local_llm_provider(_get_env("EASYADS_LOCAL_LLM_PROVIDER", "local_openai_compat")),
             local_llm_base_url=_get_env("EASYADS_LOCAL_LLM_BASE_URL", "") or None,
             local_llm_api_key=_get_env("EASYADS_LOCAL_LLM_API_KEY", "") or None,
             local_llm_model=_get_env("EASYADS_LOCAL_LLM_MODEL", "gemma4-e4b") or "gemma4-e4b",
             local_llm_api_style=normalize_llm_api_style(_get_env("EASYADS_LOCAL_LLM_API_STYLE", "chat_completions"), default="chat_completions"),
-            local_llm_timeout_seconds=int(local_timeout) if local_timeout.isdigit() else 60,
-            local_llm_max_retries=int(local_retries) if local_retries.isdigit() else 0,
+            local_llm_timeout_seconds=_safe_positive_int(local_timeout, 60),
+            local_llm_max_retries=_safe_non_negative_int(local_retries, 0) or 0,
         )
 
 
