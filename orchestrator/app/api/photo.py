@@ -23,28 +23,18 @@ from orchestrator.app.api.chat import (
     BRIEF_READY_COPY_MODES,
 )
 from orchestrator.app.api.marketing_graph import get_marketing_graph
+from orchestrator.app.t2i.contracts import normalize_t2i_engine
 
 router = APIRouter(prefix="/v1/marketing/photo", tags=["marketing-photo"])
-
-SUPPORTED_IMAGE_ENGINES = {
-    "gpt_image_1": "gpt_image_1",
-    "gpt_image_2": "gpt_image_2",
-    "flux2_klein_4b": "flux2_klein_4b",
-    "flux2_klein": "flux2_klein_4b",
-    "flux": "flux2_klein_4b",
-    "flux_schnell": "flux2_klein_4b",
-    "sd35_large": "sd35_large",
-}
-
 
 def _normalize_image_engine(*values: str | None) -> str | None:
     for value in values:
         cleaned = _clean_optional_text(value)
         if not cleaned:
             continue
-        normalized = SUPPORTED_IMAGE_ENGINES.get(cleaned)
+        normalized = normalize_t2i_engine(cleaned)
         if normalized:
-            return normalized
+            return normalized.value
     return None
 
 

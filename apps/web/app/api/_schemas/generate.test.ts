@@ -24,4 +24,17 @@ describe("asset id generation contracts", () => {
     expect(photoStartSchema.safeParse({ userInput: "Create an ad", sourceImagePath: "legacy/source.png" }).success).toBe(false);
     expect(generationJobSchema.safeParse({ userInput: "Create an ad", referenceImagePath: "legacy/reference.png" }).success).toBe(false);
   });
+
+  it("accepts only canonical public image engines", () => {
+    expect(
+      generationJobSchema.safeParse({
+        userInput: "Create an ad",
+        imageGenerationEngine: "gpt_image_2",
+        requestedEngine: "flux2_klein_4b",
+        t2iEngine: "sd35_large"
+      }).success
+    ).toBe(true);
+    expect(generationJobSchema.safeParse({ userInput: "Create an ad", imageGenerationEngine: "gpt_image_1" }).success).toBe(false);
+    expect(generationJobSchema.safeParse({ userInput: "Create an ad", t2iEngine: "unknown" }).success).toBe(false);
+  });
 });

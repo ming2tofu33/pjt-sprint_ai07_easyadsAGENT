@@ -12,25 +12,26 @@ from orchestrator.app.usage import service as usage_service
 from orchestrator.app.modal.client import poll_modal_t2i_result, submit_modal_t2i_job
 from orchestrator.app.modal.errors import ModalExecutionError, ModalResultError
 from orchestrator.app.modal.schemas import ModalPollResult, ModalSubmitResult, ModalT2IRequest
+from orchestrator.app.t2i.contracts import (
+    RUN_MODE_TO_T2I_ENGINE,
+    T2IEngine,
+    engine_for_run_mode,
+    normalize_generation_run_mode,
+)
 
 
 logger = logging.getLogger(__name__)
 
-MODAL_ELIGIBLE_RUN_MODES = {
-    "sd35_local",
-    "sd35_local_smoke",
-    "sd35_large_real",
-    "flux_local",
-    "flux_local_smoke",
-    "flux_schnell_real",
-    "flux",
-    "flux_smoke",
-    "flux2_klein_4b",
-}
+MODAL_ELIGIBLE_RUN_MODES = frozenset(
+    run_mode.value
+    for run_mode, engine in RUN_MODE_TO_T2I_ENGINE.items()
+    if engine in {T2IEngine.FLUX2_KLEIN_4B, T2IEngine.SD35_LARGE}
+)
 
 
 def is_modal_eligible_run_mode(run_mode: str | None) -> bool:
-    return run_mode in MODAL_ELIGIBLE_RUN_MODES
+    normalized = normalize_generation_run_mode(run_mode)
+    return bool(normalized and normalized.value in MODAL_ELIGIBLE_RUN_MODES)
 
 
 def build_modal_t2i_request_from_job(
@@ -275,13 +276,8 @@ def _record_usage(row: dict, poll_result: ModalPollResult):
 
 
 def _engine_from_run_mode(run_mode: str | None) -> str | None:
-    if run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
-        return "sd35_large"
-    if run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
-        return "flux2_klein_4b"
-    if run_mode in {"flux2_klein_4b", "flux2_klein", "flux2-klein-4b", "flux_2_klein_4b"}:
-        return "flux2_klein_4b"
-    return None
+    engine = engine_for_run_mode(run_mode)
+    return engine.value if engine and engine is not T2IEngine.MOCK else None
 
 
 def _safe_t2i_params(metadata: dict) -> dict:

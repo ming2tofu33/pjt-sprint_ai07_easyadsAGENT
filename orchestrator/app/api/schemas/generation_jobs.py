@@ -8,6 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from orchestrator.app.api.schemas.assets import PUBLIC_ASSET_ID_PATTERN
 from orchestrator.app.api.schemas.common import ApiMeta, ErrorResponse
+from orchestrator.app.t2i.contracts import (
+    GenerationRunMode,
+    PUBLIC_T2I_ENGINES,
+    normalize_t2i_engine,
+    public_engine_values,
+)
 
 
 GenerationJobStatus = Literal[
@@ -23,24 +29,6 @@ GenerationJobStatus = Literal[
     "completed",
     "failed",
     "cancelled",
-]
-GenerationRunMode = Literal[
-    "queued_only",
-    "mock_immediate",
-    "graph_job",
-    "gpt_image_1_actual",
-    "gpt_image_1_smoke",
-    "gpt_image_2_actual",
-    "gpt_image_2_smoke",
-    "sd35_local",
-    "sd35_local_smoke",
-    "sd35_large_real",
-    "flux_local",
-    "flux_local_smoke",
-    "flux_schnell_real",
-    "flux",
-    "flux_smoke",
-    "flux2_klein_4b",
 ]
 GenerationContinuationMode = Literal[
     "new_thread",
@@ -77,7 +65,22 @@ class GenerationJobCreateRequest(BaseModel):
     user_plan: str = Field(default="free", alias="userPlan")
     ad_format: str | None = Field(default=None, alias="adFormat")
     renderer_mode: str | None = Field(default=None, alias="rendererMode")
-    run_mode: GenerationRunMode = Field(default="queued_only", alias="runMode")
+    run_mode: GenerationRunMode = Field(default=GenerationRunMode.QUEUED_ONLY, alias="runMode")
+    image_generation_engine: str | None = Field(
+        default=None,
+        alias="imageGenerationEngine",
+        json_schema_extra={"enum": list(public_engine_values())},
+    )
+    requested_engine: str | None = Field(
+        default=None,
+        alias="requestedEngine",
+        json_schema_extra={"enum": list(public_engine_values())},
+    )
+    t2i_engine: str | None = Field(
+        default=None,
+        alias="t2iEngine",
+        json_schema_extra={"enum": list(public_engine_values())},
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -108,6 +111,16 @@ class GenerationJobCreateRequest(BaseModel):
             if not ASSET_ID_PATTERN.match(value):
                 raise ValueError("asset ID must match 'asset_<32-hex-chars>'")
         return value
+
+    @field_validator("image_generation_engine", "requested_engine", "t2i_engine", mode="before")
+    @classmethod
+    def validate_public_t2i_engine(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        engine = normalize_t2i_engine(value, allow_legacy_alias=False)
+        if engine not in PUBLIC_T2I_ENGINES:
+            raise ValueError(f"engine must be one of: {', '.join(public_engine_values())}")
+        return engine.value
 
     @field_validator("user_input")
     @classmethod

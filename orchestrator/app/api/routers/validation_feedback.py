@@ -86,23 +86,20 @@ def _resolve_workspace(workspace_id: str | None, user_id: str | None) -> str:
 
 
 def _dispatch_regeneration_job(background_tasks: BackgroundTasks, dispatch: dict) -> None:
+    from orchestrator.app.t2i.contracts import GenerationRunMode, engine_for_run_mode
+
     job_id = dispatch.get("jobId")
     request_payload = dispatch.get("request") or {}
     if not job_id:
         return
     request = GenerationJobCreateRequest(**request_payload)
     run_mode = request.run_mode
-    if run_mode == "mock_immediate":
+    if run_mode == GenerationRunMode.MOCK_IMMEDIATE:
         background_tasks.add_task(execute_generation_job_immediate, job_id, request)
-    elif run_mode == "graph_job":
+    elif run_mode == GenerationRunMode.GRAPH_JOB:
         background_tasks.add_task(execute_generation_job_graph, job_id, request)
-    elif run_mode in {"gpt_image_1_actual", "gpt_image_1_smoke"}:
-        background_tasks.add_task(execute_generation_job_t2i, job_id, request, "gpt_image_1")
-    elif run_mode in {"gpt_image_2_actual", "gpt_image_2_smoke"}:
-        background_tasks.add_task(execute_generation_job_t2i, job_id, request, "gpt_image_2")
-    elif run_mode in {"sd35_local", "sd35_local_smoke", "sd35_large_real"}:
-        background_tasks.add_task(execute_generation_job_t2i, job_id, request, "sd35_large")
-    elif run_mode == "flux2_klein_4b":
-        background_tasks.add_task(execute_generation_job_t2i, job_id, request, "flux2_klein_4b")
-    elif run_mode in {"flux_local", "flux_local_smoke", "flux_schnell_real", "flux", "flux_smoke"}:
-        background_tasks.add_task(execute_generation_job_t2i, job_id, request, "flux2_klein_4b")
+    else:
+        engine = engine_for_run_mode(run_mode)
+        if engine is None:
+            raise ValueError(f"Unsupported regeneration run mode: {run_mode}")
+        background_tasks.add_task(execute_generation_job_t2i, job_id, request, engine.value)
