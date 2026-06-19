@@ -430,6 +430,8 @@ def test_complete_asset_upload_success(monkeypatch, tmp_path):
     assert result.mime_type == "image/png"
     assert result.width == 32
     assert result.height == 24
+    public_payload = result.model_dump(by_alias=True)
+    assert {"object_key", "bucket", "local_path", "raw_image", "base64"}.isdisjoint(public_payload)
     update = calls["updates"][0]
     assert update["pending_only_upload_status"] is True
     assert update["metadata_merge"]["upload"]["status"] == "ready"
@@ -474,3 +476,58 @@ def test_complete_client_unavailable_returns_503_without_failed_update(monkeypat
     assert exc.value.error_code == "asset_storage_unavailable"
     assert "credential detail" not in exc.value.message
     assert calls["updates"] == []
+
+
+@pytest.mark.parametrize("head", [None, {}, {"ContentLength": 0, "ContentType": "image/png"}])
+def test_validate_upload_head_rejects_missing_or_empty_objects(head):
+    with pytest.raises(UnprocessableEntityError) as exc:
+        service.validate_upload_head(
+            asset={},
+            head=head,
+            expected_mime_type="image/png",
+            expected_size_bytes=None,
+        )
+    assert exc.value.error_code == "asset_size_mismatch"
+
+
+def test_validate_upload_head_rejects_size_mismatch():
+    with pytest.raises(ConflictError) as exc:
+        service.validate_upload_head(
+            asset={},
+            head={"ContentLength": 20, "ContentType": "image/png"},
+            expected_mime_type="image/png",
+            expected_size_bytes=10,
+        )
+    assert exc.value.error_code == "asset_size_mismatch"
+
+
+def test_decode_image_metadata_accepts_png_without_exposing_path(tmp_path):
+    image_path = tmp_path / "private.png"
+    Image.new("RGB", (17, 13)).save(image_path, format="PNG")
+    metadata = service.decode_image_metadata(local_path=image_path, mime_type="image/png")
+    assert metadata["format"] == "PNG"
+    assert (metadata["width"], metadata["height"]) == (17, 13)
+    assert str(image_path) not in str(metadata)
+
+
+def test_decode_image_metadata_rejects_invalid_bytes(tmp_path):
+    image_path = tmp_path / "private.png"
+    image_path.write_bytes(b"not-an-image")
+    with pytest.raises(UnprocessableEntityError) as exc:
+        service.decode_image_metadata(local_path=image_path, mime_type="image/png")
+    assert exc.value.error_code == "invalid_image_asset"
+
+
+def test_validate_image_constraints_rejects_unsupported_format():
+    with pytest.raises(UnprocessableEntityError) as exc:
+        service.validate_image_constraints(
+            kind="reference",
+            mime_type="image/gif",
+            size_bytes=100,
+            width=10,
+            height=10,
+            image_format="GIF",
+            expected_mime_type="image/gif",
+            storage_mime_type="image/gif",
+        )
+    assert exc.value.error_code == "unsupported_asset_media_type"
