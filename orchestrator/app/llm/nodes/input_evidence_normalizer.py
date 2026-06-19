@@ -39,6 +39,8 @@ POSITIONING_TERMS = {
 
 
 def input_evidence_normalizer_node(state: dict[str, Any]) -> dict[str, Any]:
+    from orchestrator.app.graph.state import write_model
+
     try:
         bundle = build_input_evidence_bundle(state)
     except Exception as exc:
@@ -50,7 +52,7 @@ def input_evidence_normalizer_node(state: dict[str, Any]) -> dict[str, Any]:
     else:
         status = "completed"
     return {
-        "input_evidence_bundle": bundle.model_dump(),
+        "input_evidence_bundle": write_model(bundle),
         "input_normalization_status": status,
         "input_conflicts": [item.model_dump() for item in bundle.input_conflicts],
         "unresolved_questions": list(bundle.unresolved_questions),

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.graph.state import MarketingState, write_model
 from orchestrator.app.llm.metadata_builders import build_t2i_request_metadata
 from orchestrator.app.t2i.schemas import T2IRequest
 
@@ -51,7 +51,7 @@ def t2i_request_builder_node(state: MarketingState) -> dict[str, Any]:
         metadata=metadata,
     )
     return {
-        "t2i_request": request.model_dump(),
+        "t2i_request": write_model(request),
         "status": "t2i_queued",
     }
 

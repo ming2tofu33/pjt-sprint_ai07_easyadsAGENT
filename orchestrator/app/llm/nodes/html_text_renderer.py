@@ -8,6 +8,7 @@ import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from orchestrator.app.graph.state import read_model
 from orchestrator.app.schemas.text_layout import CopyItem, CopySpec, RenderResult, TextLayoutSpec, TextSlot, TextStyleSpec
 from orchestrator.app.rendering.font_resolver import FONT_CANDIDATES, resolve_font_path
 from orchestrator.app.llm.nodes.text_renderer import text_renderer_node, find_empty_half, hex_to_rgb
@@ -272,9 +273,9 @@ def html_text_renderer_node(state: "MarketingState") -> dict[str, Any]:
     except Exception as e:
         return _pil_fallback(state, f"Failed to read image dimensions: {e}")
 
-    copy_spec = CopySpec(**(state.get("copy_spec") or {}))
-    layout = TextLayoutSpec(**(state.get("text_layout_spec") or {}))
-    style = TextStyleSpec(**(state.get("text_style_spec") or {}))
+    copy_spec = read_model(state, "copy_spec", CopySpec, default={})
+    layout = read_model(state, "text_layout_spec", TextLayoutSpec, default={})
+    style = read_model(state, "text_style_spec", TextStyleSpec, default={})
     
     output_dir = Path("data") / "outputs" / str(state.get("job_id") or "unknown-job")
     output_dir.mkdir(parents=True, exist_ok=True)

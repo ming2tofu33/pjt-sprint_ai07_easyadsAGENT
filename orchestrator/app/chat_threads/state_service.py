@@ -214,7 +214,14 @@ def restore_thread_state(
     
     # 2. Merge explicit request fields (override)
     for k, v in current_request_fields.items():
-        restored[k] = v
+        if k not in {"source_asset_id", "reference_asset_id"}:
+            restored[k] = v
+    from orchestrator.app.graph.state import overlay_current_request_asset_ids
+    restored = overlay_current_request_asset_ids(
+        restored,
+        source_asset_id=current_request_fields.get("source_asset_id"),
+        reference_asset_id=current_request_fields.get("reference_asset_id"),
+    )
         
     # 3. Always overwrite user_input
     restored["user_input"] = user_input
@@ -312,7 +319,14 @@ def restore_thread_state_for_generation(
             restored.pop("context", None)
 
     for k, v in current_request_fields.items():
-        restored[k] = v
+        if k not in {"source_asset_id", "reference_asset_id"}:
+            restored[k] = v
+    from orchestrator.app.graph.state import overlay_current_request_asset_ids
+    restored = overlay_current_request_asset_ids(
+        restored,
+        source_asset_id=current_request_fields.get("source_asset_id"),
+        reference_asset_id=current_request_fields.get("reference_asset_id"),
+    )
 
     restored["user_input"] = user_input
     restored["continuation_mode"] = continuation_mode

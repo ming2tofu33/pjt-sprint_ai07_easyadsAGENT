@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from orchestrator.app.graph.state import read_model
+from orchestrator.app.graph.state import read_model, write_model
 from orchestrator.app.schemas.text_layout import CopySpec, CopyVisualIntent, FontMetric, NormalizedBBox, TextLayoutSpec, TextSlot, TextStyleSpec
 
 
 def text_layout_planner_node(state: dict[str, object]) -> dict[str, object]:
     copy_spec = read_model(state, "copy_spec", CopySpec)
     style_spec = read_model(state, "text_style_spec", TextStyleSpec)
-    intent = CopyVisualIntent(**state["copy_visual_intent"]) if state.get("copy_visual_intent") else None
+    intent = read_model(state, "copy_visual_intent", CopyVisualIntent, default=None)
     ad_format_spec = state.get("ad_format_spec") or {}
     ad_format = ad_format_spec.get("ad_format", "instagram_feed")
     width = int(ad_format_spec.get("width") or 1024)
@@ -26,7 +26,7 @@ def text_layout_planner_node(state: dict[str, object]) -> dict[str, object]:
     )
     layout = build_text_layout_spec(copy_spec, template, width, height, font_metric, style_spec, intent)
     return {
-        "text_layout_spec": layout.model_dump(),
+        "text_layout_spec": write_model(layout),
         "current_brief": {**state.get("current_brief", {}), "text_layout_ready": True},
         "status": "planning_format",
     }

@@ -172,7 +172,12 @@ def route_after_compliance_gate(state: MarketingState) -> str:
 def should_use_native_typography_lane(state: MarketingState) -> bool:
     engine = str(state.get("engine") or state.get("preferred_engine") or "").strip().lower()
     ad_format = resolve_requested_ad_format(state)
-    return engine in {"gpt_image_2", "gpt-image-2"} and ad_format in NATIVE_TYPOGRAPHY_SUPPORTED_TEXT_FORMATS
+    has_source_input = bool(state.get("source_asset_id") or state.get("source_image_path"))
+    return (
+        not has_source_input
+        and engine in {"gpt_image_2", "gpt-image-2"}
+        and ad_format in NATIVE_TYPOGRAPHY_SUPPORTED_TEXT_FORMATS
+    )
 
 
 def route_after_native_copy_brief(state: MarketingState) -> str:
