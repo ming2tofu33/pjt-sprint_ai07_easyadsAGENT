@@ -260,7 +260,7 @@ def test_photo_start_invokes_graph_with_photo_entry(monkeypatch):
         "/v1/marketing/photo/start",
         json={
             "userInput": "이 사진으로 신메뉴 광고 만들어줘",
-            "sourceImagePath": "data/uploads/menu.png",
+            "sourceAssetId": "asset_11111111111111111111111111111111",
             "adFormat": "instagram_feed",
             "renderProfile": "premium_api",
             "selectedReferenceTemplateId": "temp_watermelon_juice_feed",
@@ -274,12 +274,12 @@ def test_photo_start_invokes_graph_with_photo_entry(monkeypatch):
     assert payload["context"]["itemOrService"] == "딸기라떼"
     assert payload["copyCandidates"][0]["headline"] == "사진 속 메뉴를 오늘의 신메뉴로"
     assert captured["state"]["entry_mode"] == "photo_start"
-    assert captured["state"]["source_image_path"] == "data/uploads/menu.png"
+    assert captured["state"]["source_asset_id"] == "asset_11111111111111111111111111111111"
     assert captured["state"]["render_profile"] == "premium_api"
     assert captured["state"]["copy_generation_mode"] == "suggest_candidates"
     assert captured["state"]["selected_reference_template_id"] == "temp_watermelon_juice_feed"
     assert captured["state"]["context"]["extra"]["ad_format"] == "instagram_feed"
-    assert captured["state"]["context"]["extra"]["source_image_path"] == "data/uploads/menu.png"
+    assert captured["state"]["context"]["extra"]["source_asset_id"] == "asset_11111111111111111111111111111111"
     assert captured["config"]["configurable"]["thread_id"] == payload["threadId"]
 
 
@@ -312,7 +312,7 @@ def test_photo_start_passes_selected_image_engine_to_graph(monkeypatch):
         "/v1/marketing/photo/start",
         json={
             "userInput": "이 사진으로 고품질 광고 만들어줘",
-            "sourceImagePath": "data/uploads/menu.png",
+            "sourceAssetId": "asset_11111111111111111111111111111111",
             "adFormat": "instagram_feed",
             "imageGenerationEngine": "gpt_image_2",
             "requestedEngine": "gpt_image_2",
@@ -365,7 +365,7 @@ def test_photo_start_can_return_option_question(monkeypatch):
 
     response = client.post(
         "/v1/marketing/photo/start",
-        json={"userInput": "이 사진으로 광고 만들어줘", "sourceImagePath": "data/uploads/menu.png"},
+        json={"userInput": "이 사진으로 광고 만들어줘", "sourceAssetId": "asset_11111111111111111111111111111111"},
     )
 
     assert response.status_code == 200
@@ -411,22 +411,30 @@ def test_photo_start_option_question_uses_request_ad_format_as_selected_channel_
 
     response = client.post(
         "/v1/marketing/photo/start",
-        json={"userInput": "사진으로 광고 만들어줘", "sourceImagePath": "data/uploads/menu.png", "adFormat": "banner"},
+        json={
+            "userInput": "사진으로 광고 만들어줘",
+            "sourceAssetId": "asset_11111111111111111111111111111111",
+            "adFormat": "banner",
+        },
     )
 
     assert response.status_code == 200
     assert response.json()["selectedChannelId"] == "banner"
 
 
-def test_photo_start_option_question_can_resume_via_chat_answer(tmp_path):
+def test_photo_start_option_question_can_resume_via_chat_answer(monkeypatch, tmp_path):
     source = tmp_path / "menu.png"
     write_test_png(source, color=(230, 80, 120))
+    monkeypatch.setattr(
+        "orchestrator.app.vision.nodes._resolve_asset_to_local_file",
+        lambda state, asset_key, image_key: str(source),
+    )
     client = TestClient(app)
     start = client.post(
         "/v1/marketing/photo/start",
         json={
             "userInput": "이 사진으로 할인 광고 만들어줘",
-            "sourceImagePath": str(source),
+            "sourceAssetId": "asset_11111111111111111111111111111111",
             "adFormat": "instagram_feed",
             "renderProfile": "premium_api",
         },
@@ -490,13 +498,17 @@ def test_photo_flow_passes_uploaded_image_to_final_t2i_request(monkeypatch, tmp_
         )
 
     monkeypatch.setattr(t2i_generation_module, "generate_image_v1", fake_generate_image_v1)
+    monkeypatch.setattr(
+        "orchestrator.app.vision.nodes._resolve_asset_to_local_file",
+        lambda state, asset_key, image_key: str(source),
+    )
     client = TestClient(app)
 
     payload = client.post(
         "/v1/marketing/photo/start",
         json={
             "userInput": "이 사진으로 할인 이벤트 광고 만들어줘",
-            "sourceImagePath": str(source),
+            "sourceAssetId": "asset_11111111111111111111111111111111",
             "adFormat": "instagram_feed",
             "renderProfile": "premium_api",
         },
@@ -566,16 +578,20 @@ def test_chat_start_no_copy_returns_brief_ready_response():
     assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
-def test_photo_start_no_copy_returns_brief_ready_response(tmp_path):
+def test_photo_start_no_copy_returns_brief_ready_response(monkeypatch, tmp_path):
     source = tmp_path / "menu.png"
     write_test_png(source, color=(230, 80, 120))
+    monkeypatch.setattr(
+        "orchestrator.app.vision.nodes._resolve_asset_to_local_file",
+        lambda state, asset_key, image_key: str(source),
+    )
     client = TestClient(app)
 
     response = client.post(
         "/v1/marketing/photo/start",
         json={
             "userInput": "우리 카페 딸기라떼 신메뉴 인스타 피드 이미지만 만들어줘",
-            "sourceImagePath": str(source),
+            "sourceAssetId": "asset_11111111111111111111111111111111",
             "adFormat": "instagram_feed",
             "renderProfile": "fast",
             "copyGenerationMode": "no_copy",
@@ -646,16 +662,20 @@ def test_chat_start_auto_pilot_returns_brief_ready_response():
     assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
-def test_photo_start_auto_pilot_returns_brief_ready_response(tmp_path):
+def test_photo_start_auto_pilot_returns_brief_ready_response(monkeypatch, tmp_path):
     source = tmp_path / "menu.png"
     write_test_png(source, color=(230, 80, 120))
+    monkeypatch.setattr(
+        "orchestrator.app.vision.nodes._resolve_asset_to_local_file",
+        lambda state, asset_key, image_key: str(source),
+    )
     client = TestClient(app)
 
     response = client.post(
         "/v1/marketing/photo/start",
         json={
             "userInput": "우리 카페 딸기라떼 신메뉴 인스타 피드 광고 만들어줘",
-            "sourceImagePath": str(source),
+            "sourceAssetId": "asset_11111111111111111111111111111111",
             "adFormat": "instagram_feed",
             "renderProfile": "fast",
             "copyGenerationMode": "auto_pilot",
@@ -694,16 +714,20 @@ def test_chat_start_custom_copy_returns_brief_ready_response():
     assert payload["brief"]["finalImagePath"].endswith(".png")
 
 
-def test_photo_start_custom_copy_returns_brief_ready_response(tmp_path):
+def test_photo_start_custom_copy_returns_brief_ready_response(monkeypatch, tmp_path):
     source = tmp_path / "menu.png"
     write_test_png(source, color=(230, 80, 120))
+    monkeypatch.setattr(
+        "orchestrator.app.vision.nodes._resolve_asset_to_local_file",
+        lambda state, asset_key, image_key: str(source),
+    )
     client = TestClient(app)
 
     response = client.post(
         "/v1/marketing/photo/start",
         json={
             "userInput": "우리 카페 딸기라떼 신메뉴 인스타 피드 광고 만들어줘",
-            "sourceImagePath": str(source),
+            "sourceAssetId": "asset_11111111111111111111111111111111",
             "adFormat": "instagram_feed",
             "renderProfile": "fast",
             "copyGenerationMode": "custom_input",
@@ -1102,7 +1126,7 @@ def test_photo_start_accepts_selected_reference_template_id(monkeypatch):
         "/v1/marketing/photo/start",
         json={
             "userInput": "Create a photo ad",
-            "sourceImagePath": "data/uploads/menu.png",
+            "sourceAssetId": "asset_11111111111111111111111111111111",
             "selectedReferenceTemplateId": "seed_cafe_strawberry_feed_001",
             "copyGenerationMode": "auto_pilot",
         },
