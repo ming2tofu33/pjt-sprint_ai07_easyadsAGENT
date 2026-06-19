@@ -764,6 +764,26 @@ def test_run_graph_job_background_records_start_and_delegates(monkeypatch):
     assert calls == [(("job_123", request), {})]
 
 
+def test_run_graph_job_background_rebinds_trace_from_job_metadata(monkeypatch):
+    from orchestrator.app.api.routers import generation_jobs as router
+    from orchestrator.app.observability.performance import current_perf_context
+
+    observed = []
+    request = GenerationJobCreateRequest(
+        userInput="Create an ad",
+        runMode="graph_job",
+        metadata={"trace_id": "trace-background", "request_id": "request-background"},
+    )
+    monkeypatch.setattr(router, "record_generation_job_lifecycle_event", lambda *args, **kwargs: None)
+    monkeypatch.setattr(router, "execute_generation_job_graph", lambda *args, **kwargs: observed.append(current_perf_context()))
+
+    router._run_graph_job_background("job_123", request, "workspace_123", "user_123")
+
+    assert observed[0]["trace_id"] == "trace-background"
+    assert observed[0]["request_id"] == "request-background"
+    assert current_perf_context()["trace_id"] is None
+
+
 def test_resume_graph_job_background_records_start_and_delegates(monkeypatch):
     from orchestrator.app.api.routers import generation_jobs as router
 
@@ -1100,7 +1120,12 @@ def test_answer_graph_job_route_records_background_enqueue(monkeypatch):
     assert events[0][1]["user_id"] == "user_123"
     assert tasks[0][0] is router._resume_graph_job_background
     assert tasks[0][1] == ("job_123", request)
-    assert tasks[0][2] == {"allow_running": True, "workspace_id": "workspace_123", "user_id": "user_123"}
+    assert tasks[0][2] == {
+        "allow_running": True,
+        "workspace_id": "workspace_123",
+        "user_id": "user_123",
+        "perf_metadata": {},
+    }
 
 
 def test_answer_graph_job_route_schedules_background_when_enqueue_event_recording_raises(monkeypatch):
@@ -1150,7 +1175,7 @@ def test_answer_graph_job_route_schedules_background_when_enqueue_event_recordin
         (
             router._resume_graph_job_background,
             ("job_123", request),
-            {"allow_running": True, "workspace_id": "workspace_123", "user_id": "user_123"},
+            {"allow_running": True, "workspace_id": "workspace_123", "user_id": "user_123", "perf_metadata": {}},
         )
     ]
 

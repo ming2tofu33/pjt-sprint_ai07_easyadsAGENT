@@ -1161,6 +1161,32 @@ from types import SimpleNamespace
 from orchestrator.app.llm import node_runner
 
 
+def test_llm_call_event_uses_production_perf_sink_when_trace_enabled(monkeypatch):
+    events = []
+    selection = SimpleNamespace(
+        provider="openai",
+        model_name="gpt-4.1-mini",
+        selected_model_class="api_fast",
+        node_name="copywriter",
+    )
+    result = SimpleNamespace(
+        success=True,
+        metadata={"provider": "openai", "model": "gpt-4.1-mini"},
+        raw_text="safe-length-only",
+        token_usage={"input_tokens": 11, "output_tokens": 7},
+        error=None,
+    )
+    monkeypatch.setattr(node_runner, "perf_trace_enabled", lambda: True)
+    monkeypatch.setattr(node_runner, "record_perf_event", events.append)
+
+    node_runner._emit_llm_call_event("call_1", selection, dict, 1, result, None)
+
+    assert events[0]["event_type"] == "llm_call_finished"
+    assert events[0]["trace_id"] is None
+    assert events[0]["metadata"]["raw_output_present"] is True
+    assert "raw_text" not in events[0]["metadata"]
+
+
 def test_llm_usage_recorded_from_success_result(monkeypatch):
     calls = []
     selection = SimpleNamespace(

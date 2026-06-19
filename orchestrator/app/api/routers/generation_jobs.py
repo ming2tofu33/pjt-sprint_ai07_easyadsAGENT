@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,7 +39,12 @@ from orchestrator.app.generation_jobs.service import (
     should_route_generation_job_to_modal,
 )
 from orchestrator.app.db import settings as db_settings
-from orchestrator.app.observability.performance import current_perf_context
+from orchestrator.app.observability.performance import (
+    bind_perf_context,
+    current_perf_context,
+    perf_span,
+    reset_perf_context,
+)
 from orchestrator.app.chat_threads.errors import ChatThreadServiceError
 from orchestrator.app.reference_catalog.service import get_reference_template
 
@@ -191,30 +197,47 @@ def _mark_generation_job_failed_best_effort(
         logger.warning("Failed to mark generation job failed.", exc_info=True)
 
 
+@contextmanager
+def _background_generation_perf_context(metadata: dict[str, Any] | None):
+    metadata = metadata or {}
+    tokens = bind_perf_context(
+        trace_id=metadata.get("trace_id"),
+        request_id=metadata.get("request_id"),
+    )
+    try:
+        yield
+    finally:
+        reset_perf_context(tokens)
+
+
 def _run_graph_job_background(
     job_id: str,
     request: GenerationJobCreateRequest,
     workspace_id: str | None,
     user_id: str | None,
 ) -> None:
+    metadata = request.metadata or {}
     try:
-        _record_generation_job_lifecycle_event_best_effort(
-            job_id,
-            "background_started",
-            message="graph_create",
-            payload={"task": "graph_create"},
-            workspace_id=workspace_id,
-            user_id=user_id,
-        )
-        execute_generation_job_graph(job_id, request)
-        _record_generation_job_lifecycle_event_best_effort(
-            job_id,
-            "background_delegated",
-            message="graph_create",
-            payload={"task": "graph_create"},
-            workspace_id=workspace_id,
-            user_id=user_id,
-        )
+        with _background_generation_perf_context(metadata), perf_span(
+            "graph_execution", operation="generation_job_create", metadata={"job_id": job_id}
+        ):
+            _record_generation_job_lifecycle_event_best_effort(
+                job_id,
+                "background_started",
+                message="graph_create",
+                payload={"task": "graph_create"},
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
+            execute_generation_job_graph(job_id, request)
+            _record_generation_job_lifecycle_event_best_effort(
+                job_id,
+                "background_delegated",
+                message="graph_create",
+                payload={"task": "graph_create"},
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
     except Exception as exc:
         _mark_generation_job_failed_best_effort(
             job_id,
@@ -243,31 +266,35 @@ def _resume_graph_job_background(
     allow_running: bool = False,
     workspace_id: str | None = None,
     user_id: str | None = None,
+    perf_metadata: dict[str, Any] | None = None,
 ) -> None:
     try:
-        _record_generation_job_lifecycle_event_best_effort(
-            job_id,
-            "background_started",
-            message="graph_resume",
-            payload={"task": "graph_resume"},
-            workspace_id=workspace_id,
-            user_id=user_id,
-        )
-        resume_generation_job_graph(
-            job_id,
-            request,
-            allow_running=allow_running,
-            workspace_id=workspace_id,
-            user_id=user_id,
-        )
-        _record_generation_job_lifecycle_event_best_effort(
-            job_id,
-            "background_delegated",
-            message="graph_resume",
-            payload={"task": "graph_resume"},
-            workspace_id=workspace_id,
-            user_id=user_id,
-        )
+        with _background_generation_perf_context(perf_metadata), perf_span(
+            "graph_execution", operation="generation_job_resume", metadata={"job_id": job_id}
+        ):
+            _record_generation_job_lifecycle_event_best_effort(
+                job_id,
+                "background_started",
+                message="graph_resume",
+                payload={"task": "graph_resume"},
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
+            resume_generation_job_graph(
+                job_id,
+                request,
+                allow_running=allow_running,
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
+            _record_generation_job_lifecycle_event_best_effort(
+                job_id,
+                "background_delegated",
+                message="graph_resume",
+                payload={"task": "graph_resume"},
+                workspace_id=workspace_id,
+                user_id=user_id,
+            )
     except Exception as exc:
         _mark_generation_job_failed_best_effort(
             job_id,
@@ -432,6 +459,7 @@ def answer_generation_job_route(
             allow_running=True,
             workspace_id=resolved_workspace_id,
             user_id=resolved_user_id,
+            perf_metadata=(running or job).metadata,
         )
     except ValueError as exc:
         raise_api_error(

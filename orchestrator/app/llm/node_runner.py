@@ -16,6 +16,7 @@ from orchestrator.app.llm.adapters.registry import get_llm_adapter_safe
 from orchestrator.app.llm.metadata_contracts import sanitize_metadata
 from orchestrator.app.llm.model_router import choose_model
 from orchestrator.app.llm.settings import LLMSettings, get_llm_settings, is_api_call_allowed
+from orchestrator.app.observability.performance import build_event, perf_trace_enabled, record_perf_event
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult
 from orchestrator.app.usage import service as usage_service
 
@@ -120,14 +121,14 @@ def run_structured_node(
 
 def _emit_llm_call_event(call_id, selection, output_schema, started_ns, result, exc) -> None:
     sink = LLM_CALL_EVENT_SINK_CTX.get()
-    if sink is None:
+    if sink is None and not perf_trace_enabled():
         return
     ended_ns = perf_counter_ns()
     result_metadata = getattr(result, "metadata", None) or {}
     raw_text = getattr(result, "raw_text", None)
     token_usage = getattr(result, "token_usage", None)
     error = getattr(result, "error", None) or (f"{type(exc).__name__}" if exc else None)
-    sink({
+    event = {
         "event_type": "llm_call_finished", "llm_call_id": call_id,
         "node_name": selection.node_name, "started_at_ns": started_ns, "ended_at_ns": ended_ns,
         "call_attempted": True, "call_succeeded": bool(getattr(result, "success", False)) if result is not None else False,
@@ -142,7 +143,20 @@ def _emit_llm_call_event(call_id, selection, output_schema, started_ns, result, 
         "output_schema_name": getattr(output_schema, "__name__", type(output_schema).__name__),
         "raw_output_present": bool(raw_text), "raw_output_length": len(raw_text) if isinstance(raw_text, str) else 0,
         "validation_error_paths": result_metadata.get("validation_error_paths") or [],
-    })
+    }
+    if sink is not None:
+        sink(event)
+        return
+    perf_event = build_event(
+        "llm_call_finished",
+        operation=selection.node_name,
+        duration_ms=(ended_ns - started_ns) / 1_000_000,
+        status="ok" if event["call_succeeded"] else "error",
+        metadata={key: value for key, value in event.items() if key not in {"event_type", "started_at_ns", "ended_at_ns"}},
+    )
+    perf_event["started_at_ns"] = started_ns
+    perf_event["ended_at_ns"] = ended_ns
+    record_perf_event(perf_event)
 
 
 def fallback_with_result(

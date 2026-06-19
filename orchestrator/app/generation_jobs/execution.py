@@ -33,6 +33,7 @@ from orchestrator.app.t2i.engines.registry import get_t2i_engine
 from orchestrator.app.t2i.execution import TEXT_FREE_NEGATIVE_PROMPT, build_generation_job_prompt, prompt_summary
 from orchestrator.app.t2i.settings import T2IEngineNotEnabledError, T2IEngineUnavailableError
 from orchestrator.app.llm.ad_format_presets import build_ad_format_spec
+from orchestrator.app.observability.performance import perf_span
 
 _EFFECTIVE_RUN_MODE_BY_ENGINE = {
     "gpt_image_1": "gpt_image_1_actual",
@@ -612,30 +613,31 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
             )
 
         elif result_state.get("status") == "done":
-            state_service.save_thread_state_snapshot(
-                public_thread_id=job.thread_id,
-                workspace_id=workspace_id,
-                snapshot_kind="graph_completed",
-                state_payload=result_state,
-                changed_fields=changed_fields,
-                generation_job_id=internal_job_id,
-                parent_snapshot_id=input_snapshot.snapshot_id,
-                snapshot_key=f"{public_job_id}:graph_completed",
-                created_by=job.user_id,
-                user_id=job.user_id,
-            )
-            result_payload = _result_payload_with_final_brief(result_state)
-            done = mark_generation_job_done(
-                job_id,
-                result_payload=result_payload,
-                output_path=result_state.get("final_image_path"),
-                metadata={
-                    "requested_run_mode": request.run_mode,
-                    "effective_run_mode": "graph_job",
-                    "execution_mode": "graph_execution",
-                    "final_brief": result_payload.get("final_brief"),
-                },
-            )
+            with perf_span("result_persist", operation="result_persist", metadata={"job_id": job_id}):
+                state_service.save_thread_state_snapshot(
+                    public_thread_id=job.thread_id,
+                    workspace_id=workspace_id,
+                    snapshot_kind="graph_completed",
+                    state_payload=result_state,
+                    changed_fields=changed_fields,
+                    generation_job_id=internal_job_id,
+                    parent_snapshot_id=input_snapshot.snapshot_id,
+                    snapshot_key=f"{public_job_id}:graph_completed",
+                    created_by=job.user_id,
+                    user_id=job.user_id,
+                )
+                result_payload = _result_payload_with_final_brief(result_state)
+                done = mark_generation_job_done(
+                    job_id,
+                    result_payload=result_payload,
+                    output_path=result_state.get("final_image_path"),
+                    metadata={
+                        "requested_run_mode": request.run_mode,
+                        "effective_run_mode": "graph_job",
+                        "execution_mode": "graph_execution",
+                        "final_brief": result_payload.get("final_brief"),
+                    },
+                )
             return done or job
 
         elif result_state.get("status") == "failed":
@@ -730,19 +732,20 @@ def resume_generation_job_graph(
 
         if result_state.get("status") == "done":
             result_payload = _result_payload_with_final_brief(result_state)
-            done = mark_generation_job_done(
-                job_id,
-                result_payload=result_payload,
-                output_path=result_state.get("final_image_path"),
-                metadata={
-                    "requested_run_mode": "graph_job",
-                    "effective_run_mode": "graph_job",
-                    "execution_mode": "graph_execution",
-                    "final_brief": result_payload.get("final_brief"),
-                },
-                workspace_id=workspace_id,
-                user_id=user_id,
-            )
+            with perf_span("result_persist", operation="result_persist", metadata={"job_id": job_id}):
+                done = mark_generation_job_done(
+                    job_id,
+                    result_payload=result_payload,
+                    output_path=result_state.get("final_image_path"),
+                    metadata={
+                        "requested_run_mode": "graph_job",
+                        "effective_run_mode": "graph_job",
+                        "execution_mode": "graph_execution",
+                        "final_brief": result_payload.get("final_brief"),
+                    },
+                    workspace_id=workspace_id,
+                    user_id=user_id,
+                )
             return done or job
 
         if result_state.get("status") == "failed":
