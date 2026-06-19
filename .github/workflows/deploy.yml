@@ -2,90 +2,74 @@ name: Docker Build & Deploy
 
 on:
   push:
-    branches:
-      - main
-      - develop
-      - docker-env
-      - evaluation/unha
-    paths:
-      - Dockerfile
-      - pyproject.toml
-      - uv.lock
-      - orchestrator/**
+    branches: [main, develop, docker-env, evaluation/unha]
+    paths: [Dockerfile, pyproject.toml, uv.lock, "orchestrator/**"]
   pull_request:
-    branches: [main, docker-env, evaluation/unha, develop]
-    paths:
-      - Dockerfile
-      - pyproject.toml
-      - uv.lock
-      - orchestrator/**
+    branches: [main, develop, docker-env, evaluation/unha]
+    paths: [Dockerfile, pyproject.toml, uv.lock, "orchestrator/**"]
+
+permissions:
+  contents: read
 
 jobs:
-  # 🔥 1. 테스트 단계를 맨 위로 올리고 가장 먼저 실행합니다.
   test:
     name: pytest
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
         with:
           version: latest
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install deps
-        run: uv sync --frozen
-
-      - name: Run tests
-        run: uv run python -m pytest orchestrator/tests -q
+      - run: uv sync --frozen
+      - run: uv run python -m pytest orchestrator/tests -q
         env:
           LLM_ENABLE_API_CALL: "false"
           LLM_DEFAULT_PROVIDER: mock
           T2I_DEFAULT_ENGINE: mock
 
-  # 🔥 2. 빌드 및 배포 단계는 테스트가 완벽히 '성공(needs: [test])'해야만 진입합니다.
-  build:
-    name: docker-build
+  build-pr:
+    name: docker-build-only
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    needs: [test] # 👈 안전장치 추가
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  publish:
+    name: docker-build-and-push
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    needs: [test]
     permissions:
       contents: read
       packages: write
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # 🔓 자물쇠 1 해제: 브랜치 상관없이 무조건 도커 허브 로그인
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-
-      # 🔓 자물쇠 2 해제: 브랜치 상관없이 무조건 latest 태그 생성
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: unhalim/codeit-final
           tags: |
             type=sha,prefix=sha-,format=short
             type=raw,value=latest
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      # 🔓 자물쇠 3 해제: 브랜치 상관없이 무조건 push: true 로 고정
-      - name: Build and push
-        uses: docker/build-push-action@v6
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
@@ -94,4 +78,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false  # 👈 이 줄을 반드시 추가해 주세요!
+          provenance: false
