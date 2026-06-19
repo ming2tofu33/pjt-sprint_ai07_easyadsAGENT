@@ -13,8 +13,7 @@ export type ChatTurnSnapshot = {
   copyGenerationMode?: CopyGenerationMode;
   imageGenerationEngine?: ImageGenerationEngine;
   sourceAssetId?: string | null;
-  sourceImagePath?: string | null;
-  referenceImagePath?: string | null;
+  referenceAssetId?: string | null;
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
   userCustomHeadline?: string | null;

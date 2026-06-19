@@ -349,7 +349,7 @@ test("photo upload flow reaches brief and generation", async ({ page }) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        sourceImagePath: "data/uploads/e2e-photo.png",
+        sourceAssetId: "asset_11111111111111111111111111111111",
         fileName: "menu.png",
         mimeType: "image/png",
         sizeBytes: 67

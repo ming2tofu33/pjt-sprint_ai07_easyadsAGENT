@@ -35,8 +35,6 @@ export function POST(request: NextRequest) {
       payload.user_custom_subcopy = payload.user_custom_subcopy ?? payload.userCustomSubcopy;
       payload.source_asset_id = payload.source_asset_id ?? payload.sourceAssetId;
       payload.reference_asset_id = payload.reference_asset_id ?? payload.referenceAssetId;
-      payload.source_image_path = payload.source_image_path ?? payload.sourceImagePath;
-      payload.reference_image_path = payload.reference_image_path ?? payload.referenceImagePath;
       delete payload.selectedReferenceTemplateId;
       delete payload.selectedCopyId;
       delete payload.selectedChannelId;
@@ -46,8 +44,6 @@ export function POST(request: NextRequest) {
       delete payload.userCustomSubcopy;
       delete payload.sourceAssetId;
       delete payload.referenceAssetId;
-      delete payload.sourceImagePath;
-      delete payload.referenceImagePath;
       return payload;
     },
     { injectVerifiedUserId: true, injectVerifiedUserIdHeader: true }

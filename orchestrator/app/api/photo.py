@@ -50,7 +50,7 @@ def _normalize_image_engine(*values: str | None) -> str | None:
 
 class PhotoStartRequest(CamelModel):
     user_input: str = Field(alias="userInput", min_length=1)
-    source_image_path: str = Field(alias="sourceImagePath", min_length=1)
+    source_asset_id: str = Field(alias="sourceAssetId", min_length=1)
     ad_format: str = Field(default="instagram_feed", alias="adFormat")
     render_profile: str = Field(default="premium_api", alias="renderProfile")
     vision_preprocess_mode: str = Field(default="resize_only", alias="visionPreprocessMode")
@@ -58,7 +58,7 @@ class PhotoStartRequest(CamelModel):
     user_custom_headline: str | None = Field(default=None, alias="userCustomHeadline")
     user_custom_subcopy: str | None = Field(default=None, alias="userCustomSubcopy")
     selected_reference_template_id: str | None = Field(default=None, alias="selectedReferenceTemplateId")
-    reference_image_path: str | None = Field(default=None, alias="referenceImagePath")
+    reference_asset_id: str | None = Field(default=None, alias="referenceAssetId")
     image_generation_engine: str | None = Field(default=None, alias="imageGenerationEngine")
     requested_engine: str | None = Field(default=None, alias="requestedEngine")
     t2i_engine: str | None = Field(default=None, alias="t2iEngine")
@@ -70,14 +70,14 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
     _require_custom_copy_headline(request.copy_generation_mode, request.user_custom_headline)
     job_seed = ":".join(
         [
-            request.source_image_path,
+            request.source_asset_id,
             request.user_input,
             request.ad_format,
             request.copy_generation_mode,
             _clean_optional_text(request.user_custom_headline) or "",
             _clean_optional_text(request.user_custom_subcopy) or "",
             _clean_optional_text(request.selected_reference_template_id) or "",
-            _clean_optional_text(request.reference_image_path) or "",
+            _clean_optional_text(request.reference_asset_id) or "",
             _normalize_image_engine(request.requested_engine, request.t2i_engine, request.image_generation_engine) or "",
         ]
     )
@@ -87,7 +87,7 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
     state = {
         "entry_mode": "photo_start",
         "user_input": request.user_input,
-        "source_image_path": request.source_image_path,
+        "source_asset_id": request.source_asset_id,
         "job_id": job_id,
         "thread_id": thread_id,
         "render_profile": request.render_profile,
@@ -96,13 +96,13 @@ def start_photo(request: PhotoStartRequest) -> ChatStartResponse | ChatOptionQue
         "user_custom_headline": _clean_optional_text(request.user_custom_headline),
         "user_custom_subcopy": _clean_optional_text(request.user_custom_subcopy),
         "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
-        "reference_image_path": _clean_optional_text(request.reference_image_path),
+        "reference_asset_id": _clean_optional_text(request.reference_asset_id),
         "context": {
             "extra": {
                 "ad_format": request.ad_format,
-                "source_image_path": request.source_image_path,
+                "source_asset_id": request.source_asset_id,
                 "selected_reference_template_id": _clean_optional_text(request.selected_reference_template_id),
-                "reference_image_path": _clean_optional_text(request.reference_image_path),
+                "reference_asset_id": _clean_optional_text(request.reference_asset_id),
             }
         },
     }

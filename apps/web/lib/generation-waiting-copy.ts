@@ -21,10 +21,9 @@ type WaitingStateInput = Partial<
   Pick<
     ChatFlowState,
     | "generationJob"
-    | "referenceImagePath"
+    | "referenceAssetId"
     | "selectedReferenceTemplateId"
     | "sourceAssetId"
-    | "sourceImagePath"
     | "copyGenerationMode"
   >
 >;
@@ -180,11 +179,11 @@ function isFinalImageGenerationJob(job: GenerationJob | null | undefined): boole
 }
 
 function hasSourcePhoto(state: WaitingStateInput | null): boolean {
-  return Boolean(state?.sourceAssetId || state?.sourceImagePath);
+  return Boolean(state?.sourceAssetId);
 }
 
 function hasReference(state: WaitingStateInput | null): boolean {
-  return Boolean(state?.referenceImagePath || state?.selectedReferenceTemplateId);
+  return Boolean(state?.referenceAssetId || state?.selectedReferenceTemplateId);
 }
 
 function isImageStage(stage: string): boolean {

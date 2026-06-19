@@ -28,8 +28,7 @@ export type ThreadSnapshotRestoreState = {
   userCustomHeadline: string;
   userCustomSubcopy: string;
   sourceAssetId: string | null;
-  sourceImagePath: string | null;
-  referenceImagePath: string | null;
+  referenceAssetId: string | null;
   selectedReferenceTemplateId: string | null;
   selectedReferenceTemplateTitle: string | null;
   generationJob: GenerationJob;
@@ -362,8 +361,8 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     userCustomHeadline: firstString(payload.user_custom_headline, payload.userCustomHeadline, currentBrief.user_custom_headline),
     userCustomSubcopy: firstString(payload.user_custom_subcopy, payload.userCustomSubcopy, currentBrief.user_custom_subcopy),
     sourceAssetId: firstString(payload.source_asset_id, payload.sourceAssetId, currentBrief.source_asset_id, currentBrief.sourceAssetId) || null,
-    sourceImagePath: firstString(payload.source_image_path, payload.sourceImagePath) || null,
-    referenceImagePath: firstString(payload.reference_image_path, payload.referenceImagePath) || null,
+    referenceAssetId:
+      firstString(payload.reference_asset_id, payload.referenceAssetId, currentBrief.reference_asset_id, currentBrief.referenceAssetId) || null,
     selectedReferenceTemplateId:
       firstString(snapshot.selected_reference_template_id, payload.selected_reference_template_id, payload.selectedReferenceTemplateId) || null,
     selectedReferenceTemplateTitle:

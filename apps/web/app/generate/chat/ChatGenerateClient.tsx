@@ -681,8 +681,7 @@ type InitialChatIntakeContext = {
   imageGenerationEngine: ImageGenerationEngine;
   selectedChannelId?: string | null;
   sourceAssetId?: string | null;
-  sourceImagePath?: string | null;
-  referenceImagePath?: string | null;
+  referenceAssetId?: string | null;
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
   userCustomHeadline?: string | null;
@@ -716,8 +715,7 @@ function initialChatIntakeFromTurnSnapshot(snapshot: ChatTurnSnapshot): InitialC
     imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
     selectedChannelId: responseSelectedChannelId,
     sourceAssetId: snapshot.sourceAssetId ?? null,
-    sourceImagePath: snapshot.sourceImagePath ?? null,
-    referenceImagePath: snapshot.referenceImagePath ?? null,
+    referenceAssetId: snapshot.referenceAssetId ?? null,
     selectedReferenceTemplateId: snapshot.selectedReferenceTemplateId ?? null,
     selectedReferenceTemplateTitle: snapshot.selectedReferenceTemplateTitle ?? null,
     userCustomHeadline: snapshot.userCustomHeadline ?? null,
@@ -732,8 +730,7 @@ function initialChatIntakeFromRestoreState(restoreState: ThreadSnapshotRestoreSt
     imageGenerationEngine: restoreState.selectedImageGenerationEngine,
     selectedChannelId: restoreState.selectedChannelId,
     sourceAssetId: restoreState.sourceAssetId,
-    sourceImagePath: restoreState.sourceImagePath,
-    referenceImagePath: restoreState.referenceImagePath,
+    referenceAssetId: restoreState.referenceAssetId,
     selectedReferenceTemplateId: restoreState.selectedReferenceTemplateId,
     selectedReferenceTemplateTitle: restoreState.selectedReferenceTemplateTitle,
     userCustomHeadline: restoreState.userCustomHeadline,
@@ -759,8 +756,7 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
     copyGenerationMode: snapshot.copyGenerationMode,
     imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
     sourceAssetId: snapshot.sourceAssetId ?? null,
-    sourceImagePath: snapshot.sourceImagePath ?? null,
-    referenceImagePath: snapshot.referenceImagePath ?? null,
+    referenceAssetId: snapshot.referenceAssetId ?? null,
     userCustomHeadline: snapshot.userCustomHeadline ?? null,
     userCustomSubcopy: snapshot.userCustomSubcopy ?? null
   });
@@ -788,8 +784,7 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
       selectedChannelId: normalizeSelectedChannelId(snapshot.response.selectedChannelId) ?? null,
       generationJob: snapshot.response.generationJob,
       sourceAssetId: snapshot.sourceAssetId ?? null,
-      sourceImagePath: snapshot.sourceImagePath ?? null,
-      referenceImagePath: snapshot.referenceImagePath ?? null
+      referenceAssetId: snapshot.referenceAssetId ?? null
     });
   }
 
@@ -810,8 +805,7 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
       copyGenerationMode: snapshot.response.copyGenerationMode,
       imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceAssetId: snapshot.sourceAssetId ?? null,
-      sourceImagePath: snapshot.sourceImagePath ?? null,
-      referenceImagePath: snapshot.referenceImagePath ?? null,
+      referenceAssetId: snapshot.referenceAssetId ?? null,
       userCustomHeadline: snapshot.userCustomHeadline ?? null,
       userCustomSubcopy: snapshot.userCustomSubcopy ?? null
     });
@@ -834,8 +828,7 @@ function createChatFlowStateFromTurnSnapshot(snapshot: ChatTurnSnapshot): ChatFl
     copyGenerationMode: snapshot.response.copyGenerationMode,
     imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
     sourceAssetId: snapshot.sourceAssetId ?? null,
-    sourceImagePath: snapshot.sourceImagePath ?? null,
-    referenceImagePath: snapshot.referenceImagePath ?? null,
+    referenceAssetId: snapshot.referenceAssetId ?? null,
     userCustomHeadline: snapshot.userCustomHeadline ?? null,
     userCustomSubcopy: snapshot.userCustomSubcopy ?? null
   });
@@ -939,8 +932,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       selectedChannelId: normalizeSelectedChannelId(snapshot.selectedChannelId) ?? createInitialChatFlowState().selectedChannelId,
       imageGenerationEngine: snapshot.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceAssetId: snapshot.sourceAssetId ?? null,
-      sourceImagePath: snapshot.sourceImagePath ?? null,
-      referenceImagePath: snapshot.referenceImagePath ?? null,
+      referenceAssetId: snapshot.referenceAssetId ?? null,
       userCustomHeadline: snapshot.userCustomHeadline ?? null,
       userCustomSubcopy: snapshot.userCustomSubcopy ?? null
     });
@@ -967,8 +959,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         copyGenerationMode?: CopyGenerationMode;
         imageGenerationEngine?: ImageGenerationEngine;
         sourceAssetId?: string | null;
-        sourceImagePath?: string | null;
-        referenceImagePath?: string | null;
+        referenceAssetId?: string | null;
         userCustomHeadline?: string | null;
         userCustomSubcopy?: string | null;
         selectedChannelId?: string | null;
@@ -994,8 +985,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         brief: response.brief,
         imageGenerationEngine: response.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
         sourceAssetId: response.sourceAssetId ?? null,
-        sourceImagePath: response.sourceImagePath ?? null,
-        referenceImagePath: response.referenceImagePath ?? null,
+        referenceAssetId: response.referenceAssetId ?? null,
         userCustomHeadline: response.userCustomHeadline ?? null,
         userCustomSubcopy: response.userCustomSubcopy ?? null
       };
@@ -1015,8 +1005,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         copyGenerationMode: response.copyGenerationMode ?? "no_copy",
         imageGenerationEngine: response.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
         sourceAssetId: response.sourceAssetId ?? null,
-        sourceImagePath: response.sourceImagePath ?? null,
-        referenceImagePath: response.referenceImagePath ?? null,
+        referenceAssetId: response.referenceAssetId ?? null,
         userCustomHeadline: response.userCustomHeadline ?? null,
         userCustomSubcopy: response.userCustomSubcopy ?? null
       });
@@ -1036,8 +1025,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     response: ChatTurnResponse,
     imageGenerationEngine?: ImageGenerationEngine,
     sourceAssetId?: string | null,
-    sourceImagePath?: string | null,
-    referenceImagePath?: string | null,
+    referenceAssetId?: string | null,
     userCustomHeadline?: string | null,
     userCustomSubcopy?: string | null,
     fallbackSelectedChannelId?: string | null
@@ -1053,8 +1041,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         selectedChannelId: normalizeSelectedChannelId(response.selectedChannelId ?? fallbackSelectedChannelId) ?? null,
         generationJob: response.generationJob,
         sourceAssetId: sourceAssetId ?? null,
-        sourceImagePath: sourceImagePath ?? null,
-        referenceImagePath: referenceImagePath ?? null
+        referenceAssetId: referenceAssetId ?? null
       });
       return;
     }
@@ -1063,8 +1050,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         ...response,
         imageGenerationEngine: imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
         sourceAssetId: sourceAssetId ?? null,
-        sourceImagePath: sourceImagePath ?? null,
-        referenceImagePath: referenceImagePath ?? null,
+        referenceAssetId: referenceAssetId ?? null,
         userCustomHeadline: userCustomHeadline ?? null,
         userCustomSubcopy: userCustomSubcopy ?? null,
         fallbackSelectedChannelId: fallbackSelectedChannelId ?? null
@@ -1087,8 +1073,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       copyGenerationMode: response.copyGenerationMode,
       imageGenerationEngine: imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
       sourceAssetId: sourceAssetId ?? null,
-      sourceImagePath: sourceImagePath ?? null,
-      referenceImagePath: referenceImagePath ?? null,
+      referenceAssetId: referenceAssetId ?? null,
       userCustomHeadline: userCustomHeadline ?? null,
       userCustomSubcopy: userCustomSubcopy ?? null
     });
@@ -1102,8 +1087,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         prompt: pendingTurn.prompt,
         copyGenerationMode: pendingTurn.copyGenerationMode,
         imageGenerationEngine: pendingTurn.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
-        sourceImagePath: pendingTurn.sourceImagePath ?? null,
-        referenceImagePath: pendingTurn.referenceImagePath ?? null,
+        sourceAssetId: pendingTurn.sourceAssetId ?? null,
+        referenceAssetId: pendingTurn.referenceAssetId ?? null,
         userCustomHeadline: pendingTurn.userCustomHeadline ?? null,
         userCustomSubcopy: pendingTurn.userCustomSubcopy ?? null
       });
@@ -1135,8 +1120,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           pendingTurn.response,
           pendingTurn.imageGenerationEngine ?? DEFAULT_IMAGE_GENERATION_ENGINE,
           pendingTurn.sourceAssetId ?? null,
-          pendingTurn.sourceImagePath ?? null,
-          pendingTurn.referenceImagePath ?? null,
+          pendingTurn.referenceAssetId ?? null,
           pendingTurn.userCustomHeadline ?? null,
           pendingTurn.userCustomSubcopy ?? null,
           pendingTurnSelectedChannelId
@@ -1263,8 +1247,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
                   copyGenerationMode: restoreState.copyGenerationMode,
                   imageGenerationEngine: restoreState.selectedImageGenerationEngine,
                   sourceAssetId: restoreState.sourceAssetId,
-                  sourceImagePath: restoreState.sourceImagePath,
-                  referenceImagePath: restoreState.referenceImagePath,
+                  referenceAssetId: restoreState.referenceAssetId,
                   selectedReferenceTemplateId: restoreState.selectedReferenceTemplateId,
                   selectedReferenceTemplateTitle: restoreState.selectedReferenceTemplateTitle,
                   userCustomHeadline: restoreState.userCustomHeadline,
@@ -1628,25 +1611,25 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     }
     try {
       const uploadedReference = options.referenceImageFile ? await uploadReferenceAsset(options.referenceImageFile) : null;
-      const referenceImagePath = options.referenceImagePath ?? uploadedReference?.referenceImagePath ?? undefined;
+      const referenceAssetId = options.referenceAssetId ?? uploadedReference?.referenceAssetId ?? undefined;
       const turnSnapshotBase = {
         prompt,
         copyGenerationMode: options.copyGenerationMode,
         imageGenerationEngine,
-        sourceImagePath: null,
-        referenceImagePath: referenceImagePath ?? null,
+        sourceAssetId: null,
+        referenceAssetId: referenceAssetId ?? null,
         selectedReferenceTemplateId: selectedReferenceTemplateId ?? null,
         selectedReferenceTemplateTitle: requestContext?.selectedReferenceTemplateTitle ?? null,
         userCustomHeadline: options.userCustomHeadline ?? null,
         userCustomSubcopy: options.userCustomSubcopy ?? null
       };
-      if (referenceImagePath) {
+      if (referenceAssetId) {
         dispatch({
           type: "submitPrompt",
           prompt,
           copyGenerationMode: options.copyGenerationMode,
           imageGenerationEngine,
-          referenceImagePath,
+          referenceAssetId,
           userCustomHeadline: options.userCustomHeadline ?? null,
           userCustomSubcopy: options.userCustomSubcopy ?? null,
           transcriptMode: "update_current_turn"
@@ -1662,7 +1645,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         runMode: "graph_job",
         copyGenerationMode: options.copyGenerationMode ?? undefined,
         selectedReferenceTemplateId: selectedReferenceTemplateId ?? undefined,
-        referenceImagePath,
+        referenceAssetId,
         userCustomHeadline: options.userCustomHeadline ?? undefined,
         userCustomSubcopy: options.userCustomSubcopy ?? undefined,
         metadata: {
@@ -1673,7 +1656,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           selected_engine_label: engineOption.modelName,
           selected_reference_template_id: selectedReferenceTemplateId ?? null,
           reference_template_title: requestContext?.selectedReferenceTemplateTitle ?? null,
-          reference_image_path: referenceImagePath ?? null,
+          reference_asset_id: referenceAssetId ?? null,
           copy_generation_mode: options.copyGenerationMode ?? null
         }
       });
@@ -1690,8 +1673,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           prompt,
           copyGenerationMode: options.copyGenerationMode,
           imageGenerationEngine,
-          sourceImagePath: null,
-          referenceImagePath: referenceImagePath ?? null,
+          sourceAssetId: null,
+          referenceAssetId: referenceAssetId ?? null,
           selectedReferenceTemplateId: selectedReferenceTemplateId ?? null,
           selectedReferenceTemplateTitle: requestContext?.selectedReferenceTemplateTitle ?? null,
           userCustomHeadline: options.userCustomHeadline ?? null,
@@ -1721,8 +1704,8 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           copyGenerationMode: options.copyGenerationMode,
           imageGenerationEngine,
           selectedChannelId: state.selectedChannelId,
-          sourceImagePath: null,
-          referenceImagePath: referenceImagePath ?? null,
+          sourceAssetId: null,
+          referenceAssetId: referenceAssetId ?? null,
           selectedReferenceTemplateId: selectedReferenceTemplateId ?? null,
           selectedReferenceTemplateTitle: requestContext?.selectedReferenceTemplateTitle ?? null,
           userCustomHeadline: options.userCustomHeadline ?? null,
@@ -1742,8 +1725,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         turnResponse,
         imageGenerationEngine,
         null,
-        null,
-        referenceImagePath ?? null,
+        referenceAssetId ?? null,
         options.userCustomHeadline ?? null,
         options.userCustomSubcopy ?? null,
         state.selectedChannelId
@@ -1773,8 +1755,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       imageGenerationEngine: state.selectedImageGenerationEngine,
       selectedChannelId: state.selectedChannelId,
       sourceAssetId: state.sourceAssetId ?? null,
-      sourceImagePath: state.sourceImagePath ?? null,
-      referenceImagePath: state.referenceImagePath ?? null,
+      referenceAssetId: state.referenceAssetId ?? null,
       selectedReferenceTemplateId: state.selectedReferenceTemplateId ?? null,
       selectedReferenceTemplateTitle: state.selectedReferenceTemplateTitle ?? null,
       userCustomHeadline: state.userCustomHeadline ?? null,
@@ -1818,8 +1799,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         response,
         state.selectedImageGenerationEngine,
         state.sourceAssetId ?? null,
-        state.sourceImagePath ?? null,
-        state.referenceImagePath ?? null,
+        state.referenceAssetId ?? null,
         state.userCustomHeadline,
         state.userCustomSubcopy,
         state.selectedChannelId
@@ -1853,17 +1833,15 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         entryMode: "photo_start",
         runMode: "graph_job",
         sourceAssetId: upload.sourceAssetId,
-        sourceImagePath: undefined,
         copyGenerationMode: input.copyGenerationMode,
         userCustomHeadline: input.userCustomHeadline,
         userCustomSubcopy: input.userCustomSubcopy,
         selectedReferenceTemplateId: input.selectedReferenceTemplateId,
-        referenceImagePath: input.referenceImagePath,
+        referenceAssetId: input.referenceAssetId,
         metadata: {
           source: "web_photo_intake",
           source_asset_id: upload.sourceAssetId,
-          source_image_path: null,
-          reference_image_path: input.referenceImagePath ?? null,
+          reference_asset_id: input.referenceAssetId ?? null,
           selected_engine: imageGenerationEngine,
           requested_engine: backendEngine,
           t2i_engine: backendEngine,
@@ -1878,8 +1856,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         copyGenerationMode: input.copyGenerationMode,
         imageGenerationEngine,
         sourceAssetId: upload.sourceAssetId ?? null,
-        sourceImagePath: upload.sourceImagePath,
-        referenceImagePath: input.referenceImagePath ?? null,
+        referenceAssetId: input.referenceAssetId ?? null,
         selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? null,
         selectedReferenceTemplateTitle: null,
         userCustomHeadline: input.userCustomHeadline ?? null,
@@ -1929,8 +1906,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       selectedReferenceTemplateTitle: state.selectedReferenceTemplateTitle,
       imageGenerationEngine: state.selectedImageGenerationEngine,
       sourceAssetId: state.sourceAssetId ?? null,
-      sourceImagePath: state.sourceImagePath ?? null,
-      referenceImagePath: state.referenceImagePath ?? null
+      referenceAssetId: state.referenceAssetId ?? null
     };
   }
 
@@ -2063,8 +2039,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
           progress: normalizeOptionQuestion(incoming as Record<string, unknown>).progressState ?? null,
           context,
           sourceAssetId: initialChatIntake?.sourceAssetId ?? null,
-          sourceImagePath: initialChatIntake?.sourceImagePath ?? null,
-          referenceImagePath: initialChatIntake?.referenceImagePath ?? null
+          referenceAssetId: initialChatIntake?.referenceAssetId ?? null
         });
       }
     } else {
@@ -2096,8 +2071,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
       progress: normalizeOptionQuestion(turnResponse.question as Record<string, unknown>).progressState ?? null,
       context: turnResponse.context,
       sourceAssetId: initialChatIntake?.sourceAssetId ?? null,
-      sourceImagePath: initialChatIntake?.sourceImagePath ?? null,
-      referenceImagePath: initialChatIntake?.referenceImagePath ?? null
+      referenceAssetId: initialChatIntake?.referenceAssetId ?? null
     });
     setGenerationStage("jobQuestion");
     lastPrimedStageRef.current = "start";
@@ -2201,8 +2175,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         turnResponse,
         initialChatIntake.imageGenerationEngine,
         initialChatIntake.sourceAssetId ?? null,
-        initialChatIntake.sourceImagePath ?? null,
-        initialChatIntake.referenceImagePath ?? null,
+        initialChatIntake.referenceAssetId ?? null,
         initialChatIntake.userCustomHeadline ?? null,
         initialChatIntake.userCustomSubcopy ?? null,
         initialChatIntake.selectedChannelId ?? null
@@ -2399,8 +2372,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     const finalAdFormat = toCanonicalAdFormat(state.selectedChannelId) ?? "instagram_feed";
     const selectedReferenceTemplateId = state.selectedReferenceTemplateId || readGenerationDraftReferenceTemplateId() || undefined;
     const sourceAssetId = state.sourceAssetId || undefined;
-    const sourceImagePath = sourceAssetId ? undefined : state.sourceImagePath || undefined;
-    const referenceImagePath = state.referenceImagePath || undefined;
+    const referenceAssetId = state.referenceAssetId || undefined;
     const requestUserInput = appendSavedBrandKitContext(buildGenerationJobUserInput(state));
 
     clearGenerationFailureSnapshot();
@@ -2415,9 +2387,6 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
     lastPrimedStageRef.current = "generating";
 
     try {
-      if (state.sourceImagePath && !sourceAssetId) {
-        throw new Error("사진 업로드 정보가 이미지 생성용 asset으로 저장되지 않았어요. 사진을 다시 업로드해 주세요.");
-      }
       const created = await createGenerationJob({
         userInput: requestUserInput,
         threadId: toGenerationJobThreadId(state.threadId),
@@ -2428,8 +2397,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         runMode: resolveGenerationRunMode(engine),
         selectedReferenceTemplateId,
         sourceAssetId,
-        sourceImagePath,
-        referenceImagePath,
+        referenceAssetId,
         selectedCopyId: finalSelectedCopyId,
         selectedChannelId: state.selectedChannelId,
         selectedTone: state.selectedTone || undefined,
@@ -2439,8 +2407,7 @@ export function ChatGenerateClient({ initialSurface = "home", initialStage = "st
         metadata: {
           source: "web_generation_flow",
           source_asset_id: sourceAssetId ?? null,
-          source_image_path: null,
-          reference_image_path: referenceImagePath ?? null,
+          reference_asset_id: referenceAssetId ?? null,
           selected_engine: engine,
           requested_engine: backendEngine,
           t2i_engine: backendEngine,

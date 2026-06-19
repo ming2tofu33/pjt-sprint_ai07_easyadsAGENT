@@ -104,7 +104,7 @@ export type ReferenceTemplateFields = {
 };
 
 export type ReferenceImageFields = {
-  referenceImagePath?: string | null;
+  referenceAssetId?: string | null;
   referenceImageFile?: File | null;
 };
 
@@ -139,8 +139,7 @@ export type ChatFlowState = {
   selectedReferenceTemplateId?: string | null;
   selectedReferenceTemplateTitle?: string | null;
   sourceAssetId?: string | null;
-  sourceImagePath?: string | null;
-  referenceImagePath?: string | null;
+  referenceAssetId?: string | null;
   pendingExplicitContextPatch: Partial<InferredContext> | null;
   currentQuestion: OptionQuestion | null;
   conversationMessages: ChatTranscriptMessage[];
@@ -157,8 +156,7 @@ export type ChatFlowAction =
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
       sourceAssetId?: string | null;
-      sourceImagePath?: string | null;
-      referenceImagePath?: string | null;
+      referenceAssetId?: string | null;
       userCustomHeadline?: string | null;
       userCustomSubcopy?: string | null;
       transcriptMode?: "append" | "update_current_turn";
@@ -179,8 +177,7 @@ export type ChatFlowAction =
       copyGenerationMode?: CopyGenerationMode;
       imageGenerationEngine?: ImageGenerationEngine;
       sourceAssetId?: string | null;
-      sourceImagePath?: string | null;
-      referenceImagePath?: string | null;
+      referenceAssetId?: string | null;
       userCustomHeadline?: string | null;
       userCustomSubcopy?: string | null;
     }
@@ -194,8 +191,7 @@ export type ChatFlowAction =
       selectedChannelId?: ChannelId | null;
       generationJob?: GenerationJob;
       sourceAssetId?: string | null;
-      sourceImagePath?: string | null;
-      referenceImagePath?: string | null;
+      referenceAssetId?: string | null;
     }
   | { type: "submitQuestionAnswer"; label: string; field?: string; value?: string }
   | { type: "backendRequestFailed"; message: string; errorCode?: string; recoverToStart?: boolean }
@@ -242,8 +238,7 @@ export type ChatFlowAction =
       userCustomHeadline: string;
       userCustomSubcopy: string;
       sourceAssetId?: string | null;
-      sourceImagePath: string | null;
-      referenceImagePath: string | null;
+      referenceAssetId: string | null;
       selectedReferenceTemplateId: string | null;
       selectedReferenceTemplateTitle: string | null;
       generationJob: GenerationJob;
@@ -268,8 +263,7 @@ export type ChatFlowAction =
       progress?: ProgressState | null;
       context?: PartialInferredContext;
       sourceAssetId?: string | null;
-      sourceImagePath?: string | null;
-      referenceImagePath?: string | null;
+      referenceAssetId?: string | null;
     }
   | { type: "generationJobInterruptReceived"; generationJob: GenerationJob }
   | { type: "submitGenerationJobAnswer"; label: string; field?: string; value?: string }

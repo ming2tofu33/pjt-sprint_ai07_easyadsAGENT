@@ -87,8 +87,11 @@ from orchestrator.app.generation_jobs.errors import (
 )
 
 def test_resolve_input_asset_not_found(monkeypatch):
+    captured = {}
+
     class MockRepo:
         def get_asset_by_public_id(self, *a, **k):
+            captured.update(k)
             return None
     monkeypatch.setattr("orchestrator.app.db.repositories.assets.get_asset_by_public_id", MockRepo().get_asset_by_public_id)
 
@@ -99,6 +102,7 @@ def test_resolve_input_asset_not_found(monkeypatch):
             expected_kind="source",
             connection=None
         )
+    assert captured["workspace_id"] == "ws1"
 
 def test_resolve_input_asset_invalid_kind(monkeypatch):
     class MockRepo:

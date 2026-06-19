@@ -24,8 +24,7 @@ export type GeneratedCreativeSnapshot = {
   selectedReferenceTemplateTitle?: string | null;
   imageGenerationEngine?: ImageGenerationEngine;
   sourceAssetId?: string | null;
-  sourceImagePath?: string | null;
-  referenceImagePath?: string | null;
+  referenceAssetId?: string | null;
 };
 
 const GENERATED_CREATIVES_STORAGE_KEY = "easyads_generated_creatives_v1";

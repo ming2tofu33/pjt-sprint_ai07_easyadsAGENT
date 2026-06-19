@@ -44,7 +44,7 @@ describe("api-client photo generation", () => {
     vi.unstubAllEnvs();
   });
 
-  it("uploads a photo file as a JSON data URL", async () => {
+  it("uploads a photo through the asset API without a local path", async () => {
     const sourceAssetId = "asset_11111111111111111111111111111111";
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
@@ -64,7 +64,7 @@ describe("api-client photo generation", () => {
         });
       }
       return jsonResponse({
-        sourceImagePath: "data/uploads/photo_1.png",
+        sourceAssetId,
         fileName: "menu.png",
         mimeType: "image/png",
         sizeBytes: 3
@@ -75,21 +75,16 @@ describe("api-client photo generation", () => {
 
     const result = await uploadPhotoAsset(file);
 
-    expect(result.sourceImagePath).toBe("data/uploads/photo_1.png");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/generate/photo/upload",
-      expect.objectContaining({
-        method: "POST",
-        headers: { "content-type": "application/json" }
-      })
-    );
+    expect(result).toMatchObject({ sourceAssetId, assetId: sourceAssetId });
+    expect(result).not.toHaveProperty("sourceImagePath");
     const body = JSON.parse(String(fetchMock.mock.calls[0][1]?.body));
+    expect(body.kind).toBe("source");
     expect(body.filename).toBe("menu.png");
     expect(body.mimeType).toBe("image/png");
-    expect(body.dataUrl).toMatch(/^data:image\/png;base64,/);
+    expect(body.sizeBytes).toBe(3);
   });
 
-  it("uploads a photo source asset and returns its public asset id with the local source path", async () => {
+  it("returns the public source asset id and no local source path", async () => {
     const sourceAssetId = "asset_11111111111111111111111111111111";
     const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
@@ -120,7 +115,7 @@ describe("api-client photo generation", () => {
         });
       }
       return jsonResponse({
-        sourceImagePath: "data/uploads/photo_1.png",
+        sourceAssetId,
         fileName: "menu.png",
         mimeType: "image/png",
         sizeBytes: 3
@@ -131,8 +126,8 @@ describe("api-client photo generation", () => {
 
     const result = await uploadPhotoAsset(file);
 
-    expect(result.sourceImagePath).toBe("data/uploads/photo_1.png");
-    expect((result as { sourceAssetId?: string }).sourceAssetId).toBe(sourceAssetId);
+    expect(result.sourceAssetId).toBe(sourceAssetId);
+    expect(result).not.toHaveProperty("sourceImagePath");
     const presignCall = fetchMock.mock.calls.find(([input]) => String(input) === "/api/assets/uploads/presign");
     expect(presignCall).toBeTruthy();
     expect(JSON.parse(String(presignCall?.[1]?.body))).toEqual({
@@ -167,7 +162,7 @@ describe("api-client photo generation", () => {
         throw new TypeError("Failed to fetch");
       }
       return jsonResponse({
-        sourceImagePath: "data/uploads/photo_1.png",
+        sourceAssetId,
         fileName: "menu.png",
         mimeType: "image/png",
         sizeBytes: 3
@@ -209,7 +204,7 @@ describe("api-client photo generation", () => {
     expect(fetchMock.mock.calls[0][0]).toBe("https://bff.example.com/api/generate/chat/start");
   });
 
-  it("starts photo generation with the uploaded source image path", async () => {
+  it("starts photo generation with the uploaded source asset id", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       jsonResponse({
         jobId: "photo_1",
@@ -224,7 +219,7 @@ describe("api-client photo generation", () => {
 
     const result = await startPhotoGeneration({
       userInput: "이 사진으로 신메뉴 광고 만들어줘",
-      sourceImagePath: "data/uploads/photo_1.png"
+      sourceAssetId: "asset_11111111111111111111111111111111"
     });
 
     expect(result.jobId).toBe("photo_1");
@@ -234,7 +229,7 @@ describe("api-client photo generation", () => {
         method: "POST",
         body: JSON.stringify({
           userInput: "이 사진으로 신메뉴 광고 만들어줘",
-          sourceImagePath: "data/uploads/photo_1.png",
+          sourceAssetId: "asset_11111111111111111111111111111111",
           adFormat: "instagram_feed",
           renderProfile: "premium_api"
         })
@@ -257,7 +252,7 @@ describe("api-client photo generation", () => {
 
     await startPhotoGeneration({
       userInput: "이 사진으로 고품질 광고 만들어줘",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       imageGenerationEngine: "gpt_image_2"
     });
 
@@ -295,7 +290,7 @@ describe("api-client photo generation", () => {
     await startChatGeneration("딸기라떼 이미지만 만들어줘", { copyGenerationMode: "no_copy" });
     await startPhotoGeneration({
       userInput: "이 사진으로 이미지만 만들어줘",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       copyGenerationMode: "no_copy"
     });
 
@@ -307,7 +302,7 @@ describe("api-client photo generation", () => {
     });
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
       userInput: "이 사진으로 이미지만 만들어줘",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       adFormat: "instagram_feed",
       renderProfile: "premium_api",
       copyGenerationMode: "no_copy"
@@ -339,7 +334,7 @@ describe("api-client photo generation", () => {
     await startChatGeneration("딸기라떼 신메뉴 광고", { copyGenerationMode: "auto_pilot" });
     await startPhotoGeneration({
       userInput: "이 사진으로 딸기라떼 신메뉴 광고",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       copyGenerationMode: "auto_pilot"
     });
 
@@ -351,7 +346,7 @@ describe("api-client photo generation", () => {
     });
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
       userInput: "이 사진으로 딸기라떼 신메뉴 광고",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       adFormat: "instagram_feed",
       renderProfile: "premium_api",
       copyGenerationMode: "auto_pilot"
@@ -386,7 +381,7 @@ describe("api-client photo generation", () => {
     });
     await startPhotoGeneration({
       userInput: "이 사진으로 수박주스 신메뉴 광고",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       copyGenerationMode: "auto_pilot",
       selectedReferenceTemplateId: "temp_watermelon_juice_feed"
     });
@@ -400,7 +395,7 @@ describe("api-client photo generation", () => {
     });
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
       userInput: "이 사진으로 수박주스 신메뉴 광고",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       adFormat: "instagram_feed",
       renderProfile: "premium_api",
       copyGenerationMode: "auto_pilot",
@@ -481,7 +476,7 @@ describe("api-client photo generation", () => {
     });
     await startPhotoGeneration({
       userInput: "이 사진으로 딸기라떼 신메뉴 광고",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       copyGenerationMode: "custom_input",
       userCustomHeadline: "오늘만 딸기라떼 반값",
       userCustomSubcopy: "오후 2시부터 5시까지"
@@ -497,7 +492,7 @@ describe("api-client photo generation", () => {
     });
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
       userInput: "이 사진으로 딸기라떼 신메뉴 광고",
-      sourceImagePath: "data/uploads/photo_1.png",
+      sourceAssetId: "asset_11111111111111111111111111111111",
       adFormat: "instagram_feed",
       renderProfile: "premium_api",
       copyGenerationMode: "custom_input",
@@ -515,7 +510,7 @@ describe("api-client photo generation", () => {
     await expect(
       startPhotoGeneration({
         userInput: "이 사진으로 신메뉴 광고 만들어줘",
-        sourceImagePath: "data/uploads/photo_1.png"
+        sourceAssetId: "asset_11111111111111111111111111111111"
       })
     ).rejects.toThrow("T2I_ALLOW_API_CALLS=true");
   });
