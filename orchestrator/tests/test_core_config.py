@@ -54,3 +54,17 @@ def test_get_env_does_not_read_docs_api_key_env(monkeypatch, tmp_path):
         assert _get_env(key, "fallback") == "fallback"
     finally:
         _load_dotenv.cache_clear()
+
+
+def test_graph_recursion_limit_reads_positive_env(monkeypatch):
+    monkeypatch.setenv("GRAPH_RECURSION_LIMIT", "88")
+
+    assert config.get_graph_recursion_limit() == 88
+
+
+def test_graph_recursion_limit_falls_back_for_invalid_env(monkeypatch):
+    monkeypatch.setenv("GRAPH_RECURSION_LIMIT", "not-an-int")
+    assert config.get_graph_recursion_limit() == config.DEFAULT_GRAPH_RECURSION_LIMIT
+
+    monkeypatch.setenv("GRAPH_RECURSION_LIMIT", "0")
+    assert config.get_graph_recursion_limit() == config.DEFAULT_GRAPH_RECURSION_LIMIT

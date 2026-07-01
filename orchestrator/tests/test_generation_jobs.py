@@ -974,6 +974,30 @@ def test_execute_generation_job_graph_uses_job_workspace_for_input_snapshot(monk
     assert captured["snapshot_key"] == "job_graph_db:input"
 
 
+def test_execute_generation_job_graph_config_includes_recursion_limit(monkeypatch):
+    captured = {}
+
+    class MockGraph:
+        def invoke(self, payload: dict, config: dict | None = None) -> dict:
+            captured["config"] = config
+            state = dict(payload)
+            state["status"] = "done"
+            state["result_payload"] = {"final_image_path": "/fake/recursion-limit.png"}
+            state["final_image_path"] = "/fake/recursion-limit.png"
+            return state
+
+    monkeypatch.setenv("GRAPH_RECURSION_LIMIT", "73")
+    monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: MockGraph())
+
+    request = GenerationJobCreateRequest(user_input="카페 광고", run_mode="graph_job")
+    job = create_generation_job(request)
+    executed = execute_generation_job_graph(job.job_id, request)
+
+    assert executed.status == "done"
+    assert captured["config"]["configurable"]["thread_id"] == job.thread_id
+    assert captured["config"]["recursion_limit"] == 73
+
+
 def test_execute_generation_job_graph_state_restoration(monkeypatch):
     class MockGraph:
         def invoke(self, payload: dict, config: dict | None = None) -> dict:
@@ -1473,6 +1497,7 @@ def test_waiting_generation_job_exposes_pending_option_question(monkeypatch):
 
 def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
     calls = []
+    configs = []
     expected_job_id = None
     expected_thread_id = None
 
@@ -1480,6 +1505,7 @@ def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
         def invoke(self, payload, config: dict | None = None) -> dict:
             nonlocal expected_job_id, expected_thread_id
             calls.append(payload)
+            configs.append(config)
             if len(calls) == 1:
                 state = dict(payload)
                 expected_job_id = state["job_id"]
@@ -1518,6 +1544,7 @@ def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
             }
 
     shared_graph = MockSharedGraph()
+    monkeypatch.setenv("GRAPH_RECURSION_LIMIT", "74")
     monkeypatch.setattr("orchestrator.app.generation_jobs.execution.get_generation_job_graph", lambda: shared_graph)
 
     request = GenerationJobCreateRequest(user_input="광고 만들어줘", run_mode="graph_job")
@@ -1530,6 +1557,7 @@ def test_resume_generation_job_graph_continues_waiting_job(monkeypatch):
 
     assert resumed.status == "done"
     assert len(calls) == 2
+    assert [config["recursion_limit"] for config in configs] == [74, 74]
     messages, _total = list_chat_messages(job.thread_id)
     assert [message.content for message in messages if message.role in {"user", "assistant"}] == [
         "광고 만들어줘",

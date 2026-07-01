@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from orchestrator.app.api.marketing_graph import get_marketing_graph
 from orchestrator.app.core.config import _get_env
+from orchestrator.app.graph.runtime_config import graph_thread_config
 from orchestrator.app.graph.state import resolve_requested_ad_format
 from orchestrator.app.llm.campaign_semantics import campaign_intent_label
 from orchestrator.app.llm.option_registry import option_label_for_value
@@ -187,7 +188,7 @@ class ChatOptionQuestionResponse(CamelModel):
 
 
 def _thread_config(thread_id: str) -> dict[str, Any]:
-    return {"configurable": {"thread_id": thread_id}}
+    return graph_thread_config(thread_id)
 
 
 _FORCEABLE_USER_PLANS = {"free", "economic", "premium", "internal_benchmark"}
