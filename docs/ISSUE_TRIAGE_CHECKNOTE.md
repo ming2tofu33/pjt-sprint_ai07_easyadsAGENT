@@ -61,8 +61,8 @@ Phase gate:
 
 목표: 공개 배포 전에 막아야 할 보안, 비용, 테넌트 격리 위험을 먼저 줄인다.
 
-- [ ] [#293](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/293) LLM system/user role 분리
-- [ ] [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) structured output strict mode 적용
+- [x] [#293](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/293) LLM system/user role 분리
+- [x] [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) structured output strict mode 적용
 - [x] [#295](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/295) T2I external API 비용 가드 단일화
 - [x] [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) Modal worker 인증 추가
 - [ ] [#287](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/287) Supabase RLS tenant table 확대
@@ -71,7 +71,7 @@ Phase gate:
 
 Phase gate:
 
-- [ ] 사용자 입력이 system instruction과 같은 문자열 privilege로 합쳐지지 않는다.
+- [x] 사용자 입력이 system instruction과 같은 문자열 privilege로 합쳐지지 않는다.
 - [ ] 유료 T2I provider는 명시적 provider enable flag, API key, plan/cost guard를 모두 통과해야 호출된다.
 - [ ] production/staging 환경에서 internal secret이 비어 있으면 서버가 조용히 시작하지 않는다.
 - [ ] Supabase tenant table은 workspace/user boundary를 우회하지 않는다.
@@ -271,9 +271,9 @@ Related docs:
 
 Tasks:
 
-- [ ] OpenAI Responses API 호출에서 `instructions=`와 `input=`을 분리
-- [ ] OpenAI-compatible adapter는 provider별 capability 차이를 문서화하고 같은 abstraction을 유지
-- [ ] structured output은 strict validation 또는 명시적 validation error로 처리
+- [x] OpenAI Responses API 호출에서 `instructions=`와 `input=`을 분리
+- [x] OpenAI-compatible adapter는 provider별 capability 차이를 문서화하고 같은 abstraction을 유지
+- [x] structured output은 strict validation 또는 명시적 validation error로 처리
 - [ ] `json.loads` fallback이 필요한 경로는 fallback임을 로그와 테스트로 분리
 - [ ] model name은 settings에서 읽도록 통합
 - [ ] retry policy는 external provider에만 적용하고 mock/local 경로는 테스트 가능하게 유지
@@ -283,14 +283,16 @@ Verification:
 
 ```bash
 uv run python -m pytest orchestrator/tests/test_openai_adapter_skeleton.py -q
+uv run python -m pytest orchestrator/tests/test_openai_compatible_adapter_safety.py -q
 uv run python -m pytest orchestrator/tests/test_llm_services.py -q
 uv run python -m pytest orchestrator/tests -m security -q
+uv run ruff check orchestrator/app/llm/adapters/openai_compatible.py orchestrator/tests/test_openai_compatible_adapter_safety.py
 ```
 
 Done when:
 
-- [ ] system instruction과 untrusted user input이 같은 문자열로 합쳐지지 않는다.
-- [ ] invalid structured response가 downstream AttributeError/KeyError로 흘러가지 않는다.
+- [x] system instruction과 untrusted user input이 같은 문자열로 합쳐지지 않는다.
+- [x] invalid structured response가 downstream AttributeError/KeyError로 흘러가지 않는다.
 - [ ] model name과 retry policy가 settings에서 추적된다.
 
 ### W1-02. T2I and Modal Cost Guard
@@ -621,8 +623,8 @@ Done when:
 | [#290](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/290) | P0 | LangGraph | Phase 2 | todo |
 | [#291](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/291) | P0 | LangGraph | Phase 2 | todo |
 | [#292](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/292) | P1 | LangGraph | Phase 2 | todo |
-| [#293](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/293) | P0 | LLM/Security | Phase 1 | todo |
-| [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) | P0 | LLM | Phase 1 | todo |
+| [#293](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/293) | P0 | LLM/Security | Phase 1 | verified |
+| [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) | P0 | LLM | Phase 1 | verified |
 | [#295](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/295) | P0 | T2I | Phase 1 | verified |
 | [#296](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/296) | P1 | LLM | Phase 4 | todo |
 | [#297](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/297) | P1 | LLM | Phase 4 | todo |
@@ -647,7 +649,7 @@ Done when:
 | [#316](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/316) | P2 | Frontend | Phase 5 | todo |
 | [#317](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/317) | P2 | Infra | Phase 5 | todo |
 | [#318](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/318) | P1 | LLM | Phase 2 | todo |
-| [#319](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/319) | P1 | Security | Phase 1 | verified |
+| [#319](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/319) | P1 | Security | Phase 1 | closed |
 | [#320](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/320) | P2 | LangGraph | Phase 2 | todo |
 
 ## Common Verification Commands
