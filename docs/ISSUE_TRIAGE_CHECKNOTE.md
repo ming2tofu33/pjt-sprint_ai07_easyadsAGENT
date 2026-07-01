@@ -623,8 +623,8 @@ Done when:
 | [#290](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/290) | P0 | LangGraph | Phase 2 | todo |
 | [#291](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/291) | P0 | LangGraph | Phase 2 | todo |
 | [#292](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/292) | P1 | LangGraph | Phase 2 | todo |
-| [#293](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/293) | P0 | LLM/Security | Phase 1 | verified |
-| [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) | P0 | LLM | Phase 1 | verified |
+| [#293](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/293) | P0 | LLM/Security | Phase 1 | closed |
+| [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) | P0 | LLM | Phase 1 | closed |
 | [#295](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/295) | P0 | T2I | Phase 1 | verified |
 | [#296](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/296) | P1 | LLM | Phase 4 | todo |
 | [#297](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/297) | P1 | LLM | Phase 4 | todo |
