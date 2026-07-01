@@ -2,78 +2,182 @@ name: Docker Build & Deploy
 
 on:
   push:
-    branches: [main, develop, docker-env, evaluation/unha]
-    paths: [Dockerfile, pyproject.toml, uv.lock, "orchestrator/**"]
+    branches:
+      - main
+      - develop
+      - docker-env
+      - evaluation/unha
+    paths:
+      - .github/**
+      - apps/**
+      - Dockerfile
+      - pyproject.toml
+      - uv.lock
+      - orchestrator/**
+      - scripts/**
   pull_request:
-    branches: [main, develop, docker-env, evaluation/unha]
-    paths: [Dockerfile, pyproject.toml, uv.lock, "orchestrator/**"]
+    branches:
+      - main
+      - develop
+      - docker-env
+      - evaluation/unha
+    paths:
+      - .github/**
+      - apps/**
+      - Dockerfile
+      - pyproject.toml
+      - uv.lock
+      - orchestrator/**
+      - scripts/**
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: pytest
+  secret-scan:
+    name: secret-scan
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    name: orchestrator-tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
           version: latest
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: uv sync --frozen
-      - run: uv run python -m pytest orchestrator/tests -q
+
+      - name: Install deps
+        run: uv sync --frozen --group dev
+
+      - name: Compile Python sources
+        run: uv run python -m compileall orchestrator scripts
+
+      - name: Run tests
+        run: uv run python -m pytest orchestrator/tests -q
         env:
           LLM_ENABLE_API_CALL: "false"
           LLM_DEFAULT_PROVIDER: mock
           T2I_DEFAULT_ENGINE: mock
 
-  build-pr:
-    name: docker-build-only
-    if: github.event_name == 'pull_request'
+  bff:
+    name: bff-tests
     runs-on: ubuntu-latest
-    needs: [test]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
+    defaults:
+      run:
+        working-directory: apps/bff
 
-  publish:
-    name: docker-build-and-push
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/bff/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run BFF syntax check
+        run: node --check src/app.js && node --check src/server.js
+
+      - name: Run BFF tests
+        run: npm test
+
+  web:
+    name: web-tests
     runs-on: ubuntu-latest
-    needs: [test]
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run web tests
+        run: npm test
+
+      - name: Run web type check
+        run: npx tsc --noEmit
+
+      - name: Run web lint
+        run: npm run lint
+
+  build:
+    name: docker-build
+    runs-on: ubuntu-latest
+    needs:
+      - secret-scan
+      - test
+      - bff
+      - web
     permissions:
       contents: read
       packages: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/login-action@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - id: meta
+
+      - name: Extract metadata
+        id: meta
         uses: docker/metadata-action@v5
         with:
           images: unhalim/codeit-final
           tags: |
             type=sha,prefix=sha-,format=short
-            type=raw,value=latest
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
