@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import uuid
 from typing import Any, Protocol
 
@@ -10,6 +9,7 @@ from orchestrator.app.compliance.schemas import (
     ComplianceFinding,
     ComplianceRule,
 )
+from orchestrator.app.compliance.rule_loader import validate_regex_pattern
 
 _SEVERITY_RANK: dict[str, int] = {
     "warn": 1,
@@ -50,8 +50,8 @@ class PatternMatcher:
 
     def __init__(self, rules: list[ComplianceRule]) -> None:
         self.rules = rules
-        self._compiled: dict[str, list[re.Pattern[str]]] = {
-            r.rule_id: [re.compile(p) for p in r.patterns]
+        self._compiled = {
+            r.rule_id: [validate_regex_pattern(p) for p in r.patterns]
             for r in rules
         }
 

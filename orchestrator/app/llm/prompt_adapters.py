@@ -136,7 +136,7 @@ def render_engine_prompt(
     elif "flux" in engine_lower:
         return render_flux_prompt(scene_plan, policy, preset_id=preset_id)
     else:
-        # Fallback to gpt_image_1 prompt layout
-        out = render_gpt_image_2_prompt(scene_plan, policy, preset_id=preset_id, engine="gpt_image_1")
-        out.warnings.append(f"Unknown engine '{engine}', fallback to gpt_image_1 prompt layout.")
+        # Prompt rendering remains deterministic, but the warning preserves the invalid input.
+        out = render_gpt_image_2_prompt(scene_plan, policy, preset_id=preset_id, engine="gpt_image_2")
+        out.warnings.append(f"Unknown engine '{engine}', fallback to gpt_image_2 prompt layout.")
         return out

@@ -8,7 +8,7 @@ import type {
 } from "@/types/marketing";
 import type { ChatMessageResponse, ChatStateSnapshotResponse, GenerationJob } from "./api-client";
 import { normalizeSelectedChannelId, type ChannelId } from "./ad-formats";
-import { DEFAULT_IMAGE_GENERATION_ENGINE, type ImageGenerationEngine } from "./generation-engine";
+import { normalizeImageGenerationEngine, type ImageGenerationEngine } from "./generation-engine";
 
 export type ThreadSnapshotRestoreState = {
   prompt: string;
@@ -28,8 +28,7 @@ export type ThreadSnapshotRestoreState = {
   userCustomHeadline: string;
   userCustomSubcopy: string;
   sourceAssetId: string | null;
-  sourceImagePath: string | null;
-  referenceImagePath: string | null;
+  referenceAssetId: string | null;
   selectedReferenceTemplateId: string | null;
   selectedReferenceTemplateTitle: string | null;
   generationJob: GenerationJob;
@@ -75,17 +74,7 @@ function copyMode(value: unknown): CopyGenerationMode {
 }
 
 function imageEngine(value: unknown): ImageGenerationEngine {
-  const engine = stringValue(value);
-  if (engine === "gpt_image_1") {
-    return DEFAULT_IMAGE_GENERATION_ENGINE;
-  }
-  if (engine === "gpt_image_2" || engine === "flux2_klein_4b" || engine === "sd35_large") {
-    return engine;
-  }
-  if (engine === "flux" || engine === "flux_schnell" || engine === "flux_1_schnell" || engine === "flux2_klein") {
-    return "flux2_klein_4b";
-  }
-  return DEFAULT_IMAGE_GENERATION_ENGINE;
+  return normalizeImageGenerationEngine(value);
 }
 
 function snapshotStatus(snapshotKind: string, payload: Record<string, unknown>, currentQuestion: OptionQuestion | null): string {
@@ -362,8 +351,8 @@ export function mapChatThreadSnapshotToRestoreState(snapshot: ChatStateSnapshotR
     userCustomHeadline: firstString(payload.user_custom_headline, payload.userCustomHeadline, currentBrief.user_custom_headline),
     userCustomSubcopy: firstString(payload.user_custom_subcopy, payload.userCustomSubcopy, currentBrief.user_custom_subcopy),
     sourceAssetId: firstString(payload.source_asset_id, payload.sourceAssetId, currentBrief.source_asset_id, currentBrief.sourceAssetId) || null,
-    sourceImagePath: firstString(payload.source_image_path, payload.sourceImagePath) || null,
-    referenceImagePath: firstString(payload.reference_image_path, payload.referenceImagePath) || null,
+    referenceAssetId:
+      firstString(payload.reference_asset_id, payload.referenceAssetId, currentBrief.reference_asset_id, currentBrief.referenceAssetId) || null,
     selectedReferenceTemplateId:
       firstString(snapshot.selected_reference_template_id, payload.selected_reference_template_id, payload.selectedReferenceTemplateId) || null,
     selectedReferenceTemplateTitle:

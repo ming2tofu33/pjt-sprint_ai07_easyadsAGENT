@@ -4,6 +4,7 @@ import {
   generationEngineOptions,
   getGenerationEngineOption,
   isTerminalGenerationJobStatus,
+  normalizeImageGenerationEngine,
   resolveDirectGenerationRunMode,
   resolveGenerationEnginePreference,
   resolveGenerationRunMode
@@ -11,21 +12,18 @@ import {
 
 describe("generation engine helpers", () => {
   it("uses the LangGraph run mode for final UI generation", () => {
-    expect(resolveGenerationRunMode("gpt_image_1")).toBe("graph_job");
     expect(resolveGenerationRunMode("gpt_image_2")).toBe("graph_job");
     expect(resolveGenerationRunMode("flux2_klein_4b")).toBe("graph_job");
     expect(resolveGenerationRunMode("sd35_large")).toBe("graph_job");
   });
 
   it("maps UI engine choices to backend graph engine preferences", () => {
-    expect(resolveGenerationEnginePreference("gpt_image_1")).toBe("gpt_image_2");
     expect(resolveGenerationEnginePreference("gpt_image_2")).toBe("gpt_image_2");
     expect(resolveGenerationEnginePreference("flux2_klein_4b")).toBe("flux2_klein_4b");
     expect(resolveGenerationEnginePreference("sd35_large")).toBe("sd35_large");
   });
 
   it("keeps direct T2I run modes available for smoke and debug paths", () => {
-    expect(resolveDirectGenerationRunMode("gpt_image_1")).toBe("gpt_image_2_actual");
     expect(resolveDirectGenerationRunMode("gpt_image_2")).toBe("gpt_image_2_actual");
     expect(resolveDirectGenerationRunMode("flux2_klein_4b")).toBe("flux2_klein_4b");
     expect(resolveDirectGenerationRunMode("sd35_large")).toBe("sd35_large_real");
@@ -41,6 +39,13 @@ describe("generation engine helpers", () => {
   it("shows GPT-image-2, FLUX, and SD as selectable UI options", () => {
     expect(generationEngineOptions.map((option) => option.id)).toEqual(["gpt_image_2", "flux2_klein_4b", "sd35_large"]);
     expect(generationEngineOptions.map((option) => option.id)).not.toContain("gpt_image_1");
+  });
+
+  it("normalizes legacy snapshot engines without exposing them as options", () => {
+    expect(normalizeImageGenerationEngine("gpt_image_1")).toBe("gpt_image_2");
+    expect(normalizeImageGenerationEngine("flux")).toBe("flux2_klein_4b");
+    expect(normalizeImageGenerationEngine("flux_schnell")).toBe("flux2_klein_4b");
+    expect(normalizeImageGenerationEngine("unknown")).toBe(DEFAULT_IMAGE_GENERATION_ENGINE);
   });
 
   it("identifies terminal generation job statuses", () => {

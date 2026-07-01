@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from orchestrator.app.core.config import _get_env
 from orchestrator.app.modal.errors import ModalExecutionUnavailableError
+from orchestrator.app.t2i.contracts import GenerationRunMode, T2IEngine, normalize_generation_run_mode, normalize_t2i_engine
 
 _ALLOWED_EXECUTION_BACKENDS = {"local", "modal"}
 _ALLOWED_RESULT_TRANSPORTS = {"inline_base64"}
@@ -39,18 +40,11 @@ def get_modal_app_name() -> str | None:
 
 
 def get_modal_function_name(*, run_mode: str | None = None, engine: str | None = None) -> str | None:
-    normalized_run_mode = (run_mode or "").strip().lower()
-    normalized_engine = (engine or "").strip().lower().replace("-", "_")
-    flux2_klein_run_modes = {
-        "flux2_klein_4b",
-        "flux2_klein",
-        "flux2-klein-4b",
-        "flux_2_klein_4b",
-        "flux_schnell_real",
-        "flux_real",
-        "flux_modal_real",
-    }
-    if normalized_run_mode in flux2_klein_run_modes or normalized_engine == "flux2_klein_4b":
+    normalized_run_mode = normalize_generation_run_mode(run_mode)
+    selected_engine = normalize_t2i_engine(engine)
+    if normalized_run_mode in {GenerationRunMode.FLUX_SCHNELL_REAL, GenerationRunMode.FLUX2_KLEIN_4B} or (
+        normalized_run_mode is None and selected_engine is T2IEngine.FLUX2_KLEIN_4B
+    ):
         return (
             _get_env(
                 "EASYADS_MODAL_FLUX2_KLEIN_FUNCTION_NAME",
@@ -58,7 +52,9 @@ def get_modal_function_name(*, run_mode: str | None = None, engine: str | None =
             ).strip()
             or None
         )
-    if normalized_run_mode in {"sd35_large_real", "sd35_real", "sd35_modal_real"}:
+    if normalized_run_mode is GenerationRunMode.SD35_LARGE_REAL or (
+        normalized_run_mode is None and selected_engine is T2IEngine.SD35_LARGE
+    ):
         return _get_env("EASYADS_MODAL_SD35_FUNCTION_NAME", "generate_sd35_large_image").strip() or None
     return _get_env("EASYADS_MODAL_FUNCTION_NAME", "generate_image").strip() or None
 

@@ -184,19 +184,20 @@ vi.mock("@/lib/api-client", () => ({
     }
   })),
   uploadPhotoAsset: vi.fn(async () => ({
-    sourceImagePath: "data/uploads/photo_1.png",
     sourceAssetId: "asset_11111111111111111111111111111111",
+    assetId: "asset_11111111111111111111111111111111",
     fileName: "menu.png",
     mimeType: "image/png",
     sizeBytes: 3
   })),
   uploadReferenceAsset: vi.fn(async () => ({
-    referenceImagePath: "data/uploads/reference_1.png",
+    referenceAssetId: "asset_22222222222222222222222222222222",
+    assetId: "asset_22222222222222222222222222222222",
     fileName: "reference.png",
     mimeType: "image/png",
     sizeBytes: 3
   })),
-	  startPhotoGeneration: vi.fn(async (input?: { copyGenerationMode?: string; sourceImagePath?: string; userCustomHeadline?: string; userCustomSubcopy?: string }) => {
+	  startPhotoGeneration: vi.fn(async (input?: { copyGenerationMode?: string; sourceAssetId?: string; userCustomHeadline?: string; userCustomSubcopy?: string }) => {
     if (input?.copyGenerationMode === "no_copy") {
       return {
         type: "brief_ready",
@@ -1266,8 +1267,7 @@ describe("ChatGenerateClient", () => {
           finalImagePath: "data/outputs/old_job/final_composite.png"
         },
         imageGenerationEngine: "gpt_image_2",
-        sourceImagePath: null,
-        referenceImagePath: null
+        referenceAssetId: null
       })
     );
     saveGenerationRequestContext({
@@ -2095,7 +2095,7 @@ describe("ChatGenerateClient", () => {
     await waitFor(() => expect(screen.getByText("GPT-image-2")).toBeTruthy());
   });
 
-  it("passes uploaded referenceImagePath to chat start and the final generation job", async () => {
+  it("passes uploaded referenceAssetId to chat start and the final generation job", async () => {
     const api = await import("@/lib/api-client");
     vi.mocked(api.uploadReferenceAsset).mockClear();
     vi.mocked(api.createGenerationJob).mockClear();
@@ -2116,7 +2116,7 @@ describe("ChatGenerateClient", () => {
       expect(api.createGenerationJob).toHaveBeenCalledWith(
         expect.objectContaining({
           userInput: expect.stringContaining("이 분위기로 딸기라떼 광고 만들어줘"),
-          referenceImagePath: "data/uploads/reference_1.png"
+          referenceAssetId: "asset_22222222222222222222222222222222"
         })
       )
     );
@@ -2131,7 +2131,7 @@ describe("ChatGenerateClient", () => {
     await waitFor(() =>
       expect(api.createGenerationJob).toHaveBeenCalledWith(
         expect.objectContaining({
-          referenceImagePath: "data/uploads/reference_1.png"
+          referenceAssetId: "asset_22222222222222222222222222222222"
         })
       )
     );
@@ -4582,13 +4582,11 @@ describe("ChatGenerateClient", () => {
         expect.objectContaining({
           userInput: "이 사진으로 신메뉴 광고 만들어줘",
           sourceAssetId: "asset_11111111111111111111111111111111",
-          sourceImagePath: undefined,
           entryMode: "photo_start",
           copyGenerationMode: "suggest_candidates",
           metadata: expect.objectContaining({
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
-            source_image_path: null,
             selected_engine: "gpt_image_2"
           })
         })
@@ -4699,7 +4697,6 @@ describe("ChatGenerateClient", () => {
       expect(api.createGenerationJob).toHaveBeenCalledWith(
         expect.objectContaining({
           sourceAssetId: "asset_11111111111111111111111111111111",
-          sourceImagePath: undefined
         })
       )
     );
@@ -4728,13 +4725,11 @@ describe("ChatGenerateClient", () => {
         expect.objectContaining({
           userInput: "이 사진으로 고품질 신메뉴 광고 만들어줘",
           sourceAssetId: "asset_11111111111111111111111111111111",
-          sourceImagePath: undefined,
           entryMode: "photo_start",
           runMode: "graph_job",
           metadata: expect.objectContaining({
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
-            source_image_path: null,
             selected_engine: "gpt_image_2",
             requested_engine: "gpt_image_2",
             t2i_engine: "gpt_image_2",
@@ -4769,14 +4764,12 @@ describe("ChatGenerateClient", () => {
         expect.objectContaining({
           userInput: "이 사진으로 이미지만 광고 만들어줘",
           sourceAssetId: "asset_11111111111111111111111111111111",
-          sourceImagePath: undefined,
           entryMode: "photo_start",
           runMode: "graph_job",
           copyGenerationMode: "no_copy",
           metadata: expect.objectContaining({
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
-            source_image_path: null,
             selected_engine: "gpt_image_2",
             copy_generation_mode: "no_copy"
           })
@@ -4812,7 +4805,6 @@ describe("ChatGenerateClient", () => {
         expect.objectContaining({
           userInput: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘",
           sourceAssetId: "asset_11111111111111111111111111111111",
-          sourceImagePath: undefined,
           entryMode: "photo_start",
           runMode: "graph_job",
           copyGenerationMode: "auto_pilot",
@@ -4821,7 +4813,6 @@ describe("ChatGenerateClient", () => {
           metadata: expect.objectContaining({
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
-            source_image_path: null,
             selected_engine: "gpt_image_2",
             copy_generation_mode: "auto_pilot"
           })
@@ -4863,7 +4854,6 @@ describe("ChatGenerateClient", () => {
         expect.objectContaining({
           userInput: "이 사진으로 딸기라떼 신메뉴 광고 만들어줘",
           sourceAssetId: "asset_11111111111111111111111111111111",
-          sourceImagePath: undefined,
           entryMode: "photo_start",
           runMode: "graph_job",
           copyGenerationMode: "custom_input",
@@ -4872,7 +4862,6 @@ describe("ChatGenerateClient", () => {
           metadata: expect.objectContaining({
             source: "web_photo_intake",
             source_asset_id: "asset_11111111111111111111111111111111",
-            source_image_path: null,
             selected_engine: "gpt_image_2",
             copy_generation_mode: "custom_input"
           })
@@ -4921,7 +4910,6 @@ describe("ChatGenerateClient", () => {
     expect(vi.mocked(api.createGenerationJob).mock.calls[0][0]).toEqual(
       expect.objectContaining({
         sourceAssetId: "asset_11111111111111111111111111111111",
-        sourceImagePath: undefined,
         entryMode: "photo_start",
         userInput: expect.stringContaining("가게 이름: 연남 테스트 카페")
       })

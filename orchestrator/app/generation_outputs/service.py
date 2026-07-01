@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import logging
+from typing import Any
 
 from orchestrator.app.api.schemas.generation_outputs import GenerationOutputResponse
 from orchestrator.app.db.repositories import generation_outputs as output_repo
@@ -13,6 +14,17 @@ from orchestrator.app.artifacts.service import sanitize_result_artifact_payload_
 from orchestrator.app.db.session import db_transaction
 
 logger = logging.getLogger(__name__)
+
+_INTERNAL_PAYLOAD_KEYS = {
+    "object_key",
+    "local_path",
+    "base64",
+    "b64_json",
+    "raw_image",
+    "image_bytes",
+    "binary",
+    "encoded_image",
+}
 
 
 class GenerationOutputNotFound(LookupError):
@@ -31,6 +43,25 @@ def _iso(value: object | None) -> str | None:
     return str(value)
 
 
+def _safe_result_payload_for_api(payload: Any) -> dict[str, Any]:
+    raw_payload = payload if isinstance(payload, dict) else {}
+    sanitized = sanitize_result_artifact_payload_for_api(raw_payload)
+    if not isinstance(sanitized, dict):
+        return {}
+    return _strip_internal_payload_fields(sanitized)
+
+
+def _strip_internal_payload_fields(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _strip_internal_payload_fields(item)
+            for key, item in value.items()
+            if str(key).lower() not in _INTERNAL_PAYLOAD_KEYS
+        }
+    if isinstance(value, list):
+        return [_strip_internal_payload_fields(item) for item in value]
+    return value
+
 
 def _row_to_response(row: dict) -> GenerationOutputResponse:
     if not row.get("public_output_id"):
@@ -39,7 +70,7 @@ def _row_to_response(row: dict) -> GenerationOutputResponse:
     image_url = browser_usable_url(row.get("image_url"))
     thumbnail_url = browser_usable_url(row.get("thumbnail_url"))
 
-    safe_payload = sanitize_result_artifact_payload_for_api(row.get("result_payload") or {})
+    safe_payload = _safe_result_payload_for_api(row.get("result_payload"))
     
     download_url = None
     if safe_payload.get("download_url"):

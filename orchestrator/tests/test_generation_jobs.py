@@ -87,8 +87,11 @@ from orchestrator.app.generation_jobs.errors import (
 )
 
 def test_resolve_input_asset_not_found(monkeypatch):
+    captured = {}
+
     class MockRepo:
         def get_asset_by_public_id(self, *a, **k):
+            captured.update(k)
             return None
     monkeypatch.setattr("orchestrator.app.db.repositories.assets.get_asset_by_public_id", MockRepo().get_asset_by_public_id)
 
@@ -99,6 +102,7 @@ def test_resolve_input_asset_not_found(monkeypatch):
             expected_kind="source",
             connection=None
         )
+    assert captured["workspace_id"] == "ws1"
 
 def test_resolve_input_asset_invalid_kind(monkeypatch):
     class MockRepo:
@@ -2471,8 +2475,8 @@ from orchestrator.app.api.routers.generation_jobs import T2I_RUN_MODE_TO_ENGINE
 def test_run_mode_mapping_matches_legacy_elif_chain():
     # Exact behavior of the elif chain this mapping replaced.
     expected = {
-        "gpt_image_1_actual": "gpt_image_1",
-        "gpt_image_1_smoke": "gpt_image_1",
+        "gpt_image_1_actual": "gpt_image_2",
+        "gpt_image_1_smoke": "gpt_image_2",
         "gpt_image_2_actual": "gpt_image_2",
         "gpt_image_2_smoke": "gpt_image_2",
         "sd35_local": "sd35_large",

@@ -12,7 +12,12 @@ import type {
   ReferenceImageFields,
   ReferenceTemplateFields
 } from "@/types/marketing";
-import { getGenerationEngineOption, resolveGenerationEnginePreference } from "@/lib/generation-engine";
+import {
+  getGenerationEngineOption,
+  resolveGenerationEnginePreference,
+  type BackendImageEngine,
+  type ImageGenerationEngine
+} from "@/lib/generation-engine";
 import { getSupabaseAuthorizationHeader, type RequestHeaders } from "@/lib/supabase/session";
 import { estimateJsonSizeBytes, measureWebPerf, perfTraceEnabled, recordWebPerfEvent, traceHeaders } from "@/lib/performance";
 
@@ -171,15 +176,18 @@ export type ReferenceTemplateSimilarResponse = {
 };
 
 export type PhotoUploadResponse = {
-  sourceImagePath: string;
-  sourceAssetId?: string | null;
+  sourceAssetId: string;
+  assetId: string;
+  previewUrl?: string | null;
   fileName: string;
   mimeType: string;
   sizeBytes: number;
 };
 
 export type ReferenceImageUploadResponse = {
-  referenceImagePath: string;
+  referenceAssetId: string;
+  assetId: string;
+  previewUrl?: string | null;
   fileName: string;
   mimeType: string;
   sizeBytes: number;
@@ -241,8 +249,6 @@ export interface GenerationJobCreateInput {
   selectedReferenceTemplateId?: string | null;
   sourceAssetId?: string | null;
   referenceAssetId?: string | null;
-  sourceImagePath?: string | null;
-  referenceImagePath?: string | null;
   copyGenerationMode?: string | null;
   selectedCopyId?: string | null;
   selectedChannelId?: string | null;
@@ -253,6 +259,9 @@ export interface GenerationJobCreateInput {
   userPlan?: string;
   adFormat?: string | null;
   runMode?: string;
+  imageGenerationEngine?: ImageGenerationEngine | null;
+  requestedEngine?: BackendImageEngine | null;
+  t2iEngine?: BackendImageEngine | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -590,22 +599,10 @@ function normalizeApiErrorMessage(message: string, errorCode?: string): string {
   if (message.includes("API call disabled")) {
     return "이미지 생성 API 호출이 비활성화되어 있어요. 실제 생성을 확인하려면 T2I_ALLOW_API_CALLS=true 설정이 필요합니다.";
   }
-  if (message.includes("input image not found")) {
-    return "업로드한 사진 파일을 생성 서버에서 찾지 못했어요. BFF_UPLOAD_DIR와 orchestrator 실행 위치를 확인해주세요.";
-  }
   if (message.includes("Request body is too large") || message.includes("Payload Too Large")) {
     return "사진 용량이 너무 커요. 더 작은 사진으로 다시 시도해주세요.";
   }
   return message;
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(String(reader.result)));
-    reader.addEventListener("error", () => reject(new Error("사진 파일을 읽지 못했습니다.")));
-    reader.readAsDataURL(file);
-  });
 }
 
 export function startChatGeneration(userInput: string, options: GenerationStartOptions = {}): Promise<ChatTurnResponse> {
@@ -617,7 +614,7 @@ export function startChatGeneration(userInput: string, options: GenerationStartO
     userCustomHeadline: options.userCustomHeadline ?? undefined,
     userCustomSubcopy: options.userCustomSubcopy ?? undefined,
     selectedReferenceTemplateId: options.selectedReferenceTemplateId ?? undefined,
-    referenceImagePath: options.referenceImagePath ?? undefined
+    referenceAssetId: options.referenceAssetId ?? undefined
   });
 }
 
@@ -642,31 +639,27 @@ export function createChatBrief(input: {
   return postJson<ChatBriefResponse>("/api/generate/chat/brief", input);
 }
 
-async function uploadLocalPhotoAsset(file: File): Promise<PhotoUploadResponse> {
-  const dataUrl = await readFileAsDataUrl(file);
-  return postJson<PhotoUploadResponse>("/api/generate/photo/upload", {
-    filename: file.name,
-    mimeType: file.type || "image/png",
-    dataUrl
-  });
-}
-
 export async function uploadPhotoAsset(file: File): Promise<PhotoUploadResponse> {
-  const localUpload = await uploadLocalPhotoAsset(file);
   const sourceAsset = await uploadImageToR2(file, "source");
   return {
-    ...localUpload,
-    sourceAssetId: sourceAsset.assetId
+    sourceAssetId: sourceAsset.assetId,
+    assetId: sourceAsset.assetId,
+    previewUrl: sourceAsset.imageUrl,
+    fileName: file.name,
+    mimeType: sourceAsset.mimeType ?? (file.type || "image/png"),
+    sizeBytes: sourceAsset.sizeBytes ?? file.size
   };
 }
 
 export async function uploadReferenceAsset(file: File): Promise<ReferenceImageUploadResponse> {
-  const upload = await uploadLocalPhotoAsset(file);
+  const upload = await uploadImageToR2(file, "reference");
   return {
-    referenceImagePath: upload.sourceImagePath,
-    fileName: upload.fileName,
-    mimeType: upload.mimeType,
-    sizeBytes: upload.sizeBytes
+    referenceAssetId: upload.assetId,
+    assetId: upload.assetId,
+    previewUrl: upload.imageUrl,
+    fileName: file.name,
+    mimeType: upload.mimeType ?? (file.type || "image/png"),
+    sizeBytes: upload.sizeBytes ?? file.size
   };
 }
 
@@ -720,8 +713,8 @@ export async function uploadReferenceImageToR2(file: File): Promise<AssetUploadR
 
 export function startPhotoGeneration(input: {
   userInput: string;
-  sourceImagePath: string;
-  referenceImagePath?: string | null;
+  sourceAssetId: string;
+  referenceAssetId?: string | null;
   adFormat?: string;
   renderProfile?: string;
   copyGenerationMode?: CopyGenerationMode;
@@ -733,14 +726,14 @@ export function startPhotoGeneration(input: {
   const engineOption = input.imageGenerationEngine ? getGenerationEngineOption(input.imageGenerationEngine) : undefined;
   return postJson<ChatTurnResponse>("/api/generate/photo/start", {
     userInput: input.userInput,
-    sourceImagePath: input.sourceImagePath,
+    sourceAssetId: input.sourceAssetId,
     adFormat: input.adFormat ?? "instagram_feed",
     renderProfile: input.renderProfile ?? "premium_api",
     copyGenerationMode: input.copyGenerationMode ?? undefined,
     userCustomHeadline: input.userCustomHeadline ?? undefined,
     userCustomSubcopy: input.userCustomSubcopy ?? undefined,
     selectedReferenceTemplateId: input.selectedReferenceTemplateId ?? undefined,
-    referenceImagePath: input.referenceImagePath ?? undefined,
+    referenceAssetId: input.referenceAssetId ?? undefined,
     imageGenerationEngine: input.imageGenerationEngine ?? undefined,
     requestedEngine: backendEngine,
     t2iEngine: backendEngine,

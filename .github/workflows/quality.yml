@@ -1,0 +1,100 @@
+name: Quality Gates
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen --dev
+      - name: Compile Python
+        run: uv run python -m compileall orchestrator/app orchestrator/tests apps/vision-service/app scripts
+      - name: Ruff phase 1
+        run: >-
+          uv run ruff check --select E4,E7,E9,F,I
+          scripts/export_openapi.py
+          scripts/check_contract_drift.py
+          scripts/check_security_smoke.py
+          orchestrator/app/t2i/contracts.py
+          orchestrator/tests/test_openapi_generation_contract.py
+      - name: Backend focused tests
+        run: >-
+          uv run python -m pytest
+          orchestrator/tests/test_generation_outputs_service_v1.py
+          orchestrator/tests/test_llm_settings.py
+          orchestrator/tests/test_compliance_rule_loader.py
+          orchestrator/tests/test_generation_jobs.py
+          orchestrator/tests/test_asset_upload.py
+          orchestrator/tests/test_t2i_contracts.py
+          orchestrator/tests/test_state_model_helpers.py
+          orchestrator/tests/test_marketing_state_contract.py
+          orchestrator/tests/test_marketing_state_model_policy.py
+          orchestrator/tests/test_openapi_generation_contract.py
+          -q
+        env:
+          LLM_ENABLE_API_CALL: "false"
+          LLM_DEFAULT_PROVIDER: mock
+          T2I_DEFAULT_ENGINE: mock
+
+  web-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run typecheck
+
+  bff-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/bff
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/bff/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run syntax
+
+  contract-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --frozen --dev
+      - run: uv run python scripts/export_openapi.py "${{ runner.temp }}/easyads-openapi.json"
+      - run: uv run python scripts/check_contract_drift.py --openapi "${{ runner.temp }}/easyads-openapi.json"
+      - run: uv run python scripts/check_security_smoke.py

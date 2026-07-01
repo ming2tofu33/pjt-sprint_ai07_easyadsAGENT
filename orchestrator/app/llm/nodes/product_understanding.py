@@ -25,6 +25,8 @@ FOOD_AND_BEVERAGE_SLUG_HINTS = {
 
 
 def product_understanding_node(state: dict[str, Any]) -> dict[str, Any]:
+    from orchestrator.app.graph.state import write_model
+
     raw_bundle = state.get("input_evidence_bundle")
     if not raw_bundle:
         return {"product_understanding": None, "product_understanding_status": "failed", "error_message": "input_evidence_bundle missing"}
@@ -46,7 +48,7 @@ def product_understanding_node(state: dict[str, Any]) -> dict[str, Any]:
         }
     status = "manual_review" if result.manual_review_required else "clarification_required" if result.clarification_required else "completed"
     return {
-        "product_understanding": result.model_dump(),
+        "product_understanding": write_model(result),
         "product_understanding_status": status,
         "product_understanding_confidence": result.confidence,
         "product_understanding_provider_metadata": result.provider_metadata,

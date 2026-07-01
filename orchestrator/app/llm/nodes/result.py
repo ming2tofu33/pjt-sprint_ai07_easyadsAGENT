@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from orchestrator.app.graph.state import MarketingState
+from orchestrator.app.graph.state import MarketingState, write_model
 from orchestrator.app.ocr_gate.persistence import build_ocr_gate_payload
 from orchestrator.app.schemas.text_layout import ResultPayload
 
@@ -90,7 +90,7 @@ def result_node(state: MarketingState) -> dict[str, Any]:
             "qualityDecision": ocr_decision,
         },
     )
-    payload_dict = payload.model_dump()
+    payload_dict = write_model(payload)
     payload_dict["ocr_gate"] = ocr_gate_payload
     payload_dict["qualityDecision"] = ocr_decision
     payload_dict["requiresManualReview"] = requires_manual_review

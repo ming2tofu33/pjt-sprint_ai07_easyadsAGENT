@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Annotated, Any, NotRequired, TypedDict, TypeVar
 from uuid import uuid4
@@ -23,8 +24,14 @@ from orchestrator.app.schemas.llm_marketing import (
     MarketingContext,
     MissingField,
     RenderProfile,
+    ValidationReport,
 )
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection, PlanPolicy, UserPlan
+from orchestrator.app.schemas.input_evidence import InputEvidenceBundle
+from orchestrator.app.schemas.product_understanding import ProductUnderstanding
+from orchestrator.app.schemas.text_layout import CopySpec, ImagePromptSpec, ResultPayload, TextLayoutSpec, TextStyleSpec
+from orchestrator.app.t2i.contracts import T2IEngine
+from orchestrator.app.t2i.schemas import T2IRequest, T2IResult
 
 SCHEMA_VERSION = "llm_marketing_v1"
 REQUIRED_CONTEXT_FIELDS: list[MissingField] = ["business_type", "item_or_service", "promotion_goal", "ad_format"]
@@ -71,13 +78,13 @@ class IntakeState(TypedDict, total=False):
     reference_asset_id: str | None
     source_image_path: str | None
     reference_image_path: str | None
-    input_evidence_bundle: dict[str, Any] | None
+    input_evidence_bundle: dict[str, Any] | InputEvidenceBundle | None
     input_normalization_status: str | None
     input_conflicts: list[dict[str, Any]]
     unresolved_questions: list[str]
     intake_understanding_result: dict[str, Any] | None
     intake_extraction_trace: dict[str, Any] | None
-    product_understanding: dict[str, Any] | None
+    product_understanding: dict[str, Any] | ProductUnderstanding | None
     product_understanding_status: str | None
     product_understanding_confidence: float | None
     product_understanding_provider_metadata: dict[str, Any] | None
@@ -137,9 +144,9 @@ class CopyState(TypedDict, total=False):
     copy_compliance_gate: dict[str, Any] | None
     copy_compliance_resolution: dict[str, Any] | None
     custom_copy_input: dict[str, Any] | None
-    copy_spec: dict[str, Any] | None
-    text_layout_spec: dict[str, Any] | None
-    text_style_spec: dict[str, Any] | None
+    copy_spec: dict[str, Any] | CopySpec | None
+    text_layout_spec: dict[str, Any] | TextLayoutSpec | None
+    text_style_spec: dict[str, Any] | TextStyleSpec | None
     copy_visual_intent: dict[str, Any] | None
     product_copy_context: dict[str, Any] | None
     copy_presence_plan: dict[str, Any] | None
@@ -183,13 +190,13 @@ class TypographyLayoutState(TypedDict, total=False):
 
 class ImagePromptT2IState(TypedDict, total=False):
     """Image prompt construction and text-to-image request/result."""
-    image_prompt_spec: dict[str, Any] | None
+    image_prompt_spec: dict[str, Any] | ImagePromptSpec | None
     image_prompt: dict[str, Any] | None
     prompt_optimization_output: dict[str, Any] | None
     user_readable_image_guide: dict[str, Any] | None
     prompt_render_output: dict[str, Any] | None
-    t2i_request: dict[str, Any] | None
-    t2i_result: dict[str, Any] | None
+    t2i_request: dict[str, Any] | T2IRequest | None
+    t2i_result: dict[str, Any] | T2IResult | None
 
 
 class QualityGateState(TypedDict, total=False):
@@ -237,9 +244,6 @@ class RenderFinalizeState(TypedDict, total=False):
     validation_report: dict[str, Any] | ValidationReport | None
     result_payload: dict[str, Any] | ResultPayload | None
     artifact_refs: Annotated[list[dict[str, Any] | ArtifactRef], append_state_items]
-    validation_report: dict[str, Any] | None
-    result_payload: dict[str, Any] | None
-    artifact_refs: list[dict[str, Any] | ArtifactRef]
     error_message: str | None
     error_info: dict[str, Any] | None
     created_at: str
@@ -359,7 +363,7 @@ _UNSET = object()
 
 
 def read_model(
-    state: dict[str, Any],
+    state: Mapping[str, Any],
     key: str,
     model_cls: type[_ModelT],
     *,
@@ -373,19 +377,40 @@ def read_model(
     in exactly one place.
 
     - Existing model instance is returned untouched (idempotent).
-    - Missing/None value: returns an empty `model_cls()` by default, or `None`
-      if `default=None` was passed explicitly.
+    - Missing/None value returns an empty model by default; ``default=None``
+      opts into an optional boundary.
     """
     value = state.get(key)
+    if value is None:
+        if default is None:
+            return None
+        if default is _UNSET:
+            return model_cls()
+        if isinstance(default, model_cls):
+            return default
+        if isinstance(default, Mapping):
+            return model_cls.model_validate(default)
+        return default
     if isinstance(value, model_cls):
         return value
-    if not value:
-        return None if default is None else model_cls()
-    return model_cls(**value)
+    if isinstance(value, Mapping):
+        return model_cls.model_validate(value)
+    raise TypeError(f"{key} must be {model_cls.__name__} or mapping")
+
+
+def write_model(model: BaseModel | Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Serialize a model boundary to JSON-safe LangGraph state."""
+    if model is None:
+        return None
+    if isinstance(model, BaseModel):
+        return model.model_dump(mode="json", exclude_none=True)
+    if isinstance(model, Mapping):
+        return dict(model)
+    raise TypeError("write_model expects a Pydantic model, mapping, or None")
 
 
 def context_to_model(context: dict[str, Any] | MarketingContext | None) -> MarketingContext:
-    return read_model({"context": context}, "context", MarketingContext)
+    return read_model({"context": context}, "context", MarketingContext, default={})
 
 
 def route_for_entry_mode(entry_mode: EntryMode) -> GenerationRoute:
@@ -400,16 +425,49 @@ def engine_for_render_profile(render_profile: RenderProfile) -> GenerationEngine
     if render_profile == "fast":
         return "mock"
     if render_profile == "premium_local":
-        return "flux2_klein_4b"
+        return T2IEngine.FLUX2_KLEIN_4B.value
     if render_profile == "premium_api":
-        return "gpt_image_1"
-    return "sd35_large"
+        return T2IEngine.GPT_IMAGE_2.value
+    return T2IEngine.SD35_LARGE.value
 
 
 def append_state_items(left: list[Any] | None, right: list[Any] | None) -> list[Any]:
+    left_items = list(left or [])
     if not right:
-        return list(left or [])
-    return [*(left or []), *right]
+        return left_items
+    right_items = list(right)
+    if left_items and right_items[: len(left_items)] == left_items:
+        return right_items
+    return [*left_items, *right_items]
+
+
+def overlay_current_request_asset_ids(
+    state: Mapping[str, Any],
+    *,
+    source_asset_id: str | None,
+    reference_asset_id: str | None,
+) -> dict[str, Any]:
+    """Overlay current asset IDs after restore and neutralize legacy paths."""
+    merged = dict(state)
+    if source_asset_id is not None:
+        merged["source_asset_id"] = source_asset_id
+    if reference_asset_id is not None:
+        merged["reference_asset_id"] = reference_asset_id
+
+    effective_source_id = merged.get("source_asset_id")
+    effective_reference_id = merged.get("reference_asset_id")
+    brief = dict(merged.get("current_brief") or {})
+    if effective_source_id:
+        merged["source_image_path"] = None
+        brief["source_asset_id"] = effective_source_id
+        brief["source_image_path"] = None
+    if effective_reference_id:
+        merged["reference_image_path"] = None
+        brief["reference_asset_id"] = effective_reference_id
+        brief["reference_image_path"] = None
+    if brief:
+        merged["current_brief"] = brief
+    return merged
 
 
 def create_initial_marketing_state(request: InitialMarketingRequest) -> MarketingState:

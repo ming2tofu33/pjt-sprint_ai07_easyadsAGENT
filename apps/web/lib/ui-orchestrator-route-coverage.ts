@@ -213,11 +213,11 @@ export const UI_ORCHESTRATOR_ROUTE_COVERAGE: UiOrchestratorRouteCoverageRow[] = 
     userFlow: "사용자가 스타일 참조 이미지를 직접 업로드",
     phase: "final-graph-integration-v1",
     uiEntryPoints: ["ChatStartStep", "ChatGenerateClient"],
-    apiCalls: ["POST /api/generate/photo/upload", "POST /api/generate/chat/start", "POST /api/generation-jobs"],
+    apiCalls: ["POST /api/assets/uploads/presign", "POST /api/assets/uploads/{asset_id}/complete", "POST /api/generation-jobs"],
     executionMode: "generation-job-graph",
     connected: true,
     fullGraphExecution: false,
-    graphStateFields: ["reference_image_path"],
+    graphStateFields: ["reference_asset_id"],
     graphNodesReached: ["reference_preprocess", "image_prompt_planner"],
     graphNodesBypassed: [],
     testEvidence: [
@@ -226,7 +226,7 @@ export const UI_ORCHESTRATOR_ROUTE_COVERAGE: UiOrchestratorRouteCoverageRow[] = 
       "orchestrator/tests/test_chat_api.py",
       "orchestrator/tests/test_generation_job_graph_execution.py"
     ],
-    notes: "대화 시작 화면에서 직접 업로드한 참고 이미지를 referenceImagePath로 저장하고 최종 graph state의 reference_image_path까지 보존한다."
+    notes: "대화 시작 화면에서 직접 업로드한 참고 이미지를 referenceAssetId로 저장하고 최종 graph state의 reference_asset_id까지 보존한다."
   },
   {
     id: "validation-feedback",

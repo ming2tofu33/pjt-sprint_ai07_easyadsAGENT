@@ -111,9 +111,9 @@ describe("ui orchestrator route coverage", () => {
     expect(row).toMatchObject({
       connected: true,
       phase: "final-graph-integration-v1",
-      graphStateFields: ["reference_image_path"],
+      graphStateFields: ["reference_asset_id"],
       uiEntryPoints: ["ChatStartStep", "ChatGenerateClient"],
-      apiCalls: ["POST /api/generate/photo/upload", "POST /api/generate/chat/start", "POST /api/generation-jobs"]
+      apiCalls: ["POST /api/assets/uploads/presign", "POST /api/assets/uploads/{asset_id}/complete", "POST /api/generation-jobs"]
     });
   });
 

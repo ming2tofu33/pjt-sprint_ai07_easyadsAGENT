@@ -9,6 +9,7 @@ import re
 from typing import Protocol
 
 from orchestrator.app.compliance.schemas import ComplianceFinding, ComplianceRule
+from orchestrator.app.compliance.rule_loader import validate_regex_pattern
 
 
 class RewriteStrategy(Protocol):
@@ -34,6 +35,8 @@ class StaticHintRewriter:
 
     def __init__(self, rules_by_id: dict[str, ComplianceRule]) -> None:
         self._rules = rules_by_id
+        for pattern, _ in self._SUPERLATIVE_REPLACEMENTS:
+            validate_regex_pattern(pattern)
 
     def suggest(self, finding: ComplianceFinding, original_text: str, domain: str) -> str | None:
         if finding.rule_id is None:

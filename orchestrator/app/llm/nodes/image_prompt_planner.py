@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from orchestrator.app.graph.state import read_model
+from orchestrator.app.graph.state import read_model, write_model
 from orchestrator.app.llm.domain_routing import normalize_business_type, project_to_legacy_visual_route
 from orchestrator.app.llm.metadata_builders import build_image_prompt_planner_metadata, metadata_contract_to_prompt_json
 from orchestrator.app.llm.node_runner import run_structured_node
@@ -73,8 +73,8 @@ def image_prompt_planner_node(state: "MarketingState") -> dict[str, object]:
     image_prompt = build_legacy_image_prompt(state, spec)
 
     return {
-        "image_prompt_spec": spec.model_dump(),
-        "image_prompt": image_prompt.model_dump(),
+        "image_prompt_spec": write_model(spec),
+        "image_prompt": write_model(image_prompt),
         "current_brief": update_current_brief(
             state.get("current_brief"),
             {"image_prompt_spec_ready": True, "render_text_in_image": False},
@@ -170,7 +170,7 @@ def build_image_prompt_spec_with_critic(state: MarketingState) -> ImagePromptSpe
         route_family_id=resolved_visual_route_key,
     )
     policy = build_prompt_quality_policy(preset)
-    engine = state.get("engine") or "gpt_image_1"
+    engine = state.get("engine") or "gpt_image_2"
     adapter_output = render_engine_prompt(engine, scene_plan, policy, preset_id=preset_id)
     adapter_positive_prompt = adapter_output.prompt
     if extra_hints:
