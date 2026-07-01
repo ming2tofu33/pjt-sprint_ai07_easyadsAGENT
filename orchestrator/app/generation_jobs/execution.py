@@ -27,6 +27,7 @@ from orchestrator.app.generation_jobs.service import (
     mark_generation_job_modal_running,
     mark_generation_job_running,
 )
+from orchestrator.app.graph.runtime_config import graph_thread_config
 from orchestrator.app.graph.state import resolve_requested_ad_format, set_requested_ad_format
 from orchestrator.app.t2i.engines.base import T2IGenerationInput
 from orchestrator.app.t2i.engines.registry import get_t2i_engine
@@ -573,12 +574,7 @@ def execute_generation_job_graph(job_id: str, request: GenerationJobCreateReques
 
         # Execute
         graph = get_generation_job_graph()
-        config = {
-            "configurable": {
-                "thread_id": job.thread_id,
-            }
-        }
-        result_state = graph.invoke(initial_state, config=config)
+        result_state = graph.invoke(initial_state, config=graph_thread_config(job.thread_id))
 
         changed_fields = calculate_changed_fields(input_snapshot.state_payload, result_state)
 
@@ -697,7 +693,7 @@ def resume_generation_job_graph(
         graph = get_generation_job_graph()
         result_state = graph.invoke(
             Command(resume=resume_payload),
-            config={"configurable": {"thread_id": job.thread_id}},
+            config=graph_thread_config(job.thread_id),
         )
         changed_fields = calculate_changed_fields(None, result_state)
 

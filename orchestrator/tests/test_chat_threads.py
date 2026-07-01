@@ -230,6 +230,17 @@ def test_chat_start_passes_reference_template_to_graph(monkeypatch):
     assert captured["config"]["configurable"]["thread_id"] == response.json()["threadId"]
 
 
+def test_chat_thread_config_includes_graph_recursion_limit(monkeypatch):
+    monkeypatch.setenv("GRAPH_RECURSION_LIMIT", "72")
+
+    config = chat_api._thread_config("thread-recursion-limit")
+
+    assert config == {
+        "configurable": {"thread_id": "thread-recursion-limit"},
+        "recursion_limit": 72,
+    }
+
+
 def test_photo_start_invokes_graph_with_photo_entry(monkeypatch):
     captured = {}
 
