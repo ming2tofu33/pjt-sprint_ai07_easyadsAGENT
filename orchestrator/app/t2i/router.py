@@ -6,13 +6,27 @@ from typing import Any
 
 from orchestrator.app.core.config import get_t2i_settings
 from orchestrator.app.t2i.base import BaseT2IEngine
+from orchestrator.app.t2i.engines.flux2_klein import normalize_flux2_klein_engine_key
 from orchestrator.app.t2i.gpt_image2 import GPTImage1Engine, GPTImage2Engine
 from orchestrator.app.t2i.graph_engines import get_graph_actual_t2i_engine
-from orchestrator.app.t2i.engines.flux2_klein import normalize_flux2_klein_engine_key
 from orchestrator.app.t2i.mock import MockT2IEngine
-
+from orchestrator.app.t2i.settings import is_gpt_image_1_enabled, is_gpt_image_2_enabled, load_t2i_settings
 
 _mock_engine = MockT2IEngine()
+
+
+def _allow_gpt_image_api_call(engine_name: str, legacy_allow_api_calls: bool, cost_guard_enabled: bool) -> bool:
+    if not legacy_allow_api_calls or not cost_guard_enabled:
+        return False
+
+    guarded_settings = load_t2i_settings()
+    if engine_name == "gpt_image_1":
+        return is_gpt_image_1_enabled(guarded_settings)
+    if engine_name == "gpt_image_2":
+        return is_gpt_image_2_enabled(guarded_settings)
+    return False
+
+
 class NotImplementedT2IEngine(BaseT2IEngine):
     """Explicit placeholder for engines that are planned but not wired yet."""
 
@@ -43,9 +57,21 @@ def get_t2i_engine(name: str | None = None) -> BaseT2IEngine:
     if engine_name == "mock":
         return _mock_engine
     if engine_name == "gpt_image_1":
-        return GPTImage1Engine(allow_api_call=settings.allow_api_calls)
+        return GPTImage1Engine(
+            allow_api_call=_allow_gpt_image_api_call(
+                engine_name,
+                settings.allow_api_calls,
+                settings.enable_api_cost_guard,
+            )
+        )
     if engine_name == "gpt_image_2":
-        return GPTImage2Engine(allow_api_call=settings.allow_api_calls)
+        return GPTImage2Engine(
+            allow_api_call=_allow_gpt_image_api_call(
+                engine_name,
+                settings.allow_api_calls,
+                settings.enable_api_cost_guard,
+            )
+        )
     if engine_name == "sd35_large":
         return get_graph_actual_t2i_engine("sd35_large")
     if engine_name == "flux":
