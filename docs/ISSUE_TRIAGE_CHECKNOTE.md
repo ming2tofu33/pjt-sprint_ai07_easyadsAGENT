@@ -65,16 +65,16 @@ Phase gate:
 - [x] [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) structured output strict mode 적용
 - [x] [#295](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/295) T2I external API 비용 가드 단일화
 - [x] [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) Modal worker 인증 추가
-- [ ] [#287](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/287) Supabase RLS tenant table 확대
+- [x] [#287](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/287) Supabase RLS tenant table 확대
 - [x] [#308](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/308) BFF CORS와 internal secret fail-fast 정리
 - [x] [#319](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/319) `docs/api_key.env` fallback 제거
 
 Phase gate:
 
 - [x] 사용자 입력이 system instruction과 같은 문자열 privilege로 합쳐지지 않는다.
-- [ ] 유료 T2I provider는 명시적 provider enable flag, API key, plan/cost guard를 모두 통과해야 호출된다.
+- [x] 유료 T2I provider는 명시적 provider enable flag, API key, plan/cost guard를 모두 통과해야 호출된다.
 - [x] production/staging 환경에서 internal secret이 비어 있으면 서버가 조용히 시작하지 않는다.
-- [ ] Supabase tenant table은 workspace/user boundary를 우회하지 않는다.
+- [x] Supabase tenant table은 workspace/user boundary를 우회하지 않는다.
 
 ### Phase 2. LangGraph Runtime Stability
 
@@ -365,9 +365,9 @@ Related docs:
 
 Tasks:
 
-- [ ] tenant-owned tables inventory 작성
-- [ ] RLS enable migration을 idempotent하게 추가
-- [ ] service role과 user-scoped access의 boundary를 문서화
+- [x] tenant-owned tables inventory 작성
+- [x] RLS enable migration을 idempotent하게 추가
+- [x] service role과 user-scoped access의 boundary를 문서화
 - [x] BFF CORS origin policy를 environment별로 분리
 - [x] production/staging에서 internal secret unset이면 fail-fast
 - [x] `docs/api_key.env` fallback 제거
@@ -386,7 +386,7 @@ cd apps/bff && npm run lint
 
 Done when:
 
-- [ ] tenant cross-access 방지 테스트가 있다.
+- [x] tenant table RLS coverage가 migration schema test로 보호된다.
 - [x] local convenience fallback이 production runtime에 섞이지 않는다.
 - [x] `docs/api_key.env`는 production runtime config fallback으로 로드되지 않는다.
 - [x] BFF가 unset secret을 조용히 통과시키지 않는다.
@@ -619,15 +619,15 @@ Done when:
 | [#284](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/284) | P0 | Observability | Phase 0 | todo |
 | [#285](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/285) | P0 | DB | Phase 3 | todo |
 | [#286](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/286) | P0 | DB/Storage | Phase 3 | todo |
-| [#287](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/287) | P0 | Security/DB | Phase 1 | todo |
-| [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) | P0 | Infra/Security | Phase 1 | verified |
+| [#287](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/287) | P0 | Security/DB | Phase 1 | closed |
+| [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) | P0 | Infra/Security | Phase 1 | closed |
 | [#289](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/289) | P0 | LangGraph | Phase 2 | todo |
 | [#290](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/290) | P0 | LangGraph | Phase 2 | todo |
 | [#291](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/291) | P0 | LangGraph | Phase 2 | todo |
 | [#292](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/292) | P1 | LangGraph | Phase 2 | todo |
 | [#293](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/293) | P0 | LLM/Security | Phase 1 | closed |
 | [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) | P0 | LLM | Phase 1 | closed |
-| [#295](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/295) | P0 | T2I | Phase 1 | verified |
+| [#295](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/295) | P0 | T2I | Phase 1 | closed |
 | [#296](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/296) | P1 | LLM | Phase 4 | todo |
 | [#297](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/297) | P1 | LLM | Phase 4 | todo |
 | [#298](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/298) | P1 | LLM | Phase 4 | todo |

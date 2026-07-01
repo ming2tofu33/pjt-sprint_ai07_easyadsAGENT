@@ -3,6 +3,26 @@ from pathlib import Path
 
 MIGRATION = Path("supabase/migrations/20260602_core_schema_v1.sql")
 ARCHIVE_PERFORMANCE_MIGRATION = Path("supabase/migrations/20260611_archive_items_user_recent_idx.sql")
+TENANT_RLS_MIGRATION = Path("supabase/migrations/20260702_tenant_rls_v1.sql")
+
+TENANT_RLS_TABLES = [
+    "workspaces",
+    "workspace_members",
+    "projects",
+    "brand_kits",
+    "chat_threads",
+    "chat_messages",
+    "assets",
+    "chat_message_assets",
+    "generation_jobs",
+    "generation_outputs",
+    "generation_job_events",
+    "archive_items",
+    "usage_events",
+    "feedback_events",
+    "chat_state_snapshots",
+    "validation_reports",
+]
 
 
 def test_core_schema_migration_exists_and_contains_tables():
@@ -111,3 +131,19 @@ def test_core_schema_generation_jobs_has_future_execution_columns():
         "finished_at timestamptz",
     ]:
         assert column in sql
+
+
+def test_tenant_rls_migration_enables_workspace_scoped_tables():
+    sql = TENANT_RLS_MIGRATION.read_text(encoding="utf-8")
+
+    assert "create or replace function public.easyads_has_workspace_access" in sql
+    assert "security definer" in sql
+    assert "auth.uid() is not null" in sql
+    assert "from public.workspaces w" in sql
+    assert "from public.workspace_members wm" in sql
+
+    for table in TENANT_RLS_TABLES:
+        assert f"alter table if exists public.{table} enable row level security" in sql
+        assert f'drop policy if exists "{table}_workspace_isolation" on public.{table}' in sql
+        assert f'create policy "{table}_workspace_isolation"' in sql
+        assert f"on public.{table}\nfor all\nto authenticated" in sql
