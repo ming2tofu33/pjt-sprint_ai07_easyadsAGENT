@@ -1119,8 +1119,8 @@ describe("generate chat routes", () => {
     await app.close();
   });
 
-  it("accepts phone-sized JSON photo uploads larger than the previous body limit", async () => {
-    const app = buildApp({ fetchImpl: vi.fn() });
+  it("accepts large legacy JSON photo uploads only when the body limit is explicitly raised", async () => {
+    const app = buildApp({ fetchImpl: vi.fn(), bodyLimit: 30 * 1024 * 1024 });
     const imageBytes = Buffer.alloc(20 * 1024 * 1024, 7);
     const dataUrl = `data:image/png;base64,${imageBytes.toString("base64")}`;
 

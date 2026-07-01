@@ -1,6 +1,14 @@
+import { isStrictRuntimeEnv } from "../config.js";
+
 export function internalSecretHeaders(env = process.env) {
-  const secret = env.EASYADS_INTERNAL_API_SECRET;
-  return secret ? { "X-EasyAds-Internal-Secret": secret } : {};
+  const secret = String(env.EASYADS_INTERNAL_API_SECRET || "").trim();
+  if (!secret) {
+    if (isStrictRuntimeEnv(env)) {
+      throw new Error("EASYADS_INTERNAL_API_SECRET is required in production or staging");
+    }
+    return {};
+  }
+  return { "X-EasyAds-Internal-Secret": secret };
 }
 
 export function verifiedPrincipalHeaders(principal) {

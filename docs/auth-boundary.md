@@ -9,7 +9,7 @@ Browser ──Supabase JWT──▶ Next proxy / BFF ──verified identity + i
 | Hop | What it verifies | Code |
 |---|---|---|
 | Next proxy | Supabase JWT via `GET /auth/v1/user`; strips spoofable `user_id`/`account_type` from request bodies, injects verified `X-EasyAds-User-Id` / `X-EasyAds-Account-Type` | `apps/web/app/api/_proxy/orchestrator.ts` |
-| BFF (Fastify) | Same JWT verification; injects verified identity headers/query params | `apps/bff/src/app.js` (`resolveSupabasePrincipal`, `verifiedPrincipalHeaders`) |
+| BFF (Fastify) | Same JWT verification; injects verified identity headers/query params; production/staging startup requires `EASYADS_INTERNAL_API_SECRET` and forwards it to the orchestrator | `apps/bff/src/app.js`, `apps/bff/src/config.js`, `apps/bff/src/auth/internal-secret.js` |
 | Orchestrator | Does NOT re-verify user identity. It verifies the **caller** instead: when `EASYADS_INTERNAL_API_SECRET` is set, every request except `/health` must carry a matching `X-EasyAds-Internal-Secret` header (constant-time compare) | `orchestrator/app/api/internal_auth.py` |
 
 ## The contract
@@ -25,15 +25,17 @@ Two layers enforce that:
 2. **Internal secret** (defense in depth): set the same
    `EASYADS_INTERNAL_API_SECRET` value on the orchestrator, the web app,
    and the BFF. The two callers attach the header automatically when the
-   env var is present; the orchestrator rejects everything else with
+   env var is present; the BFF refuses production/staging startup when it
+   is missing, and the orchestrator rejects everything else with
    `401 invalid_internal_secret`.
 
 ## Answer to "what if someone curls the orchestrator directly?"
 
 - Secret configured (production): `401 invalid_internal_secret` for any
   path except `/health`, regardless of which identity headers they forge.
-- Secret not configured (local dev, tests): request is honored — identical
-  to pre-2026-06 behavior. This mode is opt-in convenience, not a posture.
+- Secret not configured (local dev, tests): request is honored for local
+  convenience. Production/staging BFF startup fails instead of silently
+  calling the orchestrator without the internal secret.
 
 ## Setup
 
@@ -44,7 +46,7 @@ openssl rand -hex 32
 
 - Orchestrator (Railway): `EASYADS_INTERNAL_API_SECRET=<value>`
 - Web (Vercel/Next server runtime): `EASYADS_INTERNAL_API_SECRET=<value>`
-- BFF: `EASYADS_INTERNAL_API_SECRET=<value>`
+- BFF: `EASYADS_INTERNAL_API_SECRET=<value>` and `CORS_ORIGIN=<web-origin>`
 
 Rotation: set the new value on the orchestrator and both callers within the
 same deploy window (the orchestrator accepts exactly one value at a time).
