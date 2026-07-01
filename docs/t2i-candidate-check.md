@@ -32,7 +32,7 @@ Local T2I import dependencies are listed in `requirements.txt`:
 
 ## Environment Keys
 
-Set `HF_TOKEN` and `OPENAI_API_KEY` in a local ignored environment file or process environment. Do not commit actual keys. This repository supports an ignored local key file at `docs/api_key.env` for development machines.
+Set `HF_TOKEN` and `OPENAI_API_KEY` in the process environment or local `.env`. Do not commit actual keys. `docs/api_key.env` is ignored as a safety backstop but is not loaded by the runtime config.
 
 Example key names only:
 

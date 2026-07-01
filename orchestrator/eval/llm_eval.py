@@ -1,18 +1,19 @@
 """LLM-as-Judge evaluator — scores pipeline quality using gpt-5.4-nano.
 
 Reads node outputs from ops DB, calls OpenAI, writes score_items to eval DB.
-Requires: LLM_ENABLE_API_CALL=true + OPENAI_API_KEY set in env/.env/api_key.env.
+Requires: LLM_ENABLE_API_CALL=true + OPENAI_API_KEY set in process env or .env.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
-from orchestrator.app.core.config import _get_env, _get_bool
-from orchestrator.eval.config import OPS_DB_PATH, EVAL_DB_PATH
+from orchestrator.app.core.config import _get_bool, _get_env
+from orchestrator.eval.config import EVAL_DB_PATH, OPS_DB_PATH
 from orchestrator.eval.eval_db import EvalDBWriter
 
 # Map item_id → (description, list of node_names to fetch output from)
@@ -64,7 +65,8 @@ _ITEM_SPEC: dict[str, tuple[str, list[str]]] = {
     ),
     "V-3": (
         "Cost efficiency: "
-        "Given the user plan, was the LLM usage proportionate? Penalize unnecessary api_* calls on free/economic plans.",
+        "Given the user plan, was the LLM usage proportionate? "
+        "Penalize unnecessary api_* calls on free/economic plans.",
         ["result"],
     ),
     "V-4": (
@@ -77,9 +79,14 @@ _ITEM_SPEC: dict[str, tuple[str, list[str]]] = {
 _SYSTEM_PROMPT = (
     "You are an advertising pipeline quality evaluator. "
     "Score the given criterion on a 1-5 scale based only on the evidence provided.\n"
-    "Rubric: 5=Excellent, 4=Good minor gap, 3=Acceptable notable gap, 2=Poor significant failure, 1=Very poor/missing.\n"
+    "Rubric: 5=Excellent, 4=Good minor gap, 3=Acceptable notable gap, "
+    "2=Poor significant failure, 1=Very poor/missing.\n"
     "Return JSON only: {\"score\": <int 1-5>, \"reason\": \"<one sentence>\"}"
 )
+
+_EVIDENCE_TEXT_MAX_CHARS = 3000
+_MIN_EVAL_SCORE = 1
+_MAX_EVAL_SCORE = 5
 
 
 @contextmanager
@@ -156,8 +163,8 @@ def _call_llm(prompt: str, api_key: str, model: str, timeout: int = 30) -> dict[
 
 def _build_prompt(item_id: str, description: str, evidence: dict[str, Any]) -> str:
     evidence_text = json.dumps(evidence, ensure_ascii=False, indent=2)
-    if len(evidence_text) > 3000:
-        evidence_text = evidence_text[:3000] + "\n... [truncated]"
+    if len(evidence_text) > _EVIDENCE_TEXT_MAX_CHARS:
+        evidence_text = evidence_text[:_EVIDENCE_TEXT_MAX_CHARS] + "\n... [truncated]"
     return f"Criterion [{item_id}]: {description}\n\nEvidence:\n{evidence_text}"
 
 
@@ -205,7 +212,7 @@ def run_llm_eval(
 
             score = result.get("score")
             reason = result.get("reason", "")
-            if not isinstance(score, int) or not (1 <= score <= 5):
+            if not isinstance(score, int) or not (_MIN_EVAL_SCORE <= score <= _MAX_EVAL_SCORE):
                 continue
 
             writer.write_score_item(eval_id, item_id, score, notes=reason, evaluator_type="llm")
