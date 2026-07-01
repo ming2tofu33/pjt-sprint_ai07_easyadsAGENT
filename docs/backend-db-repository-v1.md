@@ -89,7 +89,7 @@ Storage-backed `result_payload` includes top-level URL fields for FE compatibili
 
 - Remote Supabase migration execution.
 - Actual Modal execution smoke or deployed Modal app management.
-- Supabase Auth/RLS enforcement.
+- Remote Supabase migration execution and live Auth/RLS smoke testing.
 - Frontend changes.
 - Evaluation pipeline implementation.
 - Actual GPT-image-2, SD3.5, FLUX, LLM, VLM, or OCR calls.

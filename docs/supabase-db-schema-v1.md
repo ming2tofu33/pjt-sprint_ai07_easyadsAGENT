@@ -55,6 +55,10 @@ The `assets` table is prepared for the upcoming R2/object storage milestone:
 
 User-owned data tables carry `workspace_id` directly where practical. `chat_message_assets` and `generation_job_events` include both `workspace_id` and `thread_id` so workspace-scoped RLS, cleanup, and archive queries do not require avoidable joins.
 
+`supabase/migrations/20260702_tenant_rls_v1.sql` enables RLS for workspace-scoped application tables and uses `public.easyads_has_workspace_access(workspace_id)` to keep authenticated Supabase users inside workspaces they own or belong to through `workspace_members`.
+
+The policy boundary is tenant/workspace isolation. Endpoint-level authorization, plan checks, and per-action permissions still live in the BFF/orchestrator service layer. Supabase `service_role` remains the server-side path for trusted backend writes and bypasses user RLS as intended.
+
 ## Generation Job Future Columns
 
 `generation_jobs` includes nullable/default columns for upcoming Modal/R2/model tracking:
@@ -113,8 +117,7 @@ Completed artifacts can be represented by either local-dev placeholder rows (`st
 
 ## Scope Limits
 
-- RLS policy design is not included in this migration.
-- Supabase Auth integration is not enforced yet.
+- Remote Supabase migration execution and live Auth/RLS smoke testing are not included in this repository-only migration work.
 - Optional R2 upload integration exists at the service layer, but remote smoke and broader object storage rollout are still follow-up work.
 - Modal execution and evaluation pipelines are not implemented.
 - Generated result static serving and signed URL generation remain separate follow-up work.
