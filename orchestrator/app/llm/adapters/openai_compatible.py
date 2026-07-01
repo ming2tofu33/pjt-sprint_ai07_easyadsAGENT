@@ -6,9 +6,16 @@ import json
 from time import perf_counter
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from orchestrator.app.llm.adapters.base import BaseLLMAdapter
+from orchestrator.app.llm.adapters.openai import (
+    CALL_INSTRUCTION_METADATA_KEY_SET,
+    CALL_INSTRUCTION_METADATA_KEYS,
+    DEFAULT_SYSTEM_INSTRUCTION,
+    _pydantic_json_invalid,
+    _strict_json_schema,
+)
 from orchestrator.app.llm.metadata_contracts import sanitize_metadata
 from orchestrator.app.llm.settings import LLMSettings, get_llm_settings
 from orchestrator.app.schemas.llm_model_policy import LLMCallResult, ModelSelection
@@ -67,12 +74,18 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             if self.default_headers:
                 client_kwargs["default_headers"] = self.default_headers
             client = OpenAI(**client_kwargs)
-            raw_text = self._create_structured_response_text(client, model_name, prompt, schema)
-            parsed = json.loads(raw_text) if raw_text else {}
-            output = self._validate_schema(schema, parsed)
+            raw_text = self._create_structured_response_text(client, model_name, prompt, schema, metadata)
+            output = self._parse_structured_output(schema, raw_text)
             return self._success(model_selection, output, raw_text, started, metadata, model_name)
         except json.JSONDecodeError:
             return self._error(model_selection, "llm_structured_output_parse_failed", started, metadata)
+        except ValidationError as exc:
+            error_code = (
+                "llm_structured_output_parse_failed"
+                if _pydantic_json_invalid(exc)
+                else "llm_structured_output_schema_invalid"
+            )
+            return self._error(model_selection, error_code, started, metadata)
         except Exception as exc:
             return self._error(model_selection, f"llm_api_error:{type(exc).__name__}", started, metadata)
 
@@ -100,7 +113,7 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             if self.default_headers:
                 client_kwargs["default_headers"] = self.default_headers
             client = OpenAI(**client_kwargs)
-            raw_text = self._create_text_response_text(client, model_name, prompt)
+            raw_text = self._create_text_response_text(client, model_name, prompt, metadata)
             return self._success(model_selection, raw_text, raw_text, started, metadata, model_name)
         except Exception as exc:
             return self._error(model_selection, f"llm_api_error:{type(exc).__name__}", started, metadata)
@@ -118,7 +131,7 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             model_selection,
             "llm_vision_not_implemented",
             started,
-            {**sanitize_metadata(metadata or {}), "image_path_present": bool(image_path)},
+            {**self._result_metadata(metadata), "image_path_present": bool(image_path)},
         )
 
     def _preflight(self) -> str | None:
@@ -138,37 +151,68 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             "api_vision": self.settings.openai_vision_model,
         }.get(model_selection.selected_model_class)
 
-    def _create_text_response_text(self, client: Any, model_name: str, prompt: str) -> str:
+    def _create_text_response_text(
+        self,
+        client: Any,
+        model_name: str,
+        prompt: str,
+        metadata: dict[str, Any] | None,
+    ) -> str:
+        instructions, user_input = self._call_context(prompt, metadata)
         if self.api_style == "chat_completions":
             response = client.chat.completions.create(
                 model=model_name,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": instructions},
+                    {"role": "user", "content": user_input},
+                ],
             )
             return self._chat_completion_text(response)
-        response = client.responses.create(model=model_name, input=prompt)
+        response = client.responses.create(model=model_name, instructions=instructions, input=user_input)
         return getattr(response, "output_text", None) or ""
 
-    def _create_structured_response_text(self, client: Any, model_name: str, prompt: str, schema: Any = None) -> str:
+    def _create_structured_response_text(
+        self,
+        client: Any,
+        model_name: str,
+        prompt: str,
+        schema: Any = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
         # Prefer json_schema (constrained decoding) over json_object: local servers (Ollama)
         # enforce the schema so output validates; falls back to json_object when no schema.
         # OpenAI-compat servers that reject json_schema raise → invoke_structured except → node fallback.
         chat_format = self._json_response_format(schema)
+        instructions, user_input = self._call_context(
+            prompt,
+            metadata,
+            force_json_object=chat_format.get("type") == "json_object",
+        )
         if self.api_style == "chat_completions":
             response = client.chat.completions.create(
                 model=model_name,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": instructions},
+                    {"role": "user", "content": user_input},
+                ],
                 response_format=chat_format,
             )
             return self._chat_completion_text(response)
         # responses API: format goes under text.format with the same shape sans the wrapping key
-        text_format = chat_format if chat_format.get("type") == "json_object" else {
-            "type": "json_schema",
-            "name": chat_format["json_schema"]["name"],
-            "schema": chat_format["json_schema"]["schema"],
-        }
+        if chat_format.get("type") == "json_object":
+            text_format = chat_format
+        else:
+            json_schema = chat_format["json_schema"]
+            text_format = {
+                "type": "json_schema",
+                "name": json_schema["name"],
+                "schema": json_schema["schema"],
+                "strict": json_schema.get("strict", True),
+            }
         response = client.responses.create(
             model=model_name,
-            input=prompt,
+            instructions=instructions,
+            input=user_input,
             text={"format": text_format},
         )
         return getattr(response, "output_text", None) or ""
@@ -184,7 +228,14 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
         if not json_schema:
             return {"type": "json_object"}
         name = getattr(schema, "__name__", "structured_output")
-        return {"type": "json_schema", "json_schema": {"name": name, "schema": json_schema}}
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": name,
+                "schema": _strict_json_schema(json_schema),
+                "strict": True,
+            },
+        }
 
     def _chat_completion_text(self, response: Any) -> str:
         try:
@@ -192,10 +243,38 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
         except Exception:
             return ""
 
-    def _validate_schema(self, schema: Any, output: dict[str, Any]) -> dict[str, Any]:
+    def _parse_structured_output(self, schema: Any, raw_text: str) -> dict[str, Any]:
         if isinstance(schema, type) and issubclass(schema, BaseModel):
-            return schema(**output).model_dump()
-        return output
+            return schema.model_validate_json(raw_text or "{}").model_dump()
+        return json.loads(raw_text) if raw_text else {}
+
+    def _call_context(
+        self,
+        prompt: str,
+        metadata: dict[str, Any] | None,
+        force_json_object: bool = False,
+    ) -> tuple[str, str]:
+        instructions = self._system_instruction(metadata)
+        if force_json_object:
+            instructions = f"{instructions}\nReturn only a valid JSON object."
+        return instructions, prompt
+
+    def _system_instruction(self, metadata: dict[str, Any] | None) -> str:
+        metadata = metadata or {}
+        for key in CALL_INSTRUCTION_METADATA_KEYS:
+            value = metadata.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return DEFAULT_SYSTEM_INSTRUCTION
+
+    def _result_metadata(self, metadata: dict[str, Any] | None) -> dict[str, Any]:
+        cleaned = {
+            key: value
+            for key, value in (metadata or {}).items()
+            if str(key).lower() not in CALL_INSTRUCTION_METADATA_KEY_SET
+        }
+        sanitized = sanitize_metadata(cleaned)
+        return sanitized if isinstance(sanitized, dict) else {}
 
     def _success(
         self,
@@ -217,7 +296,7 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             token_usage=None,
             cost_estimate=None,
             metadata={
-                **sanitize_metadata(metadata or {}),
+                **self._result_metadata(metadata),
                 "provider": self.provider,
                 "provider_profile": self.provider_profile,
                 "model": model_name,
@@ -247,7 +326,7 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             token_usage=None,
             cost_estimate=None,
             metadata={
-                **sanitize_metadata(metadata or {}),
+                **self._result_metadata(metadata),
                 "provider": self.provider,
                 "provider_profile": self.provider_profile,
                 "api_style": self.api_style,

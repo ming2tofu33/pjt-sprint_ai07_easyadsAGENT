@@ -75,10 +75,20 @@ These nodes must remain deterministic and must not call LLMs:
 ## Structured Output Rule
 
 - LLM nodes should use Pydantic structured output whenever possible.
-- Direct JSON-string parsing is a fallback only.
+- `openai` and OpenAI-compatible adapters must request `json_schema` with `strict=true` for Pydantic schemas.
+- Pydantic structured output must be validated immediately with `model_validate_json` or an equivalent strict validator.
+- Direct `json.loads` parsing is a schema-less JSON object fallback only.
 - Output schemas should come from `llm_marketing.py`, `text_layout.py`, or `llm_model_policy.py`.
 - Raw chain-of-thought must not be stored.
 - User-readable summaries may be stored as `reasoning_summary` or metadata.
+
+## Adapter Instruction Boundary
+
+- Trusted system instructions and untrusted user prompts must not be concatenated into one prompt string.
+- Responses API calls use `instructions=` for trusted instructions and `input=` for user content.
+- Chat Completions-compatible calls use separate `system` and `user` messages.
+- `system_instruction` and `instructions` metadata keys are call controls and must not be copied into result metadata.
+- OpenAI-compatible providers that reject strict JSON schema should fail the adapter call and trigger deterministic fallback rather than silently relaxing validation.
 
 ## Current 6th Milestone Scope
 
@@ -111,6 +121,8 @@ Implemented:
 
 - `mock` is the safe provider and always resolves to `MockLLMAdapter`.
 - `openai` resolves to `OpenAIAdapter`.
+- `openai_compatible` resolves to `OpenAICompatibleLLMAdapter` for hosted OpenAI-compatible endpoints.
+- `local_openai_compat` wraps `OpenAICompatibleLLMAdapter` for local/self-hosted OpenAI-compatible endpoints.
 - `local_gemma`, `local_qwen`, and `vision_api` are not implemented in this milestone.
 - Strict mode raises a clear provider-not-implemented error for unavailable providers.
 - Mock fallback is allowed only when the caller explicitly opts into `allow_mock_fallback`.
