@@ -90,7 +90,7 @@ class GemmaServer:
         )
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
 
-    @modal.asgi_app()
+    @modal.asgi_app(requires_proxy_auth=True)
     def serve(self):
         import asyncio
 

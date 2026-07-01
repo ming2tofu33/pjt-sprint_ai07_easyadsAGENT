@@ -21,6 +21,7 @@ class LocalOpenAICompatAdapter(OpenAICompatibleLLMAdapter):
             api_style=self.local_settings.local_llm_api_style,
             timeout_seconds=self.local_settings.local_llm_timeout_seconds,
             max_retries=self.local_settings.local_llm_max_retries,
+            default_headers=self.local_settings.modal_proxy_auth_headers(),
         )
 
     def _preflight(self) -> str | None:
