@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load_dotenv(path: Path) -> dict[str, str]:
     """Parse a dotenv file once per process.
 
@@ -33,15 +32,12 @@ def _load_dotenv(path: Path) -> dict[str, str]:
 
 
 def _get_env(name: str, default: str = "") -> str:
-    """Read OS env first, then local .env, then ignored docs/api_key.env, then default."""
+    """Read OS env first, then local .env, then default."""
     if name in os.environ:
         return os.environ[name]
     local_env = _load_dotenv(PROJECT_ROOT / ".env")
     if name in local_env:
         return local_env[name]
-    local_key_env = _load_dotenv(PROJECT_ROOT / "docs" / "api_key.env")
-    if name in local_key_env:
-        return local_key_env[name]
     return default
 
 
@@ -68,7 +64,7 @@ class T2ISettings:
     flux2_klein_model_id: str
 
     @classmethod
-    def from_env(cls) -> "T2ISettings":
+    def from_env(cls) -> T2ISettings:
         output_dir = Path(_get_env("T2I_OUTPUT_DIR", "data/outputs"))
         if not output_dir.is_absolute():
             output_dir = PROJECT_ROOT / output_dir

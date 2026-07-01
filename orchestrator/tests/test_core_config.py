@@ -1,5 +1,6 @@
 """Tests for core config env loading and dotenv caching."""
 
+from orchestrator.app.core import config
 from orchestrator.app.core.config import _get_env, _load_dotenv
 
 
@@ -37,3 +38,19 @@ def test_get_env_prefers_live_os_environ(monkeypatch):
 def test_get_env_falls_back_to_default(monkeypatch):
     monkeypatch.delenv("EASYADS_TEST_CONFIG_KEY_ABSENT", raising=False)
     assert _get_env("EASYADS_TEST_CONFIG_KEY_ABSENT", "fallback") == "fallback"
+
+
+def test_get_env_does_not_read_docs_api_key_env(monkeypatch, tmp_path):
+    key = "EASYADS_TEST_DOCS_API_KEY_ENV"
+    monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(config, "_load_dotenv", _load_dotenv)
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    (docs_dir / "api_key.env").write_text(f"{key}=from-docs-file\n", encoding="utf-8")
+    _load_dotenv.cache_clear()
+
+    try:
+        assert _get_env(key, "fallback") == "fallback"
+    finally:
+        _load_dotenv.cache_clear()

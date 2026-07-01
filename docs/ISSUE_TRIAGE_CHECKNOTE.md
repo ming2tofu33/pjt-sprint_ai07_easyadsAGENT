@@ -67,7 +67,7 @@ Phase gate:
 - [x] [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) Modal worker 인증 추가
 - [ ] [#287](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/287) Supabase RLS tenant table 확대
 - [ ] [#308](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/308) BFF CORS와 internal secret fail-fast 정리
-- [ ] [#319](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/319) `docs/api_key.env` fallback 제거
+- [x] [#319](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/319) `docs/api_key.env` fallback 제거
 
 Phase gate:
 
@@ -368,7 +368,7 @@ Tasks:
 - [ ] service role과 user-scoped access의 boundary를 문서화
 - [ ] BFF CORS origin policy를 environment별로 분리
 - [ ] production/staging에서 internal secret unset이면 fail-fast
-- [ ] `docs/api_key.env` fallback 제거
+- [x] `docs/api_key.env` fallback 제거
 - [ ] config parsing을 `pydantic-settings`로 옮길 범위 결정
 
 Verification:
@@ -376,6 +376,7 @@ Verification:
 ```bash
 uv run python -m pytest orchestrator/tests/test_supabase_migration_schema.py -q
 uv run python -m pytest orchestrator/tests/test_internal_auth_middleware.py -q
+uv run python -m pytest orchestrator/tests/test_core_config.py -q
 cd apps/bff && npm test
 ```
 
@@ -383,6 +384,7 @@ Done when:
 
 - [ ] tenant cross-access 방지 테스트가 있다.
 - [ ] local convenience fallback이 production runtime에 섞이지 않는다.
+- [x] `docs/api_key.env`는 production runtime config fallback으로 로드되지 않는다.
 - [ ] BFF가 unset secret을 조용히 통과시키지 않는다.
 
 ### W2-01. LangGraph Execution Reliability
@@ -645,7 +647,7 @@ Done when:
 | [#316](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/316) | P2 | Frontend | Phase 5 | todo |
 | [#317](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/317) | P2 | Infra | Phase 5 | todo |
 | [#318](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/318) | P1 | LLM | Phase 2 | todo |
-| [#319](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/319) | P1 | Security | Phase 1 | todo |
+| [#319](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/319) | P1 | Security | Phase 1 | verified |
 | [#320](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/320) | P2 | LangGraph | Phase 2 | todo |
 
 ## Common Verification Commands
