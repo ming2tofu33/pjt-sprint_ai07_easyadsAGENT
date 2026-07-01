@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { internalSecretHeaders } from "../src/auth/internal-secret.js";
 import { buildApp } from "../src/app.js";
 
 function jsonResponse(payload, init = {}) {
@@ -48,5 +49,9 @@ describe("internal secret forwarding", () => {
     const [, init] = fetchImpl.mock.calls[0];
     expect(init.headers["X-EasyAds-Internal-Secret"]).toBeUndefined();
     await app.close();
+  });
+
+  it("fails fast in production when the internal secret is not configured", () => {
+    expect(() => internalSecretHeaders({ NODE_ENV: "production" })).toThrow(/EASYADS_INTERNAL_API_SECRET/);
   });
 });

@@ -171,6 +171,8 @@ PORT=<Railway가 자동 제공>
 HOST=0.0.0.0
 ORCHESTRATOR_BASE_URL=https://<railway-orchestrator-domain>
 CORS_ORIGIN=https://<vercel-domain>
+EASYADS_INTERNAL_API_SECRET=<same-value-as-orchestrator>
+BFF_BODY_LIMIT_MB=10
 ```
 
 현재 BFF의 사진 업로드 경로는 로컬 디스크(`data/uploads`) 기반입니다.
@@ -1569,6 +1571,7 @@ Modal
 [ ] R2 secret key가 브라우저에 노출되지 않는다.
 [ ] Modal token이 브라우저에 노출되지 않는다.
 [ ] CORS_ORIGIN이 production Vercel domain으로 제한되어 있다.
+[ ] BFF와 orchestrator의 EASYADS_INTERNAL_API_SECRET이 같은 값으로 설정되어 있다.
 [ ] API cost guard가 켜져 있다.
 [ ] 실제 GPU/API 경로는 internal preview에서 먼저 검증한다.
 [ ] 실패한 workflow, job, usage event가 DB에 기록된다.
@@ -1657,8 +1660,8 @@ BFF CORS_ORIGIN에 Vercel production domain 추가
 preview domain을 테스트할 경우 preview domain도 추가
 ```
 
-현재 BFF는 `CORS_ORIGIN`이 없으면 모든 origin을 허용합니다.
-운영에서는 production domain으로 제한하는 것이 좋습니다.
+현재 BFF는 `production`/`staging`에서 `CORS_ORIGIN`이 없으면 시작에 실패합니다.
+로컬/테스트 기본값은 CORS를 열지 않고 비활성화합니다.
 
 ### 18.4 Supabase RLS로 데이터가 안 보임
 

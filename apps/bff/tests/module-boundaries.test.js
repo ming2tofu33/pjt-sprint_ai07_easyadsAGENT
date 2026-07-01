@@ -43,6 +43,40 @@ describe("BFF module boundaries", () => {
     const config = getBffConfig({}, {});
     expect(config.orchestratorBaseUrl).toBe("http://127.0.0.1:8000");
     expect(config.bodyLimitBytes).toBe(DEFAULT_BODY_LIMIT_BYTES);
+    expect(config.corsOrigin).toBe(false);
     expect(config).not.toHaveProperty("internalSecret");
+  });
+
+  it("keeps the default body limit at or below 10MB", () => {
+    expect(DEFAULT_BODY_LIMIT_BYTES).toBeLessThanOrEqual(10 * 1024 * 1024);
+  });
+
+  it("supports MB-based body limit configuration", () => {
+    const config = getBffConfig({}, { BFF_BODY_LIMIT_MB: "5" });
+    expect(config.bodyLimitBytes).toBe(5 * 1024 * 1024);
+  });
+
+  it("fails fast when production CORS origin is missing", () => {
+    expect(() =>
+      getBffConfig(
+        {},
+        {
+          NODE_ENV: "production",
+          EASYADS_INTERNAL_API_SECRET: "internal_secret_1"
+        }
+      )
+    ).toThrow(/CORS_ORIGIN/);
+  });
+
+  it("fails fast when staging internal secret is missing", () => {
+    expect(() =>
+      getBffConfig(
+        {},
+        {
+          APP_ENV: "staging",
+          CORS_ORIGIN: "https://app.example.com"
+        }
+      )
+    ).toThrow(/EASYADS_INTERNAL_API_SECRET/);
   });
 });

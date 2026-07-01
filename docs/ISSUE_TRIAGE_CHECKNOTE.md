@@ -66,14 +66,14 @@ Phase gate:
 - [x] [#295](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/295) T2I external API 비용 가드 단일화
 - [x] [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) Modal worker 인증 추가
 - [ ] [#287](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/287) Supabase RLS tenant table 확대
-- [ ] [#308](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/308) BFF CORS와 internal secret fail-fast 정리
+- [x] [#308](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/308) BFF CORS와 internal secret fail-fast 정리
 - [x] [#319](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/319) `docs/api_key.env` fallback 제거
 
 Phase gate:
 
 - [x] 사용자 입력이 system instruction과 같은 문자열 privilege로 합쳐지지 않는다.
 - [ ] 유료 T2I provider는 명시적 provider enable flag, API key, plan/cost guard를 모두 통과해야 호출된다.
-- [ ] production/staging 환경에서 internal secret이 비어 있으면 서버가 조용히 시작하지 않는다.
+- [x] production/staging 환경에서 internal secret이 비어 있으면 서버가 조용히 시작하지 않는다.
 - [ ] Supabase tenant table은 workspace/user boundary를 우회하지 않는다.
 
 ### Phase 2. LangGraph Runtime Stability
@@ -368,8 +368,8 @@ Tasks:
 - [ ] tenant-owned tables inventory 작성
 - [ ] RLS enable migration을 idempotent하게 추가
 - [ ] service role과 user-scoped access의 boundary를 문서화
-- [ ] BFF CORS origin policy를 environment별로 분리
-- [ ] production/staging에서 internal secret unset이면 fail-fast
+- [x] BFF CORS origin policy를 environment별로 분리
+- [x] production/staging에서 internal secret unset이면 fail-fast
 - [x] `docs/api_key.env` fallback 제거
 - [ ] config parsing을 `pydantic-settings`로 옮길 범위 결정
 
@@ -380,14 +380,16 @@ uv run python -m pytest orchestrator/tests/test_supabase_migration_schema.py -q
 uv run python -m pytest orchestrator/tests/test_internal_auth_middleware.py -q
 uv run python -m pytest orchestrator/tests/test_core_config.py -q
 cd apps/bff && npm test
+cd apps/bff && npm run syntax
+cd apps/bff && npm run lint
 ```
 
 Done when:
 
 - [ ] tenant cross-access 방지 테스트가 있다.
-- [ ] local convenience fallback이 production runtime에 섞이지 않는다.
+- [x] local convenience fallback이 production runtime에 섞이지 않는다.
 - [x] `docs/api_key.env`는 production runtime config fallback으로 로드되지 않는다.
-- [ ] BFF가 unset secret을 조용히 통과시키지 않는다.
+- [x] BFF가 unset secret을 조용히 통과시키지 않는다.
 
 ### W2-01. LangGraph Execution Reliability
 
@@ -638,7 +640,7 @@ Done when:
 | [#305](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/305) | P1 | Config | Phase 6 | todo |
 | [#306](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/306) | P2 | BFF | Phase 5 | todo |
 | [#307](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/307) | P2 | BFF | Phase 5 | todo |
-| [#308](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/308) | P2 | BFF/Security | Phase 1 | todo |
+| [#308](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/308) | P2 | BFF/Security | Phase 1 | closed |
 | [#309](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/309) | P2 | Refactor | Phase 5 | todo |
 | [#310](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/310) | P2 | Frontend | Phase 5 | todo |
 | [#311](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/311) | P2 | Frontend | Phase 5 | todo |
