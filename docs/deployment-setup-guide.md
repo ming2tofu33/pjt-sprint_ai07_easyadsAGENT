@@ -985,6 +985,15 @@ uv run modal token set --token-id <MODAL_TOKEN_ID> --token-secret <MODAL_TOKEN_S
 
 Railway orchestrator에는 `.modal.toml`이 없으므로 `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET` 환경변수를 직접 넣습니다.
 
+Modal Web Function proxy auth 토큰은 별도입니다. `modal_apps/easyads_llm_worker.py`의 ASGI endpoint는 proxy auth가 켜져 있으므로, Modal dashboard에서 Proxy Token을 만들고 orchestrator에 다음 값을 넣습니다.
+
+```text
+EASYADS_MODAL_PROXY_AUTH_TOKEN_ID=
+EASYADS_MODAL_PROXY_AUTH_TOKEN_SECRET=
+```
+
+이 값은 HTTP 요청의 `Modal-Key`, `Modal-Secret` 헤더로 전달됩니다. Modal SDK 인증에 쓰는 `MODAL_TOKEN_ID`, `MODAL_TOKEN_SECRET`와 섞지 않습니다.
+
 ### 12.2 mock worker 배포
 
 먼저 GPU/모델 없는 mock Modal worker로 연결을 검증합니다.
@@ -1005,6 +1014,19 @@ EASYADS_MODAL_FUNCTION_NAME=generate_image
 ```text
 EASYADS_MODAL_FLUX2_KLEIN_FUNCTION_NAME=generate_flux2_klein_image
 EASYADS_MODAL_SD35_FUNCTION_NAME=generate_sd35_large_image
+```
+
+LLM Gemma worker를 Modal Web Function으로 배포할 때는 별도 파일을 배포합니다. 이 endpoint는 Modal proxy auth가 필요합니다.
+
+```bash
+uv run modal deploy modal_apps/easyads_llm_worker.py
+```
+
+```text
+EASYADS_LOCAL_LLM_BASE_URL=https://<org>--easyads-llm-gemmaserver-serve.modal.run/v1
+EASYADS_LOCAL_LLM_MODEL=google/gemma-3-4b-it
+EASYADS_MODAL_PROXY_AUTH_TOKEN_ID=
+EASYADS_MODAL_PROXY_AUTH_TOKEN_SECRET=
 ```
 
 ### 12.3 Railway Modal 변수

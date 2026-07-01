@@ -51,9 +51,11 @@ class LLMSettings:
     local_llm_api_style: str = "chat_completions"
     local_llm_timeout_seconds: int = 60
     local_llm_max_retries: int = 0
+    modal_proxy_auth_token_id: str | None = None
+    modal_proxy_auth_token_secret: str | None = None
 
     @classmethod
-    def from_env(cls) -> "LLMSettings":
+    def from_env(cls) -> LLMSettings:
         override = _get_env("LLM_MAX_API_CALLS_PER_JOB_OVERRIDE", "")
         easyads_model = _get_env("EASYADS_LLM_MODEL", "") or None
         easyads_timeout = _get_env("EASYADS_LLM_TIMEOUT_SECONDS", "")
@@ -63,7 +65,9 @@ class LLMSettings:
         local_retries = _get_env("EASYADS_LOCAL_LLM_MAX_RETRIES", "0") or "0"
         return cls(
             enable_api_call=_get_bool("EASYADS_ENABLE_LLM_CALLS", _get_bool("LLM_ENABLE_API_CALL", False)),
-            default_provider=normalize_llm_provider(_get_env("EASYADS_LLM_PROVIDER", "") or _get_env("LLM_DEFAULT_PROVIDER", "mock")),
+            default_provider=normalize_llm_provider(
+                _get_env("EASYADS_LLM_PROVIDER", "") or _get_env("LLM_DEFAULT_PROVIDER", "mock")
+            ),
             openai_api_key=_get_env("OPENAI_API_KEY", "") or None,
             llm_model=easyads_model,
             llm_base_url=_get_env("EASYADS_LLM_BASE_URL", "") or None,
@@ -76,14 +80,29 @@ class LLMSettings:
             max_api_calls_per_job_override=_safe_non_negative_int(override, None),
             request_timeout_seconds=_safe_positive_int(easyads_timeout or legacy_timeout, 30),
             provider_strict_mode=_get_bool("LLM_PROVIDER_STRICT_MODE", True),
-            local_llm_provider=normalize_local_llm_provider(_get_env("EASYADS_LOCAL_LLM_PROVIDER", "local_openai_compat")),
+            local_llm_provider=normalize_local_llm_provider(
+                _get_env("EASYADS_LOCAL_LLM_PROVIDER", "local_openai_compat")
+            ),
             local_llm_base_url=_get_env("EASYADS_LOCAL_LLM_BASE_URL", "") or None,
             local_llm_api_key=_get_env("EASYADS_LOCAL_LLM_API_KEY", "") or None,
             local_llm_model=_get_env("EASYADS_LOCAL_LLM_MODEL", "gemma4-e4b") or "gemma4-e4b",
-            local_llm_api_style=normalize_llm_api_style(_get_env("EASYADS_LOCAL_LLM_API_STYLE", "chat_completions"), default="chat_completions"),
+            local_llm_api_style=normalize_llm_api_style(
+                _get_env("EASYADS_LOCAL_LLM_API_STYLE", "chat_completions"),
+                default="chat_completions",
+            ),
             local_llm_timeout_seconds=_safe_positive_int(local_timeout, 60),
             local_llm_max_retries=_safe_non_negative_int(local_retries, 0) or 0,
+            modal_proxy_auth_token_id=_get_env("EASYADS_MODAL_PROXY_AUTH_TOKEN_ID", "") or None,
+            modal_proxy_auth_token_secret=_get_env("EASYADS_MODAL_PROXY_AUTH_TOKEN_SECRET", "") or None,
         )
+
+    def modal_proxy_auth_headers(self) -> dict[str, str]:
+        if not self.modal_proxy_auth_token_id or not self.modal_proxy_auth_token_secret:
+            return {}
+        return {
+            "Modal-Key": self.modal_proxy_auth_token_id,
+            "Modal-Secret": self.modal_proxy_auth_token_secret,
+        }
 
 
 def get_llm_settings() -> LLMSettings:
@@ -118,7 +137,11 @@ def count_api_calls(state: dict[str, Any]) -> int:
     return count
 
 
-def is_api_call_allowed(state: dict[str, Any], model_selection: ModelSelection, settings: LLMSettings) -> tuple[bool, str]:
+def is_api_call_allowed(
+    state: dict[str, Any],
+    model_selection: ModelSelection,
+    settings: LLMSettings,
+) -> tuple[bool, str]:
     if not model_class_requires_api(model_selection.selected_model_class):
         return True, "model class does not require external API"
     if model_selection.user_plan == "free":

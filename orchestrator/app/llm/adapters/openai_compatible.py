@@ -29,6 +29,7 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
         api_style: str | None = None,
         timeout_seconds: int | None = None,
         max_retries: int | None = None,
+        default_headers: dict[str, str] | None = None,
     ):
         self.settings = settings or get_llm_settings()
         self.provider = provider
@@ -39,6 +40,7 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
         self.api_style = api_style or self.settings.llm_api_style
         self.timeout_seconds = timeout_seconds if timeout_seconds is not None else self.settings.request_timeout_seconds
         self.max_retries = max_retries if max_retries is not None else self.settings.max_retries
+        self.default_headers = dict(default_headers or {})
 
     def invoke_structured(
         self,
@@ -62,6 +64,8 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             client_kwargs = {"api_key": self.api_key, "timeout": self.timeout_seconds}
             if self.base_url:
                 client_kwargs["base_url"] = self.base_url
+            if self.default_headers:
+                client_kwargs["default_headers"] = self.default_headers
             client = OpenAI(**client_kwargs)
             raw_text = self._create_structured_response_text(client, model_name, prompt, schema)
             parsed = json.loads(raw_text) if raw_text else {}
@@ -93,6 +97,8 @@ class OpenAICompatibleLLMAdapter(BaseLLMAdapter):
             client_kwargs = {"api_key": self.api_key, "timeout": self.timeout_seconds}
             if self.base_url:
                 client_kwargs["base_url"] = self.base_url
+            if self.default_headers:
+                client_kwargs["default_headers"] = self.default_headers
             client = OpenAI(**client_kwargs)
             raw_text = self._create_text_response_text(client, model_name, prompt)
             return self._success(model_selection, raw_text, raw_text, started, metadata, model_name)

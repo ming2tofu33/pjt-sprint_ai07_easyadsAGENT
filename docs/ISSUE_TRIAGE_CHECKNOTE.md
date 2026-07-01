@@ -64,7 +64,7 @@ Phase gate:
 - [ ] [#293](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/293) LLM system/user role 분리
 - [ ] [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) structured output strict mode 적용
 - [x] [#295](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/295) T2I external API 비용 가드 단일화
-- [ ] [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) Modal worker 인증 추가
+- [x] [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) Modal worker 인증 추가
 - [ ] [#287](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/287) Supabase RLS tenant table 확대
 - [ ] [#308](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/308) BFF CORS와 internal secret fail-fast 정리
 - [ ] [#319](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/319) `docs/api_key.env` fallback 제거
@@ -319,7 +319,7 @@ Tasks:
 - [x] runtime `router.py`에서 actual GPT image engine을 만들기 전에 triple guard를 적용
 - [x] `T2I_ENABLE_API_COST_GUARD`를 실제 guard path에 연결하거나 제거
 - [ ] plan-tier policy와 engine availability를 같은 함수에서 판단
-- [ ] Modal worker에 proxy auth 또는 internal secret 검증 추가
+- [x] Modal LLM worker에 proxy auth 추가
 - [ ] T2I seed를 request metadata와 output metadata에 기록
 - [ ] free plan, missing key, disabled external T2I 테스트 추가
 - [x] router-level legacy allow flag, cost guard, disabled external T2I 회귀 테스트 추가
@@ -329,6 +329,7 @@ Verification:
 ```bash
 uv run python -m pytest orchestrator/tests/test_gpt_image_2_actual_lane_guard.py -q
 uv run python -m pytest orchestrator/tests/test_t2i_router_cost_guard.py -q
+uv run python -m pytest orchestrator/tests/test_modal_llm_worker_auth.py -q
 uv run python -m pytest orchestrator/tests/test_flux_local_lane_guard.py -q
 uv run python -m pytest orchestrator/tests/test_plan_policy.py -q
 ```
@@ -336,7 +337,7 @@ uv run python -m pytest orchestrator/tests/test_plan_policy.py -q
 Done when:
 
 - [x] `T2I_ALLOW_API_CALLS=true` 하나만으로 유료 provider가 호출되지 않는다.
-- [ ] Modal worker endpoint를 아는 것만으로 GPU inference를 실행할 수 없다.
+- [x] Modal LLM worker endpoint를 아는 것만으로 GPU inference를 실행할 수 없다.
 - [ ] seed와 engine metadata가 재현성 추적에 남는다.
 
 ### W1-03. Tenant, Secret, and BFF Boundary
@@ -613,7 +614,7 @@ Done when:
 | [#285](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/285) | P0 | DB | Phase 3 | todo |
 | [#286](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/286) | P0 | DB/Storage | Phase 3 | todo |
 | [#287](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/287) | P0 | Security/DB | Phase 1 | todo |
-| [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) | P0 | Infra/Security | Phase 1 | todo |
+| [#288](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/288) | P0 | Infra/Security | Phase 1 | verified |
 | [#289](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/289) | P0 | LangGraph | Phase 2 | todo |
 | [#290](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/290) | P0 | LangGraph | Phase 2 | todo |
 | [#291](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/291) | P0 | LangGraph | Phase 2 | todo |
