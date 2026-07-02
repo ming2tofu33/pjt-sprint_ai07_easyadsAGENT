@@ -641,7 +641,6 @@ def test_marketing_graph_node_utilization_matrix_covers_all_nodes(monkeypatch, t
         "image_aware_quality_gate",
         "design_recommendation",
         "poster_renderer",
-        "html_text_renderer",
         "image_analysis",
     })
     assert covered_nodes == graph_node_names
@@ -1031,6 +1030,19 @@ def test_production_graph_registers_native_typography_nodes_and_edges():
     } <= edges
     assert ("gpt_image_2_native_single_shot", "safe_area_gate") not in edges
     assert ("gpt_image_2_native_single_shot", "text_renderer") not in edges
+
+
+@_pytest.mark.graph
+@_pytest.mark.regression
+def test_production_graph_excludes_unreachable_final_render_edges():
+    graph = build_marketing_graph().get_graph()
+    nodes = set(graph.nodes) - {"__start__", "__end__"}
+    edges = {(edge.source, edge.target) for edge in graph.edges}
+
+    assert "html_text_renderer" not in nodes
+    assert ("safe_area_gate", "html_text_renderer") not in edges
+    assert ("safe_area_gate", "poster_renderer") not in edges
+    assert ("safe_area_gate", "image_analysis") in edges
 
 
 @_pytest.mark.parametrize("ad_format", ["banner", "poster", "flyer", "product_detail", "instagram_feed", "instagram_story"])

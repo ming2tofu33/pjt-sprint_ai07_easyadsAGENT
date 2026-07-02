@@ -83,7 +83,7 @@ Phase gate:
 - [x] [#291](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/291) `RenderFinalizeState.artifact_refs` 중복 선언 수정 여부 확인: 현재 develop에서 이미 단일 `Annotated` 선언이라 stale issue로 닫음
 - [x] [#289](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/289) graph `recursion_limit` 설정 추가
 - [x] [#290](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/290) production Postgres checkpointer 기본화
-- [ ] [#292](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/292) dead router branch 정리
+- [x] [#292](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/292) dead router branch 정리: unsupported `rendering_engine` 분기와 unreachable graph edge 제거
 - [ ] [#301](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/301) MarketingState checkpoint footprint 축소
 - [ ] [#313](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/313) graph routing key typed enum화
 - [ ] [#318](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/318) LLM settings re-parsing cache 연결
@@ -420,7 +420,7 @@ Tasks:
 - [x] `GRAPH_RECURSION_LIMIT` 설정 추가
 - [x] chat/execution graph invoke config에 recursion limit 반영
 - [x] Postgres checkpointer production default와 local memory fallback 기준 정리
-- [ ] `route_by_copy_presence`의 unreachable branch를 실제 state contract와 맞춤
+- [x] `route_by_copy_presence`의 unreachable branch를 실제 state contract와 맞춤
 - [ ] checkpoint에 들어가는 state 필드 중 read model이나 large payload로 분리 가능한 항목 inventory 작성
 - [ ] lazy import 제거는 import cycle 테스트를 먼저 추가한 뒤 단계적으로 진행
 
@@ -624,7 +624,7 @@ Done when:
 | [#289](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/289) | P0 | LangGraph | Phase 2 | verified |
 | [#290](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/290) | P0 | LangGraph | Phase 2 | verified |
 | [#291](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/291) | P0 | LangGraph | Phase 2 | closed |
-| [#292](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/292) | P1 | LangGraph | Phase 2 | todo |
+| [#292](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/292) | P1 | LangGraph | Phase 2 | verified |
 | [#293](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/293) | P0 | LLM/Security | Phase 1 | closed |
 | [#294](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/294) | P0 | LLM | Phase 1 | closed |
 | [#295](https://github.com/ming2tofu33/pjt-sprint_ai07_easyadsAGENT/issues/295) | P0 | T2I | Phase 1 | closed |

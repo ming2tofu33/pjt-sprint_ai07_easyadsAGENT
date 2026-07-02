@@ -9,10 +9,6 @@ from orchestrator.app.llm.ad_format_presets import NATIVE_TYPOGRAPHY_SUPPORTED_T
 from orchestrator.app.ocr_gate import settings as ocr_settings
 
 
-def route_by_entry_mode(state: MarketingState) -> str:
-    return "validator"
-
-
 def route_after_input_assets(state: MarketingState) -> str:
     if state.get("source_asset_id") or state.get("source_image_path"):
         return "product_preprocess"
@@ -84,10 +80,7 @@ def route_by_copy_presence(state: MarketingState) -> str:
     renderer_mode = state.get("renderer_mode", "simple_text")
     if renderer_mode == "poster_components":
         return "image_analysis"
-        
-    if state.get("rendering_engine") == "html":
-        return "html_text_renderer"
-        
+
     return "text_renderer"
 
 
