@@ -8,12 +8,15 @@ in postgres mode; memory mode remains the default for tests and local dev.
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from orchestrator.app.observability.performance import estimate_json_size_bytes, perf_span, perf_trace_enabled, top_channels
+
+logger = logging.getLogger(__name__)
 
 
 class InstrumentedCheckpointer(BaseCheckpointSaver):
@@ -156,4 +159,8 @@ def get_checkpointer() -> BaseCheckpointSaver:
         from langgraph.checkpoint.memory import InMemorySaver
     except ImportError:  # pragma: no cover - older langgraph naming
         from langgraph.checkpoint.memory import MemorySaver as InMemorySaver
+    logger.warning(
+        "LangGraph InMemorySaver checkpointer is active; HITL resume state will not survive process restarts. "
+        "Use EASYADS_DB_BACKEND=postgres and DATABASE_URL for deployed runtimes."
+    )
     return InstrumentedCheckpointer(InMemorySaver())

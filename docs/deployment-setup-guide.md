@@ -881,6 +881,9 @@ EASYADS_DEMO_USER_ID=demo
 
 `DATABASE_URL`은 Supabase Dashboard의 `Connect` 패널에서 Postgres connection string을 복사합니다.
 현재 repository는 요청 시점에 짧게 DB connection을 열고 닫기 때문에, 운영 배포에서는 Supabase pooler connection string을 우선 사용합니다.
+`DATABASE_URL`만 있고 `EASYADS_DB_BACKEND`가 비어 있으면 Postgres backend로 추론되지만,
+운영 설정에서는 `EASYADS_DB_BACKEND=postgres`를 명시합니다.
+production/staging에서 `EASYADS_DB_BACKEND=memory`이거나 `DATABASE_URL`이 없으면 LangGraph checkpointer 초기화가 실패합니다.
 
 Auth/API 연동 단계에서 추가로 필요해지는 값:
 

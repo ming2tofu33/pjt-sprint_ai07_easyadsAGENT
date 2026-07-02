@@ -8,7 +8,9 @@ compiles with a checkpointer from `orchestrator/app/graph/checkpointer.py`:
 | Condition | Checkpointer | HITL resume survives restart? |
 |---|---|---|
 | `EASYADS_DB_BACKEND=postgres` + `DATABASE_URL` set | `PostgresSaver` (psycopg pool) | Yes |
-| anything else (default; tests, local dev) | `InMemorySaver` | No |
+| `EASYADS_DB_BACKEND` unset/empty + `DATABASE_URL` set | `PostgresSaver` (psycopg pool) | Yes |
+| `EASYADS_DB_BACKEND=memory` in local/tests | `InMemorySaver` with warning log | No |
+| production/staging without Postgres config | checkpointer initialization error | No |
 
 `PostgresSaver.setup()` runs once per process on first use and idempotently
 creates/migrates the library-owned tables: `checkpoints`,
@@ -32,8 +34,13 @@ state from checkpoint blobs.
 ## Deployment (Railway / multi-instance)
 
 - Set `EASYADS_DB_BACKEND=postgres` and `DATABASE_URL` in the orchestrator
-  service env. Without them, every redeploy silently drops pending
-  `waiting_user_input` jobs (the pre-2026-06 behavior).
+  service env. `DATABASE_URL` alone also selects Postgres when
+  `EASYADS_DB_BACKEND` is unset/empty, but explicit `postgres` is preferred
+  for deployment readability.
+- Do not set `EASYADS_DB_BACKEND=memory` in production/staging. The
+  orchestrator now fails checkpointer initialization instead of silently
+  running a memory-only saver that drops pending `waiting_user_input` jobs on
+  redeploy.
 - Multiple instances sharing one `DATABASE_URL` share checkpoints; resume
   requests may land on any instance.
 - Connection budget: the checkpointer pool uses `max_size=4` per process,
