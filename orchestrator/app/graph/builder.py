@@ -67,7 +67,6 @@ from orchestrator.app.llm.nodes.t2i_generation import t2i_generation_node
 from orchestrator.app.llm.nodes.t2i_request_builder import t2i_request_builder_node
 from orchestrator.app.llm.nodes.text_renderer import text_renderer_node
 from orchestrator.app.llm.nodes.design_recommendation_node import design_recommendation_node
-from orchestrator.app.llm.nodes.html_text_renderer import html_text_renderer_node
 from orchestrator.app.llm.nodes.poster_renderer import poster_renderer_node
 from orchestrator.app.llm.nodes.poster_layout_planner import poster_layout_planner_node
 from orchestrator.app.llm.nodes.image_analysis import image_analysis_node
@@ -221,7 +220,6 @@ def build_marketing_graph(checkpointer=None):
     graph.add_node("adaptive_typography_refiner", _instrument_node("adaptive_typography_refiner", adaptive_typography_refiner_node))
     graph.add_node("safe_area_gate", _instrument_node("safe_area_gate", safe_area_gate_node))
     graph.add_node("text_renderer", _instrument_node("text_renderer", text_renderer_node))
-    graph.add_node("html_text_renderer", _instrument_node("html_text_renderer", html_text_renderer_node))
     graph.add_node("image_analysis", _instrument_node("image_analysis", image_analysis_node))
     graph.add_node("poster_layout_planner", _instrument_node("poster_layout_planner", poster_layout_planner_node))
     graph.add_node("poster_renderer", _instrument_node("poster_renderer", poster_renderer_node))
@@ -348,13 +346,16 @@ def build_marketing_graph(checkpointer=None):
         {"safe_area_gate": "adaptive_typography_refiner", "image_prompt_planner": "image_prompt_planner", "result": "result"},
     )
     graph.add_edge("adaptive_typography_refiner", "safe_area_gate")
-    graph.add_conditional_edges("safe_area_gate", route_by_copy_presence, {"result": "result", "text_renderer": "text_renderer", "html_text_renderer": "html_text_renderer", "image_analysis": "image_analysis", "poster_renderer": "poster_renderer"})
+    graph.add_conditional_edges(
+        "safe_area_gate",
+        route_by_copy_presence,
+        {"result": "result", "text_renderer": "text_renderer", "image_analysis": "image_analysis"},
+    )
     graph.add_edge("image_analysis", "poster_layout_planner")
     graph.add_edge("poster_layout_planner", "poster_renderer")
     graph.add_edge("poster_renderer", "image_aware_quality_gate")
     graph.add_edge("image_aware_quality_gate", "design_recommendation")
     graph.add_edge("design_recommendation", "readability_gate")
-    graph.add_edge("html_text_renderer", "final_ocr_gate")
     graph.add_edge("text_renderer", "final_ocr_gate")
     graph.add_conditional_edges(
         "final_ocr_gate",

@@ -184,6 +184,19 @@ def test_copy_presence_router_routes_without_mutation():
     assert route_by_copy_presence({"copy_required": True, "text_overlay_pending": True, "copy_spec": {"copy_mode": "standard"}}) == "text_renderer"
 
 
+@pytest.mark.graph
+@pytest.mark.regression
+def test_copy_presence_router_does_not_route_by_unsupported_rendering_engine():
+    state = {
+        "copy_required": True,
+        "text_overlay_pending": True,
+        "copy_spec": {"copy_mode": "standard"},
+        "rendering_engine": "html",
+    }
+
+    assert route_by_copy_presence(state) == "text_renderer"
+
+
 def test_text_renderer_creates_final_image(tmp_path):
     image_path = _image(tmp_path / "background.png")
     output = text_renderer_node(_state(image_path, "text-render-node-test"))
