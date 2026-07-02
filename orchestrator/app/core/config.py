@@ -9,6 +9,15 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_GRAPH_RECURSION_LIMIT = 60
+STRICT_RUNTIME_ENV_KEYS = (
+    "EASYADS_ENV",
+    "APP_ENV",
+    "ENVIRONMENT",
+    "RAILWAY_ENVIRONMENT",
+    "RAILWAY_ENVIRONMENT_NAME",
+    "NODE_ENV",
+)
+STRICT_RUNTIME_ENV_VALUES = {"production", "prod", "staging"}
 
 
 @cache
@@ -45,6 +54,10 @@ def _get_env(name: str, default: str = "") -> str:
 def _get_bool(name: str, default: bool) -> bool:
     value = _get_env(name, str(default)).lower()
     return value in {"1", "true", "yes", "y", "on"}
+
+
+def is_strict_runtime_env() -> bool:
+    return any(str(_get_env(key, "")).strip().lower() in STRICT_RUNTIME_ENV_VALUES for key in STRICT_RUNTIME_ENV_KEYS)
 
 
 def get_graph_recursion_limit() -> int:

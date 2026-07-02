@@ -56,6 +56,20 @@ def test_get_env_does_not_read_docs_api_key_env(monkeypatch, tmp_path):
         _load_dotenv.cache_clear()
 
 
+def test_strict_runtime_env_detects_production_and_staging(monkeypatch):
+    for key in config.STRICT_RUNTIME_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+    assert config.is_strict_runtime_env() is False
+
+    monkeypatch.setenv("EASYADS_ENV", "production")
+    assert config.is_strict_runtime_env() is True
+
+    monkeypatch.setenv("EASYADS_ENV", "local")
+    monkeypatch.setenv("RAILWAY_ENVIRONMENT_NAME", "staging")
+    assert config.is_strict_runtime_env() is True
+
+
 def test_graph_recursion_limit_reads_positive_env(monkeypatch):
     monkeypatch.setenv("GRAPH_RECURSION_LIMIT", "88")
 

@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from typing import Literal
 
-from orchestrator.app.core.config import _get_env
+from orchestrator.app.core.config import _get_env, is_strict_runtime_env
 from orchestrator.app.db.errors import DatabaseConfigurationError
 
 DbBackend = Literal["memory", "postgres"]
 
 
 def get_db_backend() -> DbBackend:
-    value = str(_get_env("EASYADS_DB_BACKEND", "memory") or "memory").strip().lower()
+    value = str(_get_env("EASYADS_DB_BACKEND", "") or "").strip().lower()
     if value == "postgres":
+        return "postgres"
+    if not value and get_database_url():
         return "postgres"
     return "memory"
 
@@ -26,6 +28,11 @@ def get_database_url(required: bool = False) -> str | None:
 
 def is_postgres_enabled() -> bool:
     if get_db_backend() != "postgres":
+        if is_strict_runtime_env():
+            raise DatabaseConfigurationError(
+                "Postgres DB backend is required in production or staging. "
+                "Set EASYADS_DB_BACKEND=postgres and DATABASE_URL."
+            )
         return False
     get_database_url(required=True)
     return True

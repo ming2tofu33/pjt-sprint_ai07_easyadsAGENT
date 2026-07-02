@@ -1,8 +1,12 @@
 """Tests for the checkpointer factory."""
 
+import logging
+
+import pytest
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 
+from orchestrator.app.db.errors import DatabaseConfigurationError
 from orchestrator.app.graph.checkpointer import get_checkpointer
 
 
@@ -23,6 +27,29 @@ def test_checkpointer_is_process_singleton(monkeypatch):
     get_checkpointer.cache_clear()
     try:
         assert get_checkpointer() is get_checkpointer()
+    finally:
+        get_checkpointer.cache_clear()
+
+
+def test_memory_checkpointer_logs_warning(monkeypatch, caplog):
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "memory")
+    get_checkpointer.cache_clear()
+    try:
+        caplog.set_level(logging.WARNING)
+        get_checkpointer()
+        assert "LangGraph InMemorySaver checkpointer is active" in caplog.text
+    finally:
+        get_checkpointer.cache_clear()
+
+
+def test_strict_runtime_rejects_memory_checkpointer(monkeypatch):
+    monkeypatch.setenv("EASYADS_ENV", "production")
+    monkeypatch.setenv("EASYADS_DB_BACKEND", "memory")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    get_checkpointer.cache_clear()
+    try:
+        with pytest.raises(DatabaseConfigurationError, match="Postgres DB backend is required"):
+            get_checkpointer()
     finally:
         get_checkpointer.cache_clear()
 
